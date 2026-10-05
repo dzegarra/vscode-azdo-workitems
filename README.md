@@ -33,6 +33,8 @@ Use the **Type**, **State** and **PR** chips to filter the cards (by default onl
 Card actions:
 
 - **Create branch**: pick the module, adjust the short name. The branch is created from `origin/develop`, checked out, published and linked to the work item's _Development_ section. Product Backlog Items and Bugs in New / Approved / To Do are moved to **Committed** (`azdoWorkItems.stateOnBranchCreated`).
+- **State** (the coloured state of a card, a nested task or the details): pick the new state among the ones allowed for that work item type.
+- **Add task** (Backlog Items and Bugs): creates a Task under the work item, in the same iteration and area and assigned to the same person. Tasks of a visible card are always nested in it, even when the `Task` type chip is off, so they can be managed (and their state changed) from there.
 - **Open**: shows the details of the work item in an editor tab: description, acceptance criteria / repro steps, assignee, effort, tags, parent, children, branch and PRs, with the same actions.
 - **Checkout**: switches to the work item branch (creating the local branch when it only exists in the remote).
 - **Create PR** (when the branch has no active PR; also available from the command palette for the current branch): pick extra work items to link, the feature name and the description. The branch is pushed and the PR targets `develop`, optionally as draft.

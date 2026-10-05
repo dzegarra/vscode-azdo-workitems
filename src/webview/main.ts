@@ -1,4 +1,4 @@
-import { escapeHtml } from '../html';
+import { canHaveTasks, escapeHtml, stateButton } from '../html';
 import { icon, typeIcon } from '../icons';
 import { sortByState, stateCategory, stateRank } from '../states';
 import type {
@@ -135,14 +135,15 @@ function renderActions(item: WorkItemModel): string {
       `<button class="button primary" data-action="createPullRequest" data-id="${item.id}">Create PR</button>`
     );
   }
+  if (canHaveTasks(item.type)) {
+    actions.push(
+      `<button class="button ghost" data-action="addTask" data-id="${item.id}" title="Create a task under this work item">Add task</button>`
+    );
+  }
   actions.push(
     `<button class="button ghost" data-action="openDetails" data-id="${item.id}" title="Show the details of the work item">Open</button>`
   );
   return `<footer class="actions">${actions.join('')}</footer>`;
-}
-
-function stateLabel(state: string): string {
-  return `<span class="state state-${stateCategory(state)}">${escapeHtml(state)}</span>`;
 }
 
 function renderChild(item: WorkItemModel): string {
@@ -150,7 +151,7 @@ function renderChild(item: WorkItemModel): string {
     ${typeIcon(item.type)}
     <button class="link id" data-action="openDetails" data-id="${item.id}" title="Show details">${item.id}</button>
     <span class="child-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
-    ${stateLabel(item.state)}
+    ${stateButton(item.id, item.state)}
   </li>`;
 }
 
@@ -179,7 +180,7 @@ function renderCard(item: WorkItemModel, children: WorkItemModel[], visibleIds: 
     item.id
   }</button>
       <span class="type">${escapeHtml(item.type)}</span>
-      ${stateLabel(item.state)}
+      ${stateButton(item.id, item.state)}
     </header>
     <div class="title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
     ${renderRelations(item, visibleIds)}
@@ -190,27 +191,29 @@ function renderCard(item: WorkItemModel, children: WorkItemModel[], visibleIds: 
   </article>`;
 }
 
-/** Cards of the visible items. Children whose parent is visible are nested in the parent card */
-function renderCards(items: WorkItemModel[]): string {
+/**
+ * Cards of the visible items. Children of a visible item are nested in its card, whatever the type filter,
+ * so the tasks of a Backlog Item / Bug can be managed while Tasks are filtered out
+ */
+function renderCards(items: WorkItemModel[], current: ViewModel): string {
   const visibleIds = new Set(items.map((item) => item.id));
-  const isNested = (item: WorkItemModel) => item.parentId !== undefined && visibleIds.has(item.parentId);
+  const childFilter = { ...current.filter, types: [] };
+  const childrenOf = (parent: WorkItemModel) =>
+    sortByState(
+      current.workItems.filter((child) => child.parentId === parent.id && isVisible(child, childFilter)),
+      current.stateOrder
+    );
   return items
-    .filter((item) => !isNested(item))
-    .map((item) =>
-      renderCard(
-        item,
-        items.filter((child) => child.parentId === item.id),
-        visibleIds
-      )
-    )
+    .filter((item) => item.parentId === undefined || !visibleIds.has(item.parentId))
+    .map((item) => renderCard(item, childrenOf(item), visibleIds))
     .join('');
 }
 
-function renderIteration(iteration: IterationModel, items: WorkItemModel[]): string {
+function renderIteration(iteration: IterationModel, items: WorkItemModel[], current: ViewModel): string {
   return `<section class="iteration">
     <h2 title="${escapeHtml(iteration.path)}">${escapeHtml(iteration.name)}
       <span class="teams">${escapeHtml(iteration.teams.join(', '))}</span></h2>
-    ${items.length ? renderCards(items) : '<p class="muted empty">Nothing to show</p>'}
+    ${items.length ? renderCards(items, current) : '<p class="muted empty">Nothing to show</p>'}
   </section>`;
 }
 
@@ -240,11 +243,12 @@ function renderList(current: ViewModel): string {
           .map((iteration) =>
             renderIteration(
               iteration,
-              visible.filter((item) => item.iterationPath === iteration.path)
+              visible.filter((item) => item.iterationPath === iteration.path),
+              current
             )
           )
           .join('')
-      : renderCards(visible) || '<p class="message muted">No work items match the filters.</p>';
+      : renderCards(visible, current) || '<p class="message muted">No work items match the filters.</p>';
   return body + hiddenNote;
 }
 

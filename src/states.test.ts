@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeHtml } from './html';
+import { canHaveTasks, sanitizeHtml, stateButton } from './html';
 import {
   DEFAULT_STATE_ORDER,
   normalizeState,
@@ -60,5 +60,20 @@ describe('sanitizeHtml', () => {
       '<div onclick="steal()"><b>Steps</b><script>alert(1)</script><img src="x.png" onerror=alert(1)>' +
       '<a href="javascript:alert(1)">x</a><iframe src="https://evil"></iframe></div>';
     expect(sanitizeHtml(html)).toBe('<div><b>Steps</b><img src="x.png"><a href="#">x</a></div>');
+  });
+});
+
+describe('state button', () => {
+  it('opens the state picker of the work item', () => {
+    const html = stateButton(66280, 'Ready to Test');
+    expect(html).toContain('data-action="changeState"');
+    expect(html).toContain('data-id="66280"');
+    expect(html).toContain('state-done');
+  });
+
+  it('allows tasks under Backlog Items and Bugs only', () => {
+    expect(canHaveTasks('Product Backlog Item')).toBe(true);
+    expect(canHaveTasks('Bug')).toBe(true);
+    expect(canHaveTasks('Task')).toBe(false);
   });
 });

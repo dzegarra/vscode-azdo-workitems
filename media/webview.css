@@ -393,6 +393,10 @@ button {
   background: var(--vscode-button-hoverBackground);
 }
 
+.button.ghost + .button.ghost {
+  margin-left: 0;
+}
+
 .button.ghost {
   margin-left: auto;
   color: var(--muted);
@@ -444,5 +448,28 @@ button {
 .note,
 .empty {
   margin: 4px 0;
+  font-size: 11px;
+}
+
+/* ---------- Editable state ---------- */
+
+button.state {
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+button.state:hover,
+button.state:focus-visible {
+  border-color: currentColor;
+  outline: none;
+}
+
+.button.small {
+  padding: 0 6px;
   font-size: 11px;
 }

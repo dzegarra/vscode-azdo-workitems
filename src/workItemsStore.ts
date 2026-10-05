@@ -84,6 +84,9 @@ function toPullRequestModel(pr: PullRequestDetails): PullRequestModel {
 export class WorkItemsStore {
   private readonly changeEmitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changeEmitter.event;
+  private readonly loadEmitter = new vscode.EventEmitter<void>();
+  /** Fired after the work items are reloaded from Azure DevOps, e.g. after changing a state */
+  readonly onDidLoad = this.loadEmitter.event;
 
   status: ViewModel['status'] = 'loading';
   error?: string;
@@ -128,6 +131,7 @@ export class WorkItemsStore {
       this.entries = await this.fetch();
       this.status = 'ready';
       this.error = undefined;
+      this.loadEmitter.fire();
     } catch (error) {
       this.status = 'error';
       this.error = (error as Error).message;

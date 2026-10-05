@@ -56,7 +56,15 @@ export interface ViewModel {
 
 export type WebviewMessage =
   | {
-      type: 'checkout' | 'createBranch' | 'createPullRequest' | 'openDetails' | 'openPullRequest' | 'openWorkItem';
+      type:
+        | 'addTask'
+        | 'changeState'
+        | 'checkout'
+        | 'createBranch'
+        | 'createPullRequest'
+        | 'openDetails'
+        | 'openPullRequest'
+        | 'openWorkItem';
       id: number;
       pullRequestId?: number;
     }

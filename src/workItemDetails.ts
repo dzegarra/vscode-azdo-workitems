@@ -25,19 +25,27 @@ function toRelated({ id, title, type, state }: WorkItem): RelatedWorkItem {
 /** Editor tabs showing the details of work items, one per work item */
 export class WorkItemDetailsPanels implements vscode.Disposable {
   private readonly panels = new Map<number, OpenPanel>();
-  private readonly subscription: vscode.Disposable;
+  private readonly subscriptions: vscode.Disposable[];
 
   constructor(private readonly extensionUri: vscode.Uri, private readonly store: WorkItemsStore) {
-    // Branch and PRs come from the store: refresh them when it changes
-    this.subscription = store.onDidChange(() => {
-      for (const [id, open] of this.panels) {
-        this.render(id, open);
-      }
-    });
+    this.subscriptions = [
+      // Branch and PRs come from the store: refresh them when it changes
+      store.onDidChange(() => {
+        for (const [id, open] of this.panels) {
+          this.render(id, open);
+        }
+      }),
+      // States, tasks… may have changed in Azure DevOps: reload the details
+      store.onDidLoad(() => {
+        for (const [id, open] of this.panels) {
+          void this.load(id, open);
+        }
+      }),
+    ];
   }
 
   dispose(): void {
-    this.subscription.dispose();
+    this.subscriptions.forEach((subscription) => subscription.dispose());
     for (const { panel } of this.panels.values()) {
       panel.dispose();
     }

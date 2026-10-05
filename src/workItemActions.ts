@@ -16,7 +16,10 @@ export async function runWorkItemAction(store: WorkItemsStore, message: WorkItem
   const entry = store.find(message.id);
   switch (message.type) {
     case 'openDetails':
-      await vscode.commands.executeCommand('azdoWorkItems.openDetails', message.id);
+    case 'changeState':
+    case 'addTask':
+      // These work with any work item, including parents / children not assigned to the user
+      await vscode.commands.executeCommand(`azdoWorkItems.${message.type}`, message.id);
       return;
     case 'openWorkItem': {
       // Parents and children shown in the details may not be assigned to the user

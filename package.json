@@ -79,6 +79,16 @@
         "category": "Azure Work Items"
       },
       {
+        "command": "azdoWorkItems.changeState",
+        "title": "Change Work Item State",
+        "category": "Azure Work Items"
+      },
+      {
+        "command": "azdoWorkItems.addTask",
+        "title": "Add Task to Work Item",
+        "category": "Azure Work Items"
+      },
+      {
         "command": "azdoWorkItems.checkout",
         "title": "Checkout Work Item Branch",
         "category": "Azure Work Items"

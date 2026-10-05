@@ -1,5 +1,5 @@
 /** Body of the work item details panel. Pure, so no "vscode" import */
-import { escapeHtml, sanitizeHtml } from './html';
+import { canHaveTasks, escapeHtml, sanitizeHtml, stateButton } from './html';
 import { icon, typeIcon } from './icons';
 import { stateCategory } from './states';
 import type { WorkItemModel } from './viewModel';
@@ -61,10 +61,6 @@ const RICH_TEXT_FIELDS: [string, string][] = [
   ['Acceptance criteria', 'Microsoft.VSTS.Common.AcceptanceCriteria'],
 ];
 
-function stateLabel(state: string): string {
-  return `<span class="state state-${stateCategory(state)}">${escapeHtml(state)}</span>`;
-}
-
 function renderMeta(fields: Record<string, unknown>): string {
   const rows = META_FIELDS.map(([label, name]) => [label, fieldText(fields[name])] as const)
     .filter((row): row is readonly [string, string] => row[1] !== undefined)
@@ -123,11 +119,25 @@ function renderActions(data: DetailsData): string {
 function renderRelated(item: RelatedWorkItem): string {
   return `<li class="child">${typeIcon(item.type)}
     <button class="link id" data-action="openDetails" data-id="${item.id}" title="Show details">${item.id}</button>
-    <span class="child-title">${escapeHtml(item.title)}</span>${stateLabel(item.state)}</li>`;
+    <span class="child-title">${escapeHtml(item.title)}</span>${stateButton(item.id, item.state)}</li>`;
 }
 
-function renderSection(title: string, content: string): string {
-  return `<section class="section"><h2>${title}</h2>${content}</section>`;
+function renderSection(title: string, content: string, headerAction = ''): string {
+  return `<section class="section"><h2><span>${title}</span>${headerAction}</h2>${content}</section>`;
+}
+
+/** Children, with a button to add tasks to Backlog Items / Bugs */
+function renderChildren(data: DetailsData): string {
+  const addTask = canHaveTasks(data.type)
+    ? `<button class="button ghost small" data-action="addTask" data-id="${data.id}">Add task</button>`
+    : '';
+  if (!data.children.length && !addTask) {
+    return '';
+  }
+  const list = data.children.length
+    ? `<ul class="related">${data.children.map(renderRelated).join('')}</ul>`
+    : '<p class="muted">No tasks yet.</p>';
+  return renderSection(`Children (${data.children.length})`, list, addTask);
 }
 
 export function renderDetailsBody(data: DetailsData): string {
@@ -136,16 +146,11 @@ export function renderDetailsBody(data: DetailsData): string {
     .map(([label, html]) => renderSection(label, `<div class="rich-text">${sanitizeHtml(html)}</div>`));
   const hierarchy = [
     data.parent ? renderSection('Parent', `<ul class="related">${renderRelated(data.parent)}</ul>`) : '',
-    data.children.length
-      ? renderSection(
-          `Children (${data.children.length})`,
-          `<ul class="related">${data.children.map(renderRelated).join('')}</ul>`
-        )
-      : '',
+    renderChildren(data),
   ];
   return `<header class="details-head state-border-${stateCategory(data.state)}">
       <div class="head-line">${typeIcon(data.type)}<span class="type">${escapeHtml(data.type)}</span>
-        <span class="id">${data.id}</span>${stateLabel(data.state)}</div>
+        <span class="id">${data.id}</span>${stateButton(data.id, data.state)}</div>
       <h1>${escapeHtml(data.title)}</h1>
       ${renderActions(data)}
     </header>

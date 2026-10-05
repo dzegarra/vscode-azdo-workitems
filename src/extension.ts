@@ -4,6 +4,7 @@ import { createPullRequest } from './commands/createPullRequest';
 import { resolveContext, SECTION, settings } from './config';
 import { getGitApi, pickRepository, Repository } from './git';
 import { resolveWorkItemEntry } from './commands/pickWorkItem';
+import { addTask, changeState } from './commands/workItemEdits';
 import { WorkItemDetailsPanels } from './workItemDetails';
 import { WorkItemEntry, WorkItemsStore } from './workItemsStore';
 import { VIEW_ID, WorkItemsViewProvider } from './workItemsView';
@@ -116,6 +117,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const workItemId = id ?? (await resolveWorkItemEntry(store, undefined))?.workItem.id;
       if (workItemId) {
         await details.open(workItemId);
+      }
+    }),
+    command('azdoWorkItems.changeState', async (id?: number) => {
+      const workItemId = id ?? (await resolveWorkItemEntry(store, undefined))?.workItem.id;
+      if (workItemId) {
+        await changeState(store, workItemId);
+      }
+    }),
+    command('azdoWorkItems.addTask', async (id?: number) => {
+      const parentId = id ?? (await resolveWorkItemEntry(store, undefined))?.workItem.id;
+      if (parentId) {
+        await addTask(store, parentId);
       }
     }),
     command('azdoWorkItems.openIterationBoard', () => openIterationBoard(currentRepository(), store)),

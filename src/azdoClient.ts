@@ -23,6 +23,15 @@ export interface WorkItemDetails extends WorkItem {
   fields: Record<string, unknown>;
 }
 
+export interface WorkItemTypeState {
+  name: string;
+  /** Proposed, InProgress, Resolved, Completed or Removed */
+  category: string;
+  color: string;
+}
+
+const typeStatesCache = new Map<string, Promise<WorkItemTypeState[]>>();
+
 export interface GitRepository {
   id: string;
   name: string;
@@ -185,6 +194,52 @@ export class AzdoClient {
 
   async getRepository(name: string): Promise<GitRepository> {
     return this.request<GitRepository>(this.url(`git/repositories/${encodeURIComponent(name)}`));
+  }
+
+  /** States of a work item type, in workflow order. Cached: they rarely change */
+  async getWorkItemTypeStates(type: string): Promise<WorkItemTypeState[]> {
+    const key = `${this.organization}/${this.project}/${type}`;
+    let states = typeStatesCache.get(key);
+    if (!states) {
+      states = this.request<{ value: WorkItemTypeState[] }>(
+        this.url(`wit/workitemtypes/${encodeURIComponent(type)}/states`)
+      ).then((result) => result.value);
+      typeStatesCache.set(key, states);
+      // Do not cache failures
+      states.catch(() => typeStatesCache.delete(key));
+    }
+    return states;
+  }
+
+  /** Creates a Task under the parent, in the same iteration and area, assigned to the same person */
+  async createTask(
+    parent: { id: number; fields: Record<string, unknown> },
+    title: string,
+    taskType = 'Task'
+  ): Promise<WorkItem> {
+    const assignedTo = parent.fields['System.AssignedTo'] as { uniqueName?: string } | undefined;
+    const operations = [
+      { op: 'add', path: '/fields/System.Title', value: title },
+      { op: 'add', path: '/fields/System.IterationPath', value: parent.fields['System.IterationPath'] },
+      { op: 'add', path: '/fields/System.AreaPath', value: parent.fields['System.AreaPath'] },
+      ...(assignedTo?.uniqueName
+        ? [{ op: 'add', path: '/fields/System.AssignedTo', value: assignedTo.uniqueName }]
+        : []),
+      {
+        op: 'add',
+        path: '/relations/-',
+        value: {
+          rel: 'System.LinkTypes.Hierarchy-Reverse',
+          url: `${BASE_URL}/${encodeURIComponent(this.organization)}/_apis/wit/workItems/${parent.id}`,
+        },
+      },
+    ];
+    const created = await this.request<WorkItemResponse>(this.url(`wit/workitems/$${encodeURIComponent(taskType)}`), {
+      method: 'POST',
+      contentType: 'application/json-patch+json',
+      body: JSON.stringify(operations),
+    });
+    return this.toWorkItem(created);
   }
 
   async updateWorkItemState(workItemId: number, state: string): Promise<void> {
