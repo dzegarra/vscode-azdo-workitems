@@ -1,23 +1,23 @@
 import * as vscode from 'vscode';
-import { WorkItemNode, WorkItemsTreeProvider } from '../workItemsTree';
+import { WorkItemEntry, WorkItemsStore } from '../workItemsStore';
 
 /** Work item the command was invoked on, or ask the user to pick one when run from the command palette */
-export async function resolveWorkItemNode(
-  tree: WorkItemsTreeProvider,
-  node: WorkItemNode | undefined
-): Promise<WorkItemNode | undefined> {
-  if (node?.kind === 'workItem') {
+export async function resolveWorkItemEntry(
+  store: WorkItemsStore,
+  node: WorkItemEntry | undefined
+): Promise<WorkItemEntry | undefined> {
+  if (node) {
     return node;
   }
-  await tree.getChildren();
+  await store.ensureLoaded();
   const picked = await vscode.window.showQuickPick(
-    tree.workItems.map((wi) => ({
+    store.workItems.map((wi) => ({
       label: `${wi.workItem.id} ${wi.workItem.title}`,
       description: wi.workItem.type,
       detail: wi.branch,
-      node: wi,
+      entry: wi,
     })),
     { title: 'Select a work item', matchOnDescription: true, ignoreFocusOut: true }
   );
-  return picked?.node;
+  return picked?.entry;
 }

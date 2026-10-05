@@ -3,11 +3,11 @@ import { pickFromCatalog } from '../catalog';
 import { resolveContext, settings } from '../config';
 import { GitAPI, pickRepository } from '../git';
 import { branchTypeFor, buildBranchName, isValidModule, slugify } from '../naming';
-import { WorkItemNode, WorkItemsTreeProvider } from '../workItemsTree';
-import { resolveWorkItemNode } from './pickWorkItem';
+import { WorkItemEntry, WorkItemsStore } from '../workItemsStore';
+import { resolveWorkItemEntry } from './pickWorkItem';
 
-export async function createBranch(git: GitAPI, tree: WorkItemsTreeProvider, node?: WorkItemNode): Promise<void> {
-  const target = await resolveWorkItemNode(tree, node);
+export async function createBranch(git: GitAPI, store: WorkItemsStore, node?: WorkItemEntry): Promise<void> {
+  const target = await resolveWorkItemEntry(store, node);
   if (!target) {
     return;
   }
@@ -85,6 +85,6 @@ export async function createBranch(git: GitAPI, tree: WorkItemsTreeProvider, nod
     }
   );
 
-  tree.refresh();
+  void store.refresh();
   void vscode.window.showInformationMessage(`Switched to the new branch "${branchName}".`);
 }

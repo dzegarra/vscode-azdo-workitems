@@ -3,13 +3,14 @@ import { createBranch } from './commands/createBranch';
 import { createPullRequest } from './commands/createPullRequest';
 import { resolveContext, SECTION, settings } from './config';
 import { getGitApi, pickRepository, Repository } from './git';
-import { WorkItemNode, WorkItemsTreeProvider } from './workItemsTree';
+import { WorkItemEntry, WorkItemsStore } from './workItemsStore';
+import { VIEW_ID, WorkItemsViewProvider } from './workItemsView';
 
 /** Opens the sprint board of a team. When there are several, the user picks one */
-async function openIterationBoard(repository: Repository | undefined, tree: WorkItemsTreeProvider): Promise<void> {
+async function openIterationBoard(repository: Repository | undefined, store: WorkItemsStore): Promise<void> {
   const { client } = resolveContext(repository);
-  const iterations = tree.iterations.length
-    ? tree.iterations
+  const iterations = store.iterations.length
+    ? store.iterations
     : await client.getCurrentIterations(await client.resolveTeams(settings().teams));
   const boards = iterations.flatMap(({ iteration, teams }) =>
     teams.map((team) => ({ label: team, description: iteration.name, team, iteration }))
@@ -48,9 +49,12 @@ async function selectTeams(repository: Repository | undefined): Promise<void> {
     .update('teams', picked.length ? picked.map((item) => item.label) : undefined, vscode.ConfigurationTarget.Global);
 }
 
+const DEBOUNCE_MS = 300;
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const git = await getGitApi();
-  const tree = new WorkItemsTreeProvider(git);
+  const store = new WorkItemsStore(git);
+  const view = new WorkItemsViewProvider(context.extensionUri, store);
   const currentRepository = () => (git.repositories.length ? pickRepository(git) : undefined);
 
   const command = (id: string, handler: (...args: never[]) => unknown) =>
@@ -62,23 +66,48 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     });
 
+  // Re-render when the checked out branch changes, without reloading from Azure DevOps
+  let debounce: NodeJS.Timeout | undefined;
+  const watchRepository = (repository: Repository) =>
+    repository.state.onDidChange(() => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => view.post(), DEBOUNCE_MS);
+    });
+
   context.subscriptions.push(
-    vscode.window.createTreeView('azdoWorkItems.myItems', { treeDataProvider: tree, showCollapseAll: true }),
+    vscode.window.registerWebviewViewProvider(VIEW_ID, view),
+    store.onDidChange(() => view.post()),
+    ...git.repositories.map(watchRepository),
     // The remote is only known once the git extension has opened the repository
-    git.onDidOpenRepository(() => tree.refresh()),
+    git.onDidOpenRepository((repository) => {
+      context.subscriptions.push(watchRepository(repository));
+      void store.refresh();
+    }),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration(SECTION)) {
-        tree.refresh();
+      if (!event.affectsConfiguration(SECTION)) {
+        return;
+      }
+      // Filters are applied by the view; other settings need to reload the work items
+      const onlyFilters = ['teams', 'organization', 'project', 'repository', 'remote'].every(
+        (key) => !event.affectsConfiguration(`${SECTION}.${key}`)
+      );
+      if (onlyFilters) {
+        view.post();
+      } else {
+        void store.refresh();
       }
     }),
-    command('azdoWorkItems.refresh', () => tree.refresh()),
-    command('azdoWorkItems.createBranch', (node?: WorkItemNode) => createBranch(git, tree, node)),
-    command('azdoWorkItems.createPullRequest', (node?: WorkItemNode) => createPullRequest(git, tree, node)),
-    command('azdoWorkItems.openInBrowser', (node: WorkItemNode) =>
-      vscode.env.openExternal(vscode.Uri.parse(node.workItem.url))
-    ),
-    command('azdoWorkItems.copyId', (node: WorkItemNode) => vscode.env.clipboard.writeText(String(node.workItem.id))),
-    command('azdoWorkItems.openIterationBoard', () => openIterationBoard(currentRepository(), tree)),
+    command('azdoWorkItems.refresh', () => store.refresh()),
+    command('azdoWorkItems.createBranch', (entry?: WorkItemEntry) => createBranch(git, store, entry)),
+    command('azdoWorkItems.createPullRequest', (entry?: WorkItemEntry) => createPullRequest(git, store, entry)),
+    command('azdoWorkItems.checkout', async (entry: WorkItemEntry) => {
+      if (entry.branch) {
+        // For a branch that only exists in the remote, git creates the local tracking branch
+        await pickRepository(git).checkout(entry.branch);
+        await store.refresh();
+      }
+    }),
+    command('azdoWorkItems.openIterationBoard', () => openIterationBoard(currentRepository(), store)),
     command('azdoWorkItems.selectTeams', () => selectTeams(currentRepository()))
   );
 }

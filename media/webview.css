@@ -1,0 +1,448 @@
+:root {
+  --gap: 8px;
+  --radius: 6px;
+  --muted: var(--vscode-descriptionForeground);
+  --border: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
+  --card-bg: var(--vscode-sideBar-background);
+  --card-hover: var(--vscode-list-hoverBackground);
+  --blue: var(--vscode-charts-blue, #3794ff);
+  --green: var(--vscode-charts-green, #89d185);
+  --red: var(--vscode-charts-red, #f14c4c);
+  --yellow: var(--vscode-charts-yellow, #cca700);
+  --purple: var(--vscode-charts-purple, #b180d7);
+  --orange: var(--vscode-charts-orange, #d18616);
+  --grey: var(--vscode-disabledForeground, #8b8b8b);
+}
+
+body {
+  padding: 0 0 16px;
+  color: var(--vscode-foreground);
+  background: var(--vscode-sideBar-background);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+.icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+/* ---------- Toolbar & filters ---------- */
+
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 12px 6px;
+  background: var(--vscode-sideBar-background);
+}
+
+#search {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 4px 6px;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  outline: none;
+}
+
+#search:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.progress {
+  height: 2px;
+  margin: 0 12px;
+  background: linear-gradient(90deg, transparent 0%, var(--vscode-progressBar-background) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: progress 1.2s linear infinite;
+}
+
+@keyframes progress {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+.filters {
+  display: grid;
+  gap: 4px;
+  padding: 2px 12px 8px;
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.filter-label {
+  width: 38px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.chip[aria-pressed='true'] {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border-color: var(--vscode-button-background);
+}
+
+.chip:hover {
+  border-color: var(--vscode-focusBorder);
+}
+
+.chip .count {
+  opacity: 0.75;
+}
+
+/* ---------- Iterations ---------- */
+
+.list {
+  display: grid;
+  gap: var(--gap);
+  padding: 0 12px;
+}
+
+.iteration {
+  display: grid;
+  gap: var(--gap);
+}
+
+.iteration h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.iteration .teams {
+  overflow: hidden;
+  color: var(--muted);
+  font-weight: normal;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+  letter-spacing: 0;
+}
+
+/* ---------- Cards ---------- */
+
+.card {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--grey);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+}
+
+.card:hover {
+  background: var(--card-hover);
+}
+
+.card.current {
+  border-color: var(--vscode-focusBorder);
+  border-left-color: var(--vscode-focusBorder);
+}
+
+.state-border-proposed {
+  border-left-color: var(--grey);
+}
+.state-border-in-progress {
+  border-left-color: var(--blue);
+}
+.state-border-done {
+  border-left-color: var(--green);
+}
+.state-border-removed {
+  border-left-color: var(--red);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.card-head .type {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.type-bug {
+  color: var(--red);
+}
+.type-backlog {
+  color: var(--blue);
+}
+.type-task {
+  color: var(--yellow);
+}
+.type-feature {
+  color: var(--purple);
+}
+
+.state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.state::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.state-proposed {
+  color: var(--grey);
+}
+.state-in-progress {
+  color: var(--blue);
+}
+.state-done {
+  color: var(--green);
+}
+.state-removed {
+  color: var(--red);
+}
+
+.link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.link.id {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.title {
+  display: -webkit-box;
+  overflow: hidden;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.relations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.row code {
+  overflow: hidden;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Pills ---------- */
+
+.pill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10.5px;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--pill-color, var(--muted));
+  background: color-mix(in srgb, var(--pill-color, var(--muted)) 16%, transparent);
+}
+
+.pill .icon {
+  width: 11px;
+  height: 11px;
+}
+
+.tone-neutral {
+  --pill-color: var(--muted);
+}
+.tone-local {
+  --pill-color: var(--blue);
+}
+.tone-remote {
+  --pill-color: var(--grey);
+}
+.tone-current {
+  --pill-color: var(--vscode-focusBorder);
+}
+.tone-draft {
+  --pill-color: var(--grey);
+}
+.tone-review {
+  --pill-color: var(--blue);
+}
+.tone-approved {
+  --pill-color: var(--green);
+}
+.tone-waiting {
+  --pill-color: var(--orange);
+}
+.tone-rejected {
+  --pill-color: var(--red);
+}
+.tone-completed {
+  --pill-color: var(--purple);
+}
+.tone-abandoned {
+  --pill-color: var(--grey);
+}
+
+/* ---------- Actions ---------- */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.button {
+  padding: 2px 10px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.button:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.button.primary {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+
+.button.primary:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.button.ghost {
+  margin-left: auto;
+  color: var(--muted);
+  background: transparent;
+}
+
+.button:focus-visible,
+.link:focus-visible,
+.chip:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+/* ---------- Children ---------- */
+
+.children {
+  display: grid;
+  gap: 2px;
+  margin: 2px 0 0;
+  padding: 6px 0 0;
+  border-top: 1px solid var(--border);
+  list-style: none;
+}
+
+.child {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.child-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Messages ---------- */
+
+.message {
+  padding: 12px 0;
+}
+
+.message.error {
+  color: var(--vscode-errorForeground);
+}
+
+.note,
+.empty {
+  margin: 4px 0;
+  font-size: 11px;
+}

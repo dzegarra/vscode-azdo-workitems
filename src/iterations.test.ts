@@ -25,12 +25,8 @@ describe('mergeTeamIterations', () => {
 
 describe('buildMyWorkItemsQuery', () => {
   it('queries the work items assigned to me in all the iterations', () => {
-    expect(buildMyWorkItemsQuery([sprint1.path, "Flow\\Sprint 'X'"], ['Done', 'Removed'])).toBe(
-      "SELECT [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me AND [System.IterationPath] IN ('Flow\\Sprint 1', 'Flow\\Sprint ''X''') AND [System.State] NOT IN ('Done', 'Removed') ORDER BY [System.WorkItemType], [System.Id]"
+    expect(buildMyWorkItemsQuery([sprint1.path, "Flow\\Sprint 'X'"])).toBe(
+      "SELECT [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me AND [System.IterationPath] IN ('Flow\\Sprint 1', 'Flow\\Sprint ''X''') ORDER BY [System.WorkItemType], [System.Id]"
     );
-  });
-
-  it('skips the state filter when no state is excluded', () => {
-    expect(buildMyWorkItemsQuery([sprint1.path], [])).not.toContain('System.State');
   });
 });

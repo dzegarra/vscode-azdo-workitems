@@ -4,15 +4,12 @@ import { pickFromCatalog } from '../catalog';
 import { resolveContext, settings } from '../config';
 import { GitAPI, pickRepository } from '../git';
 import { buildPrDescription, buildPrTitle, parseBranchName } from '../naming';
-import { WorkItemNode, WorkItemsTreeProvider } from '../workItemsTree';
+import { WorkItemEntry, WorkItemsStore } from '../workItemsStore';
 
 /** The work item in the branch name, plus any other the user wants to link */
-async function pickWorkItemIds(
-  tree: WorkItemsTreeProvider,
-  primaryId: number | undefined
-): Promise<number[] | undefined> {
-  await tree.getChildren();
-  const otherItems = tree.workItems.filter((wi) => wi.workItem.id !== primaryId);
+async function pickWorkItemIds(store: WorkItemsStore, primaryId: number | undefined): Promise<number[] | undefined> {
+  await store.ensureLoaded();
+  const otherItems = store.workItems.filter((wi) => wi.workItem.id !== primaryId);
   const primary = primaryId ? [primaryId] : [];
   if (!otherItems.length) {
     return primary;
@@ -42,13 +39,13 @@ async function pickWorkItemIds(
 /** Short description of the PR, prefilled with the title of the first work item */
 async function askDescription(
   client: AzdoClient,
-  tree: WorkItemsTreeProvider,
+  store: WorkItemsStore,
   workItemIds: number[],
   featureName: string
 ): Promise<string | undefined> {
   const [firstId] = workItemIds;
   const firstTitle =
-    tree.workItems.find((wi) => wi.workItem.id === firstId)?.workItem.title ??
+    store.workItems.find((wi) => wi.workItem.id === firstId)?.workItem.title ??
     (await client.getWorkItems([firstId])).at(0)?.title ??
     '';
   return vscode.window.showInputBox({
@@ -80,15 +77,16 @@ async function openExistingPullRequest(
   return true;
 }
 
-export async function createPullRequest(git: GitAPI, tree: WorkItemsTreeProvider, node?: WorkItemNode): Promise<void> {
+export async function createPullRequest(git: GitAPI, store: WorkItemsStore, node?: WorkItemEntry): Promise<void> {
   const repository = pickRepository(git);
   const s = settings();
 
-  // From a work item: its local branch. From the command palette: the current branch
-  const branch = node?.kind === 'workItem' ? node.branch : repository.state.HEAD?.name;
+  // From a work item: its branch. From the command palette: the current branch
+  const branch = node ? node.branch : repository.state.HEAD?.name;
+  const isLocal = !node || node.branchLocation === 'local';
   if (!branch) {
     void vscode.window.showWarningMessage(
-      node ? `Work item ${node.workItem.id} has no local branch. Create one first.` : 'No branch is checked out.'
+      node ? `Work item ${node.workItem.id} has no branch. Create one first.` : 'No branch is checked out.'
     );
     return;
   }
@@ -105,7 +103,7 @@ export async function createPullRequest(git: GitAPI, tree: WorkItemsTreeProvider
   }
 
   const parsed = parseBranchName(branch);
-  const workItemIds = await pickWorkItemIds(tree, node?.workItem.id ?? parsed?.id);
+  const workItemIds = await pickWorkItemIds(store, node?.workItem.id ?? parsed?.id);
   if (!workItemIds?.length) {
     return;
   }
@@ -121,7 +119,7 @@ export async function createPullRequest(git: GitAPI, tree: WorkItemsTreeProvider
     return;
   }
 
-  const description = await askDescription(client, tree, workItemIds, featureName);
+  const description = await askDescription(client, store, workItemIds, featureName);
   if (!description) {
     return;
   }
@@ -141,9 +139,13 @@ export async function createPullRequest(git: GitAPI, tree: WorkItemsTreeProvider
   const pr = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: 'Creating pull request' },
     async (progress) => {
-      progress.report({ message: `pushing ${branch}` });
-      await repository.push(s.remote, branch, true);
-      const commits = await repository.log({ range: `${s.remote}/${s.baseBranch}..${branch}` });
+      // A branch that only exists in the remote is already pushed
+      if (isLocal) {
+        progress.report({ message: `pushing ${branch}` });
+        await repository.push(s.remote, branch, true);
+      }
+      const head = isLocal ? branch : `${s.remote}/${branch}`;
+      const commits = await repository.log({ range: `${s.remote}/${s.baseBranch}..${head}` });
       progress.report({ message: 'creating pull request' });
       return client.createPullRequest(azdoRepository, {
         source: branch,
@@ -156,6 +158,7 @@ export async function createPullRequest(git: GitAPI, tree: WorkItemsTreeProvider
     }
   );
 
+  void store.refresh();
   const open = await vscode.window.showInformationMessage(`Pull request ${pr.pullRequestId} created: ${title}`, 'Open');
   if (open) {
     await vscode.env.openExternal(vscode.Uri.parse(pr.webUrl));

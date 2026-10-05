@@ -1,9 +1,12 @@
 import { getAccessToken } from './auth';
 import { buildMyWorkItemsQuery, Iteration, mergeTeamIterations, TeamIteration } from './iterations';
+import { parseRelations, PullRequestState, WorkItemLinks, WorkItemRelation } from './workItemLinks';
 
 const API_VERSION = '7.1';
 const BASE_URL = 'https://dev.azure.com';
 const NOT_FOUND = 404;
+/** The work items API accepts up to 200 IDs per request */
+const MAX_IDS_PER_REQUEST = 200;
 
 export interface WorkItem {
   id: number;
@@ -12,6 +15,7 @@ export interface WorkItem {
   state: string;
   iterationPath: string;
   url: string;
+  links: WorkItemLinks;
 }
 
 export interface GitRepository {
@@ -27,6 +31,12 @@ export interface PullRequest {
   webUrl: string;
 }
 
+export interface PullRequestDetails extends PullRequest, PullRequestState {
+  title: string;
+  sourceRefName: string;
+  repository: { id: string; name: string };
+}
+
 export interface Team {
   id: string;
   name: string;
@@ -35,6 +45,7 @@ export interface Team {
 interface WorkItemResponse {
   id: number;
   fields: Record<string, string>;
+  relations?: WorkItemRelation[];
 }
 
 export class AzdoClient {
@@ -112,11 +123,11 @@ export class AzdoClient {
   }
 
   /** Work items assigned to the signed-in user in any of the given iterations */
-  async getMyWorkItems(iterationPaths: string[], excludedStates: string[]): Promise<WorkItem[]> {
+  async getMyWorkItems(iterationPaths: string[]): Promise<WorkItem[]> {
     if (!iterationPaths.length) {
       return [];
     }
-    const query = buildMyWorkItemsQuery(iterationPaths, excludedStates);
+    const query = buildMyWorkItemsQuery(iterationPaths);
     const result = await this.request<{ workItems: { id: number }[] }>(this.url('wit/wiql'), {
       method: 'POST',
       body: JSON.stringify({ query }),
@@ -129,12 +140,11 @@ export class AzdoClient {
       return [];
     }
     const items: WorkItem[] = [];
-    // The API accepts up to 200 IDs per request
-    for (let i = 0; i < ids.length; i += 200) {
-      const chunk = ids.slice(i, i + 200);
-      const fields = 'System.Id,System.Title,System.WorkItemType,System.State,System.IterationPath';
+    for (let i = 0; i < ids.length; i += MAX_IDS_PER_REQUEST) {
+      const chunk = ids.slice(i, i + MAX_IDS_PER_REQUEST);
+      // "fields" cannot be combined with "$expand"; relations give parent / children / branches / PRs
       const result = await this.request<{ value: WorkItemResponse[] }>(
-        this.url(`wit/workitems?ids=${chunk.join(',')}&fields=${fields}`)
+        this.url(`wit/workitems?ids=${chunk.join(',')}&$expand=relations`)
       );
       items.push(...result.value.map((wi) => this.toWorkItem(wi)));
     }
@@ -149,6 +159,7 @@ export class AzdoClient {
       type: wi.fields['System.WorkItemType'],
       state: wi.fields['System.State'],
       iterationPath: wi.fields['System.IterationPath'],
+      links: parseRelations(wi.relations),
       url: this.workItemWebUrl(wi.id),
     };
   }
@@ -189,6 +200,18 @@ export class AzdoClient {
         },
       ]),
     });
+  }
+
+  /** PR by ID, in any repository of the project */
+  async getPullRequest(id: number): Promise<PullRequestDetails> {
+    // "reviewers" is missing when the PR has none
+    const pr = await this.request<Omit<PullRequestDetails, 'reviewers' | 'webUrl'> & Partial<PullRequestDetails>>(
+      this.url(`git/pullrequests/${id}`)
+    );
+    const webUrl = `${BASE_URL}/${encodeURIComponent(this.organization)}/${encodeURIComponent(
+      this.project
+    )}/_git/${encodeURIComponent(pr.repository.name)}/pullrequest/${id}`;
+    return { ...pr, reviewers: pr.reviewers ?? [], webUrl };
   }
 
   async findActivePullRequest(repository: GitRepository, branch: string): Promise<PullRequest | undefined> {

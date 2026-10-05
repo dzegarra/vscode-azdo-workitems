@@ -14,7 +14,6 @@ export function settings() {
     teams: config.get<string[]>('teams', []),
     remote: config.get<string>('remote', 'origin'),
     baseBranch: config.get<string>('baseBranch', 'develop'),
-    excludedStates: config.get<string[]>('excludedStates', []),
     branchTypeByWorkItemType: config.get<Partial<Record<string, string>>>('branchTypeByWorkItemType', {}),
     branchModules: config.get<string[]>('branchModules', []),
     prFeatureNames: config.get<string[]>('prFeatureNames', []),

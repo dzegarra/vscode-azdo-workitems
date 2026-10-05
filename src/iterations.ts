@@ -32,13 +32,10 @@ function wiqlString(value: string): string {
 }
 
 /** WIQL query of the work items assigned to the signed-in user in any of the given iterations */
-export function buildMyWorkItemsQuery(iterationPaths: string[], excludedStates: string[]): string {
-  const stateFilter = excludedStates.length
-    ? ` AND [System.State] NOT IN (${excludedStates.map(wiqlString).join(', ')})`
-    : '';
+export function buildMyWorkItemsQuery(iterationPaths: string[]): string {
   return [
     'SELECT [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me',
-    `AND [System.IterationPath] IN (${iterationPaths.map(wiqlString).join(', ')})${stateFilter}`,
+    `AND [System.IterationPath] IN (${iterationPaths.map(wiqlString).join(', ')})`,
     'ORDER BY [System.WorkItemType], [System.Id]',
   ].join(' ');
 }

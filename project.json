@@ -12,7 +12,11 @@
       "executor": "nx:run-commands",
       "options": {
         "cwd": "tools/vscode-azdo-workitems",
-        "command": "esbuild src/extension.ts --bundle --platform=node --target=node20 --format=cjs --external:vscode --sourcemap --outfile=dist/extension.js"
+        "commands": [
+          "esbuild src/extension.ts --bundle --platform=node --target=node20 --format=cjs --external:vscode --sourcemap --outfile=dist/extension.js",
+          "esbuild src/webview/main.ts --bundle --platform=browser --target=es2022 --format=iife --sourcemap --outfile=dist/webview.js"
+        ],
+        "parallel": true
       },
       "inputs": ["{projectRoot}/src/**/*", "{projectRoot}/package.json"],
       "outputs": ["{projectRoot}/dist"],
@@ -22,7 +26,11 @@
       "executor": "nx:run-commands",
       "options": {
         "cwd": "tools/vscode-azdo-workitems",
-        "command": "esbuild src/extension.ts --bundle --platform=node --target=node20 --format=cjs --external:vscode --sourcemap --outfile=dist/extension.js --watch"
+        "commands": [
+          "esbuild src/extension.ts --bundle --platform=node --target=node20 --format=cjs --external:vscode --sourcemap --outfile=dist/extension.js --watch",
+          "esbuild src/webview/main.ts --bundle --platform=browser --target=es2022 --format=iife --sourcemap --outfile=dist/webview.js --watch"
+        ],
+        "parallel": true
       },
       "cache": false,
       "continuous": true

@@ -18,8 +18,21 @@ To debug it, run the launch configuration **Run Azure Work Items Extension** (F5
 
 Open the **Azure Work Items** view in the activity bar. The first time, VS Code asks you to sign in with your Microsoft account.
 
-- **Create Branch** (branch icon on a work item): pick the module, adjust the short name. The branch is created from `origin/develop`, checked out, published and linked to the work item's _Development_ section.
-- **Create Pull Request** (on a work item with a local branch, or from the command palette for the current branch): pick extra work items to link, the feature name and the description. The branch is pushed and the PR targets `develop`, optionally as draft.
+Each work item is a card with:
+
+- ID (opens the work item in Azure DevOps), type and state
+- Title
+- Parent / children: `3 children` when it is a parent; the parent ID when the parent is not in the list. Visible children (e.g. Tasks) are nested in the parent card
+- Branch: the local branch (`local`, or `current` when checked out) or a branch that only exists in the remote (`remote`)
+- Pull requests linked to the work item with their status: Draft, Waiting for review, Approved, Waiting for author, Rejected, Conflicts, Completed, Abandoned
+
+Use the **Type** and **State** chips to filter the cards (by default only Product Backlog Items and Bugs, hiding Done / Removed / Closed), and the search box to find them by ID, title or branch.
+
+Card actions:
+
+- **Create branch**: pick the module, adjust the short name. The branch is created from `origin/develop`, checked out, published and linked to the work item's _Development_ section.
+- **Checkout**: switches to the work item branch (creating the local branch when it only exists in the remote).
+- **Create PR** (when the branch has no active PR; also available from the command palette for the current branch): pick extra work items to link, the feature name and the description. The branch is pushed and the PR targets `develop`, optionally as draft.
 
 Organization, project and repository are detected from the `origin` remote.
 
@@ -34,7 +47,8 @@ By default the view lists your work items in the current iteration of **every te
 | `azdoWorkItems.moduleToFeature`                           | Feature name suggested for each branch module                 |
 | `azdoWorkItems.branchTypeByWorkItemType`                  | Branch prefix per work item type (`Bug` → `bugfix`)           |
 | `azdoWorkItems.baseBranch`                                | Base branch and PR target (`develop`)                         |
-| `azdoWorkItems.excludedStates`                            | States hidden from the list                                   |
+| `azdoWorkItems.filter.types`                              | Work item types shown (Type chips)                            |
+| `azdoWorkItems.filter.hiddenStates`                       | States hidden (State chips)                                   |
 | `azdoWorkItems.teams`                                     | Teams whose current iteration is listed (empty: all my teams) |
 | `azdoWorkItems.linkBranchToWorkItem`                      | Publish and link new branches to the work item                |
 | `azdoWorkItems.organization` / `.project` / `.repository` | Override what is detected from the remote                     |

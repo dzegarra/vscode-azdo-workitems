@@ -36,17 +36,12 @@
     "views": {
       "azdoWorkItems": [
         {
+          "type": "webview",
           "id": "azdoWorkItems.myItems",
           "name": "Current Iterations"
         }
       ]
     },
-    "viewsWelcome": [
-      {
-        "view": "azdoWorkItems.myItems",
-        "contents": "No work items assigned to you in the current iterations of your teams.\n[Refresh](command:azdoWorkItems.refresh)\n[Select Teams](command:azdoWorkItems.selectTeams)"
-      }
-    ],
     "commands": [
       {
         "command": "azdoWorkItems.refresh",
@@ -79,13 +74,8 @@
         "icon": "$(git-pull-request-create)"
       },
       {
-        "command": "azdoWorkItems.openInBrowser",
-        "title": "Open in Browser",
-        "category": "Azure Work Items"
-      },
-      {
-        "command": "azdoWorkItems.copyId",
-        "title": "Copy ID",
+        "command": "azdoWorkItems.checkout",
+        "title": "Checkout Work Item Branch",
         "category": "Azure Work Items"
       }
     ],
@@ -106,45 +96,9 @@
           "when": "view == azdoWorkItems.myItems"
         }
       ],
-      "view/item/context": [
-        {
-          "command": "azdoWorkItems.createBranch",
-          "when": "view == azdoWorkItems.myItems && viewItem =~ /^workItem/",
-          "group": "inline@1"
-        },
-        {
-          "command": "azdoWorkItems.createPullRequest",
-          "when": "view == azdoWorkItems.myItems && viewItem == workItem.withBranch",
-          "group": "inline@2"
-        },
-        {
-          "command": "azdoWorkItems.createBranch",
-          "when": "view == azdoWorkItems.myItems && viewItem =~ /^workItem/",
-          "group": "1_git@1"
-        },
-        {
-          "command": "azdoWorkItems.createPullRequest",
-          "when": "view == azdoWorkItems.myItems && viewItem =~ /^workItem/",
-          "group": "1_git@2"
-        },
-        {
-          "command": "azdoWorkItems.openInBrowser",
-          "when": "view == azdoWorkItems.myItems && viewItem =~ /^workItem/",
-          "group": "2_misc@1"
-        },
-        {
-          "command": "azdoWorkItems.copyId",
-          "when": "view == azdoWorkItems.myItems && viewItem =~ /^workItem/",
-          "group": "2_misc@2"
-        }
-      ],
       "commandPalette": [
         {
-          "command": "azdoWorkItems.openInBrowser",
-          "when": "false"
-        },
-        {
-          "command": "azdoWorkItems.copyId",
+          "command": "azdoWorkItems.checkout",
           "when": "false"
         }
       ]
@@ -185,17 +139,28 @@
           "default": "develop",
           "description": "Branch new branches are created from and pull requests target."
         },
-        "azdoWorkItems.excludedStates": {
+        "azdoWorkItems.filter.types": {
           "type": "array",
           "items": {
             "type": "string"
           },
           "default": [
-            "Removed",
-            "Closed",
-            "Done"
+            "Product Backlog Item",
+            "Bug"
           ],
-          "description": "Work item states hidden from the list."
+          "description": "Work item types shown. Empty: all types. Also editable with the Type chips of the view."
+        },
+        "azdoWorkItems.filter.hiddenStates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "Done",
+            "Removed",
+            "Closed"
+          ],
+          "description": "Work item states hidden. Also editable with the State chips of the view."
         },
         "azdoWorkItems.branchTypeByWorkItemType": {
           "type": "object",
