@@ -74,6 +74,11 @@
         "icon": "$(git-pull-request-create)"
       },
       {
+        "command": "azdoWorkItems.openDetails",
+        "title": "Show Work Item Details",
+        "category": "Azure Work Items"
+      },
+      {
         "command": "azdoWorkItems.checkout",
         "title": "Checkout Work Item Branch",
         "category": "Azure Work Items"
@@ -161,6 +166,30 @@
             "Closed"
           ],
           "description": "Work item states hidden. Also editable with the State chips of the view."
+        },
+        "azdoWorkItems.filter.hiddenPullRequestStates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "States of the main PR of the work items hidden (\"No PR\" for work items without PRs). Also editable with the PR chips of the view."
+        },
+        "azdoWorkItems.stateOrder": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "Done",
+            "Ready to Test",
+            "Committed",
+            "In Progress",
+            "Approved",
+            "New",
+            "To Do"
+          ],
+          "description": "Order in which the work items are sorted by state. Case, spaces and dashes are ignored. States not listed go last."
         },
         "azdoWorkItems.branchTypeByWorkItemType": {
           "type": "object",
@@ -294,6 +323,17 @@
           "type": "boolean",
           "default": true,
           "description": "Add the new branch to the work item's Development section."
+        },
+        "azdoWorkItems.stateOnBranchCreated": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {
+            "Product Backlog Item": "Committed",
+            "Bug": "Committed"
+          },
+          "description": "State a work item is moved to when a branch is created for it, per work item type. Only applied to work items in New, Approved or To Do. Remove a type to disable it."
         }
       }
     }

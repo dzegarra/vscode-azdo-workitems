@@ -40,6 +40,8 @@ export interface FilterModel {
   types: string[];
   /** States hidden */
   hiddenStates: string[];
+  /** PR states hidden, including NO_PULL_REQUEST */
+  hiddenPullRequestStates: string[];
 }
 
 export interface ViewModel {
@@ -48,11 +50,13 @@ export interface ViewModel {
   iterations: IterationModel[];
   workItems: WorkItemModel[];
   filter: FilterModel;
+  /** States in the order the work items are sorted */
+  stateOrder: string[];
 }
 
 export type WebviewMessage =
   | {
-      type: 'checkout' | 'copyId' | 'createBranch' | 'createPullRequest' | 'openPullRequest' | 'openWorkItem';
+      type: 'checkout' | 'createBranch' | 'createPullRequest' | 'openDetails' | 'openPullRequest' | 'openWorkItem';
       id: number;
       pullRequestId?: number;
     }
@@ -62,9 +66,16 @@ export type WebviewMessage =
 
 export type ExtensionMessage = { type: 'state'; model: ViewModel };
 
-/** True when the work item passes the type / state filters and matches the search text */
+export const NO_PULL_REQUEST = 'No PR';
+
+/** State of the main PR of the work item (the first one: active PRs come first), used by the PR filter */
+export function pullRequestFilterValue(item: Pick<WorkItemModel, 'pullRequests'>): string {
+  return item.pullRequests.at(0)?.status ?? NO_PULL_REQUEST;
+}
+
+/** True when the work item passes the type / state / PR filters and matches the search text */
 export function isVisible(
-  item: Pick<WorkItemModel, 'branch' | 'id' | 'state' | 'title' | 'type'>,
+  item: Pick<WorkItemModel, 'branch' | 'id' | 'pullRequests' | 'state' | 'title' | 'type'>,
   filter: FilterModel,
   text = ''
 ): boolean {
@@ -72,6 +83,9 @@ export function isVisible(
     return false;
   }
   if (filter.hiddenStates.includes(item.state)) {
+    return false;
+  }
+  if (filter.hiddenPullRequestStates.includes(pullRequestFilterValue(item))) {
     return false;
   }
   const query = text.trim().toLowerCase();

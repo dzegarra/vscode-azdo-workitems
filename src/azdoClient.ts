@@ -18,6 +18,11 @@ export interface WorkItem {
   links: WorkItemLinks;
 }
 
+export interface WorkItemDetails extends WorkItem {
+  /** Raw fields, e.g. "System.Description" or "System.AssignedTo" */
+  fields: Record<string, unknown>;
+}
+
 export interface GitRepository {
   id: string;
   name: string;
@@ -180,6 +185,22 @@ export class AzdoClient {
 
   async getRepository(name: string): Promise<GitRepository> {
     return this.request<GitRepository>(this.url(`git/repositories/${encodeURIComponent(name)}`));
+  }
+
+  async updateWorkItemState(workItemId: number, state: string): Promise<void> {
+    await this.request(this.url(`wit/workitems/${workItemId}`), {
+      method: 'PATCH',
+      contentType: 'application/json-patch+json',
+      body: JSON.stringify([{ op: 'add', path: '/fields/System.State', value: state }]),
+    });
+  }
+
+  /** Work item with all its fields (description, acceptance criteria…) and relations */
+  async getWorkItemDetails(id: number): Promise<WorkItemDetails> {
+    const result = await this.request<WorkItemResponse & { fields: Record<string, unknown> }>(
+      this.url(`wit/workitems/${id}?$expand=all`)
+    );
+    return { ...this.toWorkItem(result as WorkItemResponse), fields: result.fields };
   }
 
   /** Adds the branch to the "Development" section of the work item */

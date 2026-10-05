@@ -26,11 +26,14 @@ Each work item is a card with:
 - Branch: the local branch (`local`, or `current` when checked out) or a branch that only exists in the remote (`remote`)
 - Pull requests linked to the work item with their status: Draft, Waiting for review, Approved, Waiting for author, Rejected, Conflicts, Completed, Abandoned
 
-Use the **Type** and **State** chips to filter the cards (by default only Product Backlog Items and Bugs, hiding Done / Removed / Closed), and the search box to find them by ID, title or branch.
+Cards are sorted by state: Done, Ready to Test, Committed, In Progress, Approved, New, To Do (`azdoWorkItems.stateOrder`). Done and Ready to Test are shown in green, Committed and In Progress in blue.
+
+Use the **Type**, **State** and **PR** chips to filter the cards (by default only Product Backlog Items and Bugs, hiding Done / Removed / Closed), and the search box to find them by ID, title or branch. The PR filter uses the main PR of each work item (the active one, or the most recent), or `No PR`.
 
 Card actions:
 
-- **Create branch**: pick the module, adjust the short name. The branch is created from `origin/develop`, checked out, published and linked to the work item's _Development_ section.
+- **Create branch**: pick the module, adjust the short name. The branch is created from `origin/develop`, checked out, published and linked to the work item's _Development_ section. Product Backlog Items and Bugs in New / Approved / To Do are moved to **Committed** (`azdoWorkItems.stateOnBranchCreated`).
+- **Open**: shows the details of the work item in an editor tab: description, acceptance criteria / repro steps, assignee, effort, tags, parent, children, branch and PRs, with the same actions.
 - **Checkout**: switches to the work item branch (creating the local branch when it only exists in the remote).
 - **Create PR** (when the branch has no active PR; also available from the command palette for the current branch): pick extra work items to link, the feature name and the description. The branch is pushed and the PR targets `develop`, optionally as draft.
 
@@ -48,6 +51,9 @@ By default the view lists your work items in the current iteration of **every te
 | `azdoWorkItems.branchTypeByWorkItemType`                  | Branch prefix per work item type (`Bug` → `bugfix`)           |
 | `azdoWorkItems.baseBranch`                                | Base branch and PR target (`develop`)                         |
 | `azdoWorkItems.filter.types`                              | Work item types shown (Type chips)                            |
+| `azdoWorkItems.filter.hiddenPullRequestStates`            | PR states hidden (PR chips)                                   |
+| `azdoWorkItems.stateOrder`                                | Order of the cards by state                                   |
+| `azdoWorkItems.stateOnBranchCreated`                      | State set when a branch is created, per type                  |
 | `azdoWorkItems.filter.hiddenStates`                       | States hidden (State chips)                                   |
 | `azdoWorkItems.teams`                                     | Teams whose current iteration is listed (empty: all my teams) |
 | `azdoWorkItems.linkBranchToWorkItem`                      | Publish and link new branches to the work item                |

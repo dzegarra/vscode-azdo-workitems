@@ -2,21 +2,17 @@ import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { SECTION } from './config';
 import { ExtensionMessage, FilterModel, WebviewMessage } from './viewModel';
+import { runWorkItemAction } from './workItemActions';
 import { WorkItemsStore } from './workItemsStore';
 
 export const VIEW_ID = 'azdoWorkItems.myItems';
-const STATUS_MESSAGE_MS = 2000;
-const COMMANDS = {
-  checkout: 'azdoWorkItems.checkout',
-  createBranch: 'azdoWorkItems.createBranch',
-  createPullRequest: 'azdoWorkItems.createPullRequest',
-};
 
 export function filterSettings(): FilterModel {
   const config = vscode.workspace.getConfiguration(SECTION);
   return {
     types: config.get<string[]>('filter.types', []),
     hiddenStates: config.get<string[]>('filter.hiddenStates', []),
+    hiddenPullRequestStates: config.get<string[]>('filter.hiddenPullRequestStates', []),
   };
 }
 
@@ -58,42 +54,20 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         const config = vscode.workspace.getConfiguration(SECTION);
         await config.update('filter.types', message.filter.types, vscode.ConfigurationTarget.Global);
         await config.update('filter.hiddenStates', message.filter.hiddenStates, vscode.ConfigurationTarget.Global);
+        await config.update(
+          'filter.hiddenPullRequestStates',
+          message.filter.hiddenPullRequestStates,
+          vscode.ConfigurationTarget.Global
+        );
         return;
       }
-      case 'openWorkItem':
+      case 'checkout':
+      case 'createBranch':
+      case 'createPullRequest':
+      case 'openDetails':
       case 'openPullRequest':
-      case 'copyId':
-      case 'checkout':
-      case 'createBranch':
-      case 'createPullRequest':
-        await this.runAction(message);
-    }
-  }
-
-  private async runAction(message: Extract<WebviewMessage, { id: number }>): Promise<void> {
-    const entry = this.store.find(message.id);
-    if (!entry) {
-      return;
-    }
-    switch (message.type) {
       case 'openWorkItem':
-        await vscode.env.openExternal(vscode.Uri.parse(entry.workItem.url));
-        return;
-      case 'openPullRequest': {
-        const pr = entry.pullRequests.find((p) => p.pullRequestId === message.pullRequestId);
-        if (pr) {
-          await vscode.env.openExternal(vscode.Uri.parse(pr.webUrl));
-        }
-        return;
-      }
-      case 'copyId':
-        await vscode.env.clipboard.writeText(String(entry.workItem.id));
-        void vscode.window.setStatusBarMessage(`Copied ${entry.workItem.id}`, STATUS_MESSAGE_MS);
-        return;
-      case 'checkout':
-      case 'createBranch':
-      case 'createPullRequest':
-        await vscode.commands.executeCommand(COMMANDS[message.type], entry);
+        await runWorkItemAction(this.store, message);
     }
   }
 

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { AzdoClient } from './azdoClient';
 import { Repository } from './git';
 import { parseAzdoRemote } from './repoContext';
+import { DEFAULT_STATE_ORDER } from './states';
 
 export const SECTION = 'azdoWorkItems';
 
@@ -19,6 +20,8 @@ export function settings() {
     prFeatureNames: config.get<string[]>('prFeatureNames', []),
     moduleToFeature: config.get<Partial<Record<string, string>>>('moduleToFeature', {}),
     linkBranchToWorkItem: config.get<boolean>('linkBranchToWorkItem', true),
+    stateOnBranchCreated: config.get<Partial<Record<string, string>>>('stateOnBranchCreated', {}),
+    stateOrder: config.get<string[]>('stateOrder', DEFAULT_STATE_ORDER),
   };
 }
 

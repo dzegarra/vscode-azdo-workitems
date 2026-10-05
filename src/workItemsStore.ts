@@ -157,9 +157,11 @@ export class WorkItemsStore {
     }));
   }
 
-  toViewModel(filter: FilterModel): ViewModel {
-    const currentBranch = this.repository()?.state.HEAD?.name;
-    const workItems: WorkItemModel[] = this.entries.map(({ workItem, branch, branchLocation, pullRequests }) => ({
+  private toModel(
+    { workItem, branch, branchLocation, pullRequests }: WorkItemEntry,
+    currentBranch: string | undefined
+  ): WorkItemModel {
+    return {
       id: workItem.id,
       title: workItem.title,
       type: workItem.type,
@@ -175,7 +177,18 @@ export class WorkItemsStore {
       pullRequests: pullRequests
         .map(toPullRequestModel)
         .sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.id - a.id),
-    }));
+    };
+  }
+
+  /** Card data of one work item, or undefined when it is not in the current iterations */
+  workItemModel(id: number): WorkItemModel | undefined {
+    const entry = this.find(id);
+    return entry && this.toModel(entry, this.repository()?.state.HEAD?.name);
+  }
+
+  toViewModel(filter: FilterModel): ViewModel {
+    const currentBranch = this.repository()?.state.HEAD?.name;
+    const workItems = this.entries.map((entry) => this.toModel(entry, currentBranch));
     return {
       status: this.status,
       error: this.error,
@@ -186,6 +199,7 @@ export class WorkItemsStore {
       })),
       workItems,
       filter,
+      stateOrder: settings().stateOrder,
     };
   }
 }

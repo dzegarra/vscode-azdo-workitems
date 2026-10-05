@@ -1,3 +1,6 @@
+import { escapeHtml } from '../html';
+import { icon, typeIcon } from '../icons';
+import { sortByState, stateCategory, stateRank } from '../states';
 import type {
   ExtensionMessage,
   FilterModel,
@@ -7,7 +10,7 @@ import type {
   WebviewMessage,
   WorkItemModel,
 } from '../viewModel';
-import { isVisible } from '../viewModel';
+import { isVisible, NO_PULL_REQUEST, pullRequestFilterValue } from '../viewModel';
 
 interface VsCodeApi {
   postMessage(message: WebviewMessage): void;
@@ -16,80 +19,25 @@ interface VsCodeApi {
 }
 declare function acquireVsCodeApi(): VsCodeApi;
 
+type FilterKind = 'pullRequest' | 'state' | 'type';
+
 const vscode = acquireVsCodeApi();
 let model: ViewModel | undefined;
 let search = vscode.getState()?.search ?? '';
 
-const ICONS = {
-  bug: '<path d="M8 2.5a2.5 2.5 0 0 0-2.4 1.8A4 4 0 0 0 4 7.5V10a4 4 0 0 0 8 0V7.5a4 4 0 0 0-1.6-3.2A2.5 2.5 0 0 0 8 2.5zM2 8h2m8 0h2M2.5 12.5 4.3 11m9.2 1.5L11.7 11M2.5 4l1.8 1.4M13.5 4l-1.8 1.4M8 6v8"/>',
-  book: '<path d="M3 2.5h7.5a2 2 0 0 1 2 2v9H5a2 2 0 0 1-2-2zM3 11.5a2 2 0 0 1 2-2h7.5"/>',
-  task: '<rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="m5 8 2 2 4-4"/>',
-  item: '<rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/>',
-  branch:
-    '<circle cx="4.5" cy="3.5" r="1.5"/><circle cx="4.5" cy="12.5" r="1.5"/><circle cx="11.5" cy="5.5" r="1.5"/><path d="M4.5 5v6M11.5 7c0 2.5-3 2.5-6.5 4"/>',
-  pullRequest:
-    '<circle cx="4.5" cy="3.5" r="1.5"/><circle cx="4.5" cy="12.5" r="1.5"/><circle cx="11.5" cy="12.5" r="1.5"/><path d="M4.5 5v6M11.5 11V6.5a2 2 0 0 0-2-2H7m1.5-2-2 2 2 2"/>',
-  children:
-    '<path d="M3 2.5v9a1.5 1.5 0 0 0 1.5 1.5H8M3 6.5h5"/><rect x="9" y="4.5" width="4.5" height="4" rx="1"/><rect x="9" y="11" width="4.5" height="4" rx="1"/>',
-  parent: '<path d="M8 13.5v-11M4 6.5l4-4 4 4"/>',
-  refresh: '<path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5v3h-3"/>',
-};
-
-function icon(name: keyof typeof ICONS, className = ''): string {
-  return `<svg class="icon ${className}" viewBox="0 0 16 16" aria-hidden="true">${ICONS[name]}</svg>`;
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(
-    /[&<>"']/g,
-    (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] ?? char)
-  );
-}
-
-const TYPE_ICONS: Partial<Record<string, keyof typeof ICONS>> = {
-  Bug: 'bug',
-  'Product Backlog Item': 'book',
-  'User Story': 'book',
-  Task: 'task',
-};
-
-const TYPE_CLASSES: Partial<Record<string, string>> = {
-  Bug: 'type-bug',
-  'Product Backlog Item': 'type-backlog',
-  'User Story': 'type-backlog',
-  Task: 'type-task',
-  Feature: 'type-feature',
-};
-
-/** Order of the states in the filter, following the usual Scrum workflow */
-const STATE_ORDER = [
-  'New',
+/** Order of the PR states in the filter */
+const PULL_REQUEST_ORDER = [
+  NO_PULL_REQUEST,
+  'Draft',
+  'Waiting for review',
+  'Waiting for author',
+  'Conflicts',
+  'Rejected',
+  'Approved with suggestions',
   'Approved',
-  'To Do',
-  'Committed',
-  'In Progress',
-  'Active',
-  'Resolved',
-  'Done',
-  'Closed',
-  'Removed',
+  'Completed',
+  'Abandoned',
 ];
-
-/** Known states first, in workflow order; unknown ones at the end */
-function stateRank(state: string): number {
-  const index = STATE_ORDER.indexOf(state);
-  return index === -1 ? STATE_ORDER.length : index;
-}
-
-function stateCategory(state: string): string {
-  if (['Committed', 'In Progress', 'Active'].includes(state)) {
-    return 'in-progress';
-  }
-  if (['Done', 'Closed', 'Resolved'].includes(state)) {
-    return 'done';
-  }
-  return state === 'Removed' ? 'removed' : 'proposed';
-}
 
 function post(message: WebviewMessage): void {
   vscode.postMessage(message);
@@ -109,25 +57,47 @@ function isTypeShown(filter: FilterModel, type: string): boolean {
   return !filter.types.length || filter.types.includes(type);
 }
 
-function chip(kind: 'state' | 'type', value: string, count: number, pressed: boolean): string {
+function chip(kind: FilterKind, value: string, count: number, pressed: boolean): string {
   return `<button class="chip" data-filter="${kind}" data-value="${escapeHtml(value)}" aria-pressed="${pressed}">
     ${escapeHtml(value)} <span class="count">${count}</span></button>`;
 }
 
+function filterRow(label: string, chips: string[]): string {
+  return `<div class="filter-row" role="group" aria-label="${label}">
+    <span class="filter-label">${label}</span>${chips.join('')}</div>`;
+}
+
 function renderFilters(current: ViewModel): string {
-  const types = countBy(current.workItems, (item) => item.type);
-  const states = countBy(current.workItems, (item) => item.state);
-  const orderedStates = [...states.keys()].sort((a, b) => stateRank(a) - stateRank(b) || a.localeCompare(b));
-  const typeChips = [...types].map(([type, count]) => chip('type', type, count, isTypeShown(current.filter, type)));
-  const stateChips = orderedStates.map((state) =>
-    chip('state', state, states.get(state) ?? 0, !current.filter.hiddenStates.includes(state))
+  const { filter, stateOrder, workItems } = current;
+  const types = countBy(workItems, (item) => item.type);
+  const states = countBy(workItems, (item) => item.state);
+  const pullRequests = countBy(workItems, pullRequestFilterValue);
+  const sortedStates = [...states.keys()].sort(
+    (a, b) => stateRank(a, stateOrder) - stateRank(b, stateOrder) || a.localeCompare(b)
   );
-  return `<div class="filter-row" role="group" aria-label="Type"><span class="filter-label">Type</span>${typeChips.join(
-    ''
-  )}</div>
-    <div class="filter-row" role="group" aria-label="State"><span class="filter-label">State</span>${stateChips.join(
-      ''
-    )}</div>`;
+  const sortedPullRequests = [...pullRequests.keys()].sort(
+    (a, b) => stateRank(a, PULL_REQUEST_ORDER) - stateRank(b, PULL_REQUEST_ORDER)
+  );
+  return [
+    filterRow(
+      'Type',
+      [...types].map(([type, count]) => chip('type', type, count, isTypeShown(filter, type)))
+    ),
+    filterRow(
+      'State',
+      sortedStates.map((state) => chip('state', state, states.get(state) ?? 0, !filter.hiddenStates.includes(state)))
+    ),
+    filterRow(
+      'PR',
+      sortedPullRequests.map((status) =>
+        chip('pullRequest', status, pullRequests.get(status) ?? 0, !filter.hiddenPullRequestStates.includes(status))
+      )
+    ),
+  ].join('');
+}
+
+function toggle(values: string[], value: string): string[] {
+  return values.includes(value) ? values.filter((v) => v !== value) : [...values, value];
 }
 
 /* ---------- Cards ---------- */
@@ -135,9 +105,8 @@ function renderFilters(current: ViewModel): string {
 function renderPullRequest(item: WorkItemModel, pr: PullRequestModel): string {
   return `<div class="row pr">
     ${icon('pullRequest')}
-    <button class="link" data-action="openPullRequest" data-id="${item.id}" data-pr="${pr.id}" title="${escapeHtml(
-    pr.title
-  )}">PR ${pr.id}</button>
+    <button class="link" data-action="openPullRequest" data-id="${item.id}" data-pr="${pr.id}"
+      title="${escapeHtml(pr.title)}">PR ${pr.id}</button>
     <span class="pill tone-${pr.tone}">${escapeHtml(pr.status)}</span>
   </div>`;
 }
@@ -146,14 +115,10 @@ function renderBranch(item: WorkItemModel): string {
   if (!item.branch) {
     return `<div class="row muted">${icon('branch')}<span>No branch</span></div>`;
   }
-  const location = item.isCurrentBranch
-    ? '<span class="pill tone-current">current</span>'
-    : `<span class="pill tone-${item.branchLocation === 'local' ? 'local' : 'remote'}">${
-        item.branchLocation ?? ''
-      }</span>`;
-  return `<div class="row branch">${icon('branch')}<code title="${escapeHtml(item.branch)}">${escapeHtml(
-    item.branch
-  )}</code>${location}</div>`;
+  const location = item.isCurrentBranch ? 'current' : item.branchLocation ?? 'remote';
+  return `<div class="row branch">${icon('branch')}
+    <code title="${escapeHtml(item.branch)}">${escapeHtml(item.branch)}</code>
+    <span class="pill tone-${location}">${location}</span></div>`;
 }
 
 function renderActions(item: WorkItemModel): string {
@@ -171,21 +136,25 @@ function renderActions(item: WorkItemModel): string {
     );
   }
   actions.push(
-    `<button class="button ghost" data-action="copyId" data-id="${item.id}" title="Copy ID">Copy ID</button>`
+    `<button class="button ghost" data-action="openDetails" data-id="${item.id}" title="Show the details of the work item">Open</button>`
   );
   return `<footer class="actions">${actions.join('')}</footer>`;
 }
 
+function stateLabel(state: string): string {
+  return `<span class="state state-${stateCategory(state)}">${escapeHtml(state)}</span>`;
+}
+
 function renderChild(item: WorkItemModel): string {
   return `<li class="child">
-    ${icon(TYPE_ICONS[item.type] ?? 'item', TYPE_CLASSES[item.type] ?? '')}
-    <button class="link id" data-action="openWorkItem" data-id="${item.id}">${item.id}</button>
+    ${typeIcon(item.type)}
+    <button class="link id" data-action="openDetails" data-id="${item.id}" title="Show details">${item.id}</button>
     <span class="child-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
-    <span class="state state-${stateCategory(item.state)}">${escapeHtml(item.state)}</span>
+    ${stateLabel(item.state)}
   </li>`;
 }
 
-function renderCard(item: WorkItemModel, children: WorkItemModel[], visibleIds: Set<number>): string {
+function renderRelations(item: WorkItemModel, visibleIds: Set<number>): string {
   const relations: string[] = [];
   if (item.childCount) {
     relations.push(
@@ -199,17 +168,21 @@ function renderCard(item: WorkItemModel, children: WorkItemModel[], visibleIds: 
       `<span class="pill tone-neutral" title="Child of ${item.parentId}">${icon('parent')}${item.parentId}</span>`
     );
   }
+  return relations.length ? `<div class="relations">${relations.join('')}</div>` : '';
+}
+
+function renderCard(item: WorkItemModel, children: WorkItemModel[], visibleIds: Set<number>): string {
   return `<article class="card state-border-${stateCategory(item.state)}${item.isCurrentBranch ? ' current' : ''}">
     <header class="card-head">
-      ${icon(TYPE_ICONS[item.type] ?? 'item', TYPE_CLASSES[item.type] ?? '')}
+      ${typeIcon(item.type)}
       <button class="link id" data-action="openWorkItem" data-id="${item.id}" title="Open in Azure DevOps">${
     item.id
   }</button>
       <span class="type">${escapeHtml(item.type)}</span>
-      <span class="state state-${stateCategory(item.state)}">${escapeHtml(item.state)}</span>
+      ${stateLabel(item.state)}
     </header>
     <div class="title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
-    ${relations.length ? `<div class="relations">${relations.join('')}</div>` : ''}
+    ${renderRelations(item, visibleIds)}
     ${renderBranch(item)}
     ${item.pullRequests.map((pr) => renderPullRequest(item, pr)).join('')}
     ${renderActions(item)}
@@ -249,14 +222,17 @@ function renderList(current: ViewModel): string {
   if (current.status === 'loading' && !current.workItems.length) {
     return '<p class="message muted">Loading work items…</p>';
   }
-  const visible = current.workItems.filter((item) => isVisible(item, current.filter, search));
+  if (!current.workItems.length) {
+    return '<p class="message muted">No work items assigned to you in the current iterations of your teams.</p>';
+  }
+  const visible = sortByState(
+    current.workItems.filter((item) => isVisible(item, current.filter, search)),
+    current.stateOrder
+  );
   const hidden = current.workItems.length - visible.length;
   const hiddenNote = hidden
     ? `<p class="muted note">${hidden} work item${hidden === 1 ? '' : 's'} hidden by filters</p>`
     : '';
-  if (!current.workItems.length) {
-    return '<p class="message muted">No work items assigned to you in the current iterations of your teams.</p>';
-  }
   // Group by iteration only when the teams are in different sprints
   const body =
     current.iterations.length > 1
@@ -299,19 +275,21 @@ function render(): void {
   (document.getElementById('list') as HTMLElement).innerHTML = renderList(model);
 }
 
-function toggleFilter(kind: string, value: string): void {
+function toggleFilter(kind: FilterKind, value: string): void {
   if (!model) {
     return;
   }
   const filter = { ...model.filter };
   if (kind === 'type') {
     const allTypes = [...new Set(model.workItems.map((item) => item.type))];
-    const shown = allTypes.filter((type) => isTypeShown(filter, type));
-    filter.types = shown.includes(value) ? shown.filter((type) => type !== value) : [...shown, value];
+    filter.types = toggle(
+      allTypes.filter((type) => isTypeShown(filter, type)),
+      value
+    );
+  } else if (kind === 'state') {
+    filter.hiddenStates = toggle(filter.hiddenStates, value);
   } else {
-    filter.hiddenStates = filter.hiddenStates.includes(value)
-      ? filter.hiddenStates.filter((state) => state !== value)
-      : [...filter.hiddenStates, value];
+    filter.hiddenPullRequestStates = toggle(filter.hiddenPullRequestStates, value);
   }
   // Render right away; the extension saves the filter and sends the state back
   model = { ...model, filter };
@@ -326,7 +304,7 @@ document.addEventListener('click', (event) => {
   }
   const { action, filter, value, id, pr } = target.dataset;
   if (filter && value !== undefined) {
-    toggleFilter(filter, value);
+    toggleFilter(filter as FilterKind, value);
   } else if (action === 'refresh') {
     post({ type: 'refresh' });
   } else if (action && id) {

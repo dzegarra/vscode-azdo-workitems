@@ -3,6 +3,8 @@ import { createBranch } from './commands/createBranch';
 import { createPullRequest } from './commands/createPullRequest';
 import { resolveContext, SECTION, settings } from './config';
 import { getGitApi, pickRepository, Repository } from './git';
+import { resolveWorkItemEntry } from './commands/pickWorkItem';
+import { WorkItemDetailsPanels } from './workItemDetails';
 import { WorkItemEntry, WorkItemsStore } from './workItemsStore';
 import { VIEW_ID, WorkItemsViewProvider } from './workItemsView';
 
@@ -55,6 +57,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const git = await getGitApi();
   const store = new WorkItemsStore(git);
   const view = new WorkItemsViewProvider(context.extensionUri, store);
+  const details = new WorkItemDetailsPanels(context.extensionUri, store);
   const currentRepository = () => (git.repositories.length ? pickRepository(git) : undefined);
 
   const command = (id: string, handler: (...args: never[]) => unknown) =>
@@ -76,6 +79,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(VIEW_ID, view),
+    details,
     store.onDidChange(() => view.post()),
     ...git.repositories.map(watchRepository),
     // The remote is only known once the git extension has opened the repository
@@ -105,6 +109,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         // For a branch that only exists in the remote, git creates the local tracking branch
         await pickRepository(git).checkout(entry.branch);
         await store.refresh();
+      }
+    }),
+    command('azdoWorkItems.openDetails', async (id?: number) => {
+      // From the command palette: pick one of the work items
+      const workItemId = id ?? (await resolveWorkItemEntry(store, undefined))?.workItem.id;
+      if (workItemId) {
+        await details.open(workItemId);
       }
     }),
     command('azdoWorkItems.openIterationBoard', () => openIterationBoard(currentRepository(), store)),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isVisible } from './viewModel';
+import { isVisible, NO_PULL_REQUEST } from './viewModel';
 import { parseRelations, pullRequestStatus, PullRequestState } from './workItemLinks';
 
 const api = 'https://dev.azure.com/org/_apis/wit/workItems';
@@ -58,14 +58,29 @@ describe('pullRequestStatus', () => {
 });
 
 describe('isVisible', () => {
-  const item = { id: 66280, title: 'Access point label', type: 'Bug', state: 'Committed', branch: undefined };
-  const filter = { types: ['Product Backlog Item', 'Bug'], hiddenStates: ['Done'] };
+  const item = {
+    id: 66280,
+    title: 'Access point label',
+    type: 'Bug',
+    state: 'Committed',
+    branch: undefined,
+    pullRequests: [],
+  };
+  const filter = { types: ['Product Backlog Item', 'Bug'], hiddenStates: ['Done'], hiddenPullRequestStates: [] };
+  const draftPr = { id: 1, title: 'PR', status: 'Draft', tone: 'draft' as const, url: '', isActive: true };
 
   it('applies the type and state filters', () => {
     expect(isVisible(item, filter)).toBe(true);
     expect(isVisible({ ...item, type: 'Task' }, filter)).toBe(false);
     expect(isVisible({ ...item, state: 'Done' }, filter)).toBe(false);
     expect(isVisible({ ...item, type: 'Task' }, { ...filter, types: [] })).toBe(true);
+  });
+
+  it('applies the PR filter to the main PR of the work item', () => {
+    const withDraft = { ...item, pullRequests: [draftPr] };
+    expect(isVisible(withDraft, { ...filter, hiddenPullRequestStates: ['Draft'] })).toBe(false);
+    expect(isVisible(withDraft, { ...filter, hiddenPullRequestStates: [NO_PULL_REQUEST] })).toBe(true);
+    expect(isVisible(item, { ...filter, hiddenPullRequestStates: [NO_PULL_REQUEST] })).toBe(false);
   });
 
   it('searches by ID, title and branch', () => {

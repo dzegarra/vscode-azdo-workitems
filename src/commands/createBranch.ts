@@ -1,10 +1,28 @@
 import * as vscode from 'vscode';
 import { pickFromCatalog } from '../catalog';
 import { resolveContext, settings } from '../config';
-import { GitAPI, pickRepository } from '../git';
+import { WorkItem } from '../azdoClient';
+import { GitAPI, pickRepository, Repository } from '../git';
 import { branchTypeFor, buildBranchName, isValidModule, slugify } from '../naming';
+import { stateAfterBranchCreated } from '../states';
 import { WorkItemEntry, WorkItemsStore } from '../workItemsStore';
 import { resolveWorkItemEntry } from './pickWorkItem';
+
+/** Moves the work item to "Committed" (or the configured state) when work on it starts */
+async function moveToStartedState(repository: Repository, workItem: WorkItem): Promise<void> {
+  const state = stateAfterBranchCreated(workItem.type, workItem.state, settings().stateOnBranchCreated);
+  if (!state) {
+    return;
+  }
+  try {
+    await resolveContext(repository).client.updateWorkItemState(workItem.id, state);
+  } catch (error) {
+    // The branch is created anyway; the state can be changed by hand
+    void vscode.window.showWarningMessage(
+      `Unable to change work item ${workItem.id} to "${state}": ${(error as Error).message}`
+    );
+  }
+}
 
 export async function createBranch(git: GitAPI, store: WorkItemsStore, node?: WorkItemEntry): Promise<void> {
   const target = await resolveWorkItemEntry(store, node);
@@ -85,6 +103,7 @@ export async function createBranch(git: GitAPI, store: WorkItemsStore, node?: Wo
     }
   );
 
+  await moveToStartedState(repository, workItem);
   void store.refresh();
   void vscode.window.showInformationMessage(`Switched to the new branch "${branchName}".`);
 }
