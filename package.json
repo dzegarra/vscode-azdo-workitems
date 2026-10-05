@@ -1,0 +1,340 @@
+{
+  "name": "vscode-azdo-workitems",
+  "displayName": "Azure DevOps Work Items",
+  "description": "List my Azure DevOps work items in the current iteration, create branches and pull requests following the team conventions.",
+  "version": "0.1.0",
+  "publisher": "abb-flow-ui",
+  "private": true,
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://dev.azure.com/ABB-PAMA-BVL/Flow%20Digital%20Architecture/_git/User_Interface"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "extensionDependencies": [
+    "vscode.git"
+  ],
+  "activationEvents": [
+    "workspaceContains:.git"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "azdoWorkItems",
+          "title": "Azure Work Items",
+          "icon": "media/workitems.svg"
+        }
+      ]
+    },
+    "views": {
+      "azdoWorkItems": [
+        {
+          "id": "azdoWorkItems.myItems",
+          "name": "Current Iterations"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "azdoWorkItems.myItems",
+        "contents": "No work items assigned to you in the current iterations of your teams.\n[Refresh](command:azdoWorkItems.refresh)\n[Select Teams](command:azdoWorkItems.selectTeams)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "azdoWorkItems.refresh",
+        "title": "Refresh",
+        "category": "Azure Work Items",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "azdoWorkItems.openIterationBoard",
+        "title": "Open Iteration Board",
+        "category": "Azure Work Items",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "azdoWorkItems.selectTeams",
+        "title": "Select Teams",
+        "category": "Azure Work Items",
+        "icon": "$(organization)"
+      },
+      {
+        "command": "azdoWorkItems.createBranch",
+        "title": "Create Branch",
+        "category": "Azure Work Items",
+        "icon": "$(git-branch)"
+      },
+      {
+        "command": "azdoWorkItems.createPullRequest",
+        "title": "Create Pull Request",
+        "category": "Azure Work Items",
+        "icon": "$(git-pull-request-create)"
+      },
+      {
+        "command": "azdoWorkItems.openInBrowser",
+        "title": "Open in Browser",
+        "category": "Azure Work Items"
+      },
+      {
+        "command": "azdoWorkItems.copyId",
+        "title": "Copy ID",
+        "category": "Azure Work Items"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "azdoWorkItems.refresh",
+          "when": "view == azdoWorkItems.myItems",
+          "group": "navigation@1"
+        },
+        {
+          "command": "azdoWorkItems.openIterationBoard",
+          "when": "view == azdoWorkItems.myItems",
+          "group": "navigation@2"
+        },
+        {
+          "command": "azdoWorkItems.selectTeams",
+          "when": "view == azdoWorkItems.myItems"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "azdoWorkItems.createBranch",
+          "when": "view == azdoWorkItems.myItems && viewItem =~ /^workItem/",
+          "group": "inline@1"
+        },
+        {
+          "command": "azdoWorkItems.createPullRequest",
+          "when": "view == azdoWorkItems.myItems && viewItem == workItem.withBranch",
+          "group": "inline@2"
+        },
+        {
+          "command": "azdoWorkItems.createBranch",
+          "when": "view == azdoWorkItems.myItems && viewItem =~ /^workItem/",
+          "group": "1_git@1"
+        },
+        {
+          "command": "azdoWorkItems.createPullRequest",
+          "when": "view == azdoWorkItems.myItems && viewItem =~ /^workItem/",
+          "group": "1_git@2"
+        },
+        {
+          "command": "azdoWorkItems.openInBrowser",
+          "when": "view == azdoWorkItems.myItems && viewItem =~ /^workItem/",
+          "group": "2_misc@1"
+        },
+        {
+          "command": "azdoWorkItems.copyId",
+          "when": "view == azdoWorkItems.myItems && viewItem =~ /^workItem/",
+          "group": "2_misc@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "azdoWorkItems.openInBrowser",
+          "when": "false"
+        },
+        {
+          "command": "azdoWorkItems.copyId",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Azure Work Items",
+      "properties": {
+        "azdoWorkItems.organization": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps organization. Leave empty to detect it from the 'origin' remote."
+        },
+        "azdoWorkItems.project": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps project. Leave empty to detect it from the 'origin' remote."
+        },
+        "azdoWorkItems.repository": {
+          "type": "string",
+          "default": "",
+          "description": "Azure DevOps Git repository. Leave empty to detect it from the 'origin' remote."
+        },
+        "azdoWorkItems.teams": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Teams whose current iteration is listed. Leave empty to list all the teams you belong to."
+        },
+        "azdoWorkItems.remote": {
+          "type": "string",
+          "default": "origin",
+          "description": "Git remote pointing to Azure DevOps."
+        },
+        "azdoWorkItems.baseBranch": {
+          "type": "string",
+          "default": "develop",
+          "description": "Branch new branches are created from and pull requests target."
+        },
+        "azdoWorkItems.excludedStates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "Removed",
+            "Closed",
+            "Done"
+          ],
+          "description": "Work item states hidden from the list."
+        },
+        "azdoWorkItems.branchTypeByWorkItemType": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {
+            "Bug": "bugfix"
+          },
+          "description": "Branch prefix per work item type. Types not listed use 'feature'."
+        },
+        "azdoWorkItems.branchModules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "common",
+            "devops",
+            "fui-common",
+            "fui-dashboard",
+            "fui-devices",
+            "fui-users",
+            "fui-data-collection",
+            "fui-calibration",
+            "fui-admin",
+            "fui-apps",
+            "fui-common-apps",
+            "fui-apps-xmv",
+            "fui-apps-aga3",
+            "fui-apps-aga7",
+            "fui-apps-pid",
+            "fui-apps-pulseacc",
+            "fui-apps-cause-and-effect",
+            "fui-apps-cause-and-effect-plus",
+            "fui-apps-tfxlogger",
+            "fui-apps-ngc",
+            "fui-apps-xio",
+            "fui-apps-modbus",
+            "fui-apps-tfio",
+            "fui-apps-artificial-lift",
+            "fui-tag-library",
+            "pmui-api",
+            "pmui-auth",
+            "pmui-dashboard",
+            "pmui-diagnostics"
+          ],
+          "description": "Catalog of modules used in branch names: <type>/<module>/<id>-<slug>."
+        },
+        "azdoWorkItems.prFeatureNames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "DevOps",
+            "FUI Common",
+            "FUI API Client",
+            "FUI Dashboard",
+            "FUI Devices",
+            "FUI Users",
+            "FUI Data Collection",
+            "FUI Calibration",
+            "FUI Administration",
+            "FUI Factory Setup and Reset",
+            "FUI Applications",
+            "FUI Common Apps",
+            "FUI AGA3",
+            "FUI AGA7",
+            "FUI PID",
+            "FUI PulseAcc",
+            "FUI API Liquid",
+            "FUI Cause and Effect",
+            "FUI Cause and Effect Plus",
+            "FUI TFXLogger",
+            "FUI XIO",
+            "FUI Coriolis",
+            "FUI ModBus",
+            "FUI TFIO",
+            "FUI XMV",
+            "FUI NGC",
+            "FUI Tag Library",
+            "FUI Artificial Lift",
+            "PMUI API Client",
+            "PMUI Authentication",
+            "PMUI Dashboard",
+            "PMUI Diagnostics",
+            "PMUI User Settings"
+          ],
+          "description": "Catalog of feature names used in PR titles: [ids] Feature Name: Description."
+        },
+        "azdoWorkItems.moduleToFeature": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {
+            "common": "FUI Common",
+            "devops": "DevOps",
+            "fui-common": "FUI Common",
+            "fui-dashboard": "FUI Dashboard",
+            "fui-devices": "FUI Devices",
+            "fui-users": "FUI Users",
+            "fui-data-collection": "FUI Data Collection",
+            "fui-calibration": "FUI Calibration",
+            "fui-admin": "FUI Administration",
+            "fui-apps": "FUI Applications",
+            "fui-common-apps": "FUI Common Apps",
+            "fui-apps-xmv": "FUI XMV",
+            "fui-apps-aga3": "FUI AGA3",
+            "fui-apps-aga7": "FUI AGA7",
+            "fui-apps-pid": "FUI PID",
+            "fui-apps-pulseacc": "FUI PulseAcc",
+            "fui-apps-cause-and-effect": "FUI Cause and Effect",
+            "fui-apps-cause-and-effect-plus": "FUI Cause and Effect Plus",
+            "fui-apps-tfxlogger": "FUI TFXLogger",
+            "fui-apps-ngc": "FUI NGC",
+            "fui-apps-xio": "FUI XIO",
+            "fui-apps-modbus": "FUI ModBus",
+            "fui-apps-tfio": "FUI TFIO",
+            "fui-apps-artificial-lift": "FUI Artificial Lift",
+            "fui-tag-library": "FUI Tag Library",
+            "pmui-api": "PMUI API Client",
+            "pmui-auth": "PMUI Authentication",
+            "pmui-dashboard": "PMUI Dashboard",
+            "pmui-diagnostics": "PMUI Diagnostics"
+          },
+          "description": "Feature name preselected in the PR title for each branch module."
+        },
+        "azdoWorkItems.linkBranchToWorkItem": {
+          "type": "boolean",
+          "default": true,
+          "description": "Add the new branch to the work item's Development section."
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@types/vscode": "~1.95.0",
+    "@vscode/vsce": "^3.6.0"
+  }
+}
