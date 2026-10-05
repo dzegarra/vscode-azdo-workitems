@@ -89,6 +89,11 @@
         "category": "Azure Work Items"
       },
       {
+        "command": "azdoWorkItems.checkPullRequests",
+        "title": "Check My Pull Requests Now",
+        "category": "Azure Work Items"
+      },
+      {
         "command": "azdoWorkItems.checkout",
         "title": "Checkout Work Item Branch",
         "category": "Azure Work Items"
@@ -344,6 +349,35 @@
             "Bug": "Committed"
           },
           "description": "State a work item is moved to when a branch is created for it, per work item type. Only applied to work items in New, Approved or To Do. Remove a type to disable it."
+        },
+        "azdoWorkItems.notifications.events": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "comments",
+              "vote",
+              "merged"
+            ],
+            "enumDescriptions": [
+              "New comments from other people",
+              "Votes of the reviewers (approved, waiting for author, rejected…)",
+              "The PR is merged"
+            ]
+          },
+          "uniqueItems": true,
+          "default": [
+            "comments",
+            "vote",
+            "merged"
+          ],
+          "description": "Events of the pull requests you created that show a notification. Empty: no notifications."
+        },
+        "azdoWorkItems.notifications.pollIntervalSeconds": {
+          "type": "number",
+          "default": 120,
+          "minimum": 30,
+          "description": "How often your pull requests are checked, in seconds."
         }
       }
     }

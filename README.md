@@ -43,22 +43,34 @@ Organization, project and repository are detected from the `origin` remote.
 
 By default the view lists your work items in the current iteration of **every team you belong to**. Teams sharing the same sprint are merged; when your teams are in different sprints, the items are grouped by iteration. Use **Select Teams** in the view menu to limit the list to some teams (select none to go back to all of them). **Open Iteration Board** asks which team's board to open when there are several.
 
+## Pull request notifications
+
+The extension checks the pull requests you created (every 2 minutes by default) and shows a notification when:
+
+- someone else **comments** on one of them (several comments in the same check are grouped),
+- a reviewer **votes** (approved, approved with suggestions, waiting for the author, rejected),
+- it is **merged**.
+
+Your own comments and votes, system messages and vote resets are ignored. When more than 3 updates arrive at once, a single summary notification lists them. Updates that happened while VS Code was closed are notified when it starts. Run **Check My Pull Requests Now** from the command palette to check immediately.
+
 ## Settings
 
-| Setting                                                   | Description                                                   |
-| --------------------------------------------------------- | ------------------------------------------------------------- |
-| `azdoWorkItems.branchModules`                             | Catalog of branch modules                                     |
-| `azdoWorkItems.prFeatureNames`                            | Catalog of PR feature names                                   |
-| `azdoWorkItems.moduleToFeature`                           | Feature name suggested for each branch module                 |
-| `azdoWorkItems.branchTypeByWorkItemType`                  | Branch prefix per work item type (`Bug` → `bugfix`)           |
-| `azdoWorkItems.baseBranch`                                | Base branch and PR target (`develop`)                         |
-| `azdoWorkItems.filter.types`                              | Work item types shown (Type chips)                            |
-| `azdoWorkItems.filter.hiddenPullRequestStates`            | PR states hidden (PR chips)                                   |
-| `azdoWorkItems.stateOrder`                                | Order of the cards by state                                   |
-| `azdoWorkItems.stateOnBranchCreated`                      | State set when a branch is created, per type                  |
-| `azdoWorkItems.filter.hiddenStates`                       | States hidden (State chips)                                   |
-| `azdoWorkItems.teams`                                     | Teams whose current iteration is listed (empty: all my teams) |
-| `azdoWorkItems.linkBranchToWorkItem`                      | Publish and link new branches to the work item                |
-| `azdoWorkItems.organization` / `.project` / `.repository` | Override what is detected from the remote                     |
+| Setting                                                   | Description                                                    |
+| --------------------------------------------------------- | -------------------------------------------------------------- |
+| `azdoWorkItems.branchModules`                             | Catalog of branch modules                                      |
+| `azdoWorkItems.prFeatureNames`                            | Catalog of PR feature names                                    |
+| `azdoWorkItems.moduleToFeature`                           | Feature name suggested for each branch module                  |
+| `azdoWorkItems.branchTypeByWorkItemType`                  | Branch prefix per work item type (`Bug` → `bugfix`)            |
+| `azdoWorkItems.baseBranch`                                | Base branch and PR target (`develop`)                          |
+| `azdoWorkItems.filter.types`                              | Work item types shown (Type chips)                             |
+| `azdoWorkItems.filter.hiddenPullRequestStates`            | PR states hidden (PR chips)                                    |
+| `azdoWorkItems.stateOrder`                                | Order of the cards by state                                    |
+| `azdoWorkItems.stateOnBranchCreated`                      | State set when a branch is created, per type                   |
+| `azdoWorkItems.notifications.events`                      | PR events notified (`comments`, `vote`, `merged`); empty: none |
+| `azdoWorkItems.notifications.pollIntervalSeconds`         | How often your PRs are checked (seconds, min. 30)              |
+| `azdoWorkItems.filter.hiddenStates`                       | States hidden (State chips)                                    |
+| `azdoWorkItems.teams`                                     | Teams whose current iteration is listed (empty: all my teams)  |
+| `azdoWorkItems.linkBranchToWorkItem`                      | Publish and link new branches to the work item                 |
+| `azdoWorkItems.organization` / `.project` / `.repository` | Override what is detected from the remote                      |
 
 Modules and feature names added with **Add new…** are saved to the workspace settings (`.vscode/settings.json`), so they can be committed and shared.

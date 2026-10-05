@@ -5,6 +5,7 @@ import { resolveContext, SECTION, settings } from './config';
 import { getGitApi, pickRepository, Repository } from './git';
 import { resolveWorkItemEntry } from './commands/pickWorkItem';
 import { addTask, changeState } from './commands/workItemEdits';
+import { PullRequestNotifier } from './pullRequestNotifier';
 import { WorkItemDetailsPanels } from './workItemDetails';
 import { WorkItemEntry, WorkItemsStore } from './workItemsStore';
 import { VIEW_ID, WorkItemsViewProvider } from './workItemsView';
@@ -59,6 +60,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const store = new WorkItemsStore(git);
   const view = new WorkItemsViewProvider(context.extensionUri, store);
   const details = new WorkItemDetailsPanels(context.extensionUri, store);
+  const notifier = new PullRequestNotifier(context.globalState, store);
   const currentRepository = () => (git.repositories.length ? pickRepository(git) : undefined);
 
   const command = (id: string, handler: (...args: never[]) => unknown) =>
@@ -81,16 +83,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(VIEW_ID, view),
     details,
+    notifier,
     store.onDidChange(() => view.post()),
     ...git.repositories.map(watchRepository),
     // The remote is only known once the git extension has opened the repository
     git.onDidOpenRepository((repository) => {
       context.subscriptions.push(watchRepository(repository));
       void store.refresh();
+      notifier.start();
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (!event.affectsConfiguration(SECTION)) {
         return;
+      }
+      if (event.affectsConfiguration(`${SECTION}.notifications`)) {
+        notifier.start();
       }
       // Filters are applied by the view; other settings need to reload the work items
       const onlyFilters = ['teams', 'organization', 'project', 'repository', 'remote'].every(
@@ -131,9 +138,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await addTask(store, parentId);
       }
     }),
+    command('azdoWorkItems.checkPullRequests', () => notifier.poll(true)),
     command('azdoWorkItems.openIterationBoard', () => openIterationBoard(currentRepository(), store)),
     command('azdoWorkItems.selectTeams', () => selectTeams(currentRepository()))
   );
+  // When the repository is not open yet, it starts from onDidOpenRepository
+  if (git.repositories.length) {
+    notifier.start();
+  }
 }
 
 export function deactivate(): void {}

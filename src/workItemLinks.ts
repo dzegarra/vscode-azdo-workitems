@@ -72,9 +72,12 @@ export function parseRelations(relations: WorkItemRelation[] | undefined): WorkI
 }
 
 export interface PullRequestReviewer {
+  id?: string;
   displayName: string;
   vote: number;
   isRequired?: boolean;
+  /** Groups (e.g. a team) vote through their members */
+  isContainer?: boolean;
 }
 
 export interface PullRequestState {

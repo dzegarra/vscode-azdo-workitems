@@ -32,6 +32,28 @@ export interface WorkItemTypeState {
 
 const typeStatesCache = new Map<string, Promise<WorkItemTypeState[]>>();
 
+/** Most recent PRs checked for notifications */
+const MAX_PULL_REQUESTS = 30;
+
+export interface PullRequestComment {
+  threadId: number;
+  id: number;
+  authorId: string;
+  author: string;
+  content: string;
+}
+
+interface PullRequestThreadResponse {
+  id: number;
+  comments?: {
+    id: number;
+    author: { id: string; displayName: string };
+    content?: string;
+    commentType: string;
+    isDeleted?: boolean;
+  }[];
+}
+
 export interface GitRepository {
   id: string;
   name: string;
@@ -276,6 +298,50 @@ export class AzdoClient {
         },
       ]),
     });
+  }
+
+  private pullRequestWebUrlByName(repositoryName: string, id: number): string {
+    return `${BASE_URL}/${encodeURIComponent(this.organization)}/${encodeURIComponent(
+      this.project
+    )}/_git/${encodeURIComponent(repositoryName)}/pullrequest/${id}`;
+  }
+
+  /** ID of the signed-in user */
+  async getMyId(): Promise<string> {
+    const data = await this.request<{ authenticatedUser: { id: string } }>(
+      `${BASE_URL}/${encodeURIComponent(this.organization)}/_apis/connectionData`
+    );
+    return data.authenticatedUser.id;
+  }
+
+  /** PRs created by the user in the project: the active ones and the most recently closed */
+  async getPullRequestsCreatedBy(creatorId: string, top = MAX_PULL_REQUESTS): Promise<PullRequestDetails[]> {
+    const result = await this.request<{
+      value: (Omit<PullRequestDetails, 'reviewers' | 'webUrl'> & Partial<PullRequestDetails>)[];
+    }>(this.url(`git/pullrequests?searchCriteria.creatorId=${creatorId}&searchCriteria.status=all&$top=${top}`));
+    return result.value.map((pr) => ({
+      ...pr,
+      reviewers: pr.reviewers ?? [],
+      webUrl: this.pullRequestWebUrlByName(pr.repository.name, pr.pullRequestId),
+    }));
+  }
+
+  /** Text comments of the PR (system messages and deleted comments are left out) */
+  async getPullRequestComments(repositoryId: string, pullRequestId: number): Promise<PullRequestComment[]> {
+    const result = await this.request<{ value: PullRequestThreadResponse[] }>(
+      this.url(`git/repositories/${repositoryId}/pullRequests/${pullRequestId}/threads`)
+    );
+    return result.value.flatMap((thread) =>
+      (thread.comments ?? [])
+        .filter((comment) => comment.commentType === 'text' && !comment.isDeleted)
+        .map((comment) => ({
+          threadId: thread.id,
+          id: comment.id,
+          authorId: comment.author.id,
+          author: comment.author.displayName,
+          content: comment.content ?? '',
+        }))
+    );
   }
 
   /** PR by ID, in any repository of the project */
