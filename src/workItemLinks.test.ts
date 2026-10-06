@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { changedFilterKeys, describeScope, isVisible, NO_PULL_REQUEST } from './viewModel';
+import { NO_PRIORITY } from './priority';
 import { parseRelations, pullRequestStatus, PullRequestState } from './workItemLinks';
 
 const api = 'https://dev.azure.com/org/_apis/wit/workItems';
@@ -99,11 +100,23 @@ describe('isVisible', () => {
     expect(isVisible(item, { ...filter, hiddenPullRequestStates: [NO_PULL_REQUEST] })).toBe(false);
   });
 
-  it('always shows work items with alerts, whatever their state or PR', () => {
+  it('applies the filters to work items with alerts too, by default', () => {
     const alerts = [{ rule: 'tasksNotDone', message: 'Is Done but 1 task is not done' }];
-    expect(isVisible({ ...item, state: 'Done', alerts }, filter)).toBe(true);
-    expect(isVisible({ ...item, alerts }, { ...filter, hiddenPullRequestStates: [NO_PULL_REQUEST] })).toBe(true);
-    expect(isVisible({ ...item, type: 'Task', alerts }, filter)).toBe(false);
+    expect(isVisible({ ...item, state: 'Done', alerts }, filter)).toBe(false);
+    expect(isVisible({ ...item, alerts }, { ...filter, hiddenPullRequestStates: [NO_PULL_REQUEST] })).toBe(false);
+  });
+
+  it('can always show work items with alerts, whatever their state, PR or priority', () => {
+    const alerts = [{ rule: 'tasksNotDone', message: 'Is Done but 1 task is not done' }];
+    expect(isVisible({ ...item, state: 'Done', alerts }, filter, '', true)).toBe(true);
+    expect(isVisible({ ...item, alerts }, { ...filter, hiddenPullRequestStates: [NO_PULL_REQUEST] }, '', true)).toBe(
+      true
+    );
+    expect(isVisible({ ...item, alerts }, { ...filter, hiddenPriorities: [NO_PRIORITY] }, '', true)).toBe(true);
+    // Type and search still apply
+    expect(isVisible({ ...item, type: 'Task', alerts }, filter, '', true)).toBe(false);
+    expect(isVisible({ ...item, state: 'Done', alerts }, filter, 'dashboard', true)).toBe(false);
+    expect(isVisible({ ...item, state: 'Done' }, filter, '', true)).toBe(false);
   });
 
   it('applies the priority filter', () => {

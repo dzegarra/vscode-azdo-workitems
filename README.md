@@ -57,7 +57,9 @@ By default the view lists your work items in the current iteration of **every te
 
 ## Alerts
 
-Backlog Items and Bugs with problems the team agreed to avoid are flagged in red, with the list of problems in their card. A banner at the top of the view counts them (**Show only these** hides the rest), the view icon shows a badge and the status bar shows them even when the view is closed. Work items with alerts are always shown, whatever the state / PR filters.
+Backlog Items and Bugs with problems the team agreed to avoid are flagged in red, with the list of problems in their card. A banner at the top of the view counts them (**Show only these** hides the rest), the view icon shows a badge and the status bar shows them even when the view is closed.
+
+The filters apply to work items with alerts too: when they hide some, the banner tells how many ("2 work items need attention (1 hidden by filters)"), and **Show only these** shows every work item with alerts, whatever the State, PR and Priority filters. To always show them instead, turn on `azdoWorkItems.filter.alwaysShowAlerts`.
 
 | Problem                                                                                                                      | Applies to             |
 | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
@@ -150,6 +152,7 @@ Only the PRs where you are a reviewer yourself are listed: when a group (e.g. a 
 | `azdoWorkItems.baseBranch`                                | Base branch and PR target (`develop`)                          |
 | `azdoWorkItems.filter.types`                              | Work item types shown (Type chips)                             |
 | `azdoWorkItems.filter.hiddenPriorities`                   | Priorities hidden (Priority chips)                             |
+| `azdoWorkItems.filter.alwaysShowAlerts`                   | Show work items with alerts whatever the filters (off)         |
 | `azdoWorkItems.filter.hiddenPullRequestStates`            | PR states hidden (PR chips)                                    |
 | `azdoWorkItems.stateOrder`                                | Order of the cards by state                                    |
 | `azdoWorkItems.stateOnBranchCreated`                      | State set when a branch is created, per type                   |

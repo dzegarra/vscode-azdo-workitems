@@ -336,15 +336,34 @@ function renderIteration(iteration: IterationModel, items: WorkItemModel[], curr
   </section>`;
 }
 
+/**
+ * Whether the card is shown. "Show only these" shows every work item with alerts, even those the
+ * state / PR / priority filters hide
+ */
+function isCardVisible(item: WorkItemModel, current: ViewModel): boolean {
+  if (onlyAlerts) {
+    return item.alerts.length > 0 && isVisible(item, current.filter, search, true);
+  }
+  return isVisible(item, current.filter, search, current.alwaysShowAlerts);
+}
+
 /** Summary of the work items with problems, with a toggle to show only them */
 function renderAlertsBanner(current: ViewModel): string {
-  const count = cardItems(current).filter((item) => item.alerts.length).length;
+  const withAlerts = cardItems(current).filter((item) => item.alerts.length);
+  const count = withAlerts.length;
+  // Hidden by the filters (not by the search): "Show only these" reveals them
+  const hidden = onlyAlerts
+    ? 0
+    : withAlerts.filter((item) => !isCardVisible(item, current) && isVisible(item, current.filter, search, true))
+        .length;
   if (!count && !onlyAlerts) {
     return '';
   }
   const label = count === 1 ? '1 work item needs attention' : `${count} work items need attention`;
   return `<div class="alerts-banner${count ? '' : ' resolved'}" role="status">
-    ${icon('warning')}<span>${count ? label : 'No work items need attention'}</span>
+    ${icon('warning')}<span>${count ? label : 'No work items need attention'}${
+    hidden ? ` <span class="alerts-hidden">(${hidden} hidden by filters)</span>` : ''
+  }</span>
     <button class="button small" data-action="toggleAlerts">${onlyAlerts ? 'Show all' : 'Show only these'}</button>
   </div>`;
 }
@@ -452,7 +471,7 @@ function renderList(current: ViewModel): string {
     return '<p class="message muted">No work items assigned to you in the current iterations of your teams.</p>';
   }
   const visible = sortWorkItems(
-    cards.filter((item) => isVisible(item, current.filter, search) && (!onlyAlerts || item.alerts.length > 0)),
+    cards.filter((item) => isCardVisible(item, current)),
     current.stateOrder
   );
   const hidden = cards.length - visible.length;

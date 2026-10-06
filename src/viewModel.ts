@@ -69,6 +69,8 @@ export interface ViewModel {
   stateOrder: string[];
   /** PRs waiting for the user's review, most urgent first */
   reviews: ReviewsModel;
+  /** Work items with alerts skip the state / PR / priority filters (azdoWorkItems.filter.alwaysShowAlerts) */
+  alwaysShowAlerts: boolean;
 }
 
 export interface ReviewsModel {
@@ -124,9 +126,9 @@ export function pullRequestFilterValue(item: Pick<WorkItemModel, 'pullRequests'>
 }
 
 /**
- * True when the work item passes the type / state / PR filters and matches the search text.
- * Work items with alerts skip the state / PR filters: they must be fixed ASAP, e.g. a "Done" work item
- * with open tasks would be hidden by the default "Done" filter
+ * True when the work item passes the type / state / PR / priority filters and matches the search text.
+ * With "alwaysShowAlerts", work items with alerts skip the state / PR / priority filters: they must be fixed
+ * ASAP, e.g. a "Done" work item with open tasks would be hidden by the default "Done" filter
  */
 export function isVisible(
   item: Pick<WorkItemModel, 'branch' | 'id' | 'pullRequests' | 'state' | 'title' | 'type'> & {
@@ -134,12 +136,13 @@ export function isVisible(
     priority?: number;
   },
   filter: FilterModel,
-  text = ''
+  text = '',
+  alwaysShowAlerts = false
 ): boolean {
   if (filter.types.length && !filter.types.includes(item.type)) {
     return false;
   }
-  const hasAlerts = !!item.alerts?.length;
+  const hasAlerts = alwaysShowAlerts && !!item.alerts?.length;
   if (!hasAlerts && filter.hiddenStates.includes(item.state)) {
     return false;
   }

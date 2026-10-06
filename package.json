@@ -229,6 +229,11 @@
           "default": [],
           "description": "Priorities hidden (\"P1\" … \"P4\", or \"No priority\"). Also editable with the Priority chips of the view."
         },
+        "azdoWorkItems.filter.alwaysShowAlerts": {
+          "type": "boolean",
+          "default": false,
+          "description": "Always show the work items that need attention (alerts), even when the State, PR or Priority filters hide them. Off: the filters apply to every work item, and the alerts banner tells how many are hidden (\"Show only these\" shows them)."
+        },
         "azdoWorkItems.stateOrder": {
           "type": "array",
           "items": {

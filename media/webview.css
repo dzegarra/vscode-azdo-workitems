@@ -561,6 +561,11 @@ button.state:focus-visible {
   flex: 1;
 }
 
+.alerts-banner .alerts-hidden {
+  flex: none;
+  font-weight: normal;
+}
+
 .alerts-banner.resolved {
   border-color: var(--border);
   background: transparent;

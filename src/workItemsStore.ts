@@ -339,7 +339,7 @@ export class WorkItemsStore {
     return entry && this.toModel(entry, this.repository()?.state.HEAD?.name);
   }
 
-  toViewModel(filter: FilterModel): Omit<ViewModel, 'reviews'> {
+  toViewModel(filter: FilterModel): Omit<ViewModel, 'alwaysShowAlerts' | 'reviews'> {
     const currentBranch = this.repository()?.state.HEAD?.name;
     const workItems = this.entries.map((entry) => this.toModel(entry, currentBranch));
     return {

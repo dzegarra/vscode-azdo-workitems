@@ -44,6 +44,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     }
     const model: ViewModel = {
       ...this.store.toViewModel(filterSettings()),
+      alwaysShowAlerts: vscode.workspace.getConfiguration(SECTION).get<boolean>('filter.alwaysShowAlerts', false),
       reviews: {
         status: this.reviews.status,
         error: this.reviews.error,
