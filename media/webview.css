@@ -607,3 +607,81 @@ button.state:focus-visible {
   border-color: var(--vscode-descriptionForeground);
   font-weight: normal;
 }
+
+/* ---------- CI runs ---------- */
+
+/* Next to the PR state; the row wraps when the card is too narrow */
+.row.pr {
+  flex-wrap: wrap;
+  row-gap: 3px;
+}
+
+.runs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.run {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0 7px;
+  border: 1px solid var(--run-color);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--run-color);
+  font-size: 10.5px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.run span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run .icon {
+  width: 11px;
+  height: 11px;
+}
+
+.run:hover {
+  background: color-mix(in srgb, var(--run-color) 15%, transparent);
+}
+
+.run-queued,
+.run-canceled {
+  --run-color: var(--vscode-descriptionForeground);
+}
+.run-running {
+  --run-color: var(--vscode-textLink-foreground);
+}
+.run-succeeded {
+  --run-color: var(--vscode-testing-iconPassed, var(--green));
+}
+.run-partial {
+  --run-color: var(--vscode-editorWarning-foreground, var(--orange));
+}
+.run-failed {
+  --run-color: var(--vscode-errorForeground, var(--red));
+}
+
+.spin {
+  animation: spin 1.2s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}

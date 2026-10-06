@@ -83,7 +83,7 @@ describe('isVisible', () => {
     hiddenPullRequestStates: [],
     hiddenPriorities: [],
   };
-  const draftPr = { id: 1, title: 'PR', status: 'Draft', tone: 'draft' as const, url: '', isActive: true };
+  const draftPr = { id: 1, title: 'PR', status: 'Draft', tone: 'draft' as const, url: '', isActive: true, runs: [] };
 
   it('applies the type and state filters', () => {
     expect(isVisible(item, filter)).toBe(true);

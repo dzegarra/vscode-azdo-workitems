@@ -1,11 +1,14 @@
 import { getAccessToken } from './auth';
 import { buildMyWorkItemsQuery, Iteration, mergeTeamIterations, TeamIteration } from './iterations';
 import { PackageVersion } from './integrationBuild';
+import { BuildRun, pullRequestBranch } from './pipelines';
 import { flattenIterations, IterationNode, ScheduledIteration } from './schedule';
 import { parseRelations, PullRequestState, WorkItemLinks, WorkItemRelation } from './workItemLinks';
 
 const API_VERSION = '7.1';
 const BASE_URL = 'https://dev.azure.com';
+/** Runs fetched per pull request: enough to find the last run of each pipeline */
+const MAX_BUILDS = 10;
 /** Azure Artifacts has its own host */
 const FEEDS_URL = 'https://feeds.dev.azure.com';
 const NOT_FOUND = 404;
@@ -302,6 +305,15 @@ export class AzdoClient {
       body: JSON.stringify(operations),
     });
     return this.toWorkItem(created);
+  }
+
+  /** CI runs validating a pull request, newest first */
+  async getPullRequestBuilds(pullRequestId: number): Promise<BuildRun[]> {
+    const branch = encodeURIComponent(pullRequestBranch(pullRequestId));
+    const result = await this.request<{
+      value: (Omit<BuildRun, 'webUrl'> & { _links: { web: { href: string } } })[];
+    }>(this.url(`build/builds?branchName=${branch}&$top=${MAX_BUILDS}&queryOrder=queueTimeDescending`));
+    return result.value.map(({ _links: links, ...build }) => ({ ...build, webUrl: links.web.href }));
   }
 
   /** All the versions of a package of an Azure Artifacts feed of the project */

@@ -5,6 +5,7 @@ import { GitAPI, pickRepository, Ref, REF_TYPE_HEAD, Repository } from './git';
 import { TeamIteration } from './iterations';
 import { branchBelongsToWorkItem } from './naming';
 import { FilterModel, PullRequestModel, ViewModel, WorkItemModel } from './viewModel';
+import { finishedRuns, isActive, latestRuns, RunModel } from './pipelines';
 import { pullRequestStatus } from './workItemLinks';
 import { parsePriority, PRIORITY_FIELD, SEVERITY_FIELD } from './priority';
 import { AlertRules, findAlerts, parseTags, resolveFieldName, resolveRequiredFields, WorkItemAlert } from './alerts';
@@ -146,7 +147,7 @@ async function alertRules(client: AzdoClient): Promise<(AlertRules & { integrati
   };
 }
 
-function toPullRequestModel(pr: PullRequestDetails): PullRequestModel {
+function toPullRequestModel(pr: PullRequestDetails, runs: RunModel[]): PullRequestModel {
   const { label, tone } = pullRequestStatus(pr);
   return {
     id: pr.pullRequestId,
@@ -155,7 +156,16 @@ function toPullRequestModel(pr: PullRequestDetails): PullRequestModel {
     tone,
     url: pr.webUrl,
     isActive: pr.status === 'active',
+    runs,
   };
+}
+
+/** Last CI run of each pipeline of the given PRs. PRs whose runs cannot be fetched are skipped */
+async function fetchRuns(client: AzdoClient, pullRequestIds: number[]): Promise<Map<number, RunModel[]>> {
+  const results = await Promise.allSettled(
+    pullRequestIds.map(async (id) => [id, latestRuns(await client.getPullRequestBuilds(id))] as const)
+  );
+  return new Map(results.filter((result) => result.status === 'fulfilled').map((result) => result.value));
 }
 
 /** Loads and keeps the work items of the current iterations with their branches and pull requests */
@@ -171,12 +181,54 @@ export class WorkItemsStore {
   entries: WorkItemEntry[] = [];
   /** Current iterations of the listed teams */
   iterations: TeamIteration[] = [];
+  /** CI runs of the active PRs, by PR */
+  private runs = new Map<number, RunModel[]>();
   private loading?: Promise<void>;
 
   constructor(private readonly git: GitAPI) {}
 
   get workItems(): WorkItemEntry[] {
     return this.entries;
+  }
+
+  private activePullRequestIds(): number[] {
+    const ids = this.entries.flatMap((entry) =>
+      entry.pullRequests.filter((pr) => pr.status === 'active').map((pr) => pr.pullRequestId)
+    );
+    return [...new Set(ids)];
+  }
+
+  /** True while a CI run of an active PR is queued or running */
+  get hasActiveRuns(): boolean {
+    return [...this.runs.values()].some((runs) => runs.some((run) => isActive(run.state)));
+  }
+
+  /** CI runs of the active PRs with the PR they validate */
+  get pullRequestRuns(): { pullRequestId: number; title: string; run: RunModel }[] {
+    const titles = new Map(
+      this.entries.flatMap((entry) => entry.pullRequests).map((pr) => [pr.pullRequestId, pr.title])
+    );
+    return [...this.runs].flatMap(([pullRequestId, runs]) =>
+      runs.map((run) => ({ pullRequestId, title: titles.get(pullRequestId) ?? '', run }))
+    );
+  }
+
+  findRun(runId: number): RunModel | undefined {
+    return [...this.runs.values()].flat().find((run) => run.id === runId);
+  }
+
+  /**
+   * Reloads only the CI runs (much cheaper than a full refresh).
+   * Returns the runs that finished since the previous check, with their PR
+   */
+  async refreshRuns(): Promise<{ pullRequestId: number; run: RunModel }[]> {
+    const previous = new Map([...this.runs.values()].flat().map((run) => [run.id, run.state]));
+    const runs = await fetchRuns(resolveContext(this.repository()).client, this.activePullRequestIds());
+    this.runs = runs;
+    this.changeEmitter.fire();
+    return [...runs].flatMap(([pullRequestId, prRuns]) =>
+      finishedRuns(previous, prRuns).map((run) => ({ pullRequestId, run }))
+    );
   }
 
   /** Work items with problems the developers must fix ASAP */
@@ -212,6 +264,7 @@ export class WorkItemsStore {
     this.changeEmitter.fire();
     try {
       this.entries = await this.fetch();
+      this.runs = await fetchRuns(resolveContext(this.repository()).client, this.activePullRequestIds());
       this.status = 'ready';
       this.error = undefined;
       this.loadEmitter.fire();
@@ -275,7 +328,7 @@ export class WorkItemsStore {
       isCurrentBranch: !!branch && branch === currentBranch,
       // Active PRs first, then the most recent
       pullRequests: pullRequests
-        .map(toPullRequestModel)
+        .map((pr) => toPullRequestModel(pr, this.runs.get(pr.pullRequestId) ?? []))
         .sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.id - a.id),
     };
   }

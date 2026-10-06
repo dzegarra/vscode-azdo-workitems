@@ -7,6 +7,8 @@ import { resolveWorkItemEntry } from './commands/pickWorkItem';
 import { fillIntegrationBuild } from './commands/integrationBuild';
 import { addTask, changeState } from './commands/workItemEdits';
 import { DependencyMapPanel } from './dependencyMap';
+import { PipelineStatusBar } from './pipelineStatusBar';
+import { PipelineWatcher } from './pipelineWatcher';
 import { PullRequestNotifier } from './pullRequestNotifier';
 import { WorkItemDetailsPanels } from './workItemDetails';
 import { WorkItemEntry, WorkItemsStore } from './workItemsStore';
@@ -64,6 +66,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const details = new WorkItemDetailsPanels(context.extensionUri, store);
   const notifier = new PullRequestNotifier(context.globalState, store);
   const dependencyMap = new DependencyMapPanel(context.extensionUri, store);
+  const pipelineWatcher = new PipelineWatcher(store);
+  const pipelineStatusBar = new PipelineStatusBar(store);
   const currentRepository = () => (git.repositories.length ? pickRepository(git) : undefined);
 
   // Visible even when the sidebar is closed
@@ -109,6 +113,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     details,
     notifier,
     dependencyMap,
+    pipelineWatcher,
+    pipelineStatusBar,
     alertsStatus,
     store.onDidChange(() => {
       view.post();

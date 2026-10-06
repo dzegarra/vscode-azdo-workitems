@@ -4,6 +4,7 @@
  */
 import type { WorkItemAlert } from './alerts';
 import { priorityFilterValue } from './priority';
+import type { RunModel } from './pipelines';
 import type { PullRequestTone } from './workItemLinks';
 
 export interface PullRequestModel {
@@ -13,6 +14,8 @@ export interface PullRequestModel {
   tone: PullRequestTone;
   url: string;
   isActive: boolean;
+  /** Last CI run of each pipeline validating the PR */
+  runs: RunModel[];
 }
 
 export interface WorkItemModel {
@@ -77,9 +80,11 @@ export type WebviewMessage =
         | 'openDependencyMap'
         | 'openDetails'
         | 'openPullRequest'
+        | 'openRun'
         | 'openWorkItem';
       id: number;
       pullRequestId?: number;
+      runId?: number;
     }
   | { type: 'ready' }
   | { type: 'refresh' }

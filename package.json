@@ -105,6 +105,11 @@
         "category": "Azure Work Items"
       },
       {
+        "command": "azdoWorkItems.showPipelineRuns",
+        "title": "Show CI Runs of My Pull Requests",
+        "category": "Azure Work Items"
+      },
+      {
         "command": "azdoWorkItems.checkout",
         "title": "Checkout Work Item Branch",
         "category": "Azure Work Items"
@@ -539,6 +544,22 @@
           "type": "string",
           "default": "+",
           "description": "Appended to the version: the fix ships in the release after the last published one."
+        },
+        "azdoWorkItems.pipelines.pollIntervalSeconds": {
+          "type": "number",
+          "default": 15,
+          "minimum": 5,
+          "description": "While a CI run of your pull requests is queued or running, how often its state is refreshed (seconds). Checks stop when every run is finished."
+        },
+        "azdoWorkItems.pipelines.notifyOnFinish": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a notification when a CI run of your pull requests finishes."
+        },
+        "azdoWorkItems.pipelines.showInStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the CI runs of your pull requests in the status bar."
         }
       }
     }

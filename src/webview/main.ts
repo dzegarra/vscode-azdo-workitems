@@ -1,5 +1,6 @@
 import { canHaveTasks, escapeHtml, stateButton } from '../html';
-import { icon, typeIcon } from '../icons';
+import { ICONS, icon, typeIcon } from '../icons';
+import { describeRun, RunState } from '../pipelines';
 import { NO_PRIORITY, priorityFilterValue, severityLevel, severityName, sortWorkItems } from '../priority';
 import { stateCategory, stateRank } from '../states';
 import type {
@@ -135,12 +136,39 @@ function toggle(values: string[], value: string): string[] {
 
 /* ---------- Cards ---------- */
 
+const RUN_ICONS: Record<RunState, keyof typeof ICONS> = {
+  queued: 'clock',
+  running: 'sync',
+  succeeded: 'check',
+  partial: 'warning',
+  failed: 'error',
+  canceled: 'stop',
+};
+
+/** Last CI run of each pipeline validating the PR. Clicking one opens it in Azure DevOps */
+function renderRuns(item: WorkItemModel, pr: PullRequestModel): string {
+  if (!pr.isActive || !pr.runs.length) {
+    return '';
+  }
+  const now = new Date();
+  const runs = pr.runs.map(
+    (run) => `<button class="run run-${run.state}" data-action="openRun" data-id="${item.id}" data-run="${run.id}"
+      title="${escapeHtml(`${run.pipeline}: ${describeRun(run, now)}`)}">
+      ${icon(RUN_ICONS[run.state], run.state === 'running' ? 'spin' : '')}<span>${escapeHtml(
+      describeRun(run, now)
+    )}</span>
+    </button>`
+  );
+  return `<div class="runs">${runs.join('')}</div>`;
+}
+
 function renderPullRequest(item: WorkItemModel, pr: PullRequestModel): string {
   return `<div class="row pr">
     ${icon('pullRequest')}
     <button class="link" data-action="openPullRequest" data-id="${item.id}" data-pr="${pr.id}"
       title="${escapeHtml(pr.title)}">PR ${pr.id}</button>
     <span class="pill tone-${pr.tone}">${escapeHtml(pr.status)}</span>
+    ${renderRuns(item, pr)}
   </div>`;
 }
 
@@ -405,7 +433,7 @@ document.addEventListener('click', (event) => {
   if (!target) {
     return;
   }
-  const { action, filter, value, id, pr } = target.dataset;
+  const { action, filter, value, id, pr, run } = target.dataset;
   if (filter && value !== undefined) {
     toggleFilter(filter as FilterKind, value);
   } else if (action === 'refresh') {
@@ -419,6 +447,7 @@ document.addEventListener('click', (event) => {
       type: action as Extract<WebviewMessage, { id: number }>['type'],
       id: Number(id),
       pullRequestId: pr ? Number(pr) : undefined,
+      runId: run ? Number(run) : undefined,
     });
   }
 });

@@ -1,6 +1,11 @@
 /** Icons and type styles shared by the webviews. No "vscode" import */
 
 export const ICONS = {
+  clock: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/>',
+  sync: '<path d="M13 8a5 5 0 0 1-8.5 3.5M3 8a5 5 0 0 1 8.5-3.5M11.5 2v2.5H9M4.5 14v-2.5H7"/>',
+  check: '<circle cx="8" cy="8" r="5.5"/><path d="m5.5 8.2 1.7 1.7 3.3-3.4"/>',
+  error: '<circle cx="8" cy="8" r="5.5"/><path d="m6 6 4 4m0-4-4 4"/>',
+  stop: '<circle cx="8" cy="8" r="5.5"/><path d="M6.2 6.2h3.6v3.6H6.2z"/>',
   warning: '<path d="M8 2 14.5 13.5h-13z"/><path d="M8 6.5v3.2M8 11.6v.1"/>',
   bug: '<path d="M8 2.5a2.5 2.5 0 0 0-2.4 1.8A4 4 0 0 0 4 7.5V10a4 4 0 0 0 8 0V7.5a4 4 0 0 0-1.6-3.2A2.5 2.5 0 0 0 8 2.5zM2 8h2m8 0h2M2.5 12.5 4.3 11m9.2 1.5L11.7 11M2.5 4l1.8 1.4M13.5 4l-1.8 1.4M8 6v8"/>',
   book: '<path d="M3 2.5h7.5a2 2 0 0 1 2 2v9H5a2 2 0 0 1-2-2zM3 11.5a2 2 0 0 1 2-2h7.5"/>',

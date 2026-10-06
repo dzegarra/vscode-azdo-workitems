@@ -1,0 +1,93 @@
+import * as vscode from 'vscode';
+import { SECTION } from './config';
+import { countRunStates, describeRun, RunState } from './pipelines';
+import { WorkItemsStore } from './workItemsStore';
+
+/** Codicons of each state; "~spin" animates the icon in the status bar */
+const STATE_ICONS: Record<RunState, string> = {
+  failed: '$(error)',
+  partial: '$(warning)',
+  running: '$(sync~spin)',
+  queued: '$(clock)',
+  canceled: '$(circle-slash)',
+  succeeded: '$(check)',
+};
+
+export const SHOW_RUNS_COMMAND = 'azdoWorkItems.showPipelineRuns';
+
+/**
+ * CI runs of the user's pull requests in the status bar, visible even when the sidebar is closed.
+ * Updated with the store: every few seconds while a run is queued or running
+ */
+export class PipelineStatusBar implements vscode.Disposable {
+  private readonly item = vscode.window.createStatusBarItem('azdoWorkItems.pipelines', vscode.StatusBarAlignment.Left);
+  private readonly subscriptions: vscode.Disposable[];
+
+  constructor(private readonly store: WorkItemsStore) {
+    this.item.name = 'CI runs of my pull requests';
+    this.item.command = SHOW_RUNS_COMMAND;
+    this.subscriptions = [
+      store.onDidChange(() => this.update()),
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration(`${SECTION}.pipelines.showInStatusBar`)) {
+          this.update();
+        }
+      }),
+      vscode.commands.registerCommand(SHOW_RUNS_COMMAND, () => this.pick()),
+    ];
+  }
+
+  dispose(): void {
+    this.item.dispose();
+    this.subscriptions.forEach((subscription) => subscription.dispose());
+  }
+
+  private update(): void {
+    const enabled = vscode.workspace.getConfiguration(SECTION).get<boolean>('pipelines.showInStatusBar', true);
+    const runs = this.store.pullRequestRuns;
+    if (!enabled || !runs.length) {
+      this.item.hide();
+      return;
+    }
+    const counts = countRunStates(runs.map(({ run }) => run.state));
+    this.item.text = `$(rocket) ${counts.map(({ state, count }) => `${STATE_ICONS[state]} ${count}`).join('  ')}`;
+    const hasFailures = counts.some(({ state }) => state === 'failed');
+    this.item.backgroundColor = hasFailures ? new vscode.ThemeColor('statusBarItem.errorBackground') : undefined;
+
+    const now = new Date();
+    const tooltip = new vscode.MarkdownString(undefined, true);
+    tooltip.appendMarkdown('**CI runs of my pull requests**\n\n');
+    for (const { pullRequestId, title, run } of runs) {
+      tooltip.appendMarkdown(
+        `${STATE_ICONS[run.state]} [PR ${pullRequestId}](${run.url}) · ${run.pipeline} · **${describeRun(
+          run,
+          now
+        )}**  \n`
+      );
+      if (title) {
+        tooltip.appendText(title);
+        tooltip.appendMarkdown('\n\n');
+      }
+    }
+    tooltip.appendMarkdown('\n_Click to open a run_');
+    this.item.tooltip = tooltip;
+    this.item.show();
+  }
+
+  /** Lists the runs; the selected one opens in Azure DevOps */
+  private async pick(): Promise<void> {
+    const now = new Date();
+    const picked = await vscode.window.showQuickPick(
+      this.store.pullRequestRuns.map(({ pullRequestId, title, run }) => ({
+        label: `${STATE_ICONS[run.state]} PR ${pullRequestId} · ${describeRun(run, now)}`,
+        description: run.pipeline,
+        detail: title,
+        url: run.url,
+      })),
+      { title: 'CI runs of my pull requests', placeHolder: 'Select a run to open it in Azure DevOps' }
+    );
+    if (picked) {
+      await vscode.env.openExternal(vscode.Uri.parse(picked.url));
+    }
+  }
+}

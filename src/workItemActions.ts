@@ -29,6 +29,13 @@ export async function runWorkItemAction(store: WorkItemsStore, message: WorkItem
       await vscode.env.openExternal(vscode.Uri.parse(url));
       return;
     }
+    case 'openRun': {
+      const run = message.runId === undefined ? undefined : store.findRun(message.runId);
+      if (run) {
+        await vscode.env.openExternal(vscode.Uri.parse(run.url));
+      }
+      return;
+    }
     case 'openPullRequest': {
       const pr = entry?.pullRequests.find((p) => p.pullRequestId === message.pullRequestId);
       if (pr) {

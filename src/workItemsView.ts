@@ -74,6 +74,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       case 'openDependencyMap':
       case 'openDetails':
       case 'openPullRequest':
+      case 'openRun':
       case 'openWorkItem':
         await runWorkItemAction(this.store, message);
     }
