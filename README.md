@@ -1,14 +1,25 @@
 # Azure DevOps Work Items (VS Code extension)
 
-Lists the Azure DevOps work items assigned to you in the current iteration and creates branches and pull requests that follow the team conventions.
+Brings the Azure DevOps work of the current sprint into VS Code: your Backlog Items and Bugs, their tasks, branches, pull requests and CI runs, and the problems the team agreed to avoid.
 
-- Branches: `<feature|bugfix>/<module>/<id>-<short-name>` — e.g. `feature/fui-admin/5641-network-restart-button`
-- PR titles: `[<ids>] <Feature Name>: <description>` — e.g. `[123,554] FUI Administration: Show the network configuration`
+![Screenshot](./screenshot.jpg)
+
+## Features
+
+- **[Your work items](#usage)**: the Backlog Items and Bugs assigned to you in the current iteration of all your teams, as cards with their priority, severity, state, parent, branch and pull requests. Filter them by type, state, PR state and priority, or search them.
+- **[Branches and pull requests](#usage)** that follow the team conventions:
+  - Branches: `<feature|bugfix>/<module>/<id>-<short-name>`, e.g. `feature/fui-admin/5641-network-restart-button`. Creating one links it to the work item and moves it to Committed.
+  - PR titles: `[<ids>] <Feature Name>: <description>`, e.g. `[123,554] FUI Administration: Show the network configuration`.
+- **[Work item editing](#usage)**: change states, add tasks, and see the full details (description, acceptance criteria, effort, tags, parent, children) in an editor tab.
+- **[Alerts](#alerts)** for the work items that break the team rules (Done with open tasks, missing PR task, blocking tags, empty required fields…), in the cards, the view badge and the status bar. **[Integrated in Build](#integrated-in-build)** can be filled in one click from the last release of the deploy image.
+- **[Dependencies](#dependencies)**: predecessors and successors in the details, and an interactive map by iteration that highlights the risky ones.
+- **[CI pipelines](#ci-pipelines)**: live state of the runs validating your pull requests, in the cards and the status bar, with a notification when they finish.
+- **[Pull request notifications](#pull-request-notifications)** when your PRs get comments or votes, or are merged.
 
 ## Install
 
 ```sh
-npm run azdo-workitems:package
+npx nx run vscode-azdo-workitems:package
 code --install-extension tools/vscode-azdo-workitems/vscode-azdo-workitems-0.1.0.vsix
 ```
 
@@ -117,5 +128,8 @@ Your own comments and votes, system messages and vote resets are ignored. When m
 | `azdoWorkItems.teams`                                     | Teams whose current iteration is listed (empty: all my teams)  |
 | `azdoWorkItems.linkBranchToWorkItem`                      | Publish and link new branches to the work item                 |
 | `azdoWorkItems.organization` / `.project` / `.repository` | Override what is detected from the remote                      |
+| `azdoWorkItems.alerts.*`                                  | Alert rules: tags, required fields, types, PR task pattern     |
+| `azdoWorkItems.integrationBuild.*`                        | Feed, package and suffix used to fill Integrated in Build      |
+| `azdoWorkItems.pipelines.*`                               | CI runs: refresh interval, notifications, status bar           |
 
 Modules and feature names added with **Add new…** are saved to the workspace settings (`.vscode/settings.json`), so they can be committed and shared.
