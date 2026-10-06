@@ -6,6 +6,7 @@ import type { WorkItemAlert } from './alerts';
 import { priorityFilterValue } from './priority';
 import type { RunModel } from './pipelines';
 import type { ReviewRequestModel } from './reviewRequests';
+import { isFinishedState } from './states';
 import type { PullRequestTone } from './workItemLinks';
 
 export interface PullRequestModel {
@@ -39,6 +40,8 @@ export interface WorkItemModel {
   /** "local": the branch is checked out locally; "remote": only exists in the remote */
   branchLocation?: 'local' | 'remote';
   isCurrentBranch: boolean;
+  /** Finished work items (Done, Ready to Test…) whose branch still exists: it should be deleted */
+  leftoverBranch?: { name: string; local: boolean; remote: boolean };
   pullRequests: PullRequestModel[];
 }
 
@@ -88,6 +91,7 @@ export type WebviewMessage =
         | 'checkout'
         | 'createBranch'
         | 'createPullRequest'
+        | 'deleteBranch'
         | 'fillIntegrationBuild'
         | 'openDependencyMap'
         | 'openDetails'
@@ -108,6 +112,28 @@ export type WebviewMessage =
 export type ExtensionMessage = { type: 'state'; model: ViewModel };
 
 export const NO_PULL_REQUEST = 'No PR';
+
+export type BranchAction = 'checkout' | 'createBranch' | 'createPullRequest' | 'deleteBranch';
+
+/**
+ * Branch actions offered for a work item. Finished work items (Done, Ready to Test…) get no new branch, checkout
+ * or PR: their branch only needs to be deleted, when it still exists and no PR is still active on it
+ */
+export function branchActions(
+  item: Pick<WorkItemModel, 'branch' | 'isCurrentBranch' | 'leftoverBranch' | 'pullRequests' | 'state'>
+): BranchAction[] {
+  const hasActivePullRequest = item.pullRequests.some((pr) => pr.isActive);
+  if (isFinishedState(item.state)) {
+    return item.leftoverBranch && !hasActivePullRequest ? ['deleteBranch'] : [];
+  }
+  if (!item.branch) {
+    return ['createBranch'];
+  }
+  return [
+    ...(item.isCurrentBranch ? [] : ['checkout' as const]),
+    ...(hasActivePullRequest ? [] : ['createPullRequest' as const]),
+  ];
+}
 
 function sameValues(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((value) => b.includes(value));

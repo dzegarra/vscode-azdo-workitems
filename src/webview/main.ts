@@ -1,8 +1,8 @@
 import { canHaveTasks, escapeHtml, stateButton } from '../html';
-import { ICONS, icon, typeIcon } from '../icons';
+import { ICONS, icon, TYPE_CLASSES, typeIcon } from '../icons';
 import { describeRun, RunState } from '../pipelines';
 import { NO_PRIORITY, priorityFilterValue, severityLevel, severityName, sortWorkItems } from '../priority';
-import { stateCategory, stateRank } from '../states';
+import { isFinishedState, stateCategory, stateRank } from '../states';
 import type { ReviewRequestModel } from '../reviewRequests';
 import type {
   ExtensionMessage,
@@ -13,7 +13,15 @@ import type {
   WebviewMessage,
   WorkItemModel,
 } from '../viewModel';
-import { changedFilterKeys, describeScope, isVisible, NO_PULL_REQUEST, pullRequestFilterValue } from '../viewModel';
+import {
+  BranchAction,
+  branchActions,
+  changedFilterKeys,
+  describeScope,
+  isVisible,
+  NO_PULL_REQUEST,
+  pullRequestFilterValue,
+} from '../viewModel';
 
 interface VsCodeApi {
   postMessage(message: WebviewMessage): void;
@@ -89,9 +97,28 @@ function isTypeShown(filter: FilterModel, type: string): boolean {
   return !filter.types.length || filter.types.includes(type);
 }
 
-function chip(kind: FilterKind, value: string, count: number, pressed: boolean): string {
-  return `<button class="chip" data-filter="${kind}" data-value="${escapeHtml(value)}" aria-pressed="${pressed}">
-    ${escapeHtml(value)} <span class="count">${count}</span></button>`;
+/**
+ * Filter chip. The marker (type icon, state dot, priority swatch) and the colour are the ones of the cards,
+ * so the chips are easy to match with them
+ */
+function chip(
+  kind: FilterKind,
+  value: string,
+  count: number,
+  pressed: boolean,
+  style: { marker?: string; colorClass?: string } = {}
+): string {
+  return `<button class="chip ${style.colorClass ?? ''}" data-filter="${kind}" data-value="${escapeHtml(
+    value
+  )}" aria-pressed="${pressed}" title="${pressed ? 'Shown: click to hide' : 'Hidden: click to show'}">
+    ${style.marker ?? ''}${escapeHtml(value)} <span class="count">${count}</span></button>`;
+}
+
+const DOT = '<span class="chip-dot" aria-hidden="true"></span>';
+
+/** Tone of the PR status, as in the PR pills of the cards */
+function pullRequestTones(items: WorkItemModel[]): Map<string, string> {
+  return new Map(items.flatMap((item) => item.pullRequests.map((pr) => [pr.status, pr.tone] as const)));
 }
 
 function filterRow(label: string, chips: string[]): string {
@@ -106,6 +133,7 @@ function renderFilters(current: ViewModel): string {
   const states = countBy(workItems, (item) => item.state);
   const pullRequests = countBy(workItems, pullRequestFilterValue);
   const priorities = countBy(workItems, priorityFilterValue);
+  const tones = pullRequestTones(workItems);
   // P1 … P4, then the work items without priority
   const sortedPriorities = [...priorities.keys()].sort(
     (a, b) => Number(a === NO_PRIORITY) - Number(b === NO_PRIORITY) || a.localeCompare(b)
@@ -119,22 +147,38 @@ function renderFilters(current: ViewModel): string {
   return [
     filterRow(
       'Type',
-      [...types].map(([type, count]) => chip('type', type, count, isTypeShown(filter, type)))
+      [...types].map(([type, count]) =>
+        chip('type', type, count, isTypeShown(filter, type), {
+          marker: typeIcon(type),
+          colorClass: `chip-${TYPE_CLASSES[type] ?? 'type-other'}`,
+        })
+      )
     ),
     filterRow(
       'State',
-      sortedStates.map((state) => chip('state', state, states.get(state) ?? 0, !filter.hiddenStates.includes(state)))
+      sortedStates.map((state) =>
+        chip('state', state, states.get(state) ?? 0, !filter.hiddenStates.includes(state), {
+          marker: DOT,
+          colorClass: `chip-state-${stateCategory(state)}`,
+        })
+      )
     ),
     filterRow(
       'PR',
       sortedPullRequests.map((status) =>
-        chip('pullRequest', status, pullRequests.get(status) ?? 0, !filter.hiddenPullRequestStates.includes(status))
+        chip('pullRequest', status, pullRequests.get(status) ?? 0, !filter.hiddenPullRequestStates.includes(status), {
+          marker: DOT,
+          colorClass: `tone-${tones.get(status) ?? 'neutral'}`,
+        })
       )
     ),
     filterRow(
       'Priority',
       sortedPriorities.map((priority) =>
-        chip('priority', priority, priorities.get(priority) ?? 0, !filter.hiddenPriorities.includes(priority))
+        chip('priority', priority, priorities.get(priority) ?? 0, !filter.hiddenPriorities.includes(priority), {
+          marker: '<span class="chip-swatch" aria-hidden="true"></span>',
+          colorClass: `chip-urgency-${priority === NO_PRIORITY ? 'none' : priority.slice(1)}`,
+        })
       )
     ),
   ].join('');
@@ -186,26 +230,38 @@ function renderBranch(item: WorkItemModel): string {
   if (!item.branch) {
     return `<div class="row muted">${icon('branch')}<span>No branch</span></div>`;
   }
+  if (isFinishedState(item.state)) {
+    // The links of the work item remain after the branch is deleted
+    return item.leftoverBranch
+      ? `<div class="row branch">${icon('branch')}<code title="${escapeHtml(item.branch)}">${escapeHtml(
+          item.branch
+        )}</code><span class="pill tone-waiting" title="The PR is merged: the branch should be deleted">not deleted</span></div>`
+      : `<div class="row muted">${icon('branch')}<span>Branch deleted</span></div>`;
+  }
   const location = item.isCurrentBranch ? 'current' : item.branchLocation ?? 'remote';
   return `<div class="row branch">${icon('branch')}
     <code title="${escapeHtml(item.branch)}">${escapeHtml(item.branch)}</code>
     <span class="pill tone-${location}">${location}</span></div>`;
 }
 
+const BRANCH_ACTION_BUTTONS: Record<BranchAction, { label: string; className: string; title: string }> = {
+  createBranch: { label: 'Create branch', className: 'primary', title: 'Create the branch of the work item' },
+  checkout: { label: 'Checkout', className: '', title: 'Switch to the branch of the work item' },
+  createPullRequest: { label: 'Create PR', className: 'primary', title: 'Create a pull request from the branch' },
+  deleteBranch: {
+    label: 'Delete branch',
+    className: 'danger',
+    title: 'The work item is finished: delete its branch, as the team does once the PR is merged',
+  },
+};
+
+function branchActionButton(action: BranchAction, item: WorkItemModel): string {
+  const { label, className, title } = BRANCH_ACTION_BUTTONS[action];
+  return `<button class="button ${className}" data-action="${action}" data-id="${item.id}" title="${title}">${label}</button>`;
+}
+
 function renderActions(item: WorkItemModel): string {
-  const actions: string[] = [];
-  if (!item.branch) {
-    actions.push(
-      `<button class="button primary" data-action="createBranch" data-id="${item.id}">Create branch</button>`
-    );
-  } else if (!item.isCurrentBranch) {
-    actions.push(`<button class="button" data-action="checkout" data-id="${item.id}">Checkout</button>`);
-  }
-  if (item.branch && !item.pullRequests.some((pr) => pr.isActive)) {
-    actions.push(
-      `<button class="button primary" data-action="createPullRequest" data-id="${item.id}">Create PR</button>`
-    );
-  }
+  const actions = branchActions(item).map((action) => branchActionButton(action, item));
   if (canHaveTasks(item.type)) {
     actions.push(
       `<button class="button ghost" data-action="addTask" data-id="${item.id}" title="Create a task under this work item">Add task</button>`
@@ -504,6 +560,7 @@ function render(): void {
   if (!app.childElementCount) {
     app.innerHTML = `<div id="reviews"></div>
       <div class="toolbar">
+        <h2 class="list-title">Work items</h2>
         <input id="search" type="search" placeholder="Search by ID, title or branch" aria-label="Search work items">
       </div>
       <p id="scope" class="scope"></p>

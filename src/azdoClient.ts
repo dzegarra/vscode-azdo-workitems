@@ -19,6 +19,8 @@ const FEEDS_URL = 'https://feeds.dev.azure.com';
 const NOT_FOUND = 404;
 /** The work items API accepts up to 200 IDs per request */
 const MAX_IDS_PER_REQUEST = 200;
+/** A ref update to this object ID (40 zeros) deletes the branch */
+const DELETED_OBJECT_ID_LENGTH = 40;
 
 export interface WorkItem {
   id: number;
@@ -387,6 +389,40 @@ export class AzdoClient {
       this.url(`wit/workitems/${id}?$expand=all`)
     );
     return { ...this.toWorkItem(result as WorkItemResponse), fields: result.fields };
+  }
+
+  /**
+   * Commit the branch points to in Azure DevOps, or undefined when the branch does not exist.
+   * Unlike the local "origin/…" refs and the links of the work items, this is never stale
+   */
+  async getBranchObjectId(repositoryId: string, branch: string): Promise<string | undefined> {
+    const name = `refs/heads/${branch}`;
+    // "filter" matches the refs starting with it, e.g. "heads/feature/a" also matches "heads/feature/ab"
+    const result = await this.request<{ value: { name: string; objectId: string }[] }>(
+      this.url(`git/repositories/${repositoryId}/refs?filter=${encodeURIComponent(`heads/${branch}`)}`)
+    );
+    return result.value.find((ref) => ref.name === name)?.objectId;
+  }
+
+  /** Deletes the branch in Azure DevOps, only if it still points to the given commit */
+  async deleteRemoteBranch(repositoryId: string, branch: string, objectId: string): Promise<void> {
+    const result = await this.request<{ value: { success: boolean; updateStatus: string; customMessage?: string }[] }>(
+      this.url(`git/repositories/${repositoryId}/refs`),
+      {
+        method: 'POST',
+        body: JSON.stringify([
+          { name: `refs/heads/${branch}`, oldObjectId: objectId, newObjectId: '0'.repeat(DELETED_OBJECT_ID_LENGTH) },
+        ]),
+      }
+    );
+    const [update] = result.value;
+    if (!update?.success) {
+      throw new Error(
+        `Unable to delete the branch ${branch} in Azure DevOps: ${
+          update?.customMessage ?? update?.updateStatus ?? 'unknown error'
+        }`
+      );
+    }
   }
 
   /** Adds the branch to the "Development" section of the work item */

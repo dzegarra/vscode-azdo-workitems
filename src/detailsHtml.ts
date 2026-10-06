@@ -3,8 +3,8 @@ import { canHaveTasks, escapeHtml, sanitizeHtml, stateButton } from './html';
 import type { FigmaLink } from './figmaLinks';
 import { icon, typeIcon } from './icons';
 import { DependencyRisk, RISK_DESCRIPTIONS } from './schedule';
-import { stateCategory } from './states';
-import type { WorkItemModel } from './viewModel';
+import { isFinishedState, stateCategory } from './states';
+import { BranchAction, branchActions, type WorkItemModel } from './viewModel';
 
 export interface RelatedWorkItem {
   id: number;
@@ -93,12 +93,17 @@ function renderDevelopment(card: WorkItemModel | undefined): string {
   if (!card) {
     return '<p class="muted">Not in the current iterations: branch and pull requests are not tracked.</p>';
   }
-  const branch = card.branch
-    ? `<div class="row">${icon('branch')}<code>${escapeHtml(card.branch)}</code>
-        <span class="pill tone-${card.isCurrentBranch ? 'current' : card.branchLocation ?? 'remote'}">${
-        card.isCurrentBranch ? 'current' : card.branchLocation ?? 'remote'
-      }</span></div>`
-    : `<div class="row muted">${icon('branch')}<span>No branch</span></div>`;
+  const location = card.isCurrentBranch ? 'current' : card.branchLocation ?? 'remote';
+  let branch = `<div class="row muted">${icon('branch')}<span>No branch</span></div>`;
+  if (card.branch && isFinishedState(card.state) && !card.leftoverBranch) {
+    // The links of the work item remain after the branch is deleted
+    branch = `<div class="row muted">${icon('branch')}<span>Branch deleted</span></div>`;
+  } else if (card.branch) {
+    const pill = card.leftoverBranch
+      ? '<span class="pill tone-waiting" title="The PR is merged: the branch should be deleted">not deleted</span>'
+      : `<span class="pill tone-${location}">${location}</span>`;
+    branch = `<div class="row">${icon('branch')}<code>${escapeHtml(card.branch)}</code>${pill}</div>`;
+  }
   const pullRequests = card.pullRequests.map(
     (pr) => `<div class="row">${icon('pullRequest')}
       <button class="link" data-action="openPullRequest" data-id="${card.id}" data-pr="${pr.id}">PR ${pr.id}</button>
@@ -132,6 +137,17 @@ function renderFigmaActions(data: DetailsData): string[] {
   ];
 }
 
+const BRANCH_BUTTONS: Record<BranchAction, (id: number) => string> = {
+  createPullRequest: (id) =>
+    `<button class="button primary" data-action="createPullRequest" data-id="${id}">Create PR</button>`,
+  createBranch: (id) =>
+    `<button class="button primary" data-action="createBranch" data-id="${id}">Create branch</button>`,
+  checkout: (id) => `<button class="button" data-action="checkout" data-id="${id}">Checkout</button>`,
+  deleteBranch: (id) =>
+    `<button class="button danger" data-action="deleteBranch" data-id="${id}"
+      title="The work item is finished: delete its branch, as the team does once the PR is merged">Delete branch</button>`,
+};
+
 function renderActions(data: DetailsData): string {
   const { card } = data;
   const actions = [
@@ -141,18 +157,9 @@ function renderActions(data: DetailsData): string {
     )}Dependency map</button>`,
     ...renderFigmaActions(data),
   ];
-  if (card && !card.branch) {
-    actions.unshift(
-      `<button class="button primary" data-action="createBranch" data-id="${card.id}">Create branch</button>`
-    );
-  } else if (card && !card.isCurrentBranch) {
-    actions.unshift(`<button class="button" data-action="checkout" data-id="${card.id}">Checkout</button>`);
-  }
-  if (card?.branch && !card.pullRequests.some((pr) => pr.isActive)) {
-    actions.unshift(
-      `<button class="button primary" data-action="createPullRequest" data-id="${card.id}">Create PR</button>`
-    );
-  }
+  // Same branch actions as the cards; finished work items only get "Delete branch"
+  const branchButtons = card ? branchActions(card).map((action) => BRANCH_BUTTONS[action](card.id)) : [];
+  actions.unshift(...branchButtons);
   actions.push(`<button class="button ghost" data-action="reload" data-id="${data.id}">Reload</button>`);
   return `<div class="actions">${actions.join('')}</div>`;
 }

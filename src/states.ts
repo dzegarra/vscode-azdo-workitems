@@ -46,6 +46,14 @@ export function stateCategory(state: string): StateCategory {
   return isOneOf(state, ['Removed']) ? 'removed' : 'proposed';
 }
 
+/**
+ * Done, Ready to Test… The work is finished: no more branches or PRs are created for it, and its branch
+ * should be deleted (the team deletes the branches once their PR is merged)
+ */
+export function isFinishedState(state: string): boolean {
+  return stateCategory(state) === 'done';
+}
+
 /** States in which work on the item has not started yet */
 const NOT_STARTED_STATES = ['New', 'Approved', 'To Do'];
 

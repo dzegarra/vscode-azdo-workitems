@@ -40,7 +40,7 @@ Each work item is a card with:
 
 Cards are sorted by state: Done, Ready to Test, Committed, In Progress, Approved, New, To Do (`azdoWorkItems.stateOrder`). Done and Ready to Test are shown in green, Committed and In Progress in blue.
 
-Within each state, cards are sorted by priority, then severity. Use the **Type**, **State**, **PR** and **Priority** chips to filter the cards (by default only Product Backlog Items and Bugs, hiding Done / Removed / Closed), and the search box to find them by ID, title or branch. The PR filter uses the main PR of each work item (the active one, or the most recent), or `No PR`.
+Within each state, cards are sorted by priority, then severity. Use the **Type**, **State**, **PR** and **Priority** chips to filter the cards (coloured like the cards; the hidden values are grey and dashed) (by default only Product Backlog Items and Bugs, hiding Done / Removed / Closed), and the search box to find them by ID, title or branch. The PR filter uses the main PR of each work item (the active one, or the most recent), or `No PR`.
 
 Card actions:
 
@@ -49,6 +49,7 @@ Card actions:
 - **Add task** (Backlog Items and Bugs): creates a Task under the work item, in the same iteration and area and assigned to the same person. Tasks are never shown as cards of their own nor in the filters: they are always nested in the card of their Backlog Item / Bug, where they can be managed (and their state changed).
 - **Open**: shows the details of the work item in an editor tab: description, acceptance criteria / repro steps (with their images), assignee, effort, tags, parent, children, branch and PRs, with the same actions. When the description links to Figma, **Figma design** opens it in the [Figma extension for VS Code](https://marketplace.visualstudio.com/items?itemName=figma.figma-vscode-extension) if it is installed, or in the browser; the button next to it always opens the browser. The Figma extension opens the file but not the linked frame; the browser opens the exact frame. Prototypes, FigJam and Figma Make links open in the browser.
 - **Checkout**: switches to the work item branch (creating the local branch when it only exists in the remote).
+- **Delete branch** (Done, Ready to Test and other finished work items): the team deletes the branches once their PR is merged, so finished work items get no **Create branch**, **Checkout** or **Create PR**. When their branch still exists, it is shown as _not deleted_ and **Delete branch** deletes it in Azure DevOps and locally, after a confirmation telling what is deleted (and warning about commits that were not pushed). When the branch is checked out, VS Code switches to `develop` first. It is not offered while a PR is still active on the branch. Whether the branch exists is asked to Azure DevOps: the links of the work item and the local `origin/…` refs remain after a branch is deleted. Also in the command palette: **Delete Branch of a Finished Work Item**.
 - **Create PR** (when the branch has no active PR; also available from the command palette for the current branch): pick extra work items to link, the feature name and the description. The branch is pushed and the PR targets `develop`, optionally as draft.
 
 Organization, project and repository are detected from the `origin` remote.

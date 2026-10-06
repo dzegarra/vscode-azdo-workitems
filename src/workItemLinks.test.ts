@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { changedFilterKeys, describeScope, isVisible, NO_PULL_REQUEST } from './viewModel';
+import { branchActions, changedFilterKeys, describeScope, isVisible, NO_PULL_REQUEST } from './viewModel';
 import { NO_PRIORITY } from './priority';
 import { parseRelations, pullRequestStatus, PullRequestState } from './workItemLinks';
 
@@ -171,5 +171,35 @@ describe('describeScope', () => {
     ]);
     expect(scope.text).toBe('Assigned to you in the current sprints of 2 teams');
     expect(scope.tooltip).toContain('PMUI Sprint 7 (PMUI Team)');
+  });
+});
+
+describe('branch actions', () => {
+  const pr = (isActive: boolean) => ({
+    id: 1,
+    title: '',
+    status: '',
+    tone: 'review' as const,
+    url: '',
+    isActive,
+    runs: [],
+  });
+  const item = { state: 'Committed', branch: 'feature/x/1-a', isCurrentBranch: false, pullRequests: [] };
+  const leftoverBranch = { name: 'feature/x/1-a', local: true, remote: true };
+
+  it('offers to create the branch, check it out and create the PR of work items in progress', () => {
+    expect(branchActions({ ...item, branch: undefined })).toEqual(['createBranch']);
+    expect(branchActions(item)).toEqual(['checkout', 'createPullRequest']);
+    expect(branchActions({ ...item, isCurrentBranch: true, pullRequests: [pr(true)] })).toEqual([]);
+  });
+
+  it('only offers to delete the branch of finished work items, when it still exists', () => {
+    for (const state of ['Done', 'Ready to Test', 'Ready-to-Test']) {
+      expect(branchActions({ ...item, state })).toEqual([]);
+      expect(branchActions({ ...item, state, branch: undefined })).toEqual([]);
+      expect(branchActions({ ...item, state, leftoverBranch, pullRequests: [pr(false)] })).toEqual(['deleteBranch']);
+    }
+    // A PR still active on the branch would be broken
+    expect(branchActions({ ...item, state: 'Done', leftoverBranch, pullRequests: [pr(true)] })).toEqual([]);
   });
 });

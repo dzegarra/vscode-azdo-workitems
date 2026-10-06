@@ -74,6 +74,12 @@
         "icon": "$(git-pull-request-create)"
       },
       {
+        "command": "azdoWorkItems.deleteBranch",
+        "title": "Delete Branch of a Finished Work Item",
+        "category": "Azure Work Items",
+        "icon": "$(trash)"
+      },
+      {
         "command": "azdoWorkItems.openDetails",
         "title": "Show Work Item Details",
         "category": "Azure Work Items"

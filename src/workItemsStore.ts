@@ -4,6 +4,7 @@ import { resolveContext, settings, DEFAULT_PULL_REQUEST_TASK_PATTERN } from './c
 import { GitAPI, pickRepository, Ref, REF_TYPE_HEAD, Repository } from './git';
 import { TeamIteration } from './iterations';
 import { branchBelongsToWorkItem } from './naming';
+import { isFinishedState } from './states';
 import { FilterModel, PullRequestModel, ViewModel, WorkItemModel } from './viewModel';
 import { finishedRuns, isActive, latestRuns, RunModel } from './pipelines';
 import { pullRequestStatus } from './workItemLinks';
@@ -16,7 +17,17 @@ export interface WorkItemEntry {
   alerts: WorkItemAlert[];
   branch?: string;
   branchLocation?: 'local' | 'remote';
+  /** Branch of a finished work item that still exists (it should have been deleted after its PR was merged) */
+  leftoverBranch?: LeftoverBranch;
   pullRequests: PullRequestDetails[];
+}
+
+export interface LeftoverBranch {
+  name: string;
+  /** The local branch exists */
+  local: boolean;
+  /** Commit of the branch in Azure DevOps; undefined when it does not exist there */
+  remoteObjectId?: string;
 }
 
 interface BranchCandidates {
@@ -57,6 +68,29 @@ function findBranch(
     branches.remote.find((name) => branchBelongsToWorkItem(name, workItem.id)) ??
     workItem.links.branches.find((link) => link.repositoryId === repositoryId)?.name;
   return remote ? { branch: remote, branchLocation: 'remote' } : {};
+}
+
+/**
+ * Branch of a finished work item that still exists, locally or in Azure DevOps. The remote one is checked in
+ * Azure DevOps: the links of the work item and the local "origin/…" refs remain after the branch is deleted
+ */
+async function findLeftoverBranch(
+  client: AzdoClient,
+  repositoryId: string,
+  { workItem, branch }: Pick<WorkItemEntry, 'branch' | 'workItem'>,
+  branches: BranchCandidates
+): Promise<LeftoverBranch | undefined> {
+  if (!branch || !isFinishedState(workItem.state)) {
+    return undefined;
+  }
+  const local = branches.local.includes(branch);
+  let remoteObjectId: string | undefined;
+  try {
+    remoteObjectId = await client.getBranchObjectId(repositoryId, branch);
+  } catch {
+    // Unknown: only the local branch is offered for deletion
+  }
+  return local || remoteObjectId ? { name: branch, local, remoteObjectId } : undefined;
 }
 
 /** PRs linked to the work items, fetched once even when linked to several of them */
@@ -292,7 +326,7 @@ export class WorkItemsStore {
       fetchRelated(client, workItems),
       alertRules(client),
     ]);
-    return workItems.map((workItem) => {
+    const entries: WorkItemEntry[] = workItems.map((workItem) => {
       const parent = workItem.links.parentId === undefined ? undefined : related.get(workItem.links.parentId);
       const itemPullRequests = workItem.links.pullRequests
         .map((link) => pullRequests.get(link.id))
@@ -305,10 +339,16 @@ export class WorkItemsStore {
         alerts: rules ? alertsOf(workItem, related, itemPullRequests, rules) : [],
       };
     });
+    await Promise.all(
+      entries.map(async (entry) => {
+        entry.leftoverBranch = await findLeftoverBranch(client, azdoRepository.id, entry, branches);
+      })
+    );
+    return entries;
   }
 
   private toModel(
-    { workItem, parent, alerts, branch, branchLocation, pullRequests }: WorkItemEntry,
+    { workItem, parent, alerts, branch, branchLocation, leftoverBranch, pullRequests }: WorkItemEntry,
     currentBranch: string | undefined
   ): WorkItemModel {
     return {
@@ -326,6 +366,11 @@ export class WorkItemsStore {
       branch,
       branchLocation,
       isCurrentBranch: !!branch && branch === currentBranch,
+      leftoverBranch: leftoverBranch && {
+        name: leftoverBranch.name,
+        local: leftoverBranch.local,
+        remote: !!leftoverBranch.remoteObjectId,
+      },
       // Active PRs first, then the most recent
       pullRequests: pullRequests
         .map((pr) => toPullRequestModel(pr, this.runs.get(pr.pullRequestId) ?? []))

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { createBranch } from './commands/createBranch';
 import { checkoutPullRequest } from './commands/checkoutPullRequest';
 import { createPullRequest } from './commands/createPullRequest';
+import { deleteBranch } from './commands/deleteBranch';
 import { resolveContext, SECTION, settings } from './config';
 import { getGitApi, pickRepository, Repository } from './git';
 import { resolveWorkItemEntry } from './commands/pickWorkItem';
@@ -160,6 +161,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     command('azdoWorkItems.refresh', () => store.refresh()),
     command('azdoWorkItems.createBranch', (entry?: WorkItemEntry) => createBranch(git, store, entry)),
     command('azdoWorkItems.createPullRequest', (entry?: WorkItemEntry) => createPullRequest(git, store, entry)),
+    command('azdoWorkItems.deleteBranch', (entry?: WorkItemEntry) => deleteBranch(git, store, entry)),
     command('azdoWorkItems.checkout', async (entry: WorkItemEntry) => {
       if (entry.branch) {
         // For a branch that only exists in the remote, git creates the local tracking branch

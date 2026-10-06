@@ -9,6 +9,7 @@ const COMMANDS = {
   checkout: 'azdoWorkItems.checkout',
   createBranch: 'azdoWorkItems.createBranch',
   createPullRequest: 'azdoWorkItems.createPullRequest',
+  deleteBranch: 'azdoWorkItems.deleteBranch',
 };
 
 /** Runs a button of the work items view or of the details panel */
@@ -46,6 +47,7 @@ export async function runWorkItemAction(store: WorkItemsStore, message: WorkItem
     case 'checkout':
     case 'createBranch':
     case 'createPullRequest':
+    case 'deleteBranch':
       if (entry) {
         await vscode.commands.executeCommand(COMMANDS[message.type], entry);
       }

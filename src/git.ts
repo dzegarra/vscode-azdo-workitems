@@ -53,8 +53,10 @@ export interface Repository {
   createBranch(name: string, checkout: boolean, ref?: string): Promise<void>;
   checkout(treeish: string): Promise<void>;
   fetch(remote?: string, ref?: string): Promise<void>;
+  fetch(options: { remote?: string; prune?: boolean }): Promise<void>;
   push(remoteName?: string, branchName?: string, setUpstream?: boolean): Promise<void>;
   pull(): Promise<void>;
+  deleteBranch(name: string, force?: boolean): Promise<void>;
   log(options?: { maxEntries?: number; range?: string }): Promise<Commit[]>;
 }
 
