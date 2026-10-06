@@ -12,6 +12,9 @@ describe('parseRelations', () => {
         { rel: 'System.LinkTypes.Hierarchy-Forward', url: `${api}/201` },
         { rel: 'System.LinkTypes.Hierarchy-Forward', url: `${api}/202` },
         { rel: 'System.LinkTypes.Related', url: `${api}/300` },
+        { rel: 'System.LinkTypes.Dependency-Reverse', url: `${api}/400` },
+        { rel: 'System.LinkTypes.Dependency-Forward', url: `${api}/500` },
+        { rel: 'System.LinkTypes.Dependency-Forward', url: `${api}/501` },
         {
           rel: 'ArtifactLink',
           url: 'vstfs:///Git/Ref/proj-id%2Frepo-id%2FGBfeature%2Ffui-admin%2F5641-network-restart',
@@ -27,13 +30,21 @@ describe('parseRelations', () => {
     ).toEqual({
       parentId: 100,
       childIds: [201, 202],
+      predecessorIds: [400],
+      successorIds: [500, 501],
       branches: [{ projectId: 'proj-id', repositoryId: 'repo-id', name: 'feature/fui-admin/5641-network-restart' }],
       pullRequests: [{ projectId: 'proj-id', repositoryId: 'repo-id', id: 13720 }],
     });
   });
 
   it('handles work items without relations', () => {
-    expect(parseRelations(undefined)).toEqual({ childIds: [], branches: [], pullRequests: [] });
+    expect(parseRelations(undefined)).toEqual({
+      childIds: [],
+      predecessorIds: [],
+      successorIds: [],
+      branches: [],
+      pullRequests: [],
+    });
   });
 });
 

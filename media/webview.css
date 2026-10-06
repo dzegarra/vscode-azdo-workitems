@@ -284,12 +284,6 @@ button {
   -webkit-line-clamp: 2;
 }
 
-.relations {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
 .row {
   display: flex;
   align-items: center;
@@ -472,4 +466,43 @@ button.state:focus-visible {
 .button.small {
   padding: 0 6px;
   font-size: 11px;
+}
+
+/* ---------- Parent ---------- */
+
+.parent-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  margin-top: -2px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.parent-link .icon {
+  width: 11px;
+  height: 11px;
+}
+
+.parent-id {
+  flex: none;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.parent-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.parent-link:hover {
+  color: var(--vscode-textLink-foreground);
 }

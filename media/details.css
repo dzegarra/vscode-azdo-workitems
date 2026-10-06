@@ -164,3 +164,23 @@ h1 {
   margin-left: 4px;
   font-size: 12px;
 }
+
+.dependency .iteration-name {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.dependency .child-title {
+  flex: 1;
+}
+
+.pill.risk-late {
+  --pill-color: var(--red);
+}
+
+.pill.risk-tight,
+.pill.risk-unscheduled {
+  --pill-color: var(--orange);
+}

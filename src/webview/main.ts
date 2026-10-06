@@ -155,21 +155,21 @@ function renderChild(item: WorkItemModel): string {
   </li>`;
 }
 
-function renderRelations(item: WorkItemModel, visibleIds: Set<number>): string {
-  const relations: string[] = [];
-  if (item.childCount) {
-    relations.push(
-      `<span class="pill tone-neutral" title="Parent of ${item.childCount} work items">${icon('children')}${
-        item.childCount
-      } ${item.childCount === 1 ? 'child' : 'children'}</span>`
-    );
+/** Parent of the work item, when it is not the card the work item is nested in */
+function renderParent(item: WorkItemModel, visibleIds: Set<number>): string {
+  if (item.parentId === undefined || visibleIds.has(item.parentId)) {
+    return '';
   }
-  if (item.parentId && !visibleIds.has(item.parentId)) {
-    relations.push(
-      `<span class="pill tone-neutral" title="Child of ${item.parentId}">${icon('parent')}${item.parentId}</span>`
-    );
-  }
-  return relations.length ? `<div class="relations">${relations.join('')}</div>` : '';
+  const title = item.parent ? ` ${escapeHtml(item.parent.title)}` : '';
+  const tooltip = item.parent
+    ? `${item.parent.type} ${item.parentId}: ${item.parent.title}`
+    : `Parent ${item.parentId}`;
+  return `<button class="parent-link" data-action="openDetails" data-id="${item.parentId}" title="${escapeHtml(
+    tooltip
+  )}">
+    ${icon('parent')}<span class="parent-id">${
+    item.parentId
+  }</span><span class="parent-title">${title}</span></button>`;
 }
 
 function renderCard(item: WorkItemModel, children: WorkItemModel[], visibleIds: Set<number>): string {
@@ -183,7 +183,7 @@ function renderCard(item: WorkItemModel, children: WorkItemModel[], visibleIds: 
       ${stateButton(item.id, item.state)}
     </header>
     <div class="title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
-    ${renderRelations(item, visibleIds)}
+    ${renderParent(item, visibleIds)}
     ${renderBranch(item)}
     ${item.pullRequests.map((pr) => renderPullRequest(item, pr)).join('')}
     ${renderActions(item)}

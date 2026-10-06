@@ -1,0 +1,391 @@
+import type { DependencyMapMessage, DependencyMapUpdate } from '../dependencyMap';
+import type { DependencyGraph, GraphEdge, GraphLayout, GraphNode } from '../dependencyGraph';
+import { dependencyChain, layoutGraph } from '../dependencyGraph';
+import { escapeHtml } from '../html';
+import { typeIcon } from '../icons';
+import { DependencyRisk, RISK_DESCRIPTIONS } from '../schedule';
+import { stateCategory } from '../states';
+
+interface VsCodeApi {
+  postMessage(message: DependencyMapMessage): void;
+  getState(): Partial<ViewState> | undefined;
+  setState(state: ViewState): void;
+}
+declare function acquireVsCodeApi(): VsCodeApi;
+
+interface ViewState {
+  hideDone: boolean;
+  zoom: number;
+}
+
+const vscode = acquireVsCodeApi();
+const LAYOUT = { columnWidth: 230, columnGap: 80, nodeHeight: 78, rowGap: 14, headerHeight: 52, padding: 16 };
+const ZOOM_STEP = 0.1;
+const MIN_ZOOM = 0.4;
+const MAX_ZOOM = 1.6;
+/** Arrows are drawn in this order, so the riskiest ones stay on top when they overlap */
+const RISK_ORDER: DependencyRisk[] = ['done', 'ok', 'unscheduled', 'tight', 'late'];
+/** How far the curves go out of the nodes */
+const CURVE = 60;
+
+const viewState: ViewState = { hideDone: false, zoom: 1, ...vscode.getState() };
+let graph: DependencyGraph | undefined;
+let withoutDependencies = 0;
+let selected: number | undefined;
+let focusPending = false;
+
+function post(message: DependencyMapMessage): void {
+  vscode.postMessage(message);
+}
+
+function saveState(): void {
+  vscode.setState(viewState);
+}
+
+/* ---------- Model ---------- */
+
+function isDone(node: GraphNode): boolean {
+  return ['done', 'removed'].includes(stateCategory(node.state));
+}
+
+/** Graph after the "Hide done" toggle. My work items and the focused one are always shown */
+function visibleGraph(current: DependencyGraph): DependencyGraph {
+  if (!viewState.hideDone) {
+    return current;
+  }
+  const nodes = current.nodes.filter((node) => !isDone(node) || node.isMine || node.id === current.focusId);
+  const ids = new Set(nodes.map((node) => node.id));
+  const columns = current.columns.filter((column) => nodes.some((node) => node.iterationPath === column.path));
+  return { ...current, nodes, columns, edges: current.edges.filter((e) => ids.has(e.from) && ids.has(e.to)) };
+}
+
+/* ---------- Highlighting ---------- */
+
+function highlight(ids: Set<number> | undefined, className: string): void {
+  const canvas = document.getElementById('canvas');
+  if (!canvas) {
+    return;
+  }
+  canvas.classList.toggle(className, !!ids);
+  canvas.querySelectorAll<HTMLElement>('.node').forEach((node) => {
+    node.classList.toggle(`${className}-node`, !!ids?.has(Number(node.dataset.id)));
+  });
+  canvas.querySelectorAll<SVGPathElement>('.edge').forEach((edge) => {
+    const inSet = !!ids?.has(Number(edge.dataset.from)) && ids.has(Number(edge.dataset.to));
+    edge.classList.toggle(`${className}-edge`, inSet);
+  });
+}
+
+/** Click: the whole chain of the work item (what it depends on and what depends on it) */
+function applySelection(): void {
+  highlight(
+    selected === undefined || !graph ? undefined : dependencyChain(selected, visibleGraph(graph).edges),
+    'selection'
+  );
+}
+
+/** Hover: the work item and its direct neighbours */
+function hover(id: number | undefined): void {
+  if (id === undefined || !graph) {
+    highlight(undefined, 'hovering');
+    return;
+  }
+  const neighbours = new Set([id]);
+  for (const edge of visibleGraph(graph).edges) {
+    if (edge.from === id) {
+      neighbours.add(edge.to);
+    } else if (edge.to === id) {
+      neighbours.add(edge.from);
+    }
+  }
+  highlight(neighbours, 'hovering');
+}
+
+/* ---------- Geometry ---------- */
+
+interface Box {
+  left?: number;
+  top?: number;
+  width?: number;
+  height?: number;
+  scale?: number;
+}
+
+/**
+ * Geometry is written as a data attribute and applied by applyBoxes: the Content Security Policy
+ * of the webview blocks inline style attributes, but not styles set from the script
+ */
+function box(geometry: Box): string {
+  return `data-box='${JSON.stringify(geometry)}'`;
+}
+
+function applyBoxes(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>('[data-box]').forEach((element) => {
+    const { left, top, width, height, scale } = JSON.parse(element.dataset.box ?? '{}') as Box;
+    const px = (value?: number) => (value === undefined ? '' : `${value}px`);
+    Object.assign(element.style, { left: px(left), top: px(top), width: px(width), height: px(height) });
+    if (scale !== undefined) {
+      element.style.transform = `scale(${scale})`;
+    }
+  });
+}
+
+/* ---------- Rendering ---------- */
+
+function formatDate(date?: string): string {
+  return date ? new Date(date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' }) : '';
+}
+
+function renderColumns(current: DependencyGraph, layout: GraphLayout): string {
+  return current.columns
+    .map((column, index) => {
+      const x = LAYOUT.padding + index * (LAYOUT.columnWidth + LAYOUT.columnGap) - LAYOUT.columnGap / 4;
+      const dates = column.start ? `${formatDate(column.start)} – ${formatDate(column.finish)}` : 'Not scheduled';
+      return `<div class="column${column.isCurrent ? ' current' : ''}${column.start ? '' : ' unscheduled'}"
+        ${box({ left: x, width: LAYOUT.columnWidth + LAYOUT.columnGap / 2, height: layout.height })}>
+        <div class="column-head" title="${escapeHtml(column.path)}">
+          <span class="column-name">${escapeHtml(column.name)}</span>
+          ${column.isCurrent ? '<span class="pill tone-current">current</span>' : ''}
+          <span class="column-dates">${dates}</span>
+        </div>
+      </div>`;
+    })
+    .join('');
+}
+
+function edgePath(edge: GraphEdge, layout: GraphLayout): string {
+  const from = layout.positions.get(edge.from);
+  const to = layout.positions.get(edge.to);
+  if (!from || !to) {
+    return '';
+  }
+  const width = LAYOUT.columnWidth;
+  const y1 = from.y + LAYOUT.nodeHeight / 2;
+  const y2 = to.y + LAYOUT.nodeHeight / 2;
+  let d: string;
+  if (to.column > from.column) {
+    // Forward: right side of the predecessor → left side of the successor
+    const x1 = from.x + width;
+    const x2 = to.x;
+    d = `M${x1},${y1} C${x1 + CURVE},${y1} ${x2 - CURVE},${y2} ${x2},${y2}`;
+  } else if (to.column === from.column) {
+    // Same iteration: a loop on the right side
+    const x = from.x + width;
+    d = `M${x},${y1} C${x + CURVE},${y1} ${x + CURVE},${y2} ${x},${y2}`;
+  } else {
+    // Backwards (the predecessor is planned later): left side → right side of the successor
+    const x1 = from.x;
+    const x2 = to.x + width;
+    d = `M${x1},${y1} C${x1 - CURVE},${y1} ${x2 + CURVE},${y2} ${x2},${y2}`;
+  }
+  return `<path class="edge risk-${edge.risk}" data-from="${edge.from}" data-to="${edge.to}" d="${d}"
+    marker-end="url(#arrow-${edge.risk})"><title>${edge.from} → ${edge.to}: ${
+    RISK_DESCRIPTIONS[edge.risk]
+  }</title></path>`;
+}
+
+function renderEdges(current: DependencyGraph, layout: GraphLayout): string {
+  const markers = Object.keys(RISK_DESCRIPTIONS)
+    .map(
+      (risk) => `<marker id="arrow-${risk}" class="arrow risk-${risk}" viewBox="0 0 10 10" refX="9" refY="5"
+        markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker>`
+    )
+    .join('');
+  return `<svg class="edges" width="${layout.width}" height="${layout.height}">
+    <defs>${markers}</defs>${[...current.edges]
+    .sort((a, b) => RISK_ORDER.indexOf(a.risk) - RISK_ORDER.indexOf(b.risk))
+    .map((edge) => edgePath(edge, layout))
+    .join('')}</svg>`;
+}
+
+function renderNode(node: GraphNode, layout: GraphLayout, focusId?: number): string {
+  const position = layout.positions.get(node.id);
+  if (!position) {
+    return '';
+  }
+  const classes = [
+    'node',
+    `state-border-${stateCategory(node.state)}`,
+    node.isMine ? 'mine' : '',
+    node.id === focusId ? 'focus' : '',
+  ].join(' ');
+  const expand = node.hiddenLinks
+    ? `<button class="node-button" data-action="expand" data-id="${node.id}"
+        title="Show ${node.hiddenLinks} more dependencies">+${node.hiddenLinks}</button>`
+    : '';
+  return `<div class="${classes}" data-id="${node.id}" tabindex="0"
+      ${box({ left: position.x, top: position.y, width: LAYOUT.columnWidth, height: LAYOUT.nodeHeight })}>
+    <div class="node-head">
+      ${typeIcon(node.type)}<span class="node-id">${node.id}</span>
+      <span class="state state-${stateCategory(node.state)}">${escapeHtml(node.state)}</span>
+    </div>
+    <div class="node-title" title="${escapeHtml(node.title)}">${escapeHtml(node.title)}</div>
+    <div class="node-foot">
+      <span class="assignee" title="${escapeHtml(node.assignedTo ?? 'Unassigned')}">${
+    node.isMine ? 'Me' : escapeHtml(node.assignedTo ?? 'Unassigned')
+  }</span>
+      ${expand}
+      <button class="node-button" data-action="openDetails" data-id="${node.id}" title="Show details">Open</button>
+    </div>
+  </div>`;
+}
+
+function renderLegend(): string {
+  const risks = (['late', 'tight', 'unscheduled', 'ok', 'done'] as const)
+    .map(
+      (risk) =>
+        `<span class="legend-item"><span class="legend-line risk-${risk}"></span>${RISK_DESCRIPTIONS[risk]}</span>`
+    )
+    .join('');
+  return `<div class="legend">${risks}<span class="legend-item"><span class="legend-mine"></span>Mine</span></div>`;
+}
+
+function renderToolbar(): string {
+  return `<div class="map-toolbar">
+    <label class="toggle"><input type="checkbox" id="hide-done" ${
+      viewState.hideDone ? 'checked' : ''
+    }> Hide done</label>
+    <div class="zoom">
+      <button class="button" data-action="zoom-out" title="Zoom out">−</button>
+      <span id="zoom-level">${Math.round(viewState.zoom * 100)}%</span>
+      <button class="button" data-action="zoom-in" title="Zoom in">+</button>
+      <button class="button" data-action="zoom-reset" title="Reset zoom">100%</button>
+    </div>
+    <button class="button" data-action="refresh">Refresh</button>
+    ${renderLegend()}
+  </div>`;
+}
+
+function render(): void {
+  const app = document.getElementById('app');
+  if (!app || !graph) {
+    return;
+  }
+  const current = visibleGraph(graph);
+  if (!current.nodes.length) {
+    app.innerHTML = `${renderToolbar()}<p class="message muted">None of your work items in the current iterations has
+      predecessors or successors${
+        withoutDependencies ? ` (${withoutDependencies} work items without dependencies)` : ''
+      }.</p>`;
+    return;
+  }
+  const layout = layoutGraph(current, LAYOUT);
+  const note = withoutDependencies
+    ? `<p class="muted note">${withoutDependencies} of your work items have no dependencies and are not shown.</p>`
+    : '';
+  app.innerHTML = `${renderToolbar()}${note}
+    <div class="viewport" id="viewport">
+      <div class="canvas-size" ${box({ width: layout.width * viewState.zoom, height: layout.height * viewState.zoom })}>
+        <div class="canvas" id="canvas" ${box({ width: layout.width, height: layout.height, scale: viewState.zoom })}>
+          ${renderColumns(current, layout)}
+          ${renderEdges(current, layout)}
+          ${current.nodes.map((node) => renderNode(node, layout, current.focusId)).join('')}
+        </div>
+      </div>
+    </div>`;
+  applyBoxes(app);
+  applySelection();
+  if (focusPending && current.focusId !== undefined) {
+    focusPending = false;
+    selected = current.focusId;
+    applySelection();
+    document
+      .querySelector(`.node[data-id="${current.focusId}"]`)
+      ?.scrollIntoView({ block: 'center', inline: 'center' });
+  }
+}
+
+/* ---------- Events ---------- */
+
+function setZoom(zoom: number): void {
+  viewState.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(zoom * 10) / 10));
+  saveState();
+  render();
+}
+
+document.addEventListener('click', (event) => {
+  const target = event.target as HTMLElement;
+  const button = target.closest<HTMLElement>('[data-action]');
+  const action = button?.dataset.action;
+  const id = Number(button?.dataset.id);
+  if (action === 'expand' || action === 'openDetails') {
+    post({ type: action, id });
+  } else if (action === 'refresh') {
+    post({ type: 'refresh' });
+  } else if (action === 'zoom-in' || action === 'zoom-out' || action === 'zoom-reset') {
+    setZoom(action === 'zoom-reset' ? 1 : viewState.zoom + (action === 'zoom-in' ? ZOOM_STEP : -ZOOM_STEP));
+  } else if (!button) {
+    const node = target.closest<HTMLElement>('.node');
+    const nodeId = node ? Number(node.dataset.id) : undefined;
+    selected = nodeId === undefined || nodeId === selected ? undefined : nodeId;
+    applySelection();
+  }
+});
+
+document.addEventListener('dblclick', (event) => {
+  const node = (event.target as HTMLElement).closest<HTMLElement>('.node');
+  if (node) {
+    post({ type: 'openDetails', id: Number(node.dataset.id) });
+  }
+});
+
+document.addEventListener('change', (event) => {
+  if ((event.target as HTMLElement).id === 'hide-done') {
+    viewState.hideDone = (event.target as HTMLInputElement).checked;
+    saveState();
+    render();
+  }
+});
+
+document.addEventListener('mouseover', (event) => {
+  const node = (event.target as HTMLElement).closest<HTMLElement>('.node');
+  hover(node ? Number(node.dataset.id) : undefined);
+});
+
+document.addEventListener(
+  'wheel',
+  (event) => {
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      setZoom(viewState.zoom + (event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
+    }
+  },
+  { passive: false }
+);
+
+// Drag the background to move around the map
+let drag: { x: number; y: number; left: number; top: number } | undefined;
+document.addEventListener('mousedown', (event) => {
+  const viewport = document.getElementById('viewport');
+  const target = event.target as HTMLElement;
+  if (viewport?.contains(target) && !target.closest('.node')) {
+    drag = { x: event.clientX, y: event.clientY, left: viewport.scrollLeft, top: viewport.scrollTop };
+    viewport.classList.add('dragging');
+  }
+});
+document.addEventListener('mousemove', (event) => {
+  const viewport = document.getElementById('viewport');
+  if (drag && viewport) {
+    viewport.scrollLeft = drag.left - (event.clientX - drag.x);
+    viewport.scrollTop = drag.top - (event.clientY - drag.y);
+  }
+});
+document.addEventListener('mouseup', () => {
+  drag = undefined;
+  document.getElementById('viewport')?.classList.remove('dragging');
+});
+
+window.addEventListener('message', ({ data }: MessageEvent<DependencyMapUpdate>) => {
+  const app = document.getElementById('app');
+  if (data.type === 'graph') {
+    focusPending = data.graph.focusId !== undefined && data.graph.focusId !== graph?.focusId;
+    ({ graph, withoutDependencies } = data);
+    render();
+  } else if (data.type === 'error' && app) {
+    app.innerHTML = `${renderToolbar()}<p class="message error">${escapeHtml(data.message)}</p>`;
+  } else if (data.type === 'loading' && app && !graph) {
+    app.innerHTML = '<p class="message muted">Loading dependencies…</p>';
+  }
+});
+
+post({ type: 'ready' });

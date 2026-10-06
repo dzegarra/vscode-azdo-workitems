@@ -4,6 +4,7 @@ import { WorkItem } from './azdoClient';
 import { resolveContext } from './config';
 import { DetailsData, RelatedWorkItem, renderDetailsBody } from './detailsHtml';
 import { escapeHtml } from './html';
+import { dependencyRisk } from './schedule';
 import { WebviewMessage } from './viewModel';
 import { runWorkItemAction } from './workItemActions';
 import { WorkItemsStore } from './workItemsStore';
@@ -18,8 +19,8 @@ interface OpenPanel {
 
 const MAX_TITLE_LENGTH = 40;
 
-function toRelated({ id, title, type, state }: WorkItem): RelatedWorkItem {
-  return { id, title, type, state };
+function toRelated({ id, title, type, state, iterationPath }: WorkItem): RelatedWorkItem {
+  return { id, title, type, state, iterationPath };
 }
 
 /** Editor tabs showing the details of work items, one per work item */
@@ -84,10 +85,15 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
   private async load(id: number, open: OpenPanel): Promise<void> {
     try {
       const { client } = resolveContext(this.store.repository());
-      const details = await client.getWorkItemDetails(id);
-      const { parentId, childIds } = details.links;
-      const related = await client.getWorkItems(parentId ? [parentId, ...childIds] : childIds);
-      const parent = related.find((wi) => wi.id === parentId);
+      const [details, schedule] = await Promise.all([client.getWorkItemDetails(id), client.getIterationSchedule()]);
+      const { parentId, childIds, predecessorIds, successorIds } = details.links;
+      const relatedIds = [
+        ...new Set([...(parentId ? [parentId] : []), ...childIds, ...predecessorIds, ...successorIds]),
+      ];
+      const related = new Map((await client.getWorkItems(relatedIds)).map((wi) => [wi.id, wi]));
+      const pick = (ids: number[]) =>
+        ids.map((relatedId) => related.get(relatedId)).filter((wi): wi is WorkItem => !!wi);
+      const parent = parentId === undefined ? undefined : related.get(parentId);
       open.data = {
         id: details.id,
         title: details.title,
@@ -95,7 +101,16 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
         state: details.state,
         fields: details.fields,
         parent: parent && toRelated(parent),
-        children: related.filter((wi) => childIds.includes(wi.id)).map(toRelated),
+        children: pick(childIds).map(toRelated),
+        predecessors: pick(predecessorIds).map((wi) => ({
+          ...toRelated(wi),
+          risk: dependencyRisk(wi, details, schedule),
+        })),
+        successors: pick(successorIds).map((wi) => ({
+          ...toRelated(wi),
+          risk: dependencyRisk(details, wi, schedule),
+        })),
+        iterationNames: Object.fromEntries(schedule.map((iteration) => [iteration.path, iteration.name])),
       };
       open.error = undefined;
     } catch (error) {

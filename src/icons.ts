@@ -9,8 +9,6 @@ export const ICONS = {
     '<circle cx="4.5" cy="3.5" r="1.5"/><circle cx="4.5" cy="12.5" r="1.5"/><circle cx="11.5" cy="5.5" r="1.5"/><path d="M4.5 5v6M11.5 7c0 2.5-3 2.5-6.5 4"/>',
   pullRequest:
     '<circle cx="4.5" cy="3.5" r="1.5"/><circle cx="4.5" cy="12.5" r="1.5"/><circle cx="11.5" cy="12.5" r="1.5"/><path d="M4.5 5v6M11.5 11V6.5a2 2 0 0 0-2-2H7m1.5-2-2 2 2 2"/>',
-  children:
-    '<path d="M3 2.5v9a1.5 1.5 0 0 0 1.5 1.5H8M3 6.5h5"/><rect x="9" y="4.5" width="4.5" height="4" rx="1"/><rect x="9" y="11" width="4.5" height="4" rx="1"/>',
   parent: '<path d="M8 13.5v-11M4 6.5l4-4 4 4"/>',
   refresh: '<path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5v3h-3"/>',
 };

@@ -1,6 +1,7 @@
 /** Body of the work item details panel. Pure, so no "vscode" import */
 import { canHaveTasks, escapeHtml, sanitizeHtml, stateButton } from './html';
 import { icon, typeIcon } from './icons';
+import { DependencyRisk, RISK_DESCRIPTIONS } from './schedule';
 import { stateCategory } from './states';
 import type { WorkItemModel } from './viewModel';
 
@@ -9,6 +10,9 @@ export interface RelatedWorkItem {
   title: string;
   type: string;
   state: string;
+  iterationPath?: string;
+  /** For predecessors / successors: how risky the dependency is */
+  risk?: DependencyRisk;
 }
 
 export interface DetailsData {
@@ -19,6 +23,10 @@ export interface DetailsData {
   fields: Record<string, unknown>;
   parent?: RelatedWorkItem;
   children: RelatedWorkItem[];
+  predecessors: RelatedWorkItem[];
+  successors: RelatedWorkItem[];
+  /** Name of the iteration of each related work item, by path */
+  iterationNames?: Partial<Record<string, string>>;
   /** Branch and PRs, when the work item is in the current iterations */
   card?: WorkItemModel;
 }
@@ -99,6 +107,7 @@ function renderActions(data: DetailsData): string {
   const { card } = data;
   const actions = [
     `<button class="button" data-action="openWorkItem" data-id="${data.id}">Open in Azure DevOps</button>`,
+    `<button class="button" data-action="openDependencyMap" data-id="${data.id}">Dependency map</button>`,
   ];
   if (card && !card.branch) {
     actions.unshift(
@@ -126,6 +135,32 @@ function renderSection(title: string, content: string, headerAction = ''): strin
   return `<section class="section"><h2><span>${title}</span>${headerAction}</h2>${content}</section>`;
 }
 
+/** Predecessor / successor, with its iteration and a warning when the dependency is at risk */
+function renderDependency(item: RelatedWorkItem, iterationNames: Partial<Record<string, string>>): string {
+  const iteration = item.iterationPath
+    ? `<span class="iteration-name" title="${escapeHtml(item.iterationPath)}">${escapeHtml(
+        iterationNames[item.iterationPath] ?? item.iterationPath.split('\\').at(-1) ?? ''
+      )}</span>`
+    : '';
+  const risk =
+    item.risk && item.risk !== 'ok' && item.risk !== 'done'
+      ? `<span class="pill risk-${item.risk}" title="${RISK_DESCRIPTIONS[item.risk]}">${
+          RISK_DESCRIPTIONS[item.risk]
+        }</span>`
+      : '';
+  return `<li class="child dependency">${typeIcon(item.type)}
+    <button class="link id" data-action="openDetails" data-id="${item.id}" title="Show details">${item.id}</button>
+    <span class="child-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
+    ${risk}${iteration}${stateButton(item.id, item.state)}</li>`;
+}
+
+function renderDependencies(title: string, items: RelatedWorkItem[], data: DetailsData, emptyText: string): string {
+  const list = items.length
+    ? `<ul class="related">${items.map((item) => renderDependency(item, data.iterationNames ?? {})).join('')}</ul>`
+    : `<p class="muted">${emptyText}</p>`;
+  return renderSection(`${title} (${items.length})`, list);
+}
+
 /** Children, with a button to add tasks to Backlog Items / Bugs */
 function renderChildren(data: DetailsData): string {
   const addTask = canHaveTasks(data.type)
@@ -147,6 +182,8 @@ export function renderDetailsBody(data: DetailsData): string {
   const hierarchy = [
     data.parent ? renderSection('Parent', `<ul class="related">${renderRelated(data.parent)}</ul>`) : '',
     renderChildren(data),
+    renderDependencies('Predecessors', data.predecessors, data, 'Does not depend on other work items.'),
+    renderDependencies('Successors', data.successors, data, 'No work items depend on this one.'),
   ];
   return `<header class="details-head state-border-${stateCategory(data.state)}">
       <div class="head-line">${typeIcon(data.type)}<span class="type">${escapeHtml(data.type)}</span>

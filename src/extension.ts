@@ -5,6 +5,7 @@ import { resolveContext, SECTION, settings } from './config';
 import { getGitApi, pickRepository, Repository } from './git';
 import { resolveWorkItemEntry } from './commands/pickWorkItem';
 import { addTask, changeState } from './commands/workItemEdits';
+import { DependencyMapPanel } from './dependencyMap';
 import { PullRequestNotifier } from './pullRequestNotifier';
 import { WorkItemDetailsPanels } from './workItemDetails';
 import { WorkItemEntry, WorkItemsStore } from './workItemsStore';
@@ -61,6 +62,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const view = new WorkItemsViewProvider(context.extensionUri, store);
   const details = new WorkItemDetailsPanels(context.extensionUri, store);
   const notifier = new PullRequestNotifier(context.globalState, store);
+  const dependencyMap = new DependencyMapPanel(context.extensionUri, store);
   const currentRepository = () => (git.repositories.length ? pickRepository(git) : undefined);
 
   const command = (id: string, handler: (...args: never[]) => unknown) =>
@@ -84,6 +86,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.registerWebviewViewProvider(VIEW_ID, view),
     details,
     notifier,
+    dependencyMap,
     store.onDidChange(() => view.post()),
     ...git.repositories.map(watchRepository),
     // The remote is only known once the git extension has opened the repository
@@ -138,6 +141,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await addTask(store, parentId);
       }
     }),
+    command('azdoWorkItems.openDependencyMap', (id?: number) => dependencyMap.open(id)),
     command('azdoWorkItems.checkPullRequests', () => notifier.poll(true)),
     command('azdoWorkItems.openIterationBoard', () => openIterationBoard(currentRepository(), store)),
     command('azdoWorkItems.selectTeams', () => selectTeams(currentRepository()))

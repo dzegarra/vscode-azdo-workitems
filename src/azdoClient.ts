@@ -1,5 +1,6 @@
 import { getAccessToken } from './auth';
 import { buildMyWorkItemsQuery, Iteration, mergeTeamIterations, TeamIteration } from './iterations';
+import { flattenIterations, IterationNode, ScheduledIteration } from './schedule';
 import { parseRelations, PullRequestState, WorkItemLinks, WorkItemRelation } from './workItemLinks';
 
 const API_VERSION = '7.1';
@@ -14,6 +15,7 @@ export interface WorkItem {
   type: string;
   state: string;
   iterationPath: string;
+  assignedTo?: string;
   url: string;
   links: WorkItemLinks;
 }
@@ -31,6 +33,9 @@ export interface WorkItemTypeState {
 }
 
 const typeStatesCache = new Map<string, Promise<WorkItemTypeState[]>>();
+
+const SCHEDULE_CACHE_MS = 5 * 60 * 1000;
+const scheduleCache = new Map<string, { time: number; schedule: Promise<ScheduledIteration[]> }>();
 
 /** Most recent PRs checked for notifications */
 const MAX_PULL_REQUESTS = 30;
@@ -195,6 +200,7 @@ export class AzdoClient {
       type: wi.fields['System.WorkItemType'],
       state: wi.fields['System.State'],
       iterationPath: wi.fields['System.IterationPath'],
+      assignedTo: (wi.fields['System.AssignedTo'] as unknown as { displayName?: string } | undefined)?.displayName,
       links: parseRelations(wi.relations),
       url: this.workItemWebUrl(wi.id),
     };
@@ -216,6 +222,21 @@ export class AzdoClient {
 
   async getRepository(name: string): Promise<GitRepository> {
     return this.request<GitRepository>(this.url(`git/repositories/${encodeURIComponent(name)}`));
+  }
+
+  /** Iterations of the project with their dates. Cached for a few minutes */
+  async getIterationSchedule(): Promise<ScheduledIteration[]> {
+    const key = `${this.organization}/${this.project}`;
+    const cached = scheduleCache.get(key);
+    if (cached && Date.now() - cached.time < SCHEDULE_CACHE_MS) {
+      return cached.schedule;
+    }
+    const schedule = this.request<IterationNode>(this.url('wit/classificationnodes/Iterations?$depth=20')).then(
+      flattenIterations
+    );
+    scheduleCache.set(key, { time: Date.now(), schedule });
+    schedule.catch(() => scheduleCache.delete(key));
+    return schedule;
   }
 
   /** States of a work item type, in workflow order. Cached: they rarely change */

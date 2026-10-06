@@ -14,12 +14,18 @@ export interface ArtifactRef {
 export interface WorkItemLinks {
   parentId?: number;
   childIds: number[];
+  /** Work items that must be done before this one */
+  predecessorIds: number[];
+  /** Work items that depend on this one */
+  successorIds: number[];
   branches: (ArtifactRef & { name: string })[];
   pullRequests: (ArtifactRef & { id: number })[];
 }
 
 const CHILD_REL = 'System.LinkTypes.Hierarchy-Forward';
 const PARENT_REL = 'System.LinkTypes.Hierarchy-Reverse';
+const PREDECESSOR_REL = 'System.LinkTypes.Dependency-Reverse';
+const SUCCESSOR_REL = 'System.LinkTypes.Dependency-Forward';
 const BRANCH_PREFIX = 'vstfs:///Git/Ref/';
 const PULL_REQUEST_PREFIX = 'vstfs:///Git/PullRequestId/';
 const BRANCH_REF_PREFIX = 'GB';
@@ -42,9 +48,14 @@ function parseArtifact(url: string, prefix: string): (ArtifactRef & { rest: stri
 }
 
 export function parseRelations(relations: WorkItemRelation[] | undefined): WorkItemLinks {
-  const links: WorkItemLinks = { childIds: [], branches: [], pullRequests: [] };
+  const links: WorkItemLinks = { childIds: [], predecessorIds: [], successorIds: [], branches: [], pullRequests: [] };
   for (const relation of relations ?? []) {
-    if (relation.rel === CHILD_REL || relation.rel === PARENT_REL) {
+    if (relation.rel === PREDECESSOR_REL || relation.rel === SUCCESSOR_REL) {
+      const id = workItemIdFromUrl(relation.url);
+      if (id !== undefined) {
+        (relation.rel === PREDECESSOR_REL ? links.predecessorIds : links.successorIds).push(id);
+      }
+    } else if (relation.rel === CHILD_REL || relation.rel === PARENT_REL) {
       const id = workItemIdFromUrl(relation.url);
       if (id !== undefined && relation.rel === CHILD_REL) {
         links.childIds.push(id);

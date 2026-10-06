@@ -16,6 +16,7 @@ export async function runWorkItemAction(store: WorkItemsStore, message: WorkItem
   const entry = store.find(message.id);
   switch (message.type) {
     case 'openDetails':
+    case 'openDependencyMap':
     case 'changeState':
     case 'addTask':
       // These work with any work item, including parents / children not assigned to the user

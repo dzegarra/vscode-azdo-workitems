@@ -21,7 +21,8 @@ export interface WorkItemModel {
   iterationPath: string;
   url: string;
   parentId?: number;
-  childCount: number;
+  /** Title and type of the parent, which may not be in the list (e.g. a Feature) */
+  parent?: { id: number; title: string; type: string };
   branch?: string;
   /** "local": the branch is checked out locally; "remote": only exists in the remote */
   branchLocation?: 'local' | 'remote';
@@ -62,6 +63,7 @@ export type WebviewMessage =
         | 'checkout'
         | 'createBranch'
         | 'createPullRequest'
+        | 'openDependencyMap'
         | 'openDetails'
         | 'openPullRequest'
         | 'openWorkItem';

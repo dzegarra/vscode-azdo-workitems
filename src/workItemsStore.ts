@@ -9,6 +9,7 @@ import { pullRequestStatus } from './workItemLinks';
 
 export interface WorkItemEntry {
   workItem: WorkItem;
+  parent?: { id: number; title: string; type: string };
   branch?: string;
   branchLocation?: 'local' | 'remote';
   pullRequests: PullRequestDetails[];
@@ -66,6 +67,26 @@ async function fetchPullRequests(client: AzdoClient, workItems: WorkItem[]): Pro
     }
   }
   return pullRequests;
+}
+
+/** Parents of the work items: the ones in the list plus the others (e.g. Features), fetched at once */
+async function fetchParents(
+  client: AzdoClient,
+  workItems: WorkItem[]
+): Promise<Map<number, NonNullable<WorkItemEntry['parent']>>> {
+  const byId = new Map(workItems.map((workItem) => [workItem.id, workItem]));
+  const parentIds = [...new Set(workItems.map((workItem) => workItem.links.parentId))].filter(
+    (id): id is number => id !== undefined
+  );
+  // Without the parents, the cards only lose their names: do not fail the whole list
+  const fetched = await client.getWorkItems(parentIds.filter((id) => !byId.has(id))).catch(() => []);
+  fetched.forEach((workItem) => byId.set(workItem.id, workItem));
+  return new Map(
+    parentIds
+      .map((id) => byId.get(id))
+      .filter((workItem): workItem is WorkItem => !!workItem)
+      .map(({ id, title, type }) => [id, { id, title, type }])
+  );
 }
 
 function toPullRequestModel(pr: PullRequestDetails): PullRequestModel {
@@ -151,9 +172,13 @@ export class WorkItemsStore {
         return client.getMyWorkItems(this.iterations.map(({ iteration }) => iteration.path));
       })(),
     ]);
-    const pullRequests = await fetchPullRequests(client, workItems);
+    const [pullRequests, parents] = await Promise.all([
+      fetchPullRequests(client, workItems),
+      fetchParents(client, workItems),
+    ]);
     return workItems.map((workItem) => ({
       workItem,
+      parent: workItem.links.parentId === undefined ? undefined : parents.get(workItem.links.parentId),
       ...findBranch(workItem, branches, azdoRepository.id),
       pullRequests: workItem.links.pullRequests
         .map((link) => pullRequests.get(link.id))
@@ -162,7 +187,7 @@ export class WorkItemsStore {
   }
 
   private toModel(
-    { workItem, branch, branchLocation, pullRequests }: WorkItemEntry,
+    { workItem, parent, branch, branchLocation, pullRequests }: WorkItemEntry,
     currentBranch: string | undefined
   ): WorkItemModel {
     return {
@@ -173,7 +198,7 @@ export class WorkItemsStore {
       iterationPath: workItem.iterationPath,
       url: workItem.url,
       parentId: workItem.links.parentId,
-      childCount: workItem.links.childIds.length,
+      parent,
       branch,
       branchLocation,
       isCurrentBranch: !!branch && branch === currentBranch,

@@ -94,6 +94,12 @@
         "category": "Azure Work Items"
       },
       {
+        "command": "azdoWorkItems.openDependencyMap",
+        "title": "Open Dependency Map",
+        "category": "Azure Work Items",
+        "icon": "$(type-hierarchy)"
+      },
+      {
         "command": "azdoWorkItems.checkout",
         "title": "Checkout Work Item Branch",
         "category": "Azure Work Items"
@@ -107,9 +113,14 @@
           "group": "navigation@1"
         },
         {
-          "command": "azdoWorkItems.openIterationBoard",
+          "command": "azdoWorkItems.openDependencyMap",
           "when": "view == azdoWorkItems.myItems",
           "group": "navigation@2"
+        },
+        {
+          "command": "azdoWorkItems.openIterationBoard",
+          "when": "view == azdoWorkItems.myItems",
+          "group": "navigation@3"
         },
         {
           "command": "azdoWorkItems.selectTeams",

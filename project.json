@@ -14,7 +14,8 @@
         "cwd": "tools/vscode-azdo-workitems",
         "commands": [
           "esbuild src/extension.ts --bundle --platform=node --target=node20 --format=cjs --external:vscode --sourcemap --outfile=dist/extension.js",
-          "esbuild src/webview/main.ts --bundle --platform=browser --target=es2022 --format=iife --sourcemap --outfile=dist/webview.js"
+          "esbuild src/webview/main.ts --bundle --platform=browser --target=es2022 --format=iife --sourcemap --outfile=dist/webview.js",
+          "esbuild src/webview/dependencies.ts --bundle --platform=browser --target=es2022 --format=iife --sourcemap --outfile=dist/dependencies.js"
         ],
         "parallel": true
       },
@@ -28,7 +29,8 @@
         "cwd": "tools/vscode-azdo-workitems",
         "commands": [
           "esbuild src/extension.ts --bundle --platform=node --target=node20 --format=cjs --external:vscode --sourcemap --outfile=dist/extension.js --watch",
-          "esbuild src/webview/main.ts --bundle --platform=browser --target=es2022 --format=iife --sourcemap --outfile=dist/webview.js --watch"
+          "esbuild src/webview/main.ts --bundle --platform=browser --target=es2022 --format=iife --sourcemap --outfile=dist/webview.js --watch",
+          "esbuild src/webview/dependencies.ts --bundle --platform=browser --target=es2022 --format=iife --sourcemap --outfile=dist/dependencies.js --watch"
         ],
         "parallel": true
       },

@@ -22,7 +22,7 @@ Each work item is a card with:
 
 - ID (opens the work item in Azure DevOps), type and state
 - Title
-- Parent / children: `3 children` when it is a parent; the parent ID when the parent is not in the list. Visible children (e.g. Tasks) are nested in the parent card
+- Parent: ID and title of the parent (click it to see its details), unless the card is nested in its parent's card. Children (e.g. Tasks) are nested at the bottom of the parent card
 - Branch: the local branch (`local`, or `current` when checked out) or a branch that only exists in the remote (`remote`)
 - Pull requests linked to the work item with their status: Draft, Waiting for review, Approved, Waiting for author, Rejected, Conflicts, Completed, Abandoned
 
@@ -42,6 +42,17 @@ Card actions:
 Organization, project and repository are detected from the `origin` remote.
 
 By default the view lists your work items in the current iteration of **every team you belong to**. Teams sharing the same sprint are merged; when your teams are in different sprints, the items are grouped by iteration. Use **Select Teams** in the view menu to limit the list to some teams (select none to go back to all of them). **Open Iteration Board** asks which team's board to open when there are several.
+
+## Dependencies
+
+The details of a work item list its **Predecessors** (work items it depends on) and **Successors** (work items that depend on it), with the iteration each one is planned in. A warning is shown when a predecessor is planned in a later iteration than its successor, in the same iteration, or not scheduled at all.
+
+**Open Dependency Map** (view toolbar, or the _Dependency map_ button of the details) shows the dependencies of your work items in the current iterations:
+
+- One column per iteration, ordered by date; the current iteration is highlighted and unscheduled work items go last.
+- Arrows go from the predecessor to the successor, coloured by risk: red when the predecessor is planned after its successor, orange when both are in the same iteration or the predecessor is not scheduled, blue when it is planned before, grey (dashed) when it is done.
+- Your work items have a blue border. Hover a work item to highlight its direct dependencies; click it to highlight its whole chain (everything it depends on and everything that depends on it); double-click or **Open** to see its details.
+- **+N** loads the dependencies of a work item not shown yet. **Hide done** hides finished work items; Ctrl + wheel or the buttons zoom; drag the background to move around.
 
 ## Pull request notifications
 

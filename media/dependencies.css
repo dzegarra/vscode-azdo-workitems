@@ -1,0 +1,293 @@
+body {
+  padding: 0;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ---------- Risk colours ---------- */
+
+.risk-late {
+  --risk: var(--red);
+}
+.risk-tight,
+.risk-unscheduled {
+  --risk: var(--orange);
+}
+.risk-ok {
+  --risk: var(--blue);
+}
+.risk-done {
+  --risk: var(--grey);
+}
+
+/* ---------- Toolbar ---------- */
+
+.map-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#zoom-level {
+  min-width: 40px;
+  color: var(--muted);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-line {
+  width: 18px;
+  height: 0;
+  border-top: 2px solid var(--risk);
+}
+
+.legend-line.risk-done,
+.legend-line.risk-unscheduled {
+  border-top-style: dashed;
+}
+
+.legend-mine {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--vscode-focusBorder);
+  border-radius: 3px;
+}
+
+.note {
+  margin: 6px 16px 0;
+}
+
+.message {
+  padding: 16px;
+}
+
+/* ---------- Canvas ---------- */
+
+.viewport {
+  flex: 1;
+  overflow: auto;
+  cursor: grab;
+}
+
+.viewport.dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.canvas {
+  position: relative;
+  transform-origin: 0 0;
+}
+
+.column {
+  position: absolute;
+  top: 0;
+  border-right: 1px dashed var(--border);
+}
+
+.column.current {
+  background: color-mix(in srgb, var(--vscode-focusBorder) 7%, transparent);
+}
+
+.column.unscheduled {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 8px,
+    color-mix(in srgb, var(--muted) 5%, transparent) 8px 16px
+  );
+}
+
+.column-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  padding: 10px 12px;
+}
+
+.column-name {
+  font-weight: 600;
+}
+
+.column-dates {
+  width: 100%;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* ---------- Edges ---------- */
+
+.edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.edge {
+  fill: none;
+  stroke: var(--risk);
+  stroke-width: 1.6;
+  pointer-events: stroke;
+  transition: opacity 0.15s;
+}
+
+.edge.risk-done,
+.edge.risk-unscheduled {
+  stroke-dasharray: 5 4;
+}
+
+.edge.risk-late {
+  stroke-width: 2.2;
+}
+
+.arrow path {
+  fill: var(--risk);
+}
+
+/* ---------- Nodes ---------- */
+
+.node {
+  position: absolute;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--grey);
+  border-radius: var(--radius);
+  background: var(--vscode-editorWidget-background, var(--card-bg));
+  cursor: pointer;
+  transition: opacity 0.15s, box-shadow 0.15s;
+}
+
+.node:hover,
+.node:focus-visible {
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+  outline: none;
+}
+
+.node.mine {
+  border-top-color: var(--vscode-focusBorder);
+  border-right-color: var(--vscode-focusBorder);
+  border-bottom-color: var(--vscode-focusBorder);
+}
+
+.node.focus {
+  box-shadow: 0 0 0 2px var(--vscode-focusBorder);
+}
+
+.node-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.node-id {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.node-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.node-foot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.assignee {
+  flex: 1;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.node-button {
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 15px;
+  cursor: pointer;
+}
+
+.node-button:hover {
+  color: var(--vscode-foreground);
+  border-color: var(--vscode-focusBorder);
+}
+
+/* ---------- Highlighting ---------- */
+
+.canvas.selection .node:not(.selection-node),
+.canvas.hovering .node:not(.hovering-node) {
+  opacity: 0.3;
+}
+
+.canvas.selection .edge:not(.selection-edge),
+.canvas.hovering .edge:not(.hovering-edge) {
+  opacity: 0.12;
+}
+
+/* While hovering, the hovered work item and its neighbours win over the selection */
+.canvas.hovering .node.hovering-node,
+.canvas.hovering .edge.hovering-edge {
+  opacity: 1;
+}
+
+.selection-edge,
+.hovering-edge {
+  stroke-width: 2.6;
+}
