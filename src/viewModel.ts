@@ -5,6 +5,7 @@
 import type { WorkItemAlert } from './alerts';
 import { priorityFilterValue } from './priority';
 import type { RunModel } from './pipelines';
+import type { ReviewRequestModel } from './reviewRequests';
 import type { PullRequestTone } from './workItemLinks';
 
 export interface PullRequestModel {
@@ -66,6 +67,15 @@ export interface ViewModel {
   filter: FilterModel;
   /** States in the order the work items are sorted */
   stateOrder: string[];
+  /** PRs waiting for the user's review, most urgent first */
+  reviews: ReviewsModel;
+}
+
+export interface ReviewsModel {
+  status: 'error' | 'loading' | 'ready';
+  error?: string;
+  requests: ReviewRequestModel[];
+  maxWaitHours: number;
 }
 
 export type WebviewMessage =
@@ -86,6 +96,9 @@ export type WebviewMessage =
       pullRequestId?: number;
       runId?: number;
     }
+  | { type: 'checkReviewRequests' }
+  | { type: 'checkoutReviewRequest'; pullRequestId: number }
+  | { type: 'openReviewRequest'; url: string }
   | { type: 'ready' }
   | { type: 'refresh' }
   | { type: 'setFilter'; filter: FilterModel };

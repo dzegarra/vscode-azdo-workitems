@@ -3,6 +3,7 @@ import { ICONS, icon, typeIcon } from '../icons';
 import { describeRun, RunState } from '../pipelines';
 import { NO_PRIORITY, priorityFilterValue, severityLevel, severityName, sortWorkItems } from '../priority';
 import { stateCategory, stateRank } from '../states';
+import type { ReviewRequestModel } from '../reviewRequests';
 import type {
   ExtensionMessage,
   FilterModel,
@@ -16,8 +17,15 @@ import { changedFilterKeys, describeScope, isVisible, NO_PULL_REQUEST, pullReque
 
 interface VsCodeApi {
   postMessage(message: WebviewMessage): void;
-  getState(): { search?: string; onlyAlerts?: boolean } | undefined;
-  setState(state: { search: string; onlyAlerts: boolean }): void;
+  getState(): Partial<SavedState> | undefined;
+  setState(state: SavedState): void;
+}
+interface SavedState {
+  search: string;
+  onlyAlerts: boolean;
+  reviewsCollapsed: boolean;
+  /** PRs to review already shown: the section opens again when a new one arrives */
+  seenReviews: number[];
 }
 declare function acquireVsCodeApi(): VsCodeApi;
 
@@ -34,9 +42,11 @@ const savedState = vscode.getState();
 let search = savedState?.search ?? '';
 /** Show only the work items with alerts */
 let onlyAlerts = savedState?.onlyAlerts ?? false;
+let reviewsCollapsed = savedState?.reviewsCollapsed ?? false;
+let seenReviews = savedState?.seenReviews;
 
 function saveState(): void {
-  vscode.setState({ search, onlyAlerts });
+  vscode.setState({ search, onlyAlerts, reviewsCollapsed, seenReviews: seenReviews ?? [] });
 }
 
 /** Order of the PR states in the filter */
@@ -339,6 +349,96 @@ function renderAlertsBanner(current: ViewModel): string {
   </div>`;
 }
 
+/* ---------- PRs waiting for my review ---------- */
+
+/** Most urgent first: the section takes the colour of the first one */
+/** Branch of the PR, to check it out and review it locally */
+function renderReviewBranch(request: ReviewRequestModel): string {
+  let action = '';
+  if (request.isCurrentBranch) {
+    action = '<span class="pill tone-current">current</span>';
+  } else if (request.canCheckout) {
+    action = `<button class="button small" data-action="checkoutReviewRequest" data-pr="${request.id}"
+      title="Fetch the branch of the PR and switch to it">Checkout</button>`;
+  }
+  return `<div class="row review-branch">${icon('branch')}<code title="${escapeHtml(
+    request.sourceBranch
+  )}">${escapeHtml(request.sourceBranch)}</code>${action}</div>`;
+}
+
+function renderReview(request: ReviewRequestModel): string {
+  return `<li class="review urgency-${request.urgency}">
+    <div class="review-line">
+      <span class="review-time">${request.timeLeft}</span>
+      <span class="review-meta" title="${escapeHtml(
+        `${request.repository}: ${request.author} → ${request.targetBranch}`
+      )}">
+        PR ${request.id} · ${escapeHtml(request.author)}${request.isRequired ? '' : ' · optional'}</span>
+    </div>
+    <button class="link review-title" data-action="openReviewRequest" data-url="${escapeHtml(request.url)}"
+      title="Open the PR in Azure DevOps">${escapeHtml(request.title)}</button>
+    <div class="review-bar" title="Waiting for ${request.waited} of ${model?.reviews.maxWaitHours ?? 24} h">
+      <span class="review-bar-fill" data-elapsed="${request.elapsed}"></span>
+    </div>
+    ${renderReviewBranch(request)}
+  </li>`;
+}
+
+function renderReviews(current: ViewModel): string {
+  const { requests, status, error } = current.reviews;
+  if (status === 'error') {
+    return `<div class="reviews-error muted">${icon(
+      'warning'
+    )}<span>Unable to check the PRs waiting for your review: ${escapeHtml(
+      error ?? ''
+    )}</span><button class="link" data-action="checkReviewRequests">Retry</button></div>`;
+  }
+  if (!requests.length) {
+    return '';
+  }
+  const overdue = requests.filter((request) => request.urgency === 'overdue').length;
+  const dueSoon = requests.filter((request) => request.urgency === 'dueSoon').length;
+  const pills = [
+    overdue ? `<span class="pill reviews-pill urgency-overdue">${overdue} overdue</span>` : '',
+    dueSoon ? `<span class="pill reviews-pill urgency-dueSoon">${dueSoon} due soon</span>` : '',
+  ].join('');
+  const title =
+    requests.length === 1 ? '1 PR waiting for your review' : `${requests.length} PRs waiting for your review`;
+  return `<section class="reviews urgency-${requests[0].urgency}${reviewsCollapsed ? ' collapsed' : ''}">
+    <div class="reviews-head">
+      <button class="reviews-toggle" data-action="toggleReviews" aria-expanded="${!reviewsCollapsed}">
+        ${icon('chevron', 'chevron')}${icon(
+    'pullRequest'
+  )}<span class="reviews-title">${title}</span><span class="reviews-pills">${pills}</span>
+      </button>
+      <button class="icon-button" data-action="checkReviewRequests" title="Check now" aria-label="Check the PRs waiting for your review now">${icon(
+        'refresh'
+      )}</button>
+    </div>
+    ${reviewsCollapsed ? '' : `<ul class="review-list">${requests.map(renderReview).join('')}</ul>`}
+  </section>`;
+}
+
+/** The section opens again when a PR it has not shown yet arrives */
+function trackNewReviews(current: ViewModel): void {
+  const ids = current.reviews.requests.map((request) => request.id);
+  if (current.reviews.status !== 'ready') {
+    return;
+  }
+  if (seenReviews && ids.some((id) => !seenReviews?.includes(id))) {
+    reviewsCollapsed = false;
+  }
+  seenReviews = ids;
+  saveState();
+}
+
+/** Progress bars are sized with CSSOM: the CSP of the view blocks inline styles */
+function sizeReviewBars(): void {
+  document.querySelectorAll<HTMLElement>('.review-bar-fill').forEach((fill) => {
+    fill.style.width = `${Math.round(Number(fill.dataset.elapsed) * 100)}%`;
+  });
+}
+
 function renderList(current: ViewModel): string {
   if (current.status === 'error') {
     return `<div class="message error"><p>${escapeHtml(current.error ?? 'Unknown error')}</p>
@@ -383,7 +483,8 @@ function render(): void {
     return;
   }
   if (!app.childElementCount) {
-    app.innerHTML = `<div class="toolbar">
+    app.innerHTML = `<div id="reviews"></div>
+      <div class="toolbar">
         <input id="search" type="search" placeholder="Search by ID, title or branch" aria-label="Search work items">
       </div>
       <p id="scope" class="scope"></p>
@@ -405,6 +506,8 @@ function render(): void {
   (app.querySelector('.progress') as HTMLElement).hidden = model.status !== 'loading';
   (document.getElementById('filters') as HTMLElement).innerHTML = cardItems(model).length ? renderFilters(model) : '';
   (document.getElementById('list') as HTMLElement).innerHTML = renderList(model);
+  (document.getElementById('reviews') as HTMLElement).innerHTML = renderReviews(model);
+  sizeReviewBars();
 }
 
 function toggleFilter(kind: FilterKind, value: string): void {
@@ -438,11 +541,21 @@ document.addEventListener('click', (event) => {
   if (!target) {
     return;
   }
-  const { action, filter, value, id, pr, run } = target.dataset;
+  const { action, filter, value, id, pr, run, url } = target.dataset;
   if (filter && value !== undefined) {
     toggleFilter(filter as FilterKind, value);
   } else if (action === 'refresh') {
     post({ type: 'refresh' });
+  } else if (action === 'toggleReviews') {
+    reviewsCollapsed = !reviewsCollapsed;
+    saveState();
+    render();
+  } else if (action === 'checkReviewRequests') {
+    post({ type: 'checkReviewRequests' });
+  } else if (action === 'checkoutReviewRequest' && pr) {
+    post({ type: 'checkoutReviewRequest', pullRequestId: Number(pr) });
+  } else if (action === 'openReviewRequest' && url) {
+    post({ type: 'openReviewRequest', url });
   } else if (action === 'toggleAlerts') {
     onlyAlerts = !onlyAlerts;
     saveState();
@@ -465,6 +578,7 @@ window.addEventListener('message', ({ data }: MessageEvent<ExtensionMessage>) =>
     pendingFilter = undefined;
     ({ model } = data);
   }
+  trackNewReviews(model);
   render();
 });
 

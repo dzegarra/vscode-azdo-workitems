@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { SECTION } from './config';
-import { changedFilterKeys, ExtensionMessage, FilterModel, WebviewMessage } from './viewModel';
+import { CHECKOUT_REVIEW_COMMAND, ReviewRequestsWatcher, reviewSettings } from './reviewRequestsWatcher';
+import { changedFilterKeys, ExtensionMessage, FilterModel, ViewModel, WebviewMessage } from './viewModel';
 import { runWorkItemAction } from './workItemActions';
 import { WorkItemsStore } from './workItemsStore';
 
@@ -21,7 +22,11 @@ export function filterSettings(): FilterModel {
 export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
 
-  constructor(private readonly extensionUri: vscode.Uri, private readonly store: WorkItemsStore) {}
+  constructor(
+    private readonly extensionUri: vscode.Uri,
+    private readonly store: WorkItemsStore,
+    private readonly reviews: ReviewRequestsWatcher
+  ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
@@ -37,12 +42,23 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     if (!this.view) {
       return;
     }
-    const model = this.store.toViewModel(filterSettings());
+    const model: ViewModel = {
+      ...this.store.toViewModel(filterSettings()),
+      reviews: {
+        status: this.reviews.status,
+        error: this.reviews.error,
+        requests: this.reviews.models(),
+        maxWaitHours: reviewSettings().maxWaitHours,
+      },
+    };
     const withAlerts = model.workItems.filter((item) => item.alerts.length).length;
+    const toReview = model.reviews.requests.length;
     // Number on the activity bar icon, visible while the view is closed
-    this.view.badge = withAlerts
-      ? { value: withAlerts, tooltip: `${withAlerts} work item${withAlerts === 1 ? ' needs' : 's need'} attention` }
-      : undefined;
+    const reasons = [
+      withAlerts && `${withAlerts} work item${withAlerts === 1 ? ' needs' : 's need'} attention`,
+      toReview && `${toReview} pull request${toReview === 1 ? ' is' : 's are'} waiting for your review`,
+    ].filter(Boolean);
+    this.view.badge = withAlerts + toReview ? { value: withAlerts + toReview, tooltip: reasons.join(', ') } : undefined;
     // Next to the view name ("Assigned to Me"): the sprint(s) the list comes from
     this.view.description = model.iterations.map((iteration) => iteration.name).join(', ') || undefined;
     const message: ExtensionMessage = { type: 'state', model };
@@ -56,7 +72,16 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         await this.store.ensureLoaded();
         return;
       case 'refresh':
-        await this.store.refresh();
+        await Promise.all([this.store.refresh(), this.reviews.poll()]);
+        return;
+      case 'checkReviewRequests':
+        await this.reviews.poll();
+        return;
+      case 'checkoutReviewRequest':
+        await vscode.commands.executeCommand(CHECKOUT_REVIEW_COMMAND, message.pullRequestId);
+        return;
+      case 'openReviewRequest':
+        await vscode.env.openExternal(vscode.Uri.parse(message.url));
         return;
       case 'setFilter': {
         // Filters are personal: saved in the user settings. Each write updates settings.json and

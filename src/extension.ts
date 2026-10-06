@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { createBranch } from './commands/createBranch';
+import { checkoutPullRequest } from './commands/checkoutPullRequest';
 import { createPullRequest } from './commands/createPullRequest';
 import { resolveContext, SECTION, settings } from './config';
 import { getGitApi, pickRepository, Repository } from './git';
@@ -10,6 +11,8 @@ import { DependencyMapPanel } from './dependencyMap';
 import { PipelineStatusBar } from './pipelineStatusBar';
 import { PipelineWatcher } from './pipelineWatcher';
 import { PullRequestNotifier } from './pullRequestNotifier';
+import { ReviewStatusBar } from './reviewStatusBar';
+import { CHECKOUT_REVIEW_COMMAND, ReviewRequestsWatcher } from './reviewRequestsWatcher';
 import { WorkItemDetailsPanels } from './workItemDetails';
 import { WorkItemEntry, WorkItemsStore } from './workItemsStore';
 import { VIEW_ID, WorkItemsViewProvider } from './workItemsView';
@@ -62,12 +65,14 @@ const DEBOUNCE_MS = 300;
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const git = await getGitApi();
   const store = new WorkItemsStore(git);
-  const view = new WorkItemsViewProvider(context.extensionUri, store);
   const details = new WorkItemDetailsPanels(context.extensionUri, store);
   const notifier = new PullRequestNotifier(context.globalState, store);
   const dependencyMap = new DependencyMapPanel(context.extensionUri, store);
   const pipelineWatcher = new PipelineWatcher(store);
   const pipelineStatusBar = new PipelineStatusBar(store);
+  const reviewRequests = new ReviewRequestsWatcher(context.globalState, store);
+  const reviewStatusBar = new ReviewStatusBar(reviewRequests);
+  const view = new WorkItemsViewProvider(context.extensionUri, store, reviewRequests);
   const currentRepository = () => (git.repositories.length ? pickRepository(git) : undefined);
 
   // Visible even when the sidebar is closed
@@ -115,6 +120,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     dependencyMap,
     pipelineWatcher,
     pipelineStatusBar,
+    reviewRequests,
+    reviewStatusBar,
+    reviewRequests.onDidChange(() => view.post()),
     alertsStatus,
     store.onDidChange(() => {
       view.post();
@@ -126,6 +134,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       context.subscriptions.push(watchRepository(repository));
       void store.refresh();
       notifier.start();
+      reviewRequests.start();
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (!event.affectsConfiguration(SECTION)) {
@@ -133,6 +142,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       if (event.affectsConfiguration(`${SECTION}.notifications`)) {
         notifier.start();
+      }
+      if (event.affectsConfiguration(`${SECTION}.reviews`)) {
+        reviewRequests.start();
+        return;
       }
       // Filters are applied by the view; other settings need to reload the work items
       const onlyFilters = ['teams', 'organization', 'project', 'repository', 'remote', 'alerts'].every(
@@ -181,12 +194,40 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     command('azdoWorkItems.openDependencyMap', (id?: number) => dependencyMap.open(id)),
     command('azdoWorkItems.checkPullRequests', () => notifier.poll(true)),
+    command('azdoWorkItems.checkReviewRequests', () => reviewRequests.poll()),
+    command(CHECKOUT_REVIEW_COMMAND, async (pullRequestId?: number) => {
+      const requests = reviewRequests.models();
+      // From the command palette: pick one of the PRs waiting for review
+      const request =
+        pullRequestId === undefined
+          ? (
+              await vscode.window.showQuickPick(
+                requests
+                  .filter((r) => r.canCheckout)
+                  .map((r) => ({
+                    label: `PR ${r.id}: ${r.title}`,
+                    description: r.sourceBranch,
+                    detail: r.timeLeft,
+                    request: r,
+                  })),
+                { title: 'Check out the branch of a PR waiting for your review' }
+              )
+            )?.request
+          : requests.find((r) => r.id === pullRequestId);
+      if (pullRequestId !== undefined && !request) {
+        throw new Error(`PR ${pullRequestId} is no longer waiting for your review.`);
+      }
+      if (request) {
+        await checkoutPullRequest(git, request);
+      }
+    }),
     command('azdoWorkItems.openIterationBoard', () => openIterationBoard(currentRepository(), store)),
     command('azdoWorkItems.selectTeams', () => selectTeams(currentRepository()))
   );
   // When the repository is not open yet, it starts from onDidOpenRepository
   if (git.repositories.length) {
     notifier.start();
+    reviewRequests.start();
     // Loads the work items even if the sidebar is closed, so the alerts show up in the status bar
     void store.ensureLoaded();
   }

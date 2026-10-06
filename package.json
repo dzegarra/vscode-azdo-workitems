@@ -113,6 +113,16 @@
         "command": "azdoWorkItems.checkout",
         "title": "Checkout Work Item Branch",
         "category": "Azure Work Items"
+      },
+      {
+        "command": "azdoWorkItems.checkReviewRequests",
+        "title": "Check Pull Requests Waiting for My Review",
+        "category": "Azure Work Items"
+      },
+      {
+        "command": "azdoWorkItems.checkoutPullRequest",
+        "title": "Check Out a Pull Request Waiting for My Review",
+        "category": "Azure Work Items"
       }
     ],
     "menus": {
@@ -560,6 +570,72 @@
           "type": "boolean",
           "default": true,
           "description": "Show the CI runs of your pull requests in the status bar."
+        },
+        "azdoWorkItems.reviews.maxWaitHours": {
+          "type": "number",
+          "default": 24,
+          "minimum": 1,
+          "description": "Hours a pull request may wait for reviewers (team rule), counted from its publication. Overdue PRs are shown in red."
+        },
+        "azdoWorkItems.reviews.dueSoonHours": {
+          "type": "number",
+          "default": 6,
+          "minimum": 0,
+          "description": "Hours before the maximum wait when a pull request is due soon: shown in orange and notified once."
+        },
+        "azdoWorkItems.reviews.remindOverdueEveryHours": {
+          "type": "number",
+          "default": 4,
+          "minimum": 0,
+          "description": "While a pull request is overdue, how often it is notified again (hours). 0: only once."
+        },
+        "azdoWorkItems.reviews.includeOptional": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also list the pull requests where you are an optional reviewer. By default only the ones where you are a required reviewer are listed."
+        },
+        "azdoWorkItems.reviews.notifications": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "requested",
+              "dueSoon",
+              "overdue",
+              "digest",
+              "replied",
+              "resolved"
+            ],
+            "enumDescriptions": [
+              "You are added as reviewer of a pull request (or it is published from draft)",
+              "A pull request is due soon (`azdoWorkItems.reviews.dueSoonHours` before the maximum wait)",
+              "A pull request is overdue; repeated every `azdoWorkItems.reviews.remindOverdueEveryHours`",
+              "The first time VS Code checks each day: one summary of all the pull requests waiting for your review",
+              "Someone replies to a comment you started on a pull request you review",
+              "A comment you started on a pull request you review is resolved (Resolved, Won't fix, Closed, By design)"
+            ]
+          },
+          "uniqueItems": true,
+          "default": [
+            "requested",
+            "dueSoon",
+            "overdue",
+            "digest",
+            "replied",
+            "resolved"
+          ],
+          "description": "Notifications about the pull requests you review. Empty: none."
+        },
+        "azdoWorkItems.reviews.pollIntervalSeconds": {
+          "type": "number",
+          "default": 120,
+          "minimum": 30,
+          "description": "How often the pull requests waiting for your review are checked (seconds)."
+        },
+        "azdoWorkItems.reviews.showInStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show how many pull requests are waiting for your review in the status bar."
         }
       }
     }

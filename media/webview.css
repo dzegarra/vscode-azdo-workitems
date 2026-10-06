@@ -568,6 +568,204 @@ button.state:focus-visible {
   font-weight: normal;
 }
 
+/* ---------- PRs waiting for my review ---------- */
+
+.urgency-fresh {
+  --review-accent: var(--blue);
+}
+
+.urgency-dueSoon {
+  --review-accent: var(--orange);
+}
+
+.urgency-overdue {
+  --review-accent: var(--red);
+}
+
+.reviews {
+  margin: 8px 12px 0;
+  border: 1px solid color-mix(in srgb, var(--review-accent) 60%, transparent);
+  border-left: 4px solid var(--review-accent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--review-accent) 10%, var(--card-bg));
+}
+
+.reviews-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 0;
+}
+
+.reviews-toggle {
+  display: grid;
+  flex: 1;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 4px 6px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.reviews-toggle > .icon:not(.chevron) {
+  color: var(--review-accent);
+}
+
+.reviews-toggle .chevron {
+  transition: transform 0.15s;
+  transform: rotate(90deg);
+}
+
+.reviews.collapsed .chevron {
+  transform: none;
+}
+
+.reviews-title {
+  font-weight: 700;
+}
+
+.reviews-pills {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 3;
+  gap: 4px;
+}
+
+.reviews-pills:empty {
+  display: none;
+}
+
+/* Solid, like the priority pills: readable in any theme */
+.reviews-pill.urgency-overdue {
+  color: #ffffff;
+  background: #c62828;
+  font-weight: 600;
+}
+
+.reviews-pill.urgency-dueSoon {
+  color: #1f1f1f;
+  background: #f2a900;
+  font-weight: 600;
+}
+
+.icon-button {
+  display: inline-flex;
+  padding: 4px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  color: var(--vscode-foreground);
+  background: var(--card-hover);
+}
+
+.review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0 8px 8px;
+  list-style: none;
+}
+
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--review-accent);
+  border-radius: 4px;
+  background: var(--card-bg);
+}
+
+.review-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 11.5px;
+}
+
+.review-time {
+  flex: none;
+  color: var(--review-accent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.review.urgency-overdue .review-time {
+  color: var(--vscode-errorForeground, var(--red));
+}
+
+.review-meta {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-title {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--vscode-foreground);
+  line-height: 1.35;
+  text-align: left;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.review-title:hover {
+  color: var(--vscode-textLink-foreground);
+}
+
+/* Share of the maximum wait already used */
+.review-bar {
+  height: 4px;
+  margin-top: 2px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--review-accent) 20%, transparent);
+}
+
+.review-bar-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--review-accent);
+}
+
+.review-branch {
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.review-branch code {
+  flex: 1;
+  min-width: 0;
+}
+
+.reviews-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 12px 0;
+  font-size: 12px;
+}
+
+.reviews-error span {
+  flex: 1;
+  min-width: 0;
+}
+
 /* ---------- Priority / severity ---------- */
 
 .urgency {

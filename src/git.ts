@@ -54,6 +54,7 @@ export interface Repository {
   checkout(treeish: string): Promise<void>;
   fetch(remote?: string, ref?: string): Promise<void>;
   push(remoteName?: string, branchName?: string, setUpstream?: boolean): Promise<void>;
+  pull(): Promise<void>;
   log(options?: { maxEntries?: number; range?: string }): Promise<Commit[]>;
 }
 

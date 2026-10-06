@@ -15,6 +15,7 @@ Brings the Azure DevOps work of the current sprint into VS Code: your Backlog It
 - **[Dependencies](#dependencies)**: predecessors and successors in the details, and an interactive map by iteration that highlights the risky ones.
 - **[CI pipelines](#ci-pipelines)**: live state of the runs validating your pull requests, in the cards and the status bar, with a notification when they finish.
 - **[Pull request notifications](#pull-request-notifications)** when your PRs get comments or votes, or are merged.
+- **[Reviews](#pull-requests-waiting-for-my-review)**: the PRs waiting for your review at the top of the sidebar and in the status bar, with the time left before the 24 hours run out, orange when due soon and red when overdue, one-click checkout of their branch, plus notifications, reminders, a daily digest, and notifications when your review comments are answered or resolved.
 
 ## Install
 
@@ -108,6 +109,36 @@ The extension checks the pull requests you created (every 2 minutes by default) 
 
 Your own comments and votes, system messages and vote resets are ignored. When more than 3 updates arrive at once, a single summary notification lists them. Updates that happened while VS Code was closed are notified when it starts. Run **Check My Pull Requests Now** from the command palette to check immediately.
 
+## Pull requests waiting for my review
+
+No PR should wait for its reviewers more than 24 hours. The extension makes sure you do not miss the PRs where you are a **required reviewer** and have not voted yet.
+
+**In the sidebar**, a section at the top of _Assigned to Me_ lists them, most urgent first. Each card shows the time left before the 24 hours run out ("18 h left", "5 h left", "overdue by 3 h"), the PR, its author, and a bar that fills as the time runs out. Click the title to open the PR in Azure DevOps, or **Checkout** to review it locally: the branch of the PR is fetched and checked out (and pulled when your local copy of it is behind). **Checkout** is also offered by the notifications, and by **Check Out a Pull Request Waiting for My Review** in the command palette. It is only available for the PRs of the repository open in VS Code.
+
+| Colour | When                                                                       |
+| ------ | -------------------------------------------------------------------------- |
+| Blue   | Time left                                                                  |
+| Orange | Due soon: less than 6 hours left (`azdoWorkItems.reviews.dueSoonHours`)    |
+| Red    | Overdue: waiting more than 24 hours (`azdoWorkItems.reviews.maxWaitHours`) |
+
+The section takes the colour of the most urgent PR and counts the overdue and due soon ones. It can be collapsed; it opens again when a new PR arrives. The badge of the activity bar icon counts these PRs, together with the work items that need attention.
+
+**In the status bar**, e.g. `2 to review · 4 h left` (the time left of the most urgent PR), in yellow when one is due soon and in red when one is overdue. Hover it to see each PR; click it to show the list (`azdoWorkItems.reviews.showInStatusBar`).
+
+**Notifications** (`azdoWorkItems.reviews.notifications`):
+
+- when you are added as reviewer of a PR (or a draft you review is published),
+- when a PR is due soon,
+- when a PR is overdue, and again every 4 hours while it stays overdue (`azdoWorkItems.reviews.remindOverdueEveryHours`, 0: only once),
+- when someone **replies** to a comment you started on a PR you review, or **resolves** it (Resolved, Won't fix, Closed, By design). **Open Comment** opens the thread in the PR. PRs completed or abandoned with comments of yours still open are checked one last time, since authors often resolve the comments right before completing the PR,
+- a daily digest the first time VS Code checks each day ("3 pull requests are waiting for your review: 1 overdue, 1 due soon"), instead of the other notifications of that check.
+
+Requests received while VS Code was closed are notified when it starts.
+
+Once you vote (approve, approve with suggestions, wait for author or reject) or decline, the PR leaves the list. Drafts and your own PRs are not listed. The waiting time counts from the publication of the PR: its creation or, when it was created as a draft, the moment it was published. PRs are checked every 2 minutes (`azdoWorkItems.reviews.pollIntervalSeconds`, the refresh button of the section, or **Check Pull Requests Waiting for My Review**). Set `azdoWorkItems.reviews.includeOptional` to also list the PRs where you are an optional reviewer.
+
+Only the PRs where you are a reviewer yourself are listed: when a group (e.g. a team) is the reviewer, the PR shows up once you are added to it, or once you vote for the group.
+
 ## Settings
 
 | Setting                                                   | Description                                                    |
@@ -131,5 +162,6 @@ Your own comments and votes, system messages and vote resets are ignored. When m
 | `azdoWorkItems.alerts.*`                                  | Alert rules: tags, required fields, types, PR task pattern     |
 | `azdoWorkItems.integrationBuild.*`                        | Feed, package and suffix used to fill Integrated in Build      |
 | `azdoWorkItems.pipelines.*`                               | CI runs: refresh interval, notifications, status bar           |
+| `azdoWorkItems.reviews.*`                                 | PRs to review: maximum wait, due soon, reminders, status bar   |
 
 Modules and feature names added with **Add new…** are saved to the workspace settings (`.vscode/settings.json`), so they can be committed and shared.

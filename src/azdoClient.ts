@@ -3,6 +3,8 @@ import { buildMyWorkItemsQuery, Iteration, mergeTeamIterations, TeamIteration } 
 import { PackageVersion } from './integrationBuild';
 import { BuildRun, pullRequestBranch } from './pipelines';
 import { imageMimeType, isOrganizationUrl } from './richTextImages';
+import { ReviewerPullRequest } from './reviewRequests';
+import { ThreadResponse } from './reviewThreads';
 import { flattenIterations, IterationNode, ScheduledIteration } from './schedule';
 import { parseRelations, PullRequestState, WorkItemLinks, WorkItemRelation } from './workItemLinks';
 
@@ -49,6 +51,8 @@ const scheduleCache = new Map<string, { time: number; schedule: Promise<Schedule
 
 /** Most recent PRs checked for notifications */
 const MAX_PULL_REQUESTS = 30;
+/** Active PRs checked for review requests */
+const MAX_REVIEW_REQUESTS = 100;
 
 export interface PullRequestComment {
   threadId: number;
@@ -429,6 +433,30 @@ export class AzdoClient {
       reviewers: pr.reviewers ?? [],
       webUrl: this.pullRequestWebUrlByName(pr.repository.name, pr.pullRequestId),
     }));
+  }
+
+  /** Active PRs of the project where the user is a reviewer (directly, not through a group) */
+  async getPullRequestsToReview(reviewerId: string): Promise<ReviewerPullRequest[]> {
+    const result = await this.request<{
+      value: (Omit<ReviewerPullRequest, 'reviewers' | 'webUrl'> & Partial<ReviewerPullRequest>)[];
+    }>(
+      this.url(
+        `git/pullrequests?searchCriteria.reviewerId=${reviewerId}&searchCriteria.status=active&$top=${MAX_REVIEW_REQUESTS}`
+      )
+    );
+    return result.value.map((pr) => ({
+      ...pr,
+      reviewers: pr.reviewers ?? [],
+      webUrl: this.pullRequestWebUrlByName(pr.repository.name, pr.pullRequestId),
+    }));
+  }
+
+  /** All the threads of the PR: comments, and system threads (publication from draft, votes…) */
+  async getPullRequestThreads(repositoryId: string, pullRequestId: number): Promise<ThreadResponse[]> {
+    const result = await this.request<{ value: ThreadResponse[] }>(
+      this.url(`git/repositories/${repositoryId}/pullRequests/${pullRequestId}/threads`)
+    );
+    return result.value;
   }
 
   /** Text comments of the PR (system messages and deleted comments are left out) */
