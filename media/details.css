@@ -184,3 +184,27 @@ h1 {
 .pill.risk-unscheduled {
   --pill-color: var(--orange);
 }
+
+.button.with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.button-group {
+  display: inline-flex;
+}
+
+.button-group .button:first-child:not(:last-child) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.button.icon-only {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 1px;
+  padding: 2px 6px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}

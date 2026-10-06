@@ -2,11 +2,14 @@ import { getAccessToken } from './auth';
 import { buildMyWorkItemsQuery, Iteration, mergeTeamIterations, TeamIteration } from './iterations';
 import { PackageVersion } from './integrationBuild';
 import { BuildRun, pullRequestBranch } from './pipelines';
+import { imageMimeType, isOrganizationUrl } from './richTextImages';
 import { flattenIterations, IterationNode, ScheduledIteration } from './schedule';
 import { parseRelations, PullRequestState, WorkItemLinks, WorkItemRelation } from './workItemLinks';
 
 const API_VERSION = '7.1';
 const BASE_URL = 'https://dev.azure.com';
+/** Images bigger than this are not embedded in the details of work items */
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 /** Runs fetched per pull request: enough to find the last run of each pipeline */
 const MAX_BUILDS = 10;
 /** Azure Artifacts has its own host */
@@ -132,6 +135,27 @@ export class AzdoClient {
       throw new Error(`Azure DevOps ${response.status}: ${message || response.statusText}`);
     }
     return (await response.json()) as T;
+  }
+
+  /**
+   * Downloads an image hosted by the organization (e.g. an attachment of a work item) as a data URI,
+   * so a webview can show it without authenticating. URLs of other hosts never get the token
+   */
+  async getImageAsDataUri(url: string): Promise<string> {
+    if (!isOrganizationUrl(url, this.organization)) {
+      throw new Error(`Not an image of the organization ${this.organization}: ${url}`);
+    }
+    const token = await getAccessToken();
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'image/*' } });
+    const mime = imageMimeType(response.headers.get('content-type'));
+    if (!response.ok || !mime) {
+      throw new Error(`Unable to load the image ${url} (${response.status})`);
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > MAX_IMAGE_BYTES) {
+      throw new Error(`The image ${url} is too big to be shown`);
+    }
+    return `data:${mime};base64,${bytes.toString('base64')}`;
   }
 
   /** Current iteration of the team. Undefined when the team has no iteration covering today */

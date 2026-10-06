@@ -1,15 +1,22 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
-import { WorkItem } from './azdoClient';
+import { AzdoClient, WorkItem } from './azdoClient';
 import { resolveContext } from './config';
-import { DetailsData, RelatedWorkItem, renderDetailsBody } from './detailsHtml';
+import { DetailsData, RelatedWorkItem, renderDetailsBody, RICH_TEXT_FIELDS } from './detailsHtml';
+import { imageSources, isOrganizationUrl, replaceImageSources } from './richTextImages';
+import { isFigmaExtensionInstalled, openFigmaLinks } from './figma';
+import { findFigmaLinks } from './figmaLinks';
 import { escapeHtml } from './html';
 import { dependencyRisk } from './schedule';
 import { WebviewMessage } from './viewModel';
 import { runWorkItemAction } from './workItemActions';
 import { WorkItemsStore } from './workItemsStore';
 
-type DetailsMessage = WebviewMessage | { type: 'reload'; id: number };
+type DetailsMessage =
+  | WebviewMessage
+  | { type: 'openFigma'; id: number }
+  | { type: 'openFigmaInBrowser'; id: number }
+  | { type: 'reload'; id: number };
 
 interface OpenPanel {
   panel: vscode.WebviewPanel;
@@ -18,6 +25,31 @@ interface OpenPanel {
 }
 
 const MAX_TITLE_LENGTH = 40;
+
+/**
+ * Replaces the images of the rich text fields (Azure DevOps attachments, which need authentication)
+ * with data URIs. Images that cannot be downloaded keep their URL; the rest of the details is shown anyway
+ */
+async function embedImages(client: AzdoClient, fields: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const richText = RICH_TEXT_FIELDS.map(([, name]) => name).filter((name) => typeof fields[name] === 'string');
+  const sources = [...new Set(richText.flatMap((name) => imageSources(fields[name] as string)))].filter((url) =>
+    isOrganizationUrl(url, client.organization)
+  );
+  if (!sources.length) {
+    return fields;
+  }
+  const downloads = await Promise.allSettled(sources.map((url) => client.getImageAsDataUri(url)));
+  const replacements = new Map<string, string>();
+  downloads.forEach((download, index) => {
+    if (download.status === 'fulfilled') {
+      replacements.set(sources[index], download.value);
+    }
+  });
+  return {
+    ...fields,
+    ...Object.fromEntries(richText.map((name) => [name, replaceImageSources(fields[name] as string, replacements)])),
+  };
+}
 
 function toRelated({ id, title, type, state, iterationPath }: WorkItem): RelatedWorkItem {
   return { id, title, type, state, iterationPath };
@@ -65,11 +97,19 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
     const open: OpenPanel = { panel };
     this.panels.set(id, open);
     panel.onDidDispose(() => this.panels.delete(id));
-    panel.webview.onDidReceiveMessage((message: DetailsMessage) =>
-      message.type === 'reload' ? this.load(id, open) : this.onAction(message)
-    );
+    panel.webview.onDidReceiveMessage((message: DetailsMessage) => this.onMessage(id, open, message));
     this.render(id, open);
     await this.load(id, open);
+  }
+
+  private async onMessage(id: number, open: OpenPanel, message: DetailsMessage): Promise<void> {
+    if (message.type === 'reload') {
+      await this.load(id, open);
+    } else if (message.type === 'openFigma' || message.type === 'openFigmaInBrowser') {
+      await openFigmaLinks(open.data?.figmaLinks ?? [], message.type === 'openFigmaInBrowser');
+    } else {
+      await this.onAction(message);
+    }
   }
 
   private async onAction(message: WebviewMessage): Promise<void> {
@@ -99,7 +139,12 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
         title: details.title,
         type: details.type,
         state: details.state,
-        fields: details.fields,
+        fields: await embedImages(client, details.fields),
+        figmaLinks: findFigmaLinks(
+          RICH_TEXT_FIELDS.map(([, name]) => details.fields[name])
+            .filter((value): value is string => typeof value === 'string')
+            .join('\n')
+        ),
         parent: parent && toRelated(parent),
         children: pick(childIds).map(toRelated),
         predecessors: pick(predecessorIds).map((wi) => ({
@@ -127,7 +172,11 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
       body = `<p class="error">${escapeHtml(error)}</p>
         <button class="button primary" data-action="reload" data-id="${id}">Retry</button>`;
     } else if (data) {
-      body = renderDetailsBody({ ...data, card: this.store.workItemModel(id) });
+      body = renderDetailsBody({
+        ...data,
+        card: this.store.workItemModel(id),
+        figmaInVsCode: isFigmaExtensionInstalled(),
+      });
     }
     panel.webview.html = this.page(panel.webview, body);
   }

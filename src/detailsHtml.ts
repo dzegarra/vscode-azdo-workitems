@@ -1,5 +1,6 @@
 /** Body of the work item details panel. Pure, so no "vscode" import */
 import { canHaveTasks, escapeHtml, sanitizeHtml, stateButton } from './html';
+import type { FigmaLink } from './figmaLinks';
 import { icon, typeIcon } from './icons';
 import { DependencyRisk, RISK_DESCRIPTIONS } from './schedule';
 import { stateCategory } from './states';
@@ -29,6 +30,10 @@ export interface DetailsData {
   iterationNames?: Partial<Record<string, string>>;
   /** Branch and PRs, when the work item is in the current iterations */
   card?: WorkItemModel;
+  /** Figma links of the description, acceptance criteria… */
+  figmaLinks?: FigmaLink[];
+  /** True when the Figma extension for VS Code is installed */
+  figmaInVsCode?: boolean;
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}T/;
@@ -62,7 +67,7 @@ const META_FIELDS: [string, string][] = [
   ['Changed', 'System.ChangedDate'],
 ];
 
-const RICH_TEXT_FIELDS: [string, string][] = [
+export const RICH_TEXT_FIELDS: [string, string][] = [
   ['Description', 'System.Description'],
   ['Repro steps', 'Microsoft.VSTS.TCM.ReproSteps'],
   ['System info', 'Microsoft.VSTS.TCM.SystemInfo'],
@@ -103,11 +108,38 @@ function renderDevelopment(card: WorkItemModel | undefined): string {
   return branch + pullRequests.join('');
 }
 
+/** Opens the Figma designs linked in the description: in VS Code when possible, or in the browser */
+function renderFigmaActions(data: DetailsData): string[] {
+  const links = data.figmaLinks ?? [];
+  if (!links.length) {
+    return [];
+  }
+  const where = data.figmaInVsCode ? 'in VS Code (Figma extension)' : 'in the browser';
+  const label = links.length === 1 ? 'Figma design' : `Figma designs (${links.length})`;
+  return [
+    `<span class="button-group">
+      <button class="button with-icon" data-action="openFigma" data-id="${data.id}" title="Open ${escapeHtml(
+      links.length === 1 ? links[0].name : 'a design'
+    )} ${where}">${icon('figma')}${label}</button>${
+      data.figmaInVsCode
+        ? `<button class="button icon-only" data-action="openFigmaInBrowser" data-id="${data.id}"
+              title="Open in the browser" aria-label="Open the Figma design in the browser">${icon(
+                'external'
+              )}</button>`
+        : ''
+    }
+    </span>`,
+  ];
+}
+
 function renderActions(data: DetailsData): string {
   const { card } = data;
   const actions = [
     `<button class="button" data-action="openWorkItem" data-id="${data.id}">Open in Azure DevOps</button>`,
-    `<button class="button" data-action="openDependencyMap" data-id="${data.id}">Dependency map</button>`,
+    `<button class="button with-icon" data-action="openDependencyMap" data-id="${data.id}">${icon(
+      'graph'
+    )}Dependency map</button>`,
+    ...renderFigmaActions(data),
   ];
   if (card && !card.branch) {
     actions.unshift(

@@ -1,6 +1,12 @@
 /** Icons and type styles shared by the webviews. No "vscode" import */
 
 export const ICONS = {
+  graph:
+    '<circle cx="3.5" cy="4" r="1.8"/><circle cx="12.5" cy="4" r="1.8"/><circle cx="8" cy="12" r="1.8"/><path d="M5.3 4h5.4M4.5 5.6 7 10.4M11.5 5.6 9 10.4"/>',
+  figma:
+    '<path d="M8 1.5H5.75a2.25 2.25 0 0 0 0 4.5H8zM8 1.5h2.25a2.25 2.25 0 0 1 0 4.5H8zM8 6H5.75a2.25 2.25 0 0 0 0 4.5H8zM8 10.5H5.75A2.25 2.25 0 1 0 8 12.75z"/><circle cx="10.25" cy="8.25" r="2.25"/>',
+  external:
+    '<path d="M9.5 2.5h4v4M13.5 2.5 7.5 8.5M12 9.5v3.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-8a.5.5 0 0 1 .5-.5H7"/>',
   clock: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/>',
   sync: '<path d="M13 8a5 5 0 0 1-8.5 3.5M3 8a5 5 0 0 1 8.5-3.5M11.5 2v2.5H9M4.5 14v-2.5H7"/>',
   check: '<circle cx="8" cy="8" r="5.5"/><path d="m5.5 8.2 1.7 1.7 3.3-3.4"/>',
