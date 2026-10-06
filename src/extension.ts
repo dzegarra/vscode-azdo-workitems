@@ -9,6 +9,7 @@ import { resolveWorkItemEntry } from './commands/pickWorkItem';
 import { fillIntegrationBuild } from './commands/integrationBuild';
 import { addTask, changeState } from './commands/workItemEdits';
 import { DependencyMapPanel } from './dependencyMap';
+import { CurrentWorkItemStatusBar } from './currentWorkItemStatusBar';
 import { PipelineStatusBar } from './pipelineStatusBar';
 import { PipelineWatcher } from './pipelineWatcher';
 import { PullRequestNotifier } from './pullRequestNotifier';
@@ -71,6 +72,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const dependencyMap = new DependencyMapPanel(context.extensionUri, store);
   const pipelineWatcher = new PipelineWatcher(store);
   const pipelineStatusBar = new PipelineStatusBar(store);
+  const currentWorkItemStatusBar = new CurrentWorkItemStatusBar(git, store);
   const reviewRequests = new ReviewRequestsWatcher(context.globalState, store);
   const reviewStatusBar = new ReviewStatusBar(reviewRequests);
   const view = new WorkItemsViewProvider(context.extensionUri, store, reviewRequests);
@@ -121,6 +123,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     dependencyMap,
     pipelineWatcher,
     pipelineStatusBar,
+    currentWorkItemStatusBar,
     reviewRequests,
     reviewStatusBar,
     reviewRequests.onDidChange(() => view.post()),

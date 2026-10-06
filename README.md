@@ -10,6 +10,7 @@ Brings the Azure DevOps work of the current sprint into VS Code: your Backlog It
 - **[Branches and pull requests](#usage)** that follow the team conventions:
   - Branches: `<feature|bugfix>/<module>/<id>-<short-name>`, e.g. `feature/fui-admin/5641-network-restart-button`. Creating one links it to the work item and moves it to Committed.
   - PR titles: `[<ids>] <Feature Name>: <description>`, e.g. `[123,554] FUI Administration: Show the network configuration`.
+- **[Current work item](#work-item-of-the-current-branch)** in the status bar, also when you check out a colleague's branch to review it.
 - **[Work item editing](#usage)**: change states, add tasks, and see the full details (description, acceptance criteria, effort, tags, parent, children) in an editor tab.
 - **[Alerts](#alerts)** for the work items that break the team rules (Done with open tasks, missing PR task, blocking tags, empty required fields…), in the cards, the view badge and the status bar. **[Integrated in Build](#integrated-in-build)** can be filled in one click from the last release of the deploy image.
 - **[Dependencies](#dependencies)**: predecessors and successors in the details, and an interactive map by iteration that highlights the risky ones.
@@ -55,6 +56,14 @@ Card actions:
 Organization, project and repository are detected from the `origin` remote.
 
 By default the view lists your work items in the current iteration of **every team you belong to**. Teams sharing the same sprint are merged; when your teams are in different sprints, the items are grouped by iteration. Use **Select Teams** in the view menu to limit the list to some teams (select none to go back to all of them). **Open Iteration Board** asks which team's board to open when there are several.
+
+## Work item of the current branch
+
+The status bar shows the work item of the checked out branch, e.g. `66280 Access point label shows the SSID`. Click it to see its details. The work item is found by the number in the branch name (`feature/<module>/<id>-<name>`); branches of colleagues that do not follow the convention exactly, like `feature/MA/60800_unit_config`, work too. Nothing is shown when the branch has no work item (`develop`, `release/…`).
+
+When the work item is **not assigned to you**, e.g. you checked out a colleague's branch to review a PR, it is shown with an eye icon and the name of the **owner of the branch** (the person who created it in Azure DevOps): `60800 Update Unit Configuration… · Borislav Surovi EXT`. Hover it to see who the work item is assigned to, its state and the branch. When the branch was not pushed yet, the person the work item is assigned to is named instead.
+
+It can be turned off with `azdoWorkItems.statusBar.currentWorkItem`.
 
 ## Alerts
 
@@ -165,6 +174,7 @@ Only the PRs where you are a reviewer yourself are listed: when a group (e.g. a 
 | `azdoWorkItems.organization` / `.project` / `.repository` | Override what is detected from the remote                      |
 | `azdoWorkItems.alerts.*`                                  | Alert rules: tags, required fields, types, PR task pattern     |
 | `azdoWorkItems.integrationBuild.*`                        | Feed, package and suffix used to fill Integrated in Build      |
+| `azdoWorkItems.statusBar.currentWorkItem`                 | Show the work item of the current branch in the status bar     |
 | `azdoWorkItems.pipelines.*`                               | CI runs: refresh interval, notifications, status bar           |
 | `azdoWorkItems.reviews.*`                                 | PRs to review: maximum wait, due soon, reminders, status bar   |
 

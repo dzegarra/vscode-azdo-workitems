@@ -647,6 +647,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show how many pull requests are waiting for your review in the status bar."
+        },
+        "azdoWorkItems.statusBar.currentWorkItem": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the work item of the checked out branch in the status bar. Work items assigned to someone else (e.g. a colleague's branch checked out to review it) are shown differently, with the person who created the branch."
         }
       }
     }

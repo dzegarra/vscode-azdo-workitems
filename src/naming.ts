@@ -59,6 +59,20 @@ export function parseBranchName(branch: string): ParsedBranch | undefined {
   };
 }
 
+/**
+ * Work item a branch refers to. Branches of other developers do not always follow the convention
+ * ("feature/MA/60800_unit_config"), so, failing that, a folder of the name starting with a number is used
+ */
+export function workItemIdFromBranch(branch: string): number | undefined {
+  const strict = parseBranchName(branch);
+  if (strict) {
+    return strict.id;
+  }
+  const [, ...folders] = branch.replace(/^refs\/heads\//, '').split('/');
+  const numbered = folders.map((folder) => /^(\d+)(?:[-_].*)?$/.exec(folder)?.[1]).find((id) => id !== undefined);
+  return numbered === undefined ? undefined : Number(numbered);
+}
+
 /** True when the branch name follows the convention and refers to the given work item */
 export function branchBelongsToWorkItem(branch: string, id: number): boolean {
   return parseBranchName(branch)?.id === id;

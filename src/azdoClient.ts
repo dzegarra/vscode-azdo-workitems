@@ -396,12 +396,25 @@ export class AzdoClient {
    * Unlike the local "origin/…" refs and the links of the work items, this is never stale
    */
   async getBranchObjectId(repositoryId: string, branch: string): Promise<string | undefined> {
+    return (await this.getBranchInfo(repositoryId, branch))?.objectId;
+  }
+
+  /** The branch in Azure DevOps with the person who created it; undefined when it does not exist there */
+  async getBranchInfo(
+    repositoryId: string,
+    branch: string
+  ): Promise<{ objectId: string; creator?: { id?: string; displayName: string; uniqueName?: string } } | undefined> {
     const name = `refs/heads/${branch}`;
     // "filter" matches the refs starting with it, e.g. "heads/feature/a" also matches "heads/feature/ab"
-    const result = await this.request<{ value: { name: string; objectId: string }[] }>(
-      this.url(`git/repositories/${repositoryId}/refs?filter=${encodeURIComponent(`heads/${branch}`)}`)
-    );
-    return result.value.find((ref) => ref.name === name)?.objectId;
+    const result = await this.request<{
+      value: {
+        name: string;
+        objectId: string;
+        creator?: { id?: string; displayName: string; uniqueName?: string };
+      }[];
+    }>(this.url(`git/repositories/${repositoryId}/refs?filter=${encodeURIComponent(`heads/${branch}`)}`));
+    const ref = result.value.find((candidate) => candidate.name === name);
+    return ref && { objectId: ref.objectId, creator: ref.creator };
   }
 
   /** Deletes the branch in Azure DevOps, only if it still points to the given commit */

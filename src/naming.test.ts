@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   branchBelongsToWorkItem,
+  workItemIdFromBranch,
   branchTypeFor,
   buildBranchName,
   buildPrDescription,
@@ -76,5 +77,25 @@ describe('pull requests', () => {
     expect(buildPrDescription(['Created component A', 'Updated hook B'])).toBe(
       '- Created component A\n- Updated hook B'
     );
+  });
+});
+
+describe('workItemIdFromBranch', () => {
+  it('reads the ID of the branches that follow the convention', () => {
+    expect(workItemIdFromBranch('feature/fui-admin/5641-network-restart-button')).toBe(5641);
+    expect(workItemIdFromBranch('refs/heads/bugfix/fui-admin/66280-accesspointlabel')).toBe(66280);
+    expect(workItemIdFromBranch('bugfix/fui-admin/66280')).toBe(66280);
+  });
+
+  it('reads the ID of the branches of colleagues that do not follow it exactly', () => {
+    expect(workItemIdFromBranch('feature/MA/60800_unit_config_for_rates_multiplier')).toBe(60800);
+    expect(workItemIdFromBranch('fetaure/fui-apps-artificial-lift/59494-plunger-control-last-arrivals')).toBe(59494);
+    expect(workItemIdFromBranch('feature/apps/65945-allow-to-select-unit-preset')).toBe(65945);
+  });
+
+  it('finds no work item in other branches', () => {
+    for (const branch of ['develop', 'main', 'release/1.2', 'feature/dark-mode', 'hotfix/v2/some-fix', '123-fix']) {
+      expect(workItemIdFromBranch(branch)).toBeUndefined();
+    }
   });
 });
