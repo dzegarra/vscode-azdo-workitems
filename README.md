@@ -1,4 +1,4 @@
-# Azure DevOps Work Items (VS Code extension)
+# Azure DevOps: My Work Items (VS Code extension)
 
 Brings the Azure DevOps work of the current sprint into VS Code: your Backlog Items and Bugs, their tasks, branches, pull requests and CI runs, and the problems the team agreed to avoid.
 
@@ -27,7 +27,7 @@ To debug it, run the launch configuration **Run Azure Work Items Extension** (F5
 
 ## Usage
 
-Open the **Azure Work Items** view in the activity bar. The first time, VS Code asks you to sign in with your Microsoft account.
+Open the **Azure Work Items** container in the activity bar: its **Assigned to Me** view lists only the work items assigned to you (the line under the search box and the view title tell from which sprints and teams). The first time, VS Code asks you to sign in with your Microsoft account.
 
 Each work item is a card with:
 

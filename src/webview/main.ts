@@ -12,7 +12,7 @@ import type {
   WebviewMessage,
   WorkItemModel,
 } from '../viewModel';
-import { changedFilterKeys, isVisible, NO_PULL_REQUEST, pullRequestFilterValue } from '../viewModel';
+import { changedFilterKeys, describeScope, isVisible, NO_PULL_REQUEST, pullRequestFilterValue } from '../viewModel';
 
 interface VsCodeApi {
   postMessage(message: WebviewMessage): void;
@@ -386,6 +386,7 @@ function render(): void {
     app.innerHTML = `<div class="toolbar">
         <input id="search" type="search" placeholder="Search by ID, title or branch" aria-label="Search work items">
       </div>
+      <p id="scope" class="scope"></p>
       <div class="progress" hidden></div>
       <div id="filters" class="filters"></div>
       <div id="list" class="list"></div>`;
@@ -397,6 +398,10 @@ function render(): void {
       render();
     });
   }
+  const scope = describeScope(model.iterations);
+  const scopeElement = document.getElementById('scope') as HTMLElement;
+  scopeElement.textContent = scope.text;
+  scopeElement.title = scope.tooltip;
   (app.querySelector('.progress') as HTMLElement).hidden = model.status !== 'loading';
   (document.getElementById('filters') as HTMLElement).innerHTML = cardItems(model).length ? renderFilters(model) : '';
   (document.getElementById('list') as HTMLElement).innerHTML = renderList(model);

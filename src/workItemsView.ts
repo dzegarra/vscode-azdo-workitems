@@ -43,6 +43,8 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     this.view.badge = withAlerts
       ? { value: withAlerts, tooltip: `${withAlerts} work item${withAlerts === 1 ? ' needs' : 's need'} attention` }
       : undefined;
+    // Next to the view name ("Assigned to Me"): the sprint(s) the list comes from
+    this.view.description = model.iterations.map((iteration) => iteration.name).join(', ') || undefined;
     const message: ExtensionMessage = { type: 'state', model };
     void this.view.webview.postMessage(message);
   }

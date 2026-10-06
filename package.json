@@ -1,9 +1,9 @@
 {
   "name": "vscode-azdo-workitems",
-  "displayName": "Azure DevOps Work Items",
-  "description": "List my Azure DevOps work items in the current iteration, create branches and pull requests following the team conventions.",
+  "displayName": "Azure DevOps: My Work Items",
+  "description": "Your Azure DevOps work items in the current sprint: the Backlog Items and Bugs assigned to you, with their tasks, branches, pull requests, CI runs and alerts.",
   "version": "0.1.0",
-  "publisher": "abb-flow-ui",
+  "publisher": "abb-totalflowx",
   "private": true,
   "license": "UNLICENSED",
   "repository": {
@@ -38,7 +38,7 @@
         {
           "type": "webview",
           "id": "azdoWorkItems.myItems",
-          "name": "Current Iterations"
+          "name": "Assigned to Me"
         }
       ]
     },

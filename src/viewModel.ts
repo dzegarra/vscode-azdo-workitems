@@ -141,3 +141,23 @@ export function isVisible(
     !query || [String(item.id), item.title, item.branch ?? ''].some((value) => value.toLowerCase().includes(query))
   );
 }
+
+/**
+ * Scope of the list, so it is clear it only shows the work items assigned to the user,
+ * e.g. "Assigned to you in Sprint 42 (FUI Team)"
+ */
+export function describeScope(iterations: Pick<IterationModel, 'name' | 'teams'>[]): {
+  text: string;
+  tooltip: string;
+} {
+  const details = iterations.map(({ name, teams }) => `${name} (${teams.join(', ')})`);
+  if (!iterations.length) {
+    return { text: 'Assigned to you', tooltip: 'Work items assigned to you' };
+  }
+  const tooltip = `Work items assigned to you in the current iteration of your teams:\n${details.join('\n')}`;
+  if (iterations.length === 1) {
+    return { text: `Assigned to you in ${details[0]}`, tooltip };
+  }
+  const teams = new Set(iterations.flatMap((iteration) => iteration.teams)).size;
+  return { text: `Assigned to you in the current sprints of ${teams} teams`, tooltip };
+}

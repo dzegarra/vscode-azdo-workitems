@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { changedFilterKeys, isVisible, NO_PULL_REQUEST } from './viewModel';
+import { changedFilterKeys, describeScope, isVisible, NO_PULL_REQUEST } from './viewModel';
 import { parseRelations, pullRequestStatus, PullRequestState } from './workItemLinks';
 
 const api = 'https://dev.azure.com/org/_apis/wit/workItems';
@@ -143,5 +143,20 @@ describe('changedFilterKeys', () => {
         hiddenPriorities: [],
       })
     ).toEqual(['types', 'hiddenStates', 'hiddenPullRequestStates']);
+  });
+});
+
+describe('describeScope', () => {
+  it('makes clear only the work items assigned to the user are listed', () => {
+    expect(describeScope([]).text).toBe('Assigned to you');
+    expect(describeScope([{ name: 'Sprint 42', teams: ['FUI Team', 'Platform'] }]).text).toBe(
+      'Assigned to you in Sprint 42 (FUI Team, Platform)'
+    );
+    const scope = describeScope([
+      { name: 'Sprint 42', teams: ['FUI Team'] },
+      { name: 'PMUI Sprint 7', teams: ['PMUI Team'] },
+    ]);
+    expect(scope.text).toBe('Assigned to you in the current sprints of 2 teams');
+    expect(scope.tooltip).toContain('PMUI Sprint 7 (PMUI Team)');
   });
 });

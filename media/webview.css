@@ -685,3 +685,15 @@ button.state:focus-visible {
     animation: none;
   }
 }
+
+/* ---------- Scope ---------- */
+
+.scope {
+  overflow: hidden;
+  margin: 0 12px 6px;
+  line-height: 1.4;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
