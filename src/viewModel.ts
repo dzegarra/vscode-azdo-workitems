@@ -73,6 +73,7 @@ export type WebviewMessage =
         | 'checkout'
         | 'createBranch'
         | 'createPullRequest'
+        | 'fillIntegrationBuild'
         | 'openDependencyMap'
         | 'openDetails'
         | 'openPullRequest'

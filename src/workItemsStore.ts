@@ -7,7 +7,7 @@ import { branchBelongsToWorkItem } from './naming';
 import { FilterModel, PullRequestModel, ViewModel, WorkItemModel } from './viewModel';
 import { pullRequestStatus } from './workItemLinks';
 import { parsePriority, PRIORITY_FIELD, SEVERITY_FIELD } from './priority';
-import { AlertRules, findAlerts, parseTags, resolveRequiredFields, WorkItemAlert } from './alerts';
+import { AlertRules, findAlerts, parseTags, resolveFieldName, resolveRequiredFields, WorkItemAlert } from './alerts';
 
 export interface WorkItemEntry {
   workItem: WorkItem;
@@ -88,31 +88,43 @@ async function fetchRelated(client: AzdoClient, workItems: WorkItem[]): Promise<
   return byId;
 }
 
+/** "Integrated in Build" can be filled automatically from the last release of the deploy image */
+function withQuickFixes(alerts: WorkItemAlert[], integrationBuildField: string | undefined): WorkItemAlert[] {
+  return alerts.map((alert) =>
+    alert.rule === 'missingField' && integrationBuildField && alert.field === integrationBuildField
+      ? { ...alert, action: 'fillIntegrationBuild' as const }
+      : alert
+  );
+}
+
 /** Problems of the work item, from its child tasks, PRs, tags and fields */
 function alertsOf(
   workItem: WorkItem,
   related: Map<number, WorkItem>,
   pullRequests: PullRequestDetails[],
-  rules: AlertRules
+  rules: AlertRules & { integrationBuildField?: string }
 ): WorkItemAlert[] {
   const tasks = workItem.links.childIds
     .map((id) => related.get(id))
     .filter((child): child is WorkItem => child?.type === 'Task')
     .map(({ id, title, state }) => ({ id, title, state }));
-  return findAlerts(
-    {
-      type: workItem.type,
-      state: workItem.state,
-      tags: parseTags(workItem.fields['System.Tags']),
-      fields: workItem.fields,
-      tasks,
-      pullRequests: pullRequests.map((pr) => ({ status: pr.status, isDraft: pr.isDraft })),
-    },
-    rules
+  return withQuickFixes(
+    findAlerts(
+      {
+        type: workItem.type,
+        state: workItem.state,
+        tags: parseTags(workItem.fields['System.Tags']),
+        fields: workItem.fields,
+        tasks,
+        pullRequests: pullRequests.map((pr) => ({ status: pr.status, isDraft: pr.isDraft })),
+      },
+      rules
+    ),
+    rules.integrationBuildField
   );
 }
 
-async function alertRules(client: AzdoClient): Promise<AlertRules | undefined> {
+async function alertRules(client: AzdoClient): Promise<(AlertRules & { integrationBuildField?: string }) | undefined> {
   const s = settings().alerts;
   if (!s.enabled) {
     return undefined;
@@ -130,6 +142,7 @@ async function alertRules(client: AzdoClient): Promise<AlertRules | undefined> {
     blockingTags: s.blockingTags,
     pullRequestTaskPattern,
     requiredFields: resolveRequiredFields(s.requiredFields, fields),
+    integrationBuildField: resolveFieldName(settings().integrationBuild.field, fields),
   };
 }
 

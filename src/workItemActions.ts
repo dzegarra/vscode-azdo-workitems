@@ -19,6 +19,7 @@ export async function runWorkItemAction(store: WorkItemsStore, message: WorkItem
     case 'openDependencyMap':
     case 'changeState':
     case 'addTask':
+    case 'fillIntegrationBuild':
       // These work with any work item, including parents / children not assigned to the user
       await vscode.commands.executeCommand(`azdoWorkItems.${message.type}`, message.id);
       return;

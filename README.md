@@ -59,6 +59,15 @@ Backlog Items and Bugs with problems the team agreed to avoid are flagged in red
 
 The PR task is the task whose title contains "PR" or "Pull Request". **Fix** next to an alert about a single task opens its state picker. Tags, required fields, the work item types and the PR task pattern can be changed in the `azdoWorkItems.alerts.*` settings.
 
+### Integrated in Build
+
+When a Bug is Ready to Test, "Integrated in Build" must tell testers in which release the fix ships: the version of the **last published** `rmc.image.deploy` package (feed `bison_deployimage_rmc`) followed by `+` (the release after that one), e.g. `0.24.63+`.
+
+- **Fill** next to the "Integrated in Build is empty" alert looks the version up and proposes the value, ready to confirm or edit.
+- Moving a Bug to Ready to Test with the state picker of the extension proposes it right away when the field is empty (Escape skips it).
+
+The feed, package, suffix, field and states can be changed in the `azdoWorkItems.integrationBuild.*` settings. Fields can be named as in the work item form ("Integrated in Build"), as in the API ("Integration Build") or by reference name.
+
 ## Dependencies
 
 The details of a work item list its **Predecessors** (work items it depends on) and **Successors** (work items that depend on it), with the iteration each one is planned in. A warning is shown when a predecessor is planned in a later iteration than its successor, in the same iteration, or not scheduled at all.

@@ -3,6 +3,7 @@ import { AzdoClient, WorkItem } from '../azdoClient';
 import { resolveContext } from '../config';
 import { normalizeState } from '../states';
 import { WorkItemsStore } from '../workItemsStore';
+import { offerIntegrationBuild } from './integrationBuild';
 
 const CATEGORY_LABELS: Partial<Record<string, string>> = {
   Proposed: 'Not started',
@@ -43,6 +44,7 @@ export async function changeState(store: WorkItemsStore, id: number): Promise<vo
     () => client.updateWorkItemState(workItem.id, picked.state)
   );
   await store.refresh();
+  await offerIntegrationBuild(store, workItem, picked.state);
 }
 
 /** Creates a Task under the work item */

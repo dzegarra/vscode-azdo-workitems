@@ -4,6 +4,7 @@ import { createPullRequest } from './commands/createPullRequest';
 import { resolveContext, SECTION, settings } from './config';
 import { getGitApi, pickRepository, Repository } from './git';
 import { resolveWorkItemEntry } from './commands/pickWorkItem';
+import { fillIntegrationBuild } from './commands/integrationBuild';
 import { addTask, changeState } from './commands/workItemEdits';
 import { DependencyMapPanel } from './dependencyMap';
 import { PullRequestNotifier } from './pullRequestNotifier';
@@ -164,6 +165,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const parentId = id ?? (await resolveWorkItemEntry(store, undefined))?.workItem.id;
       if (parentId) {
         await addTask(store, parentId);
+      }
+    }),
+    command('azdoWorkItems.fillIntegrationBuild', async (id?: number) => {
+      const workItemId = id ?? (await resolveWorkItemEntry(store, undefined))?.workItem.id;
+      if (workItemId) {
+        await fillIntegrationBuild(store, workItemId);
       }
     }),
     command('azdoWorkItems.openDependencyMap', (id?: number) => dependencyMap.open(id)),

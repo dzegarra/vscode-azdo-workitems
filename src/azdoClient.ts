@@ -1,10 +1,13 @@
 import { getAccessToken } from './auth';
 import { buildMyWorkItemsQuery, Iteration, mergeTeamIterations, TeamIteration } from './iterations';
+import { PackageVersion } from './integrationBuild';
 import { flattenIterations, IterationNode, ScheduledIteration } from './schedule';
 import { parseRelations, PullRequestState, WorkItemLinks, WorkItemRelation } from './workItemLinks';
 
 const API_VERSION = '7.1';
 const BASE_URL = 'https://dev.azure.com';
+/** Azure Artifacts has its own host */
+const FEEDS_URL = 'https://feeds.dev.azure.com';
 const NOT_FOUND = 404;
 /** The work items API accepts up to 200 IDs per request */
 const MAX_IDS_PER_REQUEST = 200;
@@ -299,6 +302,35 @@ export class AzdoClient {
       body: JSON.stringify(operations),
     });
     return this.toWorkItem(created);
+  }
+
+  /** All the versions of a package of an Azure Artifacts feed of the project */
+  async getPackageVersions(feed: string, packageName: string, protocolType: string): Promise<PackageVersion[]> {
+    const query = [
+      `protocolType=${encodeURIComponent(protocolType)}`,
+      `packageNameQuery=${encodeURIComponent(packageName)}`,
+      'includeAllVersions=true',
+      `api-version=${API_VERSION}`,
+    ].join('&');
+    const result = await this.request<{ value: { name: string; versions?: PackageVersion[] }[] }>(
+      `${FEEDS_URL}/${encodeURIComponent(this.organization)}/${encodeURIComponent(
+        this.project
+      )}/_apis/packaging/Feeds/${encodeURIComponent(feed)}/packages?${query}`
+    );
+    // The name query also matches packages containing the name
+    const found = result.value.find((pkg) => pkg.name.toLowerCase() === packageName.toLowerCase());
+    if (!found) {
+      throw new Error(`Package "${packageName}" not found in the feed "${feed}".`);
+    }
+    return found.versions ?? [];
+  }
+
+  async updateWorkItemField(workItemId: number, referenceName: string, value: string): Promise<void> {
+    await this.request(this.url(`wit/workitems/${workItemId}`), {
+      method: 'PATCH',
+      contentType: 'application/json-patch+json',
+      body: JSON.stringify([{ op: 'add', path: `/fields/${referenceName}`, value }]),
+    });
   }
 
   async updateWorkItemState(workItemId: number, state: string): Promise<void> {

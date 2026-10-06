@@ -25,6 +25,15 @@ export function settings() {
     linkBranchToWorkItem: config.get<boolean>('linkBranchToWorkItem', true),
     stateOnBranchCreated: config.get<Partial<Record<string, string>>>('stateOnBranchCreated', {}),
     stateOrder: config.get<string[]>('stateOrder', DEFAULT_STATE_ORDER),
+    integrationBuild: {
+      field: config.get<string>('integrationBuild.field', 'Integrated in Build'),
+      workItemTypes: config.get<string[]>('integrationBuild.workItemTypes', ['Bug']),
+      states: config.get<string[]>('integrationBuild.states', ['Ready to Test']),
+      feed: config.get<string>('integrationBuild.feed', 'bison_deployimage_rmc'),
+      packageName: config.get<string>('integrationBuild.package', 'rmc.image.deploy'),
+      protocolType: config.get<string>('integrationBuild.protocolType', 'UPack'),
+      suffix: config.get<string>('integrationBuild.suffix', '+'),
+    },
     alerts: {
       enabled: config.get<boolean>('alerts.enabled', true),
       workItemTypes: config.get<string[]>('alerts.workItemTypes', ['Product Backlog Item', 'Bug']),

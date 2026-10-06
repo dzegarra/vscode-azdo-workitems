@@ -100,6 +100,11 @@
         "icon": "$(type-hierarchy)"
       },
       {
+        "command": "azdoWorkItems.fillIntegrationBuild",
+        "title": "Fill Integrated in Build with the Last Release",
+        "category": "Azure Work Items"
+      },
+      {
         "command": "azdoWorkItems.checkout",
         "title": "Checkout Work Item Branch",
         "category": "Azure Work Items"
@@ -489,6 +494,51 @@
             }
           ],
           "description": "Fields that must have a value. Fields that do not exist in the project are ignored."
+        },
+        "azdoWorkItems.integrationBuild.field": {
+          "type": "string",
+          "default": "Integrated in Build",
+          "description": "Field filled with the last release of the deploy image (display name or reference name)."
+        },
+        "azdoWorkItems.integrationBuild.workItemTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "Bug"
+          ],
+          "description": "Work item types for which the field is offered when they move to one of the states below."
+        },
+        "azdoWorkItems.integrationBuild.states": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "Ready to Test"
+          ],
+          "description": "States in which the field must be filled. Moving a work item to them from the extension offers to fill it."
+        },
+        "azdoWorkItems.integrationBuild.feed": {
+          "type": "string",
+          "default": "bison_deployimage_rmc",
+          "description": "Azure Artifacts feed (of the current project) publishing the deploy image."
+        },
+        "azdoWorkItems.integrationBuild.package": {
+          "type": "string",
+          "default": "rmc.image.deploy",
+          "description": "Package whose last published version is used."
+        },
+        "azdoWorkItems.integrationBuild.protocolType": {
+          "type": "string",
+          "default": "UPack",
+          "description": "Protocol of the package (UPack for Universal Packages)."
+        },
+        "azdoWorkItems.integrationBuild.suffix": {
+          "type": "string",
+          "default": "+",
+          "description": "Appended to the version: the fix ships in the release after the last published one."
         }
       }
     }

@@ -218,9 +218,12 @@ function renderAlerts(item: WorkItemModel): string {
     return '';
   }
   const alerts = item.alerts.map((alert) => {
-    const fix = alert.relatedId
-      ? ` <button class="link" data-action="changeState" data-id="${alert.relatedId}" title="Change the state of ${alert.relatedId}">Fix</button>`
-      : '';
+    let fix = '';
+    if (alert.action === 'fillIntegrationBuild') {
+      fix = ` <button class="link" data-action="fillIntegrationBuild" data-id="${item.id}" title="Use the last release of the deploy image">Fill</button>`;
+    } else if (alert.relatedId) {
+      fix = ` <button class="link" data-action="changeState" data-id="${alert.relatedId}" title="Change the state of ${alert.relatedId}">Fix</button>`;
+    }
     return `<li>${icon('warning')}<span>${escapeHtml(alert.message)}${fix}</span></li>`;
   });
   return `<ul class="alerts" aria-label="Problems to fix">${alerts.join('')}</ul>`;

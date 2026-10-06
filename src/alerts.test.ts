@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AlertInput, AlertRules, findAlerts, parseTags, resolveRequiredFields } from './alerts';
+import { AlertInput, AlertRules, findAlerts, parseTags, resolveFieldName, resolveRequiredFields } from './alerts';
 
 const EFFORT = 'Microsoft.VSTS.Scheduling.Effort';
 const EFFORT_DAYS = 'Custom.EffortInDays';
@@ -24,7 +24,7 @@ const rules: AlertRules = {
     [
       { name: 'Effort', referenceName: EFFORT },
       { name: 'Effort in days', referenceName: EFFORT_DAYS },
-      { name: 'Integrated in Build', referenceName: INTEGRATION_BUILD },
+      { name: 'Integration Build', referenceName: INTEGRATION_BUILD },
     ]
   ),
 };
@@ -100,7 +100,7 @@ describe('findAlerts', () => {
 
   it('requires Effort and Effort in days in Backlog Items', () => {
     expect(findAlerts(pbi({ fields: { [EFFORT]: 3, [EFFORT_DAYS]: '' } }), rules)).toEqual([
-      { rule: 'missingField', message: '"Effort in days" is empty' },
+      { rule: 'missingField', message: '"Effort in days" is empty', field: EFFORT_DAYS },
     ]);
     expect(rulesOf(pbi({ fields: {} }))).toEqual(['missingField', 'missingField']);
   });
@@ -122,5 +122,23 @@ describe('parseTags', () => {
   it('splits the tags field', () => {
     expect(parseTags('Needs refinement; UX ;')).toEqual(['Needs refinement', 'UX']);
     expect(parseTags(undefined)).toEqual([]);
+  });
+});
+
+describe('resolveFieldName', () => {
+  // As returned by the API of the project: the form shows this field as "Integrated in Build"
+  const fields = [
+    { name: 'Integration Build', referenceName: 'Microsoft.VSTS.Build.IntegrationBuild' },
+    { name: 'Effort in days', referenceName: 'Custom.Effortindays' },
+  ];
+
+  it('accepts names, form labels and reference names, ignoring case', () => {
+    expect(resolveFieldName('Integrated in Build', fields)).toBe('Microsoft.VSTS.Build.IntegrationBuild');
+    expect(resolveFieldName('integration build', fields)).toBe('Microsoft.VSTS.Build.IntegrationBuild');
+    expect(resolveFieldName('Effort in days', fields)).toBe('Custom.Effortindays');
+    expect(resolveFieldName('Microsoft.VSTS.Build.IntegrationBuild', fields)).toBe(
+      'Microsoft.VSTS.Build.IntegrationBuild'
+    );
+    expect(resolveFieldName('Unknown', fields)).toBeUndefined();
   });
 });

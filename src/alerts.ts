@@ -14,6 +14,10 @@ export interface WorkItemAlert {
   message: string;
   /** Work item the alert is about, when it is not the work item itself (e.g. its PR task) */
   relatedId?: number;
+  /** Reference name of the empty field, for "missingField" alerts */
+  field?: string;
+  /** Quick fix offered next to the alert */
+  action?: 'fillIntegrationBuild';
 }
 
 export interface AlertTask {
@@ -141,7 +145,11 @@ function fieldAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {
     .filter((rule) => rule.types.includes(input.type) && (!rule.states?.length || isOneOf(input.state, rule.states)))
     .flatMap((rule) => rule.fields)
     .filter((field) => field.referenceName && isEmpty(input.fields[field.referenceName]))
-    .map((field) => ({ rule: 'missingField' as const, message: `"${field.name}" is empty` }));
+    .map((field) => ({
+      rule: 'missingField' as const,
+      message: `"${field.name}" is empty`,
+      field: field.referenceName,
+    }));
 }
 
 export function findAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {
@@ -167,17 +175,32 @@ export function parseTags(tags: unknown): string[] {
 }
 
 /** Resolves the display names of the required fields ("Effort in days") to their reference names */
+/**
+ * Labels shown in the work item forms that differ from the field names returned by the API.
+ * E.g. the form shows "Integrated in Build" for the field the API calls "Integration Build"
+ */
+const FORM_LABELS: Partial<Record<string, string>> = {
+  'integrated in build': 'Microsoft.VSTS.Build.IntegrationBuild',
+};
+
+/** Reference name of a field given its name, its form label ("Integrated in Build") or its reference name */
+export function resolveFieldName(name: string, fields: { name: string; referenceName: string }[]): string | undefined {
+  const lower = name.trim().toLowerCase();
+  const byLabel = FORM_LABELS[lower]?.toLowerCase();
+  return fields.find((field) =>
+    [field.name.toLowerCase(), field.referenceName.toLowerCase()].some((candidate) =>
+      [lower, byLabel].includes(candidate)
+    )
+  )?.referenceName;
+}
+
+/** Resolves the names of the required fields ("Effort in days") to their reference names */
 export function resolveRequiredFields(
   rules: { types: string[]; states?: string[]; fields: string[] }[],
   fields: { name: string; referenceName: string }[]
 ): RequiredFieldsRule[] {
-  const byName = new Map<string, string>();
-  for (const field of fields) {
-    byName.set(field.name.toLowerCase(), field.referenceName);
-    byName.set(field.referenceName.toLowerCase(), field.referenceName);
-  }
   return rules.map((rule) => ({
     ...rule,
-    fields: rule.fields.map((name) => ({ name, referenceName: byName.get(name.toLowerCase()) })),
+    fields: rule.fields.map((name) => ({ name, referenceName: resolveFieldName(name, fields) })),
   }));
 }
