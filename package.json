@@ -389,6 +389,98 @@
           "default": 120,
           "minimum": 30,
           "description": "How often your pull requests are checked, in seconds."
+        },
+        "azdoWorkItems.alerts.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show alerts on the work items with problems the team agreed to avoid."
+        },
+        "azdoWorkItems.alerts.workItemTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "Product Backlog Item",
+            "Bug"
+          ],
+          "description": "Work item types checked for alerts."
+        },
+        "azdoWorkItems.alerts.blockingTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "Needs refinement",
+            "Requirements",
+            "UX feedback required",
+            "Missing REST API",
+            "Blocked",
+            "PT Feedback Required"
+          ],
+          "description": "Tags meaning a work item cannot be completed yet: an alert is shown when a work item with one of them is started. Case is ignored."
+        },
+        "azdoWorkItems.alerts.pullRequestTaskPattern": {
+          "type": "string",
+          "default": "\\b(PR|pull request)\\b",
+          "description": "Regular expression (case is ignored) recognizing the PR task among the tasks of a work item by its title."
+        },
+        "azdoWorkItems.alerts.requiredFields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "types",
+              "fields"
+            ],
+            "properties": {
+              "types": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Work item types"
+              },
+              "states": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Only in these states. Empty: always"
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Field names, as shown in Azure DevOps (or reference names)"
+              }
+            }
+          },
+          "default": [
+            {
+              "types": [
+                "Product Backlog Item"
+              ],
+              "fields": [
+                "Effort",
+                "Effort in days"
+              ]
+            },
+            {
+              "types": [
+                "Bug"
+              ],
+              "states": [
+                "Ready to Test"
+              ],
+              "fields": [
+                "Integrated in Build"
+              ]
+            }
+          ],
+          "description": "Fields that must have a value. Fields that do not exist in the project are ignored."
         }
       }
     }

@@ -10,20 +10,32 @@ import type {
   WebviewMessage,
   WorkItemModel,
 } from '../viewModel';
-import { isVisible, NO_PULL_REQUEST, pullRequestFilterValue } from '../viewModel';
+import { changedFilterKeys, isVisible, NO_PULL_REQUEST, pullRequestFilterValue } from '../viewModel';
 
 interface VsCodeApi {
   postMessage(message: WebviewMessage): void;
-  getState(): { search?: string } | undefined;
-  setState(state: { search: string }): void;
+  getState(): { search?: string; onlyAlerts?: boolean } | undefined;
+  setState(state: { search: string; onlyAlerts: boolean }): void;
 }
 declare function acquireVsCodeApi(): VsCodeApi;
 
 type FilterKind = 'pullRequest' | 'state' | 'type';
 
 const vscode = acquireVsCodeApi();
+/** Toggling several chips quickly saves the filter only once */
+const SAVE_FILTER_DELAY_MS = 400;
+let saveFilterTimer: ReturnType<typeof setTimeout> | undefined;
+/** Filter chosen by the user and not saved yet */
+let pendingFilter: FilterModel | undefined;
 let model: ViewModel | undefined;
-let search = vscode.getState()?.search ?? '';
+const savedState = vscode.getState();
+let search = savedState?.search ?? '';
+/** Show only the work items with alerts */
+let onlyAlerts = savedState?.onlyAlerts ?? false;
+
+function saveState(): void {
+  vscode.setState({ search, onlyAlerts });
+}
 
 /** Order of the PR states in the filter */
 const PULL_REQUEST_ORDER = [
@@ -155,6 +167,20 @@ function renderChild(item: WorkItemModel): string {
   </li>`;
 }
 
+/** Problems the developers must fix ASAP */
+function renderAlerts(item: WorkItemModel): string {
+  if (!item.alerts.length) {
+    return '';
+  }
+  const alerts = item.alerts.map((alert) => {
+    const fix = alert.relatedId
+      ? ` <button class="link" data-action="changeState" data-id="${alert.relatedId}" title="Change the state of ${alert.relatedId}">Fix</button>`
+      : '';
+    return `<li>${icon('warning')}<span>${escapeHtml(alert.message)}${fix}</span></li>`;
+  });
+  return `<ul class="alerts" aria-label="Problems to fix">${alerts.join('')}</ul>`;
+}
+
 /** Parent of the work item, when it is not the card the work item is nested in */
 function renderParent(item: WorkItemModel, visibleIds: Set<number>): string {
   if (item.parentId === undefined || visibleIds.has(item.parentId)) {
@@ -173,7 +199,13 @@ function renderParent(item: WorkItemModel, visibleIds: Set<number>): string {
 }
 
 function renderCard(item: WorkItemModel, children: WorkItemModel[], visibleIds: Set<number>): string {
-  return `<article class="card state-border-${stateCategory(item.state)}${item.isCurrentBranch ? ' current' : ''}">
+  const classes = [
+    'card',
+    `state-border-${stateCategory(item.state)}`,
+    item.isCurrentBranch ? 'current' : '',
+    item.alerts.length ? 'has-alerts' : '',
+  ].join(' ');
+  return `<article class="${classes}">
     <header class="card-head">
       ${typeIcon(item.type)}
       <button class="link id" data-action="openWorkItem" data-id="${item.id}" title="Open in Azure DevOps">${
@@ -184,6 +216,7 @@ function renderCard(item: WorkItemModel, children: WorkItemModel[], visibleIds: 
     </header>
     <div class="title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
     ${renderParent(item, visibleIds)}
+    ${renderAlerts(item)}
     ${renderBranch(item)}
     ${item.pullRequests.map((pr) => renderPullRequest(item, pr)).join('')}
     ${renderActions(item)}
@@ -217,6 +250,19 @@ function renderIteration(iteration: IterationModel, items: WorkItemModel[], curr
   </section>`;
 }
 
+/** Summary of the work items with problems, with a toggle to show only them */
+function renderAlertsBanner(current: ViewModel): string {
+  const count = current.workItems.filter((item) => item.alerts.length).length;
+  if (!count && !onlyAlerts) {
+    return '';
+  }
+  const label = count === 1 ? '1 work item needs attention' : `${count} work items need attention`;
+  return `<div class="alerts-banner${count ? '' : ' resolved'}" role="status">
+    ${icon('warning')}<span>${count ? label : 'No work items need attention'}</span>
+    <button class="button small" data-action="toggleAlerts">${onlyAlerts ? 'Show all' : 'Show only these'}</button>
+  </div>`;
+}
+
 function renderList(current: ViewModel): string {
   if (current.status === 'error') {
     return `<div class="message error"><p>${escapeHtml(current.error ?? 'Unknown error')}</p>
@@ -229,7 +275,9 @@ function renderList(current: ViewModel): string {
     return '<p class="message muted">No work items assigned to you in the current iterations of your teams.</p>';
   }
   const visible = sortByState(
-    current.workItems.filter((item) => isVisible(item, current.filter, search)),
+    current.workItems.filter(
+      (item) => isVisible(item, current.filter, search) && (!onlyAlerts || item.alerts.length > 0)
+    ),
     current.stateOrder
   );
   const hidden = current.workItems.length - visible.length;
@@ -249,7 +297,7 @@ function renderList(current: ViewModel): string {
           )
           .join('')
       : renderCards(visible, current) || '<p class="message muted">No work items match the filters.</p>';
-  return body + hiddenNote;
+  return renderAlertsBanner(current) + body + hiddenNote;
 }
 
 /* ---------- Page ---------- */
@@ -270,7 +318,7 @@ function render(): void {
     input.value = search;
     input.addEventListener('input', () => {
       search = input.value;
-      vscode.setState({ search });
+      saveState();
       render();
     });
   }
@@ -295,10 +343,12 @@ function toggleFilter(kind: FilterKind, value: string): void {
   } else {
     filter.hiddenPullRequestStates = toggle(filter.hiddenPullRequestStates, value);
   }
-  // Render right away; the extension saves the filter and sends the state back
+  // Render right away, and save once the user stops clicking
   model = { ...model, filter };
+  pendingFilter = filter;
   render();
-  post({ type: 'setFilter', filter });
+  clearTimeout(saveFilterTimer);
+  saveFilterTimer = setTimeout(() => post({ type: 'setFilter', filter }), SAVE_FILTER_DELAY_MS);
 }
 
 document.addEventListener('click', (event) => {
@@ -311,6 +361,10 @@ document.addEventListener('click', (event) => {
     toggleFilter(filter as FilterKind, value);
   } else if (action === 'refresh') {
     post({ type: 'refresh' });
+  } else if (action === 'toggleAlerts') {
+    onlyAlerts = !onlyAlerts;
+    saveState();
+    render();
   } else if (action && id) {
     post({
       type: action as Extract<WebviewMessage, { id: number }>['type'],
@@ -321,7 +375,13 @@ document.addEventListener('click', (event) => {
 });
 
 window.addEventListener('message', ({ data }: MessageEvent<ExtensionMessage>) => {
-  ({ model } = data);
+  // While the last filter is not saved, the extension still sends older filters: keep the user's one
+  if (pendingFilter && changedFilterKeys(data.model.filter, pendingFilter).length) {
+    model = { ...data.model, filter: pendingFilter };
+  } else {
+    pendingFilter = undefined;
+    ({ model } = data);
+  }
   render();
 });
 

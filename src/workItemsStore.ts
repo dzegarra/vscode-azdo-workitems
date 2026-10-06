@@ -1,15 +1,17 @@
 import * as vscode from 'vscode';
 import { AzdoClient, PullRequestDetails, WorkItem } from './azdoClient';
-import { resolveContext, settings } from './config';
+import { resolveContext, settings, DEFAULT_PULL_REQUEST_TASK_PATTERN } from './config';
 import { GitAPI, pickRepository, Ref, REF_TYPE_HEAD, Repository } from './git';
 import { TeamIteration } from './iterations';
 import { branchBelongsToWorkItem } from './naming';
 import { FilterModel, PullRequestModel, ViewModel, WorkItemModel } from './viewModel';
 import { pullRequestStatus } from './workItemLinks';
+import { AlertRules, findAlerts, parseTags, resolveRequiredFields, WorkItemAlert } from './alerts';
 
 export interface WorkItemEntry {
   workItem: WorkItem;
   parent?: { id: number; title: string; type: string };
+  alerts: WorkItemAlert[];
   branch?: string;
   branchLocation?: 'local' | 'remote';
   pullRequests: PullRequestDetails[];
@@ -69,24 +71,65 @@ async function fetchPullRequests(client: AzdoClient, workItems: WorkItem[]): Pro
   return pullRequests;
 }
 
-/** Parents of the work items: the ones in the list plus the others (e.g. Features), fetched at once */
-async function fetchParents(
-  client: AzdoClient,
-  workItems: WorkItem[]
-): Promise<Map<number, NonNullable<WorkItemEntry['parent']>>> {
+/**
+ * Parents and child tasks of the work items, including the ones not in the list
+ * (Features, tasks assigned to other people…), fetched at once
+ */
+async function fetchRelated(client: AzdoClient, workItems: WorkItem[]): Promise<Map<number, WorkItem>> {
   const byId = new Map(workItems.map((workItem) => [workItem.id, workItem]));
-  const parentIds = [...new Set(workItems.map((workItem) => workItem.links.parentId))].filter(
-    (id): id is number => id !== undefined
-  );
-  // Without the parents, the cards only lose their names: do not fail the whole list
-  const fetched = await client.getWorkItems(parentIds.filter((id) => !byId.has(id))).catch(() => []);
+  const relatedIds = workItems.flatMap((workItem) => [
+    ...(workItem.links.parentId === undefined ? [] : [workItem.links.parentId]),
+    ...workItem.links.childIds,
+  ]);
+  // Without them, the cards only lose the parent names and some alerts: do not fail the whole list
+  const fetched = await client.getWorkItems([...new Set(relatedIds)].filter((id) => !byId.has(id))).catch(() => []);
   fetched.forEach((workItem) => byId.set(workItem.id, workItem));
-  return new Map(
-    parentIds
-      .map((id) => byId.get(id))
-      .filter((workItem): workItem is WorkItem => !!workItem)
-      .map(({ id, title, type }) => [id, { id, title, type }])
+  return byId;
+}
+
+/** Problems of the work item, from its child tasks, PRs, tags and fields */
+function alertsOf(
+  workItem: WorkItem,
+  related: Map<number, WorkItem>,
+  pullRequests: PullRequestDetails[],
+  rules: AlertRules
+): WorkItemAlert[] {
+  const tasks = workItem.links.childIds
+    .map((id) => related.get(id))
+    .filter((child): child is WorkItem => child?.type === 'Task')
+    .map(({ id, title, state }) => ({ id, title, state }));
+  return findAlerts(
+    {
+      type: workItem.type,
+      state: workItem.state,
+      tags: parseTags(workItem.fields['System.Tags']),
+      fields: workItem.fields,
+      tasks,
+      pullRequests: pullRequests.map((pr) => ({ status: pr.status, isDraft: pr.isDraft })),
+    },
+    rules
   );
+}
+
+async function alertRules(client: AzdoClient): Promise<AlertRules | undefined> {
+  const s = settings().alerts;
+  if (!s.enabled) {
+    return undefined;
+  }
+  // Without the field names, only the required fields cannot be checked
+  const fields = await client.getFields().catch(() => []);
+  let pullRequestTaskPattern: RegExp;
+  try {
+    pullRequestTaskPattern = new RegExp(s.pullRequestTaskPattern, 'i');
+  } catch {
+    pullRequestTaskPattern = DEFAULT_PULL_REQUEST_TASK_PATTERN;
+  }
+  return {
+    workItemTypes: s.workItemTypes,
+    blockingTags: s.blockingTags,
+    pullRequestTaskPattern,
+    requiredFields: resolveRequiredFields(s.requiredFields, fields),
+  };
 }
 
 function toPullRequestModel(pr: PullRequestDetails): PullRequestModel {
@@ -120,6 +163,11 @@ export class WorkItemsStore {
 
   get workItems(): WorkItemEntry[] {
     return this.entries;
+  }
+
+  /** Work items with problems the developers must fix ASAP */
+  get withAlerts(): WorkItemEntry[] {
+    return this.entries.filter((entry) => entry.alerts.length);
   }
 
   find(id: number): WorkItemEntry | undefined {
@@ -172,22 +220,28 @@ export class WorkItemsStore {
         return client.getMyWorkItems(this.iterations.map(({ iteration }) => iteration.path));
       })(),
     ]);
-    const [pullRequests, parents] = await Promise.all([
+    const [pullRequests, related, rules] = await Promise.all([
       fetchPullRequests(client, workItems),
-      fetchParents(client, workItems),
+      fetchRelated(client, workItems),
+      alertRules(client),
     ]);
-    return workItems.map((workItem) => ({
-      workItem,
-      parent: workItem.links.parentId === undefined ? undefined : parents.get(workItem.links.parentId),
-      ...findBranch(workItem, branches, azdoRepository.id),
-      pullRequests: workItem.links.pullRequests
+    return workItems.map((workItem) => {
+      const parent = workItem.links.parentId === undefined ? undefined : related.get(workItem.links.parentId);
+      const itemPullRequests = workItem.links.pullRequests
         .map((link) => pullRequests.get(link.id))
-        .filter((pr): pr is PullRequestDetails => !!pr),
-    }));
+        .filter((pr): pr is PullRequestDetails => !!pr);
+      return {
+        workItem,
+        parent: parent && { id: parent.id, title: parent.title, type: parent.type },
+        ...findBranch(workItem, branches, azdoRepository.id),
+        pullRequests: itemPullRequests,
+        alerts: rules ? alertsOf(workItem, related, itemPullRequests, rules) : [],
+      };
+    });
   }
 
   private toModel(
-    { workItem, parent, branch, branchLocation, pullRequests }: WorkItemEntry,
+    { workItem, parent, alerts, branch, branchLocation, pullRequests }: WorkItemEntry,
     currentBranch: string | undefined
   ): WorkItemModel {
     return {
@@ -199,6 +253,7 @@ export class WorkItemsStore {
       url: workItem.url,
       parentId: workItem.links.parentId,
       parent,
+      alerts,
       branch,
       branchLocation,
       isCurrentBranch: !!branch && branch === currentBranch,

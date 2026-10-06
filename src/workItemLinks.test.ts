@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isVisible, NO_PULL_REQUEST } from './viewModel';
+import { changedFilterKeys, isVisible, NO_PULL_REQUEST } from './viewModel';
 import { parseRelations, pullRequestStatus, PullRequestState } from './workItemLinks';
 
 const api = 'https://dev.azure.com/org/_apis/wit/workItems';
@@ -94,10 +94,34 @@ describe('isVisible', () => {
     expect(isVisible(item, { ...filter, hiddenPullRequestStates: [NO_PULL_REQUEST] })).toBe(false);
   });
 
+  it('always shows work items with alerts, whatever their state or PR', () => {
+    const alerts = [{ rule: 'tasksNotDone', message: 'Is Done but 1 task is not done' }];
+    expect(isVisible({ ...item, state: 'Done', alerts }, filter)).toBe(true);
+    expect(isVisible({ ...item, alerts }, { ...filter, hiddenPullRequestStates: [NO_PULL_REQUEST] })).toBe(true);
+    expect(isVisible({ ...item, type: 'Task', alerts }, filter)).toBe(false);
+  });
+
   it('searches by ID, title and branch', () => {
     expect(isVisible(item, filter, '6628')).toBe(true);
     expect(isVisible(item, filter, 'ACCESS')).toBe(true);
     expect(isVisible({ ...item, branch: 'bugfix/fui-admin/66280-x' }, filter, 'fui-admin')).toBe(true);
     expect(isVisible(item, filter, 'dashboard')).toBe(false);
+  });
+});
+
+describe('changedFilterKeys', () => {
+  const filter = { types: ['Bug', 'Product Backlog Item'], hiddenStates: ['Done'], hiddenPullRequestStates: [] };
+
+  it('ignores the order of the values', () => {
+    expect(changedFilterKeys(filter, { ...filter, types: ['Product Backlog Item', 'Bug'] })).toEqual([]);
+  });
+
+  it('lists the keys that changed', () => {
+    expect(changedFilterKeys(filter, { ...filter, hiddenStates: ['Done', 'New'] })).toEqual(['hiddenStates']);
+    expect(changedFilterKeys(filter, { types: [], hiddenStates: [], hiddenPullRequestStates: ['Draft'] })).toEqual([
+      'types',
+      'hiddenStates',
+      'hiddenPullRequestStates',
+    ]);
   });
 });

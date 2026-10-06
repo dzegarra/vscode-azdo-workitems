@@ -18,12 +18,11 @@ export interface WorkItem {
   assignedTo?: string;
   url: string;
   links: WorkItemLinks;
-}
-
-export interface WorkItemDetails extends WorkItem {
-  /** Raw fields, e.g. "System.Description" or "System.AssignedTo" */
+  /** Raw fields, e.g. "System.Tags" or "Microsoft.VSTS.Scheduling.Effort" */
   fields: Record<string, unknown>;
 }
+
+export type WorkItemDetails = WorkItem;
 
 export interface WorkItemTypeState {
   name: string;
@@ -33,6 +32,8 @@ export interface WorkItemTypeState {
 }
 
 const typeStatesCache = new Map<string, Promise<WorkItemTypeState[]>>();
+
+const fieldsCache = new Map<string, Promise<{ name: string; referenceName: string }[]>>();
 
 const SCHEDULE_CACHE_MS = 5 * 60 * 1000;
 const scheduleCache = new Map<string, { time: number; schedule: Promise<ScheduledIteration[]> }>();
@@ -202,6 +203,7 @@ export class AzdoClient {
       iterationPath: wi.fields['System.IterationPath'],
       assignedTo: (wi.fields['System.AssignedTo'] as unknown as { displayName?: string } | undefined)?.displayName,
       links: parseRelations(wi.relations),
+      fields: wi.fields,
       url: this.workItemWebUrl(wi.id),
     };
   }
@@ -222,6 +224,20 @@ export class AzdoClient {
 
   async getRepository(name: string): Promise<GitRepository> {
     return this.request<GitRepository>(this.url(`git/repositories/${encodeURIComponent(name)}`));
+  }
+
+  /** Fields of the organization: display name and reference name. Cached: they rarely change */
+  async getFields(): Promise<{ name: string; referenceName: string }[]> {
+    const key = `${this.organization}/${this.project}`;
+    let fields = fieldsCache.get(key);
+    if (!fields) {
+      fields = this.request<{ value: { name: string; referenceName: string }[] }>(this.url('wit/fields')).then(
+        (result) => result.value
+      );
+      fieldsCache.set(key, fields);
+      fields.catch(() => fieldsCache.delete(key));
+    }
+    return fields;
   }
 
   /** Iterations of the project with their dates. Cached for a few minutes */

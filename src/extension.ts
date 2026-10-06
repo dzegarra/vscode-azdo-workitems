@@ -65,6 +65,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const dependencyMap = new DependencyMapPanel(context.extensionUri, store);
   const currentRepository = () => (git.repositories.length ? pickRepository(git) : undefined);
 
+  // Visible even when the sidebar is closed
+  const alertsStatus = vscode.window.createStatusBarItem('azdoWorkItems.alerts', vscode.StatusBarAlignment.Left);
+  alertsStatus.name = 'Work items needing attention';
+  alertsStatus.command = `${VIEW_ID}.focus`;
+  alertsStatus.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+  const updateAlertsStatus = () => {
+    const entries = store.withAlerts;
+    if (!entries.length) {
+      alertsStatus.hide();
+      return;
+    }
+    alertsStatus.text = `$(warning) ${entries.length} work item${entries.length === 1 ? '' : 's'}`;
+    alertsStatus.tooltip = new vscode.MarkdownString(
+      [
+        '**Work items needing attention**',
+        ...entries.map((e) => `- ${e.workItem.id} ${e.workItem.title}: ${e.alerts.map((a) => a.message).join('; ')}`),
+      ].join('\n')
+    );
+    alertsStatus.show();
+  };
+
   const command = (id: string, handler: (...args: never[]) => unknown) =>
     vscode.commands.registerCommand(id, async (...args: never[]) => {
       try {
@@ -87,7 +108,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     details,
     notifier,
     dependencyMap,
-    store.onDidChange(() => view.post()),
+    alertsStatus,
+    store.onDidChange(() => {
+      view.post();
+      updateAlertsStatus();
+    }),
     ...git.repositories.map(watchRepository),
     // The remote is only known once the git extension has opened the repository
     git.onDidOpenRepository((repository) => {
@@ -103,7 +128,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         notifier.start();
       }
       // Filters are applied by the view; other settings need to reload the work items
-      const onlyFilters = ['teams', 'organization', 'project', 'repository', 'remote'].every(
+      const onlyFilters = ['teams', 'organization', 'project', 'repository', 'remote', 'alerts'].every(
         (key) => !event.affectsConfiguration(`${SECTION}.${key}`)
       );
       if (onlyFilters) {
@@ -149,6 +174,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // When the repository is not open yet, it starts from onDidOpenRepository
   if (git.repositories.length) {
     notifier.start();
+    // Loads the work items even if the sidebar is closed, so the alerts show up in the status bar
+    void store.ensureLoaded();
   }
 }
 

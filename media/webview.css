@@ -506,3 +506,63 @@ button.state:focus-visible {
 .parent-link:hover {
   color: var(--vscode-textLink-foreground);
 }
+
+/* ---------- Alerts ---------- */
+
+.card.has-alerts {
+  border-color: color-mix(in srgb, var(--red) 55%, var(--border));
+  border-left-color: var(--red);
+}
+
+.alerts {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 5px 7px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--red) 13%, transparent);
+  color: var(--vscode-errorForeground, var(--red));
+  font-size: 11.5px;
+  line-height: 1.35;
+  list-style: none;
+}
+
+.alerts li {
+  display: flex;
+  gap: 5px;
+  align-items: flex-start;
+}
+
+.alerts .icon {
+  width: 12px;
+  height: 12px;
+  margin-top: 1px;
+}
+
+.alerts .link {
+  font-size: inherit;
+  text-decoration: underline;
+}
+
+.alerts-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--red) 55%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--red) 13%, transparent);
+  color: var(--vscode-errorForeground, var(--red));
+  font-weight: 600;
+}
+
+.alerts-banner span {
+  flex: 1;
+}
+
+.alerts-banner.resolved {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-weight: normal;
+}

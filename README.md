@@ -43,6 +43,22 @@ Organization, project and repository are detected from the `origin` remote.
 
 By default the view lists your work items in the current iteration of **every team you belong to**. Teams sharing the same sprint are merged; when your teams are in different sprints, the items are grouped by iteration. Use **Select Teams** in the view menu to limit the list to some teams (select none to go back to all of them). **Open Iteration Board** asks which team's board to open when there are several.
 
+## Alerts
+
+Backlog Items and Bugs with problems the team agreed to avoid are flagged in red, with the list of problems in their card. A banner at the top of the view counts them (**Show only these** hides the rest), the view icon shows a badge and the status bar shows them even when the view is closed. Work items with alerts are always shown, whatever the state / PR filters.
+
+| Problem                                                                                                                      | Applies to             |
+| ---------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| Done / Ready to Test with tasks not done                                                                                     | Backlog Items and Bugs |
+| Has a PR (not abandoned) but no PR task                                                                                      | Backlog Items and Bugs |
+| The PR is published (active, not draft) but the PR task is not In Progress                                                   | Backlog Items and Bugs |
+| The PR is completed but the PR task is not Done                                                                              | Backlog Items and Bugs |
+| Started while tagged Needs refinement, Requirements, UX feedback required, Missing REST API, Blocked or PT Feedback Required | Backlog Items and Bugs |
+| Effort or Effort in days is empty                                                                                            | Backlog Items          |
+| Integrated in Build is empty while Ready to Test                                                                             | Bugs                   |
+
+The PR task is the task whose title contains "PR" or "Pull Request". **Fix** next to an alert about a single task opens its state picker. Tags, required fields, the work item types and the PR task pattern can be changed in the `azdoWorkItems.alerts.*` settings.
+
 ## Dependencies
 
 The details of a work item list its **Predecessors** (work items it depends on) and **Successors** (work items that depend on it), with the iteration each one is planned in. A warning is shown when a predecessor is planned in a later iteration than its successor, in the same iteration, or not scheduled at all.

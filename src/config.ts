@@ -6,6 +6,9 @@ import { DEFAULT_STATE_ORDER } from './states';
 
 export const SECTION = 'azdoWorkItems';
 
+/** Recognizes the PR task by its title: "PR", "Create PR", "Pull Request review"… */
+export const DEFAULT_PULL_REQUEST_TASK_PATTERN = /\b(PR|pull request)\b/i;
+
 export function settings() {
   const config = vscode.workspace.getConfiguration(SECTION);
   return {
@@ -22,6 +25,19 @@ export function settings() {
     linkBranchToWorkItem: config.get<boolean>('linkBranchToWorkItem', true),
     stateOnBranchCreated: config.get<Partial<Record<string, string>>>('stateOnBranchCreated', {}),
     stateOrder: config.get<string[]>('stateOrder', DEFAULT_STATE_ORDER),
+    alerts: {
+      enabled: config.get<boolean>('alerts.enabled', true),
+      workItemTypes: config.get<string[]>('alerts.workItemTypes', ['Product Backlog Item', 'Bug']),
+      blockingTags: config.get<string[]>('alerts.blockingTags', []),
+      pullRequestTaskPattern: config.get<string>(
+        'alerts.pullRequestTaskPattern',
+        DEFAULT_PULL_REQUEST_TASK_PATTERN.source
+      ),
+      requiredFields: config.get<{ types: string[]; states?: string[]; fields: string[] }[]>(
+        'alerts.requiredFields',
+        []
+      ),
+    },
   };
 }
 

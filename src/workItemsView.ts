@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { SECTION } from './config';
-import { ExtensionMessage, FilterModel, WebviewMessage } from './viewModel';
+import { changedFilterKeys, ExtensionMessage, FilterModel, WebviewMessage } from './viewModel';
 import { runWorkItemAction } from './workItemActions';
 import { WorkItemsStore } from './workItemsStore';
 
@@ -36,7 +36,13 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     if (!this.view) {
       return;
     }
-    const message: ExtensionMessage = { type: 'state', model: this.store.toViewModel(filterSettings()) };
+    const model = this.store.toViewModel(filterSettings());
+    const withAlerts = model.workItems.filter((item) => item.alerts.length).length;
+    // Number on the activity bar icon, visible while the view is closed
+    this.view.badge = withAlerts
+      ? { value: withAlerts, tooltip: `${withAlerts} work item${withAlerts === 1 ? ' needs' : 's need'} attention` }
+      : undefined;
+    const message: ExtensionMessage = { type: 'state', model };
     void this.view.webview.postMessage(message);
   }
 
@@ -50,15 +56,12 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         await this.store.refresh();
         return;
       case 'setFilter': {
-        // Filters are personal: saved in the user settings
+        // Filters are personal: saved in the user settings. Each write updates settings.json and
+        // re-renders the view, so only the keys that changed are written
         const config = vscode.workspace.getConfiguration(SECTION);
-        await config.update('filter.types', message.filter.types, vscode.ConfigurationTarget.Global);
-        await config.update('filter.hiddenStates', message.filter.hiddenStates, vscode.ConfigurationTarget.Global);
-        await config.update(
-          'filter.hiddenPullRequestStates',
-          message.filter.hiddenPullRequestStates,
-          vscode.ConfigurationTarget.Global
-        );
+        for (const key of changedFilterKeys(filterSettings(), message.filter)) {
+          await config.update(`filter.${key}`, message.filter[key], vscode.ConfigurationTarget.Global);
+        }
         return;
       }
       case 'addTask':
