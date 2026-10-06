@@ -201,6 +201,14 @@
           "default": [],
           "description": "States of the main PR of the work items hidden (\"No PR\" for work items without PRs). Also editable with the PR chips of the view."
         },
+        "azdoWorkItems.filter.hiddenPriorities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Priorities hidden (\"P1\" … \"P4\", or \"No priority\"). Also editable with the Priority chips of the view."
+        },
         "azdoWorkItems.stateOrder": {
           "type": "array",
           "items": {

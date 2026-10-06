@@ -6,6 +6,7 @@ import { TeamIteration } from './iterations';
 import { branchBelongsToWorkItem } from './naming';
 import { FilterModel, PullRequestModel, ViewModel, WorkItemModel } from './viewModel';
 import { pullRequestStatus } from './workItemLinks';
+import { parsePriority, PRIORITY_FIELD, SEVERITY_FIELD } from './priority';
 import { AlertRules, findAlerts, parseTags, resolveRequiredFields, WorkItemAlert } from './alerts';
 
 export interface WorkItemEntry {
@@ -254,6 +255,8 @@ export class WorkItemsStore {
       parentId: workItem.links.parentId,
       parent,
       alerts,
+      priority: parsePriority(workItem.fields[PRIORITY_FIELD]),
+      severity: (workItem.fields[SEVERITY_FIELD] as string | undefined) || undefined,
       branch,
       branchLocation,
       isCurrentBranch: !!branch && branch === currentBranch,

@@ -98,7 +98,8 @@ button {
 }
 
 .filter-label {
-  width: 38px;
+  flex: none;
+  width: 58px;
   color: var(--muted);
   font-size: 11px;
   text-transform: uppercase;
@@ -564,5 +565,45 @@ button.state:focus-visible {
   border-color: var(--border);
   background: transparent;
   color: var(--muted);
+  font-weight: normal;
+}
+
+/* ---------- Priority / severity ---------- */
+
+.urgency {
+  display: inline-flex;
+  gap: 4px;
+  min-width: 0;
+}
+
+.urgency .pill {
+  border: 1px solid transparent;
+  color: var(--urgency-fg);
+  background: var(--urgency-bg);
+  font-weight: 600;
+}
+
+/*
+ * Solid fills with fixed text colours: the tinted pills used elsewhere depend on the theme colours
+ * and were hard to read. Every pair has a contrast of at least 4.5:1 (WCAG AA) in any theme
+ */
+.urgency-1 {
+  --urgency-bg: #c62828;
+  --urgency-fg: #ffffff;
+}
+.urgency-2 {
+  --urgency-bg: #f2a900;
+  --urgency-fg: #1f1f1f;
+}
+.urgency-3 {
+  --urgency-bg: #1565c0;
+  --urgency-fg: #ffffff;
+}
+/* Least urgent: outlined, so it does not compete with the others */
+.urgency .urgency-4,
+.urgency .urgency-none {
+  --urgency-bg: transparent;
+  --urgency-fg: var(--vscode-foreground);
+  border-color: var(--vscode-descriptionForeground);
   font-weight: normal;
 }

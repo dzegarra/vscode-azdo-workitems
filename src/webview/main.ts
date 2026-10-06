@@ -1,6 +1,7 @@
 import { canHaveTasks, escapeHtml, stateButton } from '../html';
 import { icon, typeIcon } from '../icons';
-import { sortByState, stateCategory, stateRank } from '../states';
+import { NO_PRIORITY, priorityFilterValue, severityLevel, severityName, sortWorkItems } from '../priority';
+import { stateCategory, stateRank } from '../states';
 import type {
   ExtensionMessage,
   FilterModel,
@@ -19,7 +20,7 @@ interface VsCodeApi {
 }
 declare function acquireVsCodeApi(): VsCodeApi;
 
-type FilterKind = 'pullRequest' | 'state' | 'type';
+type FilterKind = 'priority' | 'pullRequest' | 'state' | 'type';
 
 const vscode = acquireVsCodeApi();
 /** Toggling several chips quickly saves the filter only once */
@@ -55,6 +56,14 @@ function post(message: WebviewMessage): void {
   vscode.postMessage(message);
 }
 
+/**
+ * Work items shown as cards. Tasks are never planned alone: they are only shown nested in the card
+ * of their Backlog Item / Bug, so they are not cards nor part of the filters
+ */
+function cardItems(current: ViewModel): WorkItemModel[] {
+  return current.workItems.filter((item) => canHaveTasks(item.type));
+}
+
 /* ---------- Filters ---------- */
 
 function countBy(items: WorkItemModel[], key: (item: WorkItemModel) => string): Map<string, number> {
@@ -80,10 +89,16 @@ function filterRow(label: string, chips: string[]): string {
 }
 
 function renderFilters(current: ViewModel): string {
-  const { filter, stateOrder, workItems } = current;
+  const { filter, stateOrder } = current;
+  const workItems = cardItems(current);
   const types = countBy(workItems, (item) => item.type);
   const states = countBy(workItems, (item) => item.state);
   const pullRequests = countBy(workItems, pullRequestFilterValue);
+  const priorities = countBy(workItems, priorityFilterValue);
+  // P1 … P4, then the work items without priority
+  const sortedPriorities = [...priorities.keys()].sort(
+    (a, b) => Number(a === NO_PRIORITY) - Number(b === NO_PRIORITY) || a.localeCompare(b)
+  );
   const sortedStates = [...states.keys()].sort(
     (a, b) => stateRank(a, stateOrder) - stateRank(b, stateOrder) || a.localeCompare(b)
   );
@@ -103,6 +118,12 @@ function renderFilters(current: ViewModel): string {
       'PR',
       sortedPullRequests.map((status) =>
         chip('pullRequest', status, pullRequests.get(status) ?? 0, !filter.hiddenPullRequestStates.includes(status))
+      )
+    ),
+    filterRow(
+      'Priority',
+      sortedPriorities.map((priority) =>
+        chip('priority', priority, priorities.get(priority) ?? 0, !filter.hiddenPriorities.includes(priority))
       )
     ),
   ].join('');
@@ -167,6 +188,30 @@ function renderChild(item: WorkItemModel): string {
   </li>`;
 }
 
+/**
+ * Priority and severity pills. They replace the type label of the header: the icon already shows the type.
+ * Colours go from red (1, most urgent) to grey (4)
+ */
+function renderUrgency(item: WorkItemModel): string {
+  const pills: string[] = [];
+  if (item.priority) {
+    pills.push(
+      `<span class="pill urgency-${item.priority}" title="${escapeHtml(item.type)} · Priority ${item.priority}">P${
+        item.priority
+      }</span>`
+    );
+  }
+  const level = severityLevel(item.severity);
+  if (item.severity) {
+    pills.push(
+      `<span class="pill urgency-${level ?? 'none'}" title="Severity ${escapeHtml(item.severity)}">${
+        level ? `S${level} ` : ''
+      }${escapeHtml(severityName(item.severity))}</span>`
+    );
+  }
+  return `<span class="urgency" title="${escapeHtml(item.type)}">${pills.join('')}</span>`;
+}
+
 /** Problems the developers must fix ASAP */
 function renderAlerts(item: WorkItemModel): string {
   if (!item.alerts.length) {
@@ -211,7 +256,7 @@ function renderCard(item: WorkItemModel, children: WorkItemModel[], visibleIds: 
       <button class="link id" data-action="openWorkItem" data-id="${item.id}" title="Open in Azure DevOps">${
     item.id
   }</button>
-      <span class="type">${escapeHtml(item.type)}</span>
+      ${renderUrgency(item)}
       ${stateButton(item.id, item.state)}
     </header>
     <div class="title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
@@ -232,7 +277,7 @@ function renderCards(items: WorkItemModel[], current: ViewModel): string {
   const visibleIds = new Set(items.map((item) => item.id));
   const childFilter = { ...current.filter, types: [] };
   const childrenOf = (parent: WorkItemModel) =>
-    sortByState(
+    sortWorkItems(
       current.workItems.filter((child) => child.parentId === parent.id && isVisible(child, childFilter)),
       current.stateOrder
     );
@@ -252,7 +297,7 @@ function renderIteration(iteration: IterationModel, items: WorkItemModel[], curr
 
 /** Summary of the work items with problems, with a toggle to show only them */
 function renderAlertsBanner(current: ViewModel): string {
-  const count = current.workItems.filter((item) => item.alerts.length).length;
+  const count = cardItems(current).filter((item) => item.alerts.length).length;
   if (!count && !onlyAlerts) {
     return '';
   }
@@ -268,19 +313,18 @@ function renderList(current: ViewModel): string {
     return `<div class="message error"><p>${escapeHtml(current.error ?? 'Unknown error')}</p>
       <button class="button primary" data-action="refresh">Retry</button></div>`;
   }
-  if (current.status === 'loading' && !current.workItems.length) {
+  const cards = cardItems(current);
+  if (current.status === 'loading' && !cards.length) {
     return '<p class="message muted">Loading work items…</p>';
   }
-  if (!current.workItems.length) {
+  if (!cards.length) {
     return '<p class="message muted">No work items assigned to you in the current iterations of your teams.</p>';
   }
-  const visible = sortByState(
-    current.workItems.filter(
-      (item) => isVisible(item, current.filter, search) && (!onlyAlerts || item.alerts.length > 0)
-    ),
+  const visible = sortWorkItems(
+    cards.filter((item) => isVisible(item, current.filter, search) && (!onlyAlerts || item.alerts.length > 0)),
     current.stateOrder
   );
-  const hidden = current.workItems.length - visible.length;
+  const hidden = cards.length - visible.length;
   const hiddenNote = hidden
     ? `<p class="muted note">${hidden} work item${hidden === 1 ? '' : 's'} hidden by filters</p>`
     : '';
@@ -323,7 +367,7 @@ function render(): void {
     });
   }
   (app.querySelector('.progress') as HTMLElement).hidden = model.status !== 'loading';
-  (document.getElementById('filters') as HTMLElement).innerHTML = model.workItems.length ? renderFilters(model) : '';
+  (document.getElementById('filters') as HTMLElement).innerHTML = cardItems(model).length ? renderFilters(model) : '';
   (document.getElementById('list') as HTMLElement).innerHTML = renderList(model);
 }
 
@@ -333,13 +377,15 @@ function toggleFilter(kind: FilterKind, value: string): void {
   }
   const filter = { ...model.filter };
   if (kind === 'type') {
-    const allTypes = [...new Set(model.workItems.map((item) => item.type))];
+    const allTypes = [...new Set(cardItems(model).map((item) => item.type))];
     filter.types = toggle(
       allTypes.filter((type) => isTypeShown(filter, type)),
       value
     );
   } else if (kind === 'state') {
     filter.hiddenStates = toggle(filter.hiddenStates, value);
+  } else if (kind === 'priority') {
+    filter.hiddenPriorities = toggle(filter.hiddenPriorities, value);
   } else {
     filter.hiddenPullRequestStates = toggle(filter.hiddenPullRequestStates, value);
   }

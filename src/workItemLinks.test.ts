@@ -77,7 +77,12 @@ describe('isVisible', () => {
     branch: undefined,
     pullRequests: [],
   };
-  const filter = { types: ['Product Backlog Item', 'Bug'], hiddenStates: ['Done'], hiddenPullRequestStates: [] };
+  const filter = {
+    types: ['Product Backlog Item', 'Bug'],
+    hiddenStates: ['Done'],
+    hiddenPullRequestStates: [],
+    hiddenPriorities: [],
+  };
   const draftPr = { id: 1, title: 'PR', status: 'Draft', tone: 'draft' as const, url: '', isActive: true };
 
   it('applies the type and state filters', () => {
@@ -101,6 +106,13 @@ describe('isVisible', () => {
     expect(isVisible({ ...item, type: 'Task', alerts }, filter)).toBe(false);
   });
 
+  it('applies the priority filter', () => {
+    const hiddenPriorities = ['P4', 'No priority'];
+    expect(isVisible({ ...item, priority: 1 }, { ...filter, hiddenPriorities })).toBe(true);
+    expect(isVisible({ ...item, priority: 4 }, { ...filter, hiddenPriorities })).toBe(false);
+    expect(isVisible(item, { ...filter, hiddenPriorities })).toBe(false);
+  });
+
   it('searches by ID, title and branch', () => {
     expect(isVisible(item, filter, '6628')).toBe(true);
     expect(isVisible(item, filter, 'ACCESS')).toBe(true);
@@ -110,7 +122,12 @@ describe('isVisible', () => {
 });
 
 describe('changedFilterKeys', () => {
-  const filter = { types: ['Bug', 'Product Backlog Item'], hiddenStates: ['Done'], hiddenPullRequestStates: [] };
+  const filter = {
+    types: ['Bug', 'Product Backlog Item'],
+    hiddenStates: ['Done'],
+    hiddenPullRequestStates: [],
+    hiddenPriorities: [],
+  };
 
   it('ignores the order of the values', () => {
     expect(changedFilterKeys(filter, { ...filter, types: ['Product Backlog Item', 'Bug'] })).toEqual([]);
@@ -118,10 +135,13 @@ describe('changedFilterKeys', () => {
 
   it('lists the keys that changed', () => {
     expect(changedFilterKeys(filter, { ...filter, hiddenStates: ['Done', 'New'] })).toEqual(['hiddenStates']);
-    expect(changedFilterKeys(filter, { types: [], hiddenStates: [], hiddenPullRequestStates: ['Draft'] })).toEqual([
-      'types',
-      'hiddenStates',
-      'hiddenPullRequestStates',
-    ]);
+    expect(
+      changedFilterKeys(filter, {
+        types: [],
+        hiddenStates: [],
+        hiddenPullRequestStates: ['Draft'],
+        hiddenPriorities: [],
+      })
+    ).toEqual(['types', 'hiddenStates', 'hiddenPullRequestStates']);
   });
 });

@@ -3,6 +3,7 @@
  * Shared by both sides, so it must not import "vscode".
  */
 import type { WorkItemAlert } from './alerts';
+import { priorityFilterValue } from './priority';
 import type { PullRequestTone } from './workItemLinks';
 
 export interface PullRequestModel {
@@ -26,6 +27,10 @@ export interface WorkItemModel {
   parent?: { id: number; title: string; type: string };
   /** Problems the developers must fix ASAP */
   alerts: WorkItemAlert[];
+  /** 1 (most urgent) to 4 */
+  priority?: number;
+  /** Bugs only, e.g. "2 - High" */
+  severity?: string;
   branch?: string;
   /** "local": the branch is checked out locally; "remote": only exists in the remote */
   branchLocation?: 'local' | 'remote';
@@ -46,6 +51,8 @@ export interface FilterModel {
   hiddenStates: string[];
   /** PR states hidden, including NO_PULL_REQUEST */
   hiddenPullRequestStates: string[];
+  /** Priorities hidden: "P1" … "P4" or NO_PRIORITY */
+  hiddenPriorities: string[];
 }
 
 export interface ViewModel {
@@ -87,7 +94,9 @@ function sameValues(a: string[], b: string[]): boolean {
 
 /** Keys of the filter whose values differ (the order of the values does not matter) */
 export function changedFilterKeys(a: FilterModel, b: FilterModel): (keyof FilterModel)[] {
-  return (['types', 'hiddenStates', 'hiddenPullRequestStates'] as const).filter((key) => !sameValues(a[key], b[key]));
+  return (['types', 'hiddenStates', 'hiddenPullRequestStates', 'hiddenPriorities'] as const).filter(
+    (key) => !sameValues(a[key], b[key])
+  );
 }
 
 /** State of the main PR of the work item (the first one: active PRs come first), used by the PR filter */
@@ -103,6 +112,7 @@ export function pullRequestFilterValue(item: Pick<WorkItemModel, 'pullRequests'>
 export function isVisible(
   item: Pick<WorkItemModel, 'branch' | 'id' | 'pullRequests' | 'state' | 'title' | 'type'> & {
     alerts?: unknown[];
+    priority?: number;
   },
   filter: FilterModel,
   text = ''
@@ -115,6 +125,9 @@ export function isVisible(
     return false;
   }
   if (!hasAlerts && filter.hiddenPullRequestStates.includes(pullRequestFilterValue(item))) {
+    return false;
+  }
+  if (!hasAlerts && filter.hiddenPriorities.includes(priorityFilterValue(item))) {
     return false;
   }
   const query = text.trim().toLowerCase();

@@ -20,7 +20,7 @@ Open the **Azure Work Items** view in the activity bar. The first time, VS Code 
 
 Each work item is a card with:
 
-- ID (opens the work item in Azure DevOps), type and state
+- ID (opens the work item in Azure DevOps), **Priority** (`P1`–`P4`) and, for Bugs, **Severity** (`S1 Critical` … `S4 Low`), coloured from red (most urgent) to grey; the type is shown by the icon. And the state
 - Title
 - Parent: ID and title of the parent (click it to see its details), unless the card is nested in its parent's card. Children (e.g. Tasks) are nested at the bottom of the parent card
 - Branch: the local branch (`local`, or `current` when checked out) or a branch that only exists in the remote (`remote`)
@@ -28,13 +28,13 @@ Each work item is a card with:
 
 Cards are sorted by state: Done, Ready to Test, Committed, In Progress, Approved, New, To Do (`azdoWorkItems.stateOrder`). Done and Ready to Test are shown in green, Committed and In Progress in blue.
 
-Use the **Type**, **State** and **PR** chips to filter the cards (by default only Product Backlog Items and Bugs, hiding Done / Removed / Closed), and the search box to find them by ID, title or branch. The PR filter uses the main PR of each work item (the active one, or the most recent), or `No PR`.
+Within each state, cards are sorted by priority, then severity. Use the **Type**, **State**, **PR** and **Priority** chips to filter the cards (by default only Product Backlog Items and Bugs, hiding Done / Removed / Closed), and the search box to find them by ID, title or branch. The PR filter uses the main PR of each work item (the active one, or the most recent), or `No PR`.
 
 Card actions:
 
 - **Create branch**: pick the module, adjust the short name. The branch is created from `origin/develop`, checked out, published and linked to the work item's _Development_ section. Product Backlog Items and Bugs in New / Approved / To Do are moved to **Committed** (`azdoWorkItems.stateOnBranchCreated`).
 - **State** (the coloured state of a card, a nested task or the details): pick the new state among the ones allowed for that work item type.
-- **Add task** (Backlog Items and Bugs): creates a Task under the work item, in the same iteration and area and assigned to the same person. Tasks of a visible card are always nested in it, even when the `Task` type chip is off, so they can be managed (and their state changed) from there.
+- **Add task** (Backlog Items and Bugs): creates a Task under the work item, in the same iteration and area and assigned to the same person. Tasks are never shown as cards of their own nor in the filters: they are always nested in the card of their Backlog Item / Bug, where they can be managed (and their state changed).
 - **Open**: shows the details of the work item in an editor tab: description, acceptance criteria / repro steps, assignee, effort, tags, parent, children, branch and PRs, with the same actions.
 - **Checkout**: switches to the work item branch (creating the local branch when it only exists in the remote).
 - **Create PR** (when the branch has no active PR; also available from the command palette for the current branch): pick extra work items to link, the feature name and the description. The branch is pushed and the PR targets `develop`, optionally as draft.
@@ -90,6 +90,7 @@ Your own comments and votes, system messages and vote resets are ignored. When m
 | `azdoWorkItems.branchTypeByWorkItemType`                  | Branch prefix per work item type (`Bug` → `bugfix`)            |
 | `azdoWorkItems.baseBranch`                                | Base branch and PR target (`develop`)                          |
 | `azdoWorkItems.filter.types`                              | Work item types shown (Type chips)                             |
+| `azdoWorkItems.filter.hiddenPriorities`                   | Priorities hidden (Priority chips)                             |
 | `azdoWorkItems.filter.hiddenPullRequestStates`            | PR states hidden (PR chips)                                    |
 | `azdoWorkItems.stateOrder`                                | Order of the cards by state                                    |
 | `azdoWorkItems.stateOnBranchCreated`                      | State set when a branch is created, per type                   |

@@ -13,6 +13,7 @@ export function filterSettings(): FilterModel {
     types: config.get<string[]>('filter.types', []),
     hiddenStates: config.get<string[]>('filter.hiddenStates', []),
     hiddenPullRequestStates: config.get<string[]>('filter.hiddenPullRequestStates', []),
+    hiddenPriorities: config.get<string[]>('filter.hiddenPriorities', []),
   };
 }
 
