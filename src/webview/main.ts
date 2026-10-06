@@ -123,7 +123,7 @@ function pullRequestTones(items: WorkItemModel[]): Map<string, string> {
 
 function filterRow(label: string, chips: string[]): string {
   return `<div class="filter-row" role="group" aria-label="${label}">
-    <span class="filter-label">${label}</span>${chips.join('')}</div>`;
+    <span class="filter-label">${label}</span><span class="filter-chips">${chips.join('')}</span></div>`;
 }
 
 function renderFilters(current: ViewModel): string {
