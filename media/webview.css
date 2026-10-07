@@ -52,13 +52,13 @@ button {
   background: var(--vscode-sideBar-background);
 }
 
-/* The PRs to review are not related to the work items below: a divider and a heading separate them */
-#reviews:not(:empty) {
+/* The PRs boxes are not related to the work items below: a divider and a heading separate them */
+#panels:has(> div:not(:empty)) {
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
 }
 
-#reviews:not(:empty) + .toolbar {
+#panels:has(> div:not(:empty)) + .toolbar {
   padding-top: 10px;
 }
 
@@ -552,12 +552,67 @@ button {
 
 /* ---------- Children ---------- */
 
+.tasks-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 2px;
+  padding: 3px 2px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tasks-toggle:hover {
+  background: var(--card-hover);
+}
+
+.tasks-toggle:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.tasks-toggle .count {
+  color: var(--muted);
+}
+
+.tasks-toggle .chevron {
+  transition: transform 0.15s;
+  transform: rotate(90deg);
+}
+
+.tasks.collapsed .chevron {
+  transform: none;
+}
+
+.tasks-bar {
+  flex: 1;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--vscode-charts-green, #3fb950) 20%, transparent);
+}
+
+.tasks-bar-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--vscode-charts-green, #3fb950);
+}
+
 .children {
   display: grid;
   gap: 2px;
   margin: 2px 0 0;
-  padding: 6px 0 0;
-  border-top: 1px solid var(--border);
+  padding: 2px 0 0;
   list-style: none;
 }
 
@@ -732,25 +787,35 @@ button.state:focus-visible {
   --review-accent: var(--red);
 }
 
-.reviews {
+/*
+ * Boxes above the work items ("Waiting for your review", "My Pull Requests"). Framed and rounded, with a bold
+ * title, a count badge and a chevron: they must not look like the plain uppercase headers of the iterations
+ */
+.panel {
+  --panel-accent: var(--blue);
   margin: 8px 12px 0;
-  border: 1px solid color-mix(in srgb, var(--review-accent) 60%, transparent);
-  border-left: 4px solid var(--review-accent);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--review-accent) 10%, var(--card-bg));
+  border: 1px solid color-mix(in srgb, var(--panel-accent) 55%, transparent);
+  border-left: 4px solid var(--panel-accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel-accent) 9%, var(--card-bg));
 }
 
-.reviews-head {
+.reviews {
+  --panel-accent: var(--review-accent);
+}
+
+.panel-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  padding: 2px 4px 2px 0;
+  padding: 2px 6px 2px 0;
 }
 
-.reviews-toggle {
+.panel-toggle {
   display: grid;
-  flex: 1;
-  grid-template-columns: auto auto 1fr;
+  flex: 1 1 auto;
+  grid-template-columns: auto auto minmax(min-content, max-content) 1fr;
   align-items: center;
   gap: 4px 6px;
   min-width: 0;
@@ -761,32 +826,56 @@ button.state:focus-visible {
   cursor: pointer;
 }
 
-.reviews-toggle > .icon:not(.chevron) {
-  color: var(--review-accent);
+.panel-toggle > .icon:not(.chevron) {
+  color: var(--panel-accent);
 }
 
-.reviews-toggle .chevron {
+.panel-toggle .chevron {
   transition: transform 0.15s;
   transform: rotate(90deg);
 }
 
-.reviews.collapsed .chevron {
+.panel.collapsed .chevron {
   transform: none;
 }
 
-.reviews-title {
+.panel-title {
+  min-width: min-content;
+  overflow: hidden;
+  font-size: 13px;
   font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.reviews-pills {
+.panel-count {
+  justify-self: start;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--panel-accent) 28%, transparent);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
+.panel-sub {
   display: flex;
   flex-wrap: wrap;
-  grid-column: 3;
+  grid-column: 3 / -1;
   gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
 }
 
-.reviews-pills:empty {
+.panel-sub:empty {
   display: none;
+}
+
+.panel-empty {
+  margin: 0;
+  padding: 0 12px 10px;
 }
 
 /* Solid, like the priority pills: readable in any theme */
@@ -914,6 +1003,252 @@ button.state:focus-visible {
 .reviews-error span {
   flex: 1;
   min-width: 0;
+}
+
+/* ---------- My pull requests ---------- */
+
+.mypr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0 8px 8px;
+  list-style: none;
+}
+
+/* The accent is the colour of the PR status (tone-*) */
+.mypr {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--pill-color, var(--grey));
+  border-radius: 6px;
+  background: var(--card-bg);
+}
+
+.mypr.completed {
+  opacity: 0.55;
+}
+
+.mypr-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+/* Ready to merge, nothing stops it: calm green, not to be mistaken for the red error box */
+.mypr.ready-to-merge {
+  border-color: color-mix(in srgb, var(--vscode-testing-iconPassed, var(--green)) 45%, var(--border));
+  border-left-color: var(--vscode-testing-iconPassed, var(--green));
+  background: color-mix(in srgb, var(--vscode-testing-iconPassed, var(--green)) 8%, var(--card-bg));
+}
+
+.mypr-head {
+  flex-wrap: wrap;
+}
+
+.mypr-head .id {
+  white-space: nowrap;
+}
+
+.mypr-badges {
+  display: flex;
+  margin-left: auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pill.ready-pill {
+  border: 1px solid color-mix(in srgb, var(--vscode-testing-iconPassed, var(--green)) 55%, transparent);
+  color: var(--vscode-testing-iconPassed, var(--green));
+  background: color-mix(in srgb, var(--vscode-testing-iconPassed, var(--green)) 14%, transparent);
+  font-weight: 600;
+}
+
+.mypr-title {
+  display: -webkit-box;
+  overflow: hidden;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.mypr-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+/* Not the usual target: worth noticing */
+.mypr-target {
+  color: var(--vscode-editorWarning-foreground, var(--orange));
+  font-weight: 600;
+}
+
+.reviewers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.reviewer {
+  --vote-color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--vote-color) 55%, transparent);
+  border-radius: 10px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.reviewer .icon {
+  width: 11px;
+  height: 11px;
+  color: var(--vote-color);
+}
+
+.reviewer-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reviewer.group {
+  font-style: italic;
+}
+
+.required {
+  color: var(--vscode-editorWarning-foreground, var(--orange));
+  font-weight: 700;
+}
+
+.vote-approved {
+  --vote-color: var(--green);
+}
+.vote-suggestions {
+  --vote-color: var(--yellow);
+}
+.vote-waiting {
+  --vote-color: var(--orange);
+}
+.vote-rejected {
+  --vote-color: var(--vscode-errorForeground, var(--red));
+}
+.vote-declined,
+.vote-none {
+  --vote-color: var(--muted);
+}
+
+.mypr-signals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 11.5px;
+}
+
+.signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.signal .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.signal-comments {
+  color: var(--vscode-editorWarning-foreground, var(--orange));
+}
+
+.signal-conflicts {
+  color: var(--vscode-errorForeground, var(--red));
+}
+
+.mypr-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  color: var(--vscode-editorWarning-foreground, var(--orange));
+  font-size: 11px;
+  line-height: 1.35;
+  list-style: none;
+}
+
+.mypr-warnings li {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.mypr-warnings .icon {
+  width: 12px;
+  height: 12px;
+  margin-top: 1px;
+}
+
+/* A rule only someone else may act on is broken (e.g. completing a Bug is up to the testers): not optional */
+.mypr-warnings .mypr-error {
+  padding: 4px 6px;
+  border: 1px solid var(--vscode-inputValidation-errorBorder, var(--red));
+  border-left-width: 3px;
+  border-radius: 3px;
+  color: var(--vscode-errorForeground, var(--red));
+  background: color-mix(in srgb, var(--red) 16%, transparent);
+  font-weight: 600;
+}
+
+.mypr-warnings .mypr-error .icon {
+  width: 14px;
+  height: 14px;
+  margin-top: 0;
+}
+
+.mypr-next {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.mypr-next-label {
+  flex: none;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.mypr-next.ready {
+  color: var(--vscode-testing-iconPassed, var(--green));
+}
+
+/* Sounds like good news but a warning of severity error contradicts it */
+.mypr-next.danger {
+  align-items: center;
+  color: var(--vscode-errorForeground, var(--red));
+}
+
+.mypr-next .icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
 }
 
 /* ---------- Priority / severity ---------- */
@@ -1044,4 +1379,123 @@ button.state:focus-visible {
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---------- Compact layout ---------- */
+
+.card.compact {
+  gap: 3px;
+  padding: 5px 8px 5px 6px;
+  cursor: pointer;
+}
+
+.compact-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.compact-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-chevron {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.card-chevron:hover {
+  color: var(--vscode-foreground);
+}
+
+.card-chevron:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+.card-chevron .chevron {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.15s;
+}
+
+.card-chevron[aria-expanded='true'] .chevron {
+  transform: rotate(90deg);
+}
+
+/* The header of an expanded card folds it back */
+.card-head.foldable {
+  cursor: pointer;
+}
+
+/* Under the title, aligned with the type icon */
+.signals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  min-width: 0;
+  padding-left: 17px;
+  font-size: 10.5px;
+  line-height: 16px;
+}
+
+.signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  white-space: nowrap;
+  color: var(--pill-color, var(--muted));
+}
+
+.signal span {
+  overflow: hidden;
+  max-width: 120px;
+  text-overflow: ellipsis;
+}
+
+.signal .icon {
+  width: 11px;
+  height: 11px;
+}
+
+.signal .chip-dot {
+  flex: none;
+  background: var(--pill-color, var(--muted));
+}
+
+.signal-ci {
+  color: var(--run-color);
+}
+
+.signal-tasks {
+  color: var(--muted);
+}
+
+.signal-tasks.tone-approved {
+  color: var(--vscode-testing-iconPassed, var(--green));
+}
+
+.signal-alerts {
+  color: var(--vscode-errorForeground, var(--red));
+  font-weight: 600;
+}
+
+/* Pills are smaller than in the header of the large cards */
+.signals .urgency .pill {
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 14px;
 }

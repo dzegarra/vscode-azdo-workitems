@@ -3,12 +3,15 @@ import { buildMyWorkItemsQuery, Iteration, mergeTeamIterations, TeamIteration } 
 import { PackageVersion } from './integrationBuild';
 import { BuildRun, pullRequestBranch } from './pipelines';
 import { imageMimeType, isOrganizationUrl } from './richTextImages';
+import { AuthoredPullRequest, PolicyEvaluation, RawPolicyEvaluation, toPolicyEvaluation } from './myPullRequests';
 import { ReviewerPullRequest } from './reviewRequests';
 import { ThreadResponse } from './reviewThreads';
 import { flattenIterations, IterationNode, ScheduledIteration } from './schedule';
 import { parseRelations, PullRequestState, WorkItemLinks, WorkItemRelation } from './workItemLinks';
 
 const API_VERSION = '7.1';
+/** The policy evaluations API only exists as a preview: 7.1 is refused */
+const POLICY_API_VERSION = '7.1-preview.1';
 const BASE_URL = 'https://dev.azure.com';
 /** Images bigger than this are not embedded in the details of work items */
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -55,6 +58,10 @@ const scheduleCache = new Map<string, { time: number; schedule: Promise<Schedule
 const MAX_PULL_REQUESTS = 30;
 /** Active PRs checked for review requests */
 const MAX_REVIEW_REQUESTS = 100;
+/** Active PRs of the user listed in the sidebar */
+const MAX_MY_ACTIVE_PULL_REQUESTS = 100;
+/** Recently completed PRs of the user: the sidebar lists the last 24 hours of them */
+const MAX_MY_COMPLETED_PULL_REQUESTS = 10;
 
 export interface PullRequestComment {
   threadId: number;
@@ -108,12 +115,12 @@ interface WorkItemResponse {
 export class AzdoClient {
   constructor(readonly organization: string, readonly project: string) {}
 
-  private url(path: string, team?: string): string {
+  private url(path: string, team?: string, apiVersion = API_VERSION): string {
     const segments = [this.organization, this.project, team]
       .filter(Boolean)
       .map((s) => encodeURIComponent(s as string));
     const separator = path.includes('?') ? '&' : '?';
-    return `${BASE_URL}/${segments.join('/')}/_apis/${path}${separator}api-version=${API_VERSION}`;
+    return `${BASE_URL}/${segments.join('/')}/_apis/${path}${separator}api-version=${apiVersion}`;
   }
 
   private async request<T>(
@@ -482,6 +489,68 @@ export class AzdoClient {
       reviewers: pr.reviewers ?? [],
       webUrl: this.pullRequestWebUrlByName(pr.repository.name, pr.pullRequestId),
     }));
+  }
+
+  /**
+   * PRs created by the user in the project: the active ones and the latest completed (newest first).
+   * Abandoned PRs are not requested
+   */
+  async getMyPullRequests(creatorId: string): Promise<AuthoredPullRequest[]> {
+    const fetchPage = async (status: 'active' | 'completed', top: number) => {
+      const result = await this.request<{
+        value: (Omit<AuthoredPullRequest, 'reviewers' | 'webUrl'> & Partial<AuthoredPullRequest>)[];
+      }>(
+        this.url(`git/pullrequests?searchCriteria.creatorId=${creatorId}&searchCriteria.status=${status}&$top=${top}`)
+      );
+      return result.value.map((pr) => ({
+        ...pr,
+        reviewers: pr.reviewers ?? [],
+        webUrl: this.pullRequestWebUrlByName(pr.repository.name, pr.pullRequestId),
+      }));
+    };
+    const [active, completed] = await Promise.all([
+      fetchPage('active', MAX_MY_ACTIVE_PULL_REQUESTS),
+      fetchPage('completed', MAX_MY_COMPLETED_PULL_REQUESTS),
+    ]);
+    return [...active, ...completed];
+  }
+
+  /** Branch policies of the PR with their state (the checks listed in the "Policies" of the PR page) */
+  async getPolicyEvaluations(projectId: string, pullRequestId: number): Promise<PolicyEvaluation[]> {
+    const artifactId = encodeURIComponent(`vstfs:///CodeReview/CodeReviewId/${projectId}/${pullRequestId}`);
+    const result = await this.request<{ value: RawPolicyEvaluation[] }>(
+      this.url(`policy/evaluations?artifactId=${artifactId}`, undefined, POLICY_API_VERSION)
+    );
+    return result.value.flatMap((raw) => toPolicyEvaluation(raw) ?? []);
+  }
+
+  /** IDs of the work items linked to the PR */
+  async getPullRequestWorkItemIds(repositoryId: string, pullRequestId: number): Promise<number[]> {
+    const result = await this.request<{ value: { id: string }[] }>(
+      this.url(`git/repositories/${repositoryId}/pullRequests/${pullRequestId}/workitems`)
+    );
+    return result.value.map((ref) => Number(ref.id));
+  }
+
+  /** Type of each work item ("Bug", "Task"…); the ones that cannot be read are left out */
+  async getWorkItemTypes(ids: number[]): Promise<Map<number, string>> {
+    const types = new Map<number, string>();
+    for (let i = 0; i < ids.length; i += MAX_IDS_PER_REQUEST) {
+      const chunk = ids.slice(i, i + MAX_IDS_PER_REQUEST);
+      const result = await this.request<{ value: { id: number; fields: Record<string, string> }[] }>(
+        this.url(`wit/workitems?ids=${chunk.join(',')}&fields=System.WorkItemType`)
+      );
+      result.value.forEach((item) => types.set(item.id, item.fields['System.WorkItemType']));
+    }
+    return types;
+  }
+
+  /** Takes the PR out of draft: the reviewers are notified */
+  async publishPullRequest(repositoryId: string, pullRequestId: number): Promise<void> {
+    await this.request(this.url(`git/repositories/${repositoryId}/pullrequests/${pullRequestId}`), {
+      method: 'PATCH',
+      body: JSON.stringify({ isDraft: false }),
+    });
   }
 
   /** Active PRs of the project where the user is a reviewer (directly, not through a group) */

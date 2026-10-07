@@ -50,6 +50,18 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "azdoWorkItems.useCompactLayout",
+        "title": "Use Compact Layout",
+        "category": "Azure Work Items",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "azdoWorkItems.useLargeLayout",
+        "title": "Use Large Layout",
+        "category": "Azure Work Items",
+        "icon": "$(list-unordered)"
+      },
+      {
         "command": "azdoWorkItems.openIterationBoard",
         "title": "Open Iteration Board",
         "category": "Azure Work Items",
@@ -129,6 +141,31 @@
         "command": "azdoWorkItems.checkoutPullRequest",
         "title": "Check Out a Pull Request Waiting for My Review",
         "category": "Azure Work Items"
+      },
+      {
+        "command": "azdoWorkItems.checkMyPullRequests",
+        "title": "Check My Pull Requests Status",
+        "category": "Azure Work Items"
+      },
+      {
+        "command": "azdoWorkItems.checkoutMyPullRequest",
+        "title": "Check Out One of My Pull Requests",
+        "category": "Azure Work Items"
+      },
+      {
+        "command": "azdoWorkItems.publishPullRequest",
+        "title": "Publish a Draft Pull Request",
+        "category": "Azure Work Items"
+      },
+      {
+        "command": "azdoWorkItems.expandTasks",
+        "title": "Expand All Tasks",
+        "category": "Azure Work Items"
+      },
+      {
+        "command": "azdoWorkItems.collapseTasks",
+        "title": "Collapse All Tasks",
+        "category": "Azure Work Items"
       }
     ],
     "menus": {
@@ -149,13 +186,43 @@
           "group": "navigation@3"
         },
         {
+          "command": "azdoWorkItems.useCompactLayout",
+          "when": "view == azdoWorkItems.myItems && azdoWorkItems.layout == large",
+          "group": "navigation@4"
+        },
+        {
+          "command": "azdoWorkItems.useLargeLayout",
+          "when": "view == azdoWorkItems.myItems && azdoWorkItems.layout == compact",
+          "group": "navigation@4"
+        },
+        {
           "command": "azdoWorkItems.selectTeams",
+          "when": "view == azdoWorkItems.myItems"
+        },
+        {
+          "command": "azdoWorkItems.expandTasks",
+          "when": "view == azdoWorkItems.myItems"
+        },
+        {
+          "command": "azdoWorkItems.collapseTasks",
           "when": "view == azdoWorkItems.myItems"
         }
       ],
       "commandPalette": [
         {
+          "command": "azdoWorkItems.useCompactLayout",
+          "when": "azdoWorkItems.layout == large"
+        },
+        {
+          "command": "azdoWorkItems.useLargeLayout",
+          "when": "azdoWorkItems.layout == compact"
+        },
+        {
           "command": "azdoWorkItems.checkout",
+          "when": "false"
+        },
+        {
+          "command": "azdoWorkItems.publishPullRequest",
           "when": "false"
         }
       ]
@@ -234,6 +301,19 @@
           },
           "default": [],
           "description": "Priorities hidden (\"P1\" … \"P4\", or \"No priority\"). Also editable with the Priority chips of the view."
+        },
+        "azdoWorkItems.layout": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "large"
+          ],
+          "enumDescriptions": [
+            "Two lines per work item: title and state, then small signals (priority, branch, PR, CI, tasks, alerts). Click a row to expand it.",
+            "Full cards with the branch, the PRs, the actions and the task list."
+          ],
+          "default": "compact",
+          "description": "How the work items of the view are shown. Also switchable with the button of the view title."
         },
         "azdoWorkItems.filter.alwaysShowAlerts": {
           "type": "boolean",
@@ -647,6 +727,23 @@
           "type": "boolean",
           "default": true,
           "description": "Show how many pull requests are waiting for your review in the status bar."
+        },
+        "azdoWorkItems.myPullRequests.showDrafts": {
+          "type": "boolean",
+          "default": true,
+          "description": "List your draft pull requests in the \"My Pull Requests\" box. The box has a button to switch it. When hidden, the box counts the drafts."
+        },
+        "azdoWorkItems.myPullRequests.pollIntervalSeconds": {
+          "type": "number",
+          "default": 120,
+          "minimum": 30,
+          "description": "How often the pull requests you created are checked: policies, comments, CI runs and auto-complete (seconds)."
+        },
+        "azdoWorkItems.myPullRequests.minimumRequiredReviewers": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "description": "Team rule: how many required reviewers (people, not groups) a published pull request of yours should have. The box warns when it has fewer. 0 disables the warning."
         },
         "azdoWorkItems.statusBar.currentWorkItem": {
           "type": "boolean",

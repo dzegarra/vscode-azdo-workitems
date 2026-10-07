@@ -1,0 +1,532 @@
+import { describe, expect, it } from 'vitest';
+import {
+  AuthoredPullRequest,
+  AuthoredPullRequestData,
+  countUnresolvedThreads,
+  formatAge,
+  isReadyToMerge,
+  nextTone,
+  plainDescription,
+  nextStep,
+  PolicyEvaluation,
+  PullRequestExtras,
+  PullRequestWarning,
+  pullRequestWarnings,
+  toMyPullRequestModels,
+  toPolicyEvaluation,
+  voteKind,
+} from './myPullRequests';
+
+const ME = 'me';
+const NO_RULES = { minimumRequiredReviewers: 0 };
+const NOW = new Date('2026-10-07T12:00:00Z');
+
+function pr(overrides: Partial<AuthoredPullRequest> = {}): AuthoredPullRequest {
+  return {
+    pullRequestId: 1,
+    title: '[1] Feature: Title',
+    description: 'Changes of the feature',
+    status: 'active',
+    isDraft: false,
+    mergeStatus: 'succeeded',
+    creationDate: '2026-10-06T10:00:00Z',
+    createdBy: { id: ME },
+    targetRefName: 'refs/heads/develop',
+    sourceRefName: 'refs/heads/feature/x',
+    repository: { id: 'repo', name: 'User_Interface', project: { id: 'project' } },
+    webUrl: 'https://example/pr/1',
+    reviewers: [],
+    ...overrides,
+  };
+}
+
+const evaluation = (type: string, status: string, isBlocking = true, extra: Partial<PolicyEvaluation> = {}) => ({
+  type,
+  status,
+  isBlocking,
+  ...extra,
+});
+
+/** Policies of the PR 13713 */
+const POLICIES_13713: PolicyEvaluation[] = [
+  evaluation('Minimum number of reviewers', 'queued', true, { minimumApproverCount: 2, creatorVoteCounts: false }),
+  evaluation('Work item linking', 'approved'),
+  evaluation('Comment requirements', 'approved'),
+  evaluation('Require a merge strategy', 'rejected'),
+  evaluation('Build', 'approved', true, { displayName: 'Pull Request Build' }),
+  evaluation('Required reviewers', 'queued', false),
+  evaluation('Status', 'approved', false),
+];
+
+const extras = (overrides: Partial<PullRequestExtras> = {}): PullRequestExtras => ({ runs: [], ...overrides });
+
+describe('nextStep', () => {
+  it('lists what blocks the PR 13713', () => {
+    const pull = pr({
+      reviewers: [
+        { id: 'a', displayName: 'A', vote: 10, isRequired: true },
+        { id: 'team', displayName: 'Team', vote: 10, isContainer: true },
+        { id: ME, displayName: 'Me', vote: 10 },
+      ],
+    });
+    // One approval of a person: the group and the author do not count
+    expect(nextStep(pull, extras({ evaluations: POLICIES_13713 }))).toBe(
+      '1 more approval needed · Choose an allowed merge strategy'
+    );
+  });
+
+  it('counts the author when the policy allows it', () => {
+    const pull = pr({ reviewers: [{ id: ME, displayName: 'Me', vote: 5 }] });
+    const policies = [
+      evaluation('Minimum number of reviewers', 'queued', true, { minimumApproverCount: 2, creatorVoteCounts: true }),
+    ];
+    expect(nextStep(pull, extras({ evaluations: policies }))).toBe('1 more approval needed');
+  });
+
+  it('asks for the approvals still missing', () => {
+    const policies = [evaluation('Minimum number of reviewers', 'queued', true, { minimumApproverCount: 2 })];
+    expect(nextStep(pr(), extras({ evaluations: policies }))).toBe('2 more approvals needed');
+  });
+
+  it('puts the draft and the conflicts first', () => {
+    const pull = pr({ isDraft: true, mergeStatus: 'conflicts' });
+    expect(nextStep(pull, extras({ evaluations: [evaluation('Work item linking', 'rejected')] }))).toBe(
+      'Publish the draft · Resolve the conflicts · Link a work item'
+    );
+  });
+
+  it.each([
+    ['running', 'Pull Request Build running'],
+    ['queued', 'Pull Request Build queued'],
+    ['rejected', 'Pull Request Build failed'],
+    ['broken', 'Pull Request Build failed'],
+  ])('describes a build that is %s', (status, expected) => {
+    const policies = [evaluation('Build', status, true, { displayName: 'Pull Request Build' })];
+    expect(nextStep(pr(), extras({ evaluations: policies }))).toBe(expected);
+  });
+
+  it('counts the comments to resolve', () => {
+    const policies = [evaluation('Comment requirements', 'rejected')];
+    expect(nextStep(pr(), extras({ evaluations: policies, unresolvedThreads: 2 }))).toBe('Resolve 2 comments');
+    expect(nextStep(pr(), extras({ evaluations: policies, unresolvedThreads: 1 }))).toBe('Resolve 1 comment');
+    expect(nextStep(pr(), extras({ evaluations: policies }))).toBe('Resolve the comments');
+  });
+
+  it('asks for the approval of a required reviewer only when the policy blocks', () => {
+    expect(nextStep(pr(), extras({ evaluations: [evaluation('Required reviewers', 'queued')] }))).toBe(
+      'Approval of a required reviewer missing'
+    );
+  });
+
+  it('names the other blocking policies with their status', () => {
+    expect(nextStep(pr(), extras({ evaluations: [evaluation('Status', 'rejected')] }))).toBe('Status: rejected');
+    // A merge strategy that is not rejected yet
+    expect(nextStep(pr(), extras({ evaluations: [evaluation('Require a merge strategy', 'queued')] }))).toBe(
+      'Require a merge strategy: queued'
+    );
+  });
+
+  it('ignores the policies that are optional, approved or not applicable', () => {
+    const policies = [
+      evaluation('Status', 'rejected', false),
+      evaluation('Build', 'notApplicable'),
+      evaluation('Work item linking', 'approved'),
+    ];
+    expect(nextStep(pr(), extras({ evaluations: policies }))).toBe('Ready to merge');
+  });
+
+  it('is ready, or completes by itself, when nothing blocks', () => {
+    expect(nextStep(pr(), extras({ evaluations: [] }))).toBe('Ready to merge');
+    expect(nextStep(pr({ autoCompleteSetBy: { id: ME } }), extras({ evaluations: [] }))).toBe(
+      'Will complete automatically'
+    );
+  });
+
+  it('knows less when the policies could not be fetched', () => {
+    expect(nextStep(pr(), extras())).toBeUndefined();
+    expect(nextStep(pr({ isDraft: true }), extras())).toBe('Publish the draft');
+  });
+});
+
+describe('pullRequestWarnings', () => {
+  const autoComplete = { autoCompleteSetBy: { id: ME } };
+  const bug = { workItems: [{ id: 1, type: 'Bug' }] };
+  const backlogItem = { workItems: [{ id: 2, type: 'Product Backlog Item' }] };
+
+  it('warns when auto-complete will not delete the branch', () => {
+    const warnings = pullRequestWarnings(
+      pr({ ...autoComplete, completionOptions: { mergeStrategy: 'squash' } }),
+      backlogItem,
+      NO_RULES
+    );
+    expect(warnings).toEqual([
+      {
+        text: 'Auto-complete will not delete the branch (team rule: delete branches after merging)',
+        severity: 'warning',
+      },
+    ]);
+  });
+
+  it('does not warn when the branch is deleted', () => {
+    expect(
+      pullRequestWarnings(pr({ ...autoComplete, completionOptions: { deleteSourceBranch: true } }), bug, NO_RULES)
+    ).toEqual([]);
+  });
+
+  it('warns when auto-complete will complete a linked Bug', () => {
+    const pull = pr({ ...autoComplete, completionOptions: { deleteSourceBranch: true, transitionWorkItems: true } });
+    expect(pullRequestWarnings(pull, bug, NO_RULES)).toEqual([
+      {
+        text: "Auto-complete shouldn't complete the linked Bug: Only testers have that prerogative.",
+        severity: 'error',
+      },
+    ]);
+    // The most serious one first
+    const both = pr({ ...autoComplete, completionOptions: { transitionWorkItems: true } });
+    expect(pullRequestWarnings(both, bug, NO_RULES).map((warning) => warning.severity)).toEqual(['error', 'warning']);
+  });
+
+  it('does not warn about work items that are not Bugs, or when they cannot be told', () => {
+    const pull = pr({ ...autoComplete, completionOptions: { deleteSourceBranch: true, transitionWorkItems: true } });
+    expect(pullRequestWarnings(pull, backlogItem, NO_RULES)).toEqual([]);
+    expect(pullRequestWarnings(pull, {}, NO_RULES)).toEqual([]);
+  });
+
+  it('does not warn about a Bug when work items are not transitioned', () => {
+    const pull = pr({ ...autoComplete, completionOptions: { deleteSourceBranch: true, transitionWorkItems: false } });
+    expect(pullRequestWarnings(pull, bug, NO_RULES)).toEqual([]);
+  });
+
+  it('does not warn without auto-complete', () => {
+    expect(pullRequestWarnings(pr({ completionOptions: { transitionWorkItems: true } }), bug, NO_RULES)).toEqual([]);
+  });
+});
+
+describe('pullRequestWarnings: team rules of the published PRs', () => {
+  const required = (id: string, extra: object = {}) => ({ id, displayName: id, vote: 0, isRequired: true, ...extra });
+  const backlog = { workItems: [{ id: 2, type: 'Product Backlog Item' }] };
+  const good = pr({ reviewers: [required('a'), required('b')] });
+  const texts = (pull: AuthoredPullRequest, e: Pick<PullRequestExtras, 'workItems'>, min = 2) =>
+    pullRequestWarnings(pull, e, { minimumRequiredReviewers: min }).map((warning) => warning.text);
+
+  it('does not warn when every rule is followed', () => {
+    expect(texts(good, backlog)).toEqual([]);
+  });
+
+  it('warns with every rule broken, as warnings, after the auto-complete ones', () => {
+    const bad = pr({ title: 'Fix stuff', description: ' ', autoCompleteSetBy: { id: ME } });
+    const warnings = pullRequestWarnings(bad, { workItems: [{ id: 3, type: 'Task' }] });
+    expect(warnings.map((warning) => warning.text)).toEqual([
+      'Auto-complete will not delete the branch (team rule: delete branches after merging)',
+      'The title does not follow "[<IDs>] <Feature Name>: <description>"',
+      'Add a short description of the changes',
+      'Add 2 more required reviewers (team rule: at least 2)',
+      'Link the Backlog Item or Bug of this PR',
+    ]);
+    expect(new Set(warnings.map((warning) => warning.severity))).toEqual(new Set(['warning']));
+  });
+
+  it('never warns about drafts, completed or abandoned PRs', () => {
+    const bad = { title: 'Fix', description: '' };
+    expect(texts(pr({ ...bad, isDraft: true }), { workItems: [] })).toEqual([]);
+    expect(texts(pr({ ...bad, status: 'completed' }), { workItems: [] })).toEqual([]);
+    expect(texts(pr({ ...bad, status: 'abandoned' }), { workItems: [] })).toEqual([]);
+  });
+
+  it('requires a description of at least 10 characters of text', () => {
+    const warn = (description?: string) => texts(pr({ ...good, description }), backlog);
+    expect(warn(undefined)).toEqual(['Add a short description of the changes']);
+    expect(warn('')).toEqual(['Add a short description of the changes']);
+    expect(warn('## \n\n- \n')).toEqual(['Add a short description of the changes']);
+    expect(warn('Fixes it')).toEqual(['Add a short description of the changes']);
+    expect(warn('[a](https://example.com/very/long/link)')).toEqual(['Add a short description of the changes']);
+    expect(warn('Fixes the network restart')).toEqual([]);
+    expect(warn('- Fixes the thing')).toEqual([]);
+  });
+
+  it('counts only the required people: not groups, the author nor those who declined', () => {
+    const missing = (reviewers: AuthoredPullRequest['reviewers'], min = 2) =>
+      texts(pr({ reviewers }), backlog, min).filter((text) => text.startsWith('Add '));
+    expect(missing([required('a')])).toEqual(['Add 1 more required reviewer (team rule: at least 2)']);
+    expect(missing([required('a'), { id: 'b', displayName: 'b', vote: 0 }])).toHaveLength(1);
+    expect(missing([required('a'), required('team', { isContainer: true })])).toHaveLength(1);
+    expect(missing([required('a'), required(ME)])).toHaveLength(1);
+    expect(missing([required('a'), required('b', { hasDeclined: true })])).toHaveLength(1);
+    expect(missing([required('a'), required('b'), required('c')])).toEqual([]);
+    expect(missing([required('a')], 3)).toEqual(['Add 2 more required reviewers (team rule: at least 3)']);
+  });
+
+  it('is disabled by a minimum of 0', () => {
+    expect(texts(pr({ reviewers: [] }), backlog, 0)).toEqual([]);
+  });
+
+  it('wants a Backlog Item, User Story or Bug linked: a Task alone does not count', () => {
+    const link = (...types: string[]) => texts(good, { workItems: types.map((type, id) => ({ id, type })) });
+    const warning = ['Link the Backlog Item or Bug of this PR'];
+    expect(link()).toEqual(warning);
+    expect(link('Task')).toEqual(warning);
+    expect(link('Task', 'Bug')).toEqual([]);
+    expect(link('User Story')).toEqual([]);
+    expect(link('Product Backlog Item', 'Task')).toEqual([]);
+  });
+
+  it('does not warn about the links when the work items are unknown', () => {
+    expect(texts(good, {})).toEqual([]);
+  });
+});
+
+describe('isReadyToMerge', () => {
+  const approved = POLICIES_13713.map((p) => ({ ...p, status: 'approved' }));
+  const waitingApprovals = [
+    evaluation('Minimum number of reviewers', 'queued', true, { minimumApproverCount: 2 }),
+    evaluation('Work item linking', 'approved'),
+    evaluation('Build', 'approved', true, { displayName: 'Pull Request Build' }),
+  ];
+  const ready = (
+    pull: AuthoredPullRequest,
+    evaluations: PolicyEvaluation[] | undefined,
+    warnings: PullRequestWarning[] = []
+  ) => isReadyToMerge(pull, { evaluations }, warnings);
+
+  it('is true when everything is approved and nothing warns', () => {
+    expect(ready(pr(), approved)).toBe(true);
+    expect(ready(pr({ autoCompleteSetBy: { id: ME } }), approved)).toBe(true);
+    expect(ready(pr(), [])).toBe(true);
+  });
+
+  it('ignores the optional policies that are not satisfied', () => {
+    expect(ready(pr(), [...approved, evaluation('Required reviewers', 'queued', false)])).toBe(true);
+  });
+
+  it('is false while an approval or another blocking policy is missing', () => {
+    expect(ready(pr(), waitingApprovals)).toBe(false);
+    expect(ready(pr(), [evaluation('Build', 'running', true, { displayName: 'CI' })])).toBe(false);
+    expect(ready(pr(), POLICIES_13713)).toBe(false);
+  });
+
+  it('is false with any warning, conflicts, draft, completed or unknown policies', () => {
+    expect(ready(pr(), approved, [{ text: 'x', severity: 'warning' }])).toBe(false);
+    expect(ready(pr(), approved, [{ text: 'x', severity: 'error' }])).toBe(false);
+    expect(ready(pr({ mergeStatus: 'conflicts' }), approved)).toBe(false);
+    expect(ready(pr({ isDraft: true }), approved)).toBe(false);
+    expect(ready(pr({ status: 'completed' }), approved)).toBe(false);
+    expect(ready(pr(), undefined)).toBe(false);
+  });
+
+  it('is set on the card model together with the tone of the next line', () => {
+    const options = { now: NOW, baseBranch: 'develop', showDrafts: true, minimumRequiredReviewers: 2 };
+    const reviewers = [
+      { id: 'a', displayName: 'A', vote: 10, isRequired: true },
+      { id: 'b', displayName: 'B', vote: 10, isRequired: true },
+    ];
+    const card = (overrides: Partial<AuthoredPullRequest>, evaluations: PolicyEvaluation[], workItems = ['Bug']) =>
+      toMyPullRequestModels(
+        [
+          {
+            pr: pr({ reviewers, ...overrides }),
+            extras: extras({ evaluations, workItems: workItems.map((type, id) => ({ id, type })) }),
+          },
+        ],
+        options
+      ).items[0];
+    expect(card({}, approved)).toMatchObject({
+      readyToMerge: true,
+      warnings: [],
+      next: 'Ready to merge',
+      nextTone: 'ready',
+    });
+    expect(card({}, waitingApprovals)).toMatchObject({ readyToMerge: false, nextTone: 'pending' });
+    expect(card({ title: 'Fix' }, approved).readyToMerge).toBe(false);
+    expect(card({ status: 'completed', closedDate: '2026-10-07T10:00:00Z' }, approved).readyToMerge).toBe(false);
+  });
+
+  it('colours the next line as danger when a warning is an error', () => {
+    expect(nextTone('Will complete automatically', [{ text: 'x', severity: 'error' }])).toBe('danger');
+    expect(nextTone('Ready to merge', [{ text: 'x', severity: 'error' }])).toBe('danger');
+    expect(nextTone('Will complete automatically', [{ text: 'x', severity: 'warning' }])).toBe('ready');
+    expect(nextTone('Ready to merge', [])).toBe('ready');
+    expect(nextTone('1 more approval needed', [])).toBe('pending');
+    expect(nextTone(undefined, [])).toBe('pending');
+  });
+});
+
+describe('plainDescription', () => {
+  it('drops the markdown syntax and the whitespace', () => {
+    expect(plainDescription('## Title\n- [link](http://x.y) *bold*')).toBe('Titlelinkbold');
+  });
+});
+
+describe('toMyPullRequestModels', () => {
+  const data = (
+    overrides: Partial<AuthoredPullRequest>,
+    e: Partial<PullRequestExtras> = {}
+  ): AuthoredPullRequestData => ({
+    pr: pr(overrides),
+    extras: extras(e),
+  });
+  const options = { now: NOW, baseBranch: 'develop', showDrafts: true, ...NO_RULES };
+
+  it('shows the target only when it is not the base branch', () => {
+    const { items } = toMyPullRequestModels(
+      [data({ pullRequestId: 1 }), data({ pullRequestId: 2, targetRefName: 'refs/heads/release/x' })],
+      options
+    );
+    expect(items.map((item) => [item.id, item.target])).toEqual([
+      [1, undefined],
+      [2, 'release/x'],
+    ]);
+    const other = toMyPullRequestModels([data({ targetRefName: 'refs/heads/develop' })], {
+      ...options,
+      baseBranch: 'main',
+    });
+    expect(other.items[0].target).toBe('develop');
+  });
+
+  it('sorts the active PRs (oldest first), the drafts, then the completed ones (latest first)', () => {
+    const { items } = toMyPullRequestModels(
+      [
+        data({ pullRequestId: 1, status: 'completed', closedDate: '2026-10-07T01:00:00Z' }),
+        data({ pullRequestId: 2, isDraft: true, creationDate: '2026-10-01T00:00:00Z' }),
+        data({ pullRequestId: 3, creationDate: '2026-10-05T00:00:00Z' }),
+        data({ pullRequestId: 4, status: 'completed', closedDate: '2026-10-07T09:00:00Z' }),
+        data({ pullRequestId: 5, creationDate: '2026-10-03T00:00:00Z' }),
+      ],
+      options
+    );
+    expect(items.map((item) => item.id)).toEqual([5, 3, 2, 4, 1]);
+  });
+
+  it('lists the PRs completed in the last 24 hours and never the abandoned ones', () => {
+    const { items } = toMyPullRequestModels(
+      [
+        data({ pullRequestId: 1, status: 'completed', closedDate: '2026-10-06T12:30:00Z' }),
+        data({ pullRequestId: 2, status: 'completed', closedDate: '2026-10-06T11:59:00Z' }),
+        data({ pullRequestId: 3, status: 'completed' }),
+        data({ pullRequestId: 4, status: 'abandoned', closedDate: '2026-10-07T11:00:00Z' }),
+      ],
+      options
+    );
+    expect(items.map((item) => item.id)).toEqual([1]);
+    expect(items[0]).toMatchObject({
+      isCompleted: true,
+      status: 'Completed',
+      time: 'completed 23 h ago',
+    });
+    expect(items[0].next).toBeUndefined();
+  });
+
+  it('hides the drafts and counts them', () => {
+    const list = [
+      data({ pullRequestId: 1 }),
+      data({ pullRequestId: 2, isDraft: true }),
+      data({ pullRequestId: 3, isDraft: true }),
+    ];
+    expect(toMyPullRequestModels(list, { ...options, showDrafts: false })).toMatchObject({
+      items: [{ id: 1 }],
+      hiddenDrafts: 2,
+    });
+    expect(toMyPullRequestModels(list, options)).toMatchObject({ hiddenDrafts: 0 });
+    expect(toMyPullRequestModels(list, options).items).toHaveLength(3);
+  });
+
+  it('builds the card of an active PR', () => {
+    const { items } = toMyPullRequestModels(
+      [
+        data(
+          {
+            pullRequestId: 13713,
+            mergeStatus: 'conflicts',
+            autoCompleteSetBy: { id: ME },
+            completionOptions: { deleteSourceBranch: false },
+            reviewers: [
+              { id: ME, displayName: 'Me', vote: 0 },
+              { id: 'team', displayName: 'Team', vote: 0, isContainer: true },
+              { id: 'b', displayName: 'B', vote: -5 },
+              { id: 'a', displayName: 'A', vote: 10, isRequired: true },
+            ],
+          },
+          {
+            unresolvedThreads: 2,
+            workItems: [{ id: 66280, type: 'Product Backlog Item' }],
+            evaluations: POLICIES_13713,
+          }
+        ),
+      ],
+      options
+    );
+    expect(items[0]).toMatchObject({
+      time: '1 d 2 h',
+      workItemIds: [66280],
+      status: 'Conflicts',
+      conflicts: true,
+      unresolved: 2,
+      autoComplete: true,
+      warnings: [
+        {
+          text: 'Auto-complete will not delete the branch (team rule: delete branches after merging)',
+          severity: 'warning',
+        },
+      ],
+      next: 'Resolve the conflicts · 1 more approval needed · Choose an allowed merge strategy',
+    });
+    // The author is left out; required first, groups last
+    expect(items[0].reviewers.map((r) => [r.name, r.vote])).toEqual([
+      ['A', 'approved'],
+      ['B', 'waiting'],
+      ['Team', 'none'],
+    ]);
+  });
+});
+
+describe('helpers', () => {
+  it('formats the age', () => {
+    expect(formatAge(20 * 60 * 1000)).toBe('20 min');
+    expect(formatAge(5 * 3600 * 1000)).toBe('5 h');
+    expect(formatAge(26 * 3600 * 1000)).toBe('1 d 2 h');
+    expect(formatAge(-5)).toBe('0 min');
+  });
+
+  it('interprets the votes', () => {
+    expect([10, 5, 0, -5, -10].map((vote) => voteKind({ vote }))).toEqual([
+      'approved',
+      'suggestions',
+      'none',
+      'waiting',
+      'rejected',
+    ]);
+    expect(voteKind({ vote: 0, hasDeclined: true })).toBe('declined');
+  });
+
+  it('counts the text threads still open', () => {
+    const thread = (status: string | undefined, type = 'text', isDeleted = false) => ({
+      id: 1,
+      status,
+      publishedDate: '',
+      comments: [{ id: 1, author: { id: 'a', displayName: 'A' }, commentType: type, isDeleted }],
+    });
+    expect(
+      countUnresolvedThreads([
+        thread('active'),
+        thread('pending'),
+        thread('fixed'),
+        thread('closed'),
+        thread('active', 'system'),
+        thread('active', 'text', true),
+        thread(undefined),
+        { id: 2, status: 'active', publishedDate: '' },
+      ])
+    ).toBe(2);
+  });
+
+  it('ignores disabled policies and flattens the others', () => {
+    const raw = (configuration: object) => ({
+      status: 'queued',
+      configuration: { type: { displayName: 'Build' }, ...configuration },
+    });
+    expect(toPolicyEvaluation(raw({ isEnabled: false }))).toBeUndefined();
+    expect(toPolicyEvaluation(raw({ isDeleted: true }))).toBeUndefined();
+    expect(
+      toPolicyEvaluation(raw({ isBlocking: true, isEnabled: true, settings: { displayName: 'Pull Request Build' } }))
+    ).toMatchObject({ status: 'queued', isBlocking: true, type: 'Build', displayName: 'Pull Request Build' });
+  });
+});

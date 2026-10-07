@@ -11,6 +11,8 @@ Brings the Azure DevOps work of the current sprint into VS Code: your Backlog It
   - Branches: `<feature|bugfix>/<module>/<id>-<short-name>`, e.g. `feature/fui-admin/5641-network-restart-button`. Creating one links it to the work item and moves it to Committed.
   - PR titles: `[<ids>] <Feature Name>: <description>`, e.g. `[123,554] FUI Administration: Show the network configuration`.
 - **[Current work item](#work-item-of-the-current-branch)** in the status bar, also when you check out a colleague's branch to review it.
+- **[My pull requests](#my-pull-requests)** in the sidebar: reviewers and votes, unresolved comments, conflicts, CI, auto-complete, and the next step before the merge, from the branch policies.
+- **[Two layouts](#layouts)**: compact rows (default) or large cards.
 - **[Work item editing](#usage)**: change states, add tasks, and see the full details (description, acceptance criteria, effort, tags, parent, children) in an editor tab.
 - **[Alerts](#alerts)** for the work items that break the team rules (Done with open tasks, missing PR task, blocking tags, empty required fields…), in the cards, the view badge and the status bar. **[Integrated in Build](#integrated-in-build)** can be filled in one click from the last release of the deploy image.
 - **[Dependencies](#dependencies)**: predecessors and successors in the details, and an interactive map by iteration that highlights the risky ones.
@@ -43,6 +45,17 @@ Cards are sorted by state: Done, Ready to Test, Committed, In Progress, Approved
 
 Within each state, cards are sorted by priority, then severity. Use the **Type**, **State**, **PR** and **Priority** chips to filter the cards (coloured like the cards; the hidden values are grey and dashed) (by default only Product Backlog Items and Bugs, hiding Done / Removed / Closed), and the search box to find them by ID, title or branch. The PR filter uses the main PR of each work item (the active one, or the most recent), or `No PR`.
 
+### Layouts
+
+The cards come in two layouts, switched with the button of the view title bar (`azdoWorkItems.layout`):
+
+- **Compact** (default): two lines per work item. The first one has the type, ID, title and state; the second one only the signals that apply: priority / severity, branch (`current`, or `not deleted` for finished work items), main PR state, CI state of the main PR, task progress (`☑ 2/3`) and alerts (`⚠ 2`). Hover a signal for details. Click a row to expand it into the large card, with its buttons and tasks; click its header to fold it back.
+- **Large**: the full cards described below.
+
+### Tasks
+
+The tasks of a card are folded under a `Tasks 2/3` line with a progress bar: Done tasks out of all the tasks, without the Removed ones. Click it to show them. A card whose alerts are about its tasks shows them unfolded. **Expand All Tasks** / **Collapse All Tasks** are in the view menu.
+
 Card actions:
 
 - **Create branch**: pick the module, adjust the short name. The branch is created from `origin/develop`, checked out, published and linked to the work item's _Development_ section. Product Backlog Items and Bugs in New / Approved / To Do are moved to **Committed** (`azdoWorkItems.stateOnBranchCreated`).
@@ -56,6 +69,21 @@ Card actions:
 Organization, project and repository are detected from the `origin` remote.
 
 By default the view lists your work items in the current iteration of **every team you belong to**. Teams sharing the same sprint are merged; when your teams are in different sprints, the items are grouped by iteration. Each group can be collapsed (click its name) to keep open only the iterations you are interested in; a collapsed group still shows how many work items it has and how many need attention. Use **Select Teams** in the view menu to limit the list to some teams (select none to go back to all of them). **Open Iteration Board** asks which team's board to open when there are several.
+
+## My pull requests
+
+The **My Pull Requests** box, above your work items, lists the pull requests you created, in all the repositories of the project: the active ones (drafts included; **Hide drafts** in its header, or `azdoWorkItems.myPullRequests.showDrafts`) and, faded, the ones completed in the last 24 hours. Each card shows:
+
+- the PR, its status, its age and linked work items, and the target branch when it is not `develop`;
+- the reviewers with their votes (required ones marked);
+- unresolved comments, conflicts, CI runs (only when the PR has some) and an **Auto-complete** pill;
+- warnings when auto-complete will **not delete the branch** (team rule: branches are deleted after merging), and, in red, when it will **complete a linked Bug**: "Auto-complete shouldn't complete the linked Bug: Only testers have that prerogative.";
+- on published PRs, warnings when they break the team rules: a title not following `[<IDs>] <Feature Name>: <description>`, no description, fewer than 2 required reviewers (people, not groups; `azdoWorkItems.myPullRequests.minimumRequiredReviewers`), or no Backlog Item / Bug linked;
+- **Next**: what still blocks the merge, from the blocking branch policies of the PR, e.g. `1 more approval needed · Choose an allowed merge strategy`, or `Ready to merge` / `Will complete automatically`.
+
+PRs that nothing stops from being merged (published, every blocking policy satisfied, approvals included, no conflicts and no warnings) are highlighted in green (**Ready to merge**). When a PR breaks a rule that only someone else may act on (e.g. auto-complete would complete a Bug), its **Next** line is red with a warning icon, even when it says _Will complete automatically_.
+
+Buttons: **Open PR**, **Checkout** (PRs of the repository open in VS Code) and **Publish** for drafts (after a confirmation: reviewers are notified). PRs are checked every 2 minutes (`azdoWorkItems.myPullRequests.pollIntervalSeconds`, or the refresh button of the box). The box and the _Waiting for your review_ one can be collapsed.
 
 ## Work item of the current branch
 
@@ -174,6 +202,8 @@ Only the PRs where you are a reviewer yourself are listed: when a group (e.g. a 
 | `azdoWorkItems.organization` / `.project` / `.repository` | Override what is detected from the remote                      |
 | `azdoWorkItems.alerts.*`                                  | Alert rules: tags, required fields, types, PR task pattern     |
 | `azdoWorkItems.integrationBuild.*`                        | Feed, package and suffix used to fill Integrated in Build      |
+| `azdoWorkItems.layout`                                    | Layout of the cards: `compact` (default) or `large`            |
+| `azdoWorkItems.myPullRequests.*`                          | My pull requests: show drafts, refresh interval                |
 | `azdoWorkItems.statusBar.currentWorkItem`                 | Show the work item of the current branch in the status bar     |
 | `azdoWorkItems.pipelines.*`                               | CI runs: refresh interval, notifications, status bar           |
 | `azdoWorkItems.reviews.*`                                 | PRs to review: maximum wait, due soon, reminders, status bar   |

@@ -7,6 +7,7 @@ import {
   buildPrDescription,
   buildPrTitle,
   isValidModule,
+  isValidPullRequestTitle,
   parseBranchName,
   slugify,
 } from './naming';
@@ -97,5 +98,38 @@ describe('workItemIdFromBranch', () => {
     for (const branch of ['develop', 'main', 'release/1.2', 'feature/dark-mode', 'hotfix/v2/some-fix', '123-fix']) {
       expect(workItemIdFromBranch(branch)).toBeUndefined();
     }
+  });
+});
+
+describe('isValidPullRequestTitle', () => {
+  it.each([
+    '[123,554] FUI Administration: Show the network configuration',
+    '[66280] FUI Administration: Access point label',
+    '[1, 2] PMUI Dashboard: x y',
+    '[1] A: b: c',
+  ])('accepts %s', (title) => {
+    expect(isValidPullRequestTitle(title)).toBe(true);
+  });
+
+  it.each([
+    'Fix stuff',
+    'FUI Administration: Show it',
+    '[abc] X: y',
+    '[] X: y',
+    '[1,] X: y',
+    '[1]X: y',
+    '[1] X y',
+    '[1] X:',
+    '[1] X: ',
+    '[1] : y',
+    '[1]  : y',
+    '[1] X:y',
+    '',
+  ])('rejects "%s"', (title) => {
+    expect(isValidPullRequestTitle(title)).toBe(false);
+  });
+
+  it('accepts what buildPrTitle builds', () => {
+    expect(isValidPullRequestTitle(buildPrTitle([1, 2], 'FUI Administration', 'Do it'))).toBe(true);
   });
 });

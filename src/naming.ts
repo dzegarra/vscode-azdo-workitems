@@ -83,6 +83,13 @@ export function buildPrTitle(ids: number[], featureName: string, description: st
   return `[${uniqueIds.join(',')}] ${featureName.trim()}: ${description.trim()}`;
 }
 
+const PR_TITLE_PATTERN = /^\[\d+(?:,\s*\d+)*\] [^:\s][^:]*: \S/;
+
+/** True when the title is "[<id>,<id>] <Feature Name>: <description>" */
+export function isValidPullRequestTitle(title: string): boolean {
+  return PR_TITLE_PATTERN.test(title.trim());
+}
+
 /** Bullet list of commits. Azure DevOps appends "Related work items" by itself from the linked work items */
 export function buildPrDescription(commitSubjects: string[]): string {
   return commitSubjects.map((subject) => `- ${subject}`).join('\n');

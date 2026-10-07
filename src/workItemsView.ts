@@ -1,8 +1,14 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { SECTION } from './config';
+import {
+  CHECKOUT_MY_PULL_REQUEST_COMMAND,
+  MyPullRequestsWatcher,
+  myPullRequestSettings,
+  PUBLISH_PULL_REQUEST_COMMAND,
+} from './myPullRequestsWatcher';
 import { CHECKOUT_REVIEW_COMMAND, ReviewRequestsWatcher, reviewSettings } from './reviewRequestsWatcher';
-import { changedFilterKeys, ExtensionMessage, FilterModel, ViewModel, WebviewMessage } from './viewModel';
+import { changedFilterKeys, ExtensionMessage, FilterModel, Layout, ViewModel, WebviewMessage } from './viewModel';
 import { runWorkItemAction } from './workItemActions';
 import { WorkItemsStore } from './workItemsStore';
 
@@ -18,6 +24,12 @@ export function filterSettings(): FilterModel {
   };
 }
 
+export const LAYOUT_CONTEXT = 'azdoWorkItems.layout';
+
+export function layoutSetting(): Layout {
+  return vscode.workspace.getConfiguration(SECTION).get<Layout>('layout', 'compact') === 'large' ? 'large' : 'compact';
+}
+
 /** Sidebar view rendering the work items as cards */
 export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
@@ -25,7 +37,8 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly store: WorkItemsStore,
-    private readonly reviews: ReviewRequestsWatcher
+    private readonly reviews: ReviewRequestsWatcher,
+    private readonly myPullRequests: MyPullRequestsWatcher
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -42,14 +55,23 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     if (!this.view) {
       return;
     }
+    const { items, hiddenDrafts } = this.myPullRequests.models();
     const model: ViewModel = {
       ...this.store.toViewModel(filterSettings()),
       alwaysShowAlerts: vscode.workspace.getConfiguration(SECTION).get<boolean>('filter.alwaysShowAlerts', false),
+      layout: layoutSetting(),
       reviews: {
         status: this.reviews.status,
         error: this.reviews.error,
         requests: this.reviews.models(),
         maxWaitHours: reviewSettings().maxWaitHours,
+      },
+      pullRequests: {
+        status: this.myPullRequests.status,
+        error: this.myPullRequests.error,
+        showDrafts: myPullRequestSettings().showDrafts,
+        hiddenDrafts,
+        items,
       },
     };
     const withAlerts = model.workItems.filter((item) => item.alerts.length).length;
@@ -66,6 +88,12 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     void this.view.webview.postMessage(message);
   }
 
+  /** Opens or closes the task list of every card */
+  setTasksExpanded(expanded: boolean): void {
+    const message: ExtensionMessage = { type: 'setTasksExpanded', expanded };
+    void this.view?.webview.postMessage(message);
+  }
+
   private async onMessage(message: WebviewMessage): Promise<void> {
     switch (message.type) {
       case 'ready':
@@ -73,7 +101,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         await this.store.ensureLoaded();
         return;
       case 'refresh':
-        await Promise.all([this.store.refresh(), this.reviews.poll()]);
+        await Promise.all([this.store.refresh(), this.reviews.poll(), this.myPullRequests.poll()]);
         return;
       case 'checkReviewRequests':
         await this.reviews.poll();
@@ -81,6 +109,22 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       case 'checkoutReviewRequest':
         await vscode.commands.executeCommand(CHECKOUT_REVIEW_COMMAND, message.pullRequestId);
         return;
+      case 'checkMyPullRequests':
+        await this.myPullRequests.poll();
+        return;
+      case 'checkoutMyPullRequest':
+        await vscode.commands.executeCommand(CHECKOUT_MY_PULL_REQUEST_COMMAND, message.pullRequestId);
+        return;
+      case 'publishMyPullRequest':
+        await vscode.commands.executeCommand(PUBLISH_PULL_REQUEST_COMMAND, message.pullRequestId);
+        return;
+      case 'setShowDrafts':
+        // Personal preference: saved in the user settings, which re-renders the view
+        await vscode.workspace
+          .getConfiguration(`${SECTION}.myPullRequests`)
+          .update('showDrafts', message.show, vscode.ConfigurationTarget.Global);
+        return;
+      case 'openMyPullRequest':
       case 'openReviewRequest':
         await vscode.env.openExternal(vscode.Uri.parse(message.url));
         return;

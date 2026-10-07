@@ -4,6 +4,7 @@
  */
 import type { WorkItemAlert } from './alerts';
 import { priorityFilterValue } from './priority';
+import type { MyPullRequestModel } from './myPullRequests';
 import type { RunModel } from './pipelines';
 import type { ReviewRequestModel } from './reviewRequests';
 import { isFinishedState } from './states';
@@ -62,6 +63,9 @@ export interface FilterModel {
   hiddenPriorities: string[];
 }
 
+/** azdoWorkItems.layout: compact rows (2 lines) or the large cards */
+export type Layout = 'compact' | 'large';
+
 export interface ViewModel {
   status: 'error' | 'loading' | 'ready';
   error?: string;
@@ -72,8 +76,11 @@ export interface ViewModel {
   stateOrder: string[];
   /** PRs waiting for the user's review, most urgent first */
   reviews: ReviewsModel;
+  /** PRs created by the user, with what is missing to merge them */
+  pullRequests: MyPullRequestsModel;
   /** Work items with alerts skip the state / PR / priority filters (azdoWorkItems.filter.alwaysShowAlerts) */
   alwaysShowAlerts: boolean;
+  layout: Layout;
 }
 
 export interface ReviewsModel {
@@ -81,6 +88,16 @@ export interface ReviewsModel {
   error?: string;
   requests: ReviewRequestModel[];
   maxWaitHours: number;
+}
+
+export interface MyPullRequestsModel {
+  status: 'error' | 'loading' | 'ready';
+  error?: string;
+  /** azdoWorkItems.myPullRequests.showDrafts */
+  showDrafts: boolean;
+  /** Drafts not in the list because of showDrafts */
+  hiddenDrafts: number;
+  items: MyPullRequestModel[];
 }
 
 export type WebviewMessage =
@@ -104,12 +121,17 @@ export type WebviewMessage =
     }
   | { type: 'checkReviewRequests' }
   | { type: 'checkoutReviewRequest'; pullRequestId: number }
-  | { type: 'openReviewRequest'; url: string }
+  | { type: 'openReviewRequest' | 'openMyPullRequest'; url: string }
+  | { type: 'checkMyPullRequests' }
+  | { type: 'checkoutMyPullRequest' | 'publishMyPullRequest'; pullRequestId: number }
+  | { type: 'setShowDrafts'; show: boolean }
   | { type: 'ready' }
   | { type: 'refresh' }
   | { type: 'setFilter'; filter: FilterModel };
 
-export type ExtensionMessage = { type: 'state'; model: ViewModel };
+export type ExtensionMessage =
+  /** Opens or closes the task list of every card */
+  { type: 'setTasksExpanded'; expanded: boolean } | { type: 'state'; model: ViewModel };
 
 export const NO_PULL_REQUEST = 'No PR';
 

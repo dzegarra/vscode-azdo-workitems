@@ -247,6 +247,11 @@ export class WorkItemsStore {
     );
   }
 
+  /** CI runs of an active PR linked to a work item; undefined when the store does not follow the PR */
+  runsOf(pullRequestId: number): RunModel[] | undefined {
+    return this.runs.get(pullRequestId);
+  }
+
   findRun(runId: number): RunModel | undefined {
     return [...this.runs.values()].flat().find((run) => run.id === runId);
   }
@@ -384,7 +389,7 @@ export class WorkItemsStore {
     return entry && this.toModel(entry, this.repository()?.state.HEAD?.name);
   }
 
-  toViewModel(filter: FilterModel): Omit<ViewModel, 'alwaysShowAlerts' | 'reviews'> {
+  toViewModel(filter: FilterModel): Omit<ViewModel, 'alwaysShowAlerts' | 'layout' | 'pullRequests' | 'reviews'> {
     const currentBranch = this.repository()?.state.HEAD?.name;
     const workItems = this.entries.map((entry) => this.toModel(entry, currentBranch));
     return {

@@ -1,9 +1,12 @@
+import { compactSignals, CompactSignal } from '../compactSignals';
 import { canHaveTasks, escapeHtml, stateButton } from '../html';
 import { ICONS, icon, TYPE_CLASSES, typeIcon } from '../icons';
 import { describeRun, RunState } from '../pipelines';
 import { NO_PRIORITY, priorityFilterValue, severityLevel, severityName, sortWorkItems } from '../priority';
 import { isFinishedState, stateCategory, stateRank } from '../states';
+import { MyPullRequestModel, ReviewerModel, VoteKind } from '../myPullRequests';
 import type { ReviewRequestModel } from '../reviewRequests';
+import { hasTaskAlerts, isTaskListOpen, taskProgress } from '../taskProgress';
 import type {
   ExtensionMessage,
   FilterModel,
@@ -32,10 +35,17 @@ interface SavedState {
   search: string;
   onlyAlerts: boolean;
   reviewsCollapsed: boolean;
+  myPullRequestsCollapsed: boolean;
   /** Iteration groups collapsed by the user, by iteration path */
   collapsedIterations: string[];
   /** PRs to review already shown: the section opens again when a new one arrives */
   seenReviews: number[];
+  /** Cards whose task list the user opened (lists are closed by default) */
+  expandedTasks: number[];
+  /** Cards whose task list the user closed, even though it opens by itself because of task alerts */
+  collapsedTasks: number[];
+  /** Work items the user expanded into the full card, in the compact layout */
+  expandedCards: number[];
 }
 declare function acquireVsCodeApi(): VsCodeApi;
 
@@ -53,16 +63,24 @@ let search = savedState?.search ?? '';
 /** Show only the work items with alerts */
 let onlyAlerts = savedState?.onlyAlerts ?? false;
 let reviewsCollapsed = savedState?.reviewsCollapsed ?? false;
+let myPullRequestsCollapsed = savedState?.myPullRequestsCollapsed ?? false;
 let seenReviews = savedState?.seenReviews;
 const collapsedIterations = new Set(savedState?.collapsedIterations ?? []);
+const expandedTasks = new Set(savedState?.expandedTasks ?? []);
+const collapsedTasks = new Set(savedState?.collapsedTasks ?? []);
+const expandedCards = new Set(savedState?.expandedCards ?? []);
 
 function saveState(): void {
   vscode.setState({
     search,
     onlyAlerts,
     reviewsCollapsed,
+    myPullRequestsCollapsed,
     collapsedIterations: [...collapsedIterations],
     seenReviews: seenReviews ?? [],
+    expandedTasks: [...expandedTasks],
+    collapsedTasks: [...collapsedTasks],
+    expandedCards: [...expandedCards],
   });
 }
 
@@ -282,6 +300,13 @@ function renderActions(item: WorkItemModel): string {
   return `<footer class="actions">${actions.join('')}</footer>`;
 }
 
+function isTasksOpen(item: WorkItemModel): boolean {
+  return isTaskListOpen(hasTaskAlerts(item.alerts), {
+    expanded: expandedTasks.has(item.id),
+    collapsed: collapsedTasks.has(item.id),
+  });
+}
+
 function renderChild(item: WorkItemModel): string {
   return `<li class="child">
     ${typeIcon(item.type)}
@@ -349,16 +374,48 @@ function renderParent(item: WorkItemModel, visibleIds: Set<number>): string {
   }</span><span class="parent-title">${title}</span></button>`;
 }
 
-function renderCard(item: WorkItemModel, children: WorkItemModel[], visibleIds: Set<number>): string {
+/** Task list with a header to open / close it. Cards without tasks show nothing */
+function renderTasks(item: WorkItemModel, children: WorkItemModel[]): string {
+  if (!children.length) {
+    return '';
+  }
+  const open = isTasksOpen(item);
+  const { done, total, ratio } = taskProgress(children);
+  return `<section class="tasks${open ? '' : ' collapsed'}">
+    <button class="tasks-toggle" data-action="toggleTasks" data-id="${item.id}" aria-expanded="${open}"
+      title="${done} of ${total} tasks done">
+      ${icon('chevron', 'chevron')}<span class="tasks-title">Tasks</span><span class="count">${done}/${total}</span>
+      <span class="tasks-bar" aria-hidden="true"><span class="tasks-bar-fill" data-progress="${ratio}"></span></span>
+    </button>
+    ${open ? `<ul class="children">${children.map(renderChild).join('')}</ul>` : ''}
+  </section>`;
+}
+
+/**
+ * Full card. In the compact layout, an expanded card gets a chevron and a header that fold it back
+ * into its row
+ */
+function renderCard(
+  item: WorkItemModel,
+  children: WorkItemModel[],
+  visibleIds: Set<number>,
+  foldable: boolean
+): string {
   const classes = [
     'card',
     `state-border-${stateCategory(item.state)}`,
     item.isCurrentBranch ? 'current' : '',
     item.alerts.length ? 'has-alerts' : '',
   ].join(' ');
+  const fold = foldable
+    ? `<button class="card-chevron" data-action="toggleCard" data-id="${item.id}" aria-expanded="true"
+      aria-label="Collapse work item ${item.id}" title="Collapse">${icon('chevron', 'chevron')}</button>`
+    : '';
   return `<article class="${classes}">
-    <header class="card-head">
-      ${typeIcon(item.type)}
+    <header class="card-head${foldable ? ' foldable' : ''}"${
+    foldable ? ` data-action="toggleCard" data-id="${item.id}"` : ''
+  }>
+      ${fold}${typeIcon(item.type)}
       <button class="link id" data-action="openWorkItem" data-id="${item.id}" title="Open in Azure DevOps">${
     item.id
   }</button>
@@ -371,7 +428,75 @@ function renderCard(item: WorkItemModel, children: WorkItemModel[], visibleIds: 
     ${renderBranch(item)}
     ${item.pullRequests.map((pr) => renderPullRequest(item, pr)).join('')}
     ${renderActions(item)}
-    ${children.length ? `<ul class="children">${children.map(renderChild).join('')}</ul>` : ''}
+    ${renderTasks(item, children)}
+  </article>`;
+}
+
+/** Marker of a compact signal: a coloured dot for the PR, an icon for the others */
+function signalMarker(signal: CompactSignal): string {
+  switch (signal.kind) {
+    case 'branch':
+      return icon('branch');
+    case 'ci':
+      return icon(RUN_ICONS[signal.tone as RunState], signal.tone === 'running' ? 'spin' : '');
+    case 'tasks':
+      return icon('task');
+    case 'alerts':
+      return icon('warning');
+    case 'pullRequest':
+      return DOT;
+    case 'priority':
+    case 'severity':
+      return '';
+  }
+}
+
+function renderSignal(signal: CompactSignal): string {
+  const title = escapeHtml(signal.title);
+  const label = signal.label ? `<span>${escapeHtml(signal.label)}</span>` : '';
+  switch (signal.kind) {
+    case 'priority':
+    case 'severity':
+      // Same pills as the large cards
+      return `<span class="urgency"><span class="pill ${signal.tone}" title="${title}">${escapeHtml(
+        signal.label
+      )}</span></span>`;
+    case 'ci':
+      return `<span class="signal signal-ci run-${signal.tone}" title="${title}">${signalMarker(signal)}</span>`;
+    case 'alerts':
+    case 'branch':
+    case 'pullRequest':
+    case 'tasks':
+      return `<span class="signal signal-${signal.kind} tone-${signal.tone}" title="${title}">${signalMarker(
+        signal
+      )}${label}</span>`;
+  }
+}
+
+/**
+ * Two lines: type, ID, title and state; then the small signals that apply. Clicking the row expands it into the
+ * full card: the ID and the state keep their own actions (closest [data-action])
+ */
+function renderCompactCard(item: WorkItemModel, children: WorkItemModel[]): string {
+  const classes = [
+    'card compact',
+    `state-border-${stateCategory(item.state)}`,
+    item.isCurrentBranch ? 'current' : '',
+    item.alerts.length ? 'has-alerts' : '',
+  ].join(' ');
+  const signals = compactSignals(item, children).map(renderSignal);
+  return `<article class="${classes}" data-action="toggleCard" data-id="${item.id}">
+    <div class="compact-head">
+      <button class="card-chevron" data-action="toggleCard" data-id="${item.id}" aria-expanded="false"
+        aria-label="Expand work item ${item.id}" title="Expand">${icon('chevron', 'chevron')}</button>
+      ${typeIcon(item.type)}
+      <button class="link id" data-action="openWorkItem" data-id="${item.id}" title="Open in Azure DevOps">${
+    item.id
+  }</button>
+      <span class="compact-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
+      ${stateButton(item.id, item.state)}
+    </div>
+    ${signals.length ? `<div class="signals">${signals.join('')}</div>` : ''}
   </article>`;
 }
 
@@ -388,7 +513,14 @@ function renderCards(items: WorkItemModel[], current: ViewModel): string {
     );
   return items
     .filter((item) => item.parentId === undefined || !visibleIds.has(item.parentId))
-    .map((item) => renderCard(item, childrenOf(item), visibleIds))
+    .map((item) => {
+      if (current.layout === 'large') {
+        return renderCard(item, childrenOf(item), visibleIds, false);
+      }
+      return expandedCards.has(item.id)
+        ? renderCard(item, childrenOf(item), visibleIds, true)
+        : renderCompactCard(item, childrenOf(item));
+    })
     .join('');
 }
 
@@ -481,6 +613,33 @@ function renderReview(request: ReviewRequestModel): string {
   </li>`;
 }
 
+/**
+ * Framed box with a bold title, the number of items and a chevron: it must not be mistaken for the headers of
+ * the iterations, which are plain uppercase lines
+ */
+function renderPanel(panel: {
+  className: string;
+  collapsed: boolean;
+  toggle: string;
+  title: string;
+  count: number;
+  sub: string;
+  tools: string;
+  body: string;
+}): string {
+  return `<section class="panel ${panel.className}${panel.collapsed ? ' collapsed' : ''}">
+    <div class="panel-head">
+      <button class="panel-toggle" data-action="${panel.toggle}" aria-expanded="${!panel.collapsed}">
+        ${icon('chevron', 'chevron')}${icon('pullRequest')}<span class="panel-title">${panel.title}</span>
+        <span class="panel-count">${panel.count}</span>
+        <span class="panel-sub">${panel.sub}</span>
+      </button>
+      ${panel.tools}
+    </div>
+    ${panel.collapsed ? '' : panel.body}
+  </section>`;
+}
+
 function renderReviews(current: ViewModel): string {
   const { requests, status, error } = current.reviews;
   if (status === 'error') {
@@ -499,21 +658,198 @@ function renderReviews(current: ViewModel): string {
     overdue ? `<span class="pill reviews-pill urgency-overdue">${overdue} overdue</span>` : '',
     dueSoon ? `<span class="pill reviews-pill urgency-dueSoon">${dueSoon} due soon</span>` : '',
   ].join('');
-  const title =
-    requests.length === 1 ? '1 PR waiting for your review' : `${requests.length} PRs waiting for your review`;
-  return `<section class="reviews urgency-${requests[0].urgency}${reviewsCollapsed ? ' collapsed' : ''}">
-    <div class="reviews-head">
-      <button class="reviews-toggle" data-action="toggleReviews" aria-expanded="${!reviewsCollapsed}">
-        ${icon('chevron', 'chevron')}${icon(
-    'pullRequest'
-  )}<span class="reviews-title">${title}</span><span class="reviews-pills">${pills}</span>
-      </button>
-      <button class="icon-button" data-action="checkReviewRequests" title="Check now" aria-label="Check the PRs waiting for your review now">${icon(
-        'refresh'
-      )}</button>
+  return renderPanel({
+    className: `reviews urgency-${requests[0].urgency}`,
+    collapsed: reviewsCollapsed,
+    toggle: 'toggleReviews',
+    title: 'Waiting for your review',
+    count: requests.length,
+    sub: pills,
+    tools: `<button class="icon-button" data-action="checkReviewRequests" title="Check now" aria-label="Check the PRs waiting for your review now">${icon(
+      'refresh'
+    )}</button>`,
+    body: `<ul class="review-list">${requests.map(renderReview).join('')}</ul>`,
+  });
+}
+
+/* ---------- My pull requests ---------- */
+
+const VOTE_ICONS: Record<VoteKind, keyof typeof ICONS> = {
+  approved: 'check',
+  suggestions: 'check',
+  waiting: 'clock',
+  rejected: 'error',
+  declined: 'stop',
+  none: 'circle',
+};
+
+const VOTE_LABELS: Record<VoteKind, string> = {
+  approved: 'Approved',
+  suggestions: 'Approved with suggestions',
+  waiting: 'Waiting for the author',
+  rejected: 'Rejected',
+  declined: 'Declined',
+  none: 'No vote yet',
+};
+
+/** Groups are named "[Project]\\Team": the project is noise in a chip */
+function reviewerName(name: string): string {
+  return name.replace(/^\[[^\]]*\]\\/, '');
+}
+
+function renderReviewer(reviewer: ReviewerModel): string {
+  const details = [
+    VOTE_LABELS[reviewer.vote],
+    reviewer.isRequired ? 'required' : '',
+    reviewer.isContainer ? 'group' : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
+  return `<span class="reviewer vote-${reviewer.vote}${reviewer.isContainer ? ' group' : ''}" title="${escapeHtml(
+    `${reviewerName(reviewer.name)}: ${details}`
+  )}">${icon(VOTE_ICONS[reviewer.vote])}<span class="reviewer-name">${escapeHtml(reviewerName(reviewer.name))}</span>${
+    reviewer.isRequired ? '<span class="required" aria-hidden="true">*</span>' : ''
+  }</span>`;
+}
+
+/** Last CI run of each pipeline; clicking one opens it in Azure DevOps */
+function renderMyRuns(pr: MyPullRequestModel): string {
+  const now = new Date();
+  return pr.runs
+    .map(
+      (run) => `<button class="run run-${run.state}" data-action="openMyPullRequest" data-url="${escapeHtml(run.url)}"
+        title="${escapeHtml(`${run.pipeline}: ${describeRun(run, now)}`)}">
+        ${icon(RUN_ICONS[run.state], run.state === 'running' ? 'spin' : '')}<span>${escapeHtml(
+        describeRun(run, now)
+      )}</span></button>`
+    )
+    .join('');
+}
+
+function renderMySignals(pr: MyPullRequestModel): string {
+  const signals = [
+    pr.unresolved
+      ? `<span class="signal signal-comments" title="Comment threads still active or pending">${icon('comment')}${
+          pr.unresolved
+        } unresolved</span>`
+      : '',
+    pr.conflicts
+      ? `<span class="signal signal-conflicts" title="The branch cannot be merged without resolving the conflicts">${icon(
+          'warning'
+        )}Conflicts</span>`
+      : '',
+    renderMyRuns(pr),
+    pr.autoComplete
+      ? '<span class="pill tone-approved" title="The PR is completed by itself when its policies pass">Auto-complete</span>'
+      : '',
+  ].filter(Boolean);
+  return signals.length ? `<div class="mypr-signals">${signals.join('')}</div>` : '';
+}
+
+function renderMyActions(pr: MyPullRequestModel): string {
+  const buttons = [
+    `<button class="button" data-action="openMyPullRequest" data-url="${escapeHtml(
+      pr.url
+    )}" title="Open the PR in Azure DevOps">Open PR</button>`,
+  ];
+  if (!pr.isCompleted && pr.canCheckout && !pr.isCurrentBranch) {
+    buttons.push(
+      `<button class="button" data-action="checkoutMyPullRequest" data-pr="${pr.id}" title="Fetch the branch of the PR and switch to it">Checkout</button>`
+    );
+  }
+  if (pr.isDraft) {
+    buttons.push(
+      `<button class="button primary" data-action="publishMyPullRequest" data-pr="${pr.id}" title="Take the PR out of draft: the reviewers are notified">Publish</button>`
+    );
+  }
+  return `<footer class="actions">${buttons.join('')}</footer>`;
+}
+
+function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean): string {
+  const meta = [
+    pr.target
+      ? `<span class="mypr-target" title="Merges into ${escapeHtml(pr.target)}">→ ${escapeHtml(pr.target)}</span>`
+      : '',
+    `<span>${escapeHtml(pr.time)}</span>`,
+    ...(pr.workItemIds.length
+      ? [
+          `<span title="Linked work items">#${pr.workItemIds[0]}${
+            pr.workItemIds.length > 1 ? ` +${pr.workItemIds.length - 1}` : ''
+          }</span>`,
+        ]
+      : []),
+    showRepository ? `<span>${escapeHtml(pr.repository)}</span>` : '',
+  ].filter(Boolean);
+  const warnings = pr.warnings.map(
+    ({ text, severity }) =>
+      `<li class="mypr-${severity}" role="${severity === 'error' ? 'alert' : 'note'}">${icon(
+        severity === 'error' ? 'error' : 'warning'
+      )}<span>${escapeHtml(text)}</span></li>`
+  );
+  return `<li class="mypr tone-${pr.tone}${pr.isCompleted ? ' completed' : ''}${
+    pr.readyToMerge ? ' ready-to-merge' : ''
+  }">
+    <div class="mypr-head">
+      <button class="link id" data-action="openMyPullRequest" data-url="${escapeHtml(pr.url)}"
+        title="Open the PR in Azure DevOps">PR ${pr.id}</button>
+      <span class="mypr-badges">${
+        pr.readyToMerge
+          ? '<span class="pill ready-pill" title="Nothing stops the PR from being merged">Ready to merge</span>'
+          : ''
+      }<span class="pill tone-${pr.tone}">${escapeHtml(pr.status)}</span></span>
     </div>
-    ${reviewsCollapsed ? '' : `<ul class="review-list">${requests.map(renderReview).join('')}</ul>`}
-  </section>`;
+    <div class="mypr-title" title="${escapeHtml(pr.title)}">${escapeHtml(pr.title)}</div>
+    <div class="mypr-meta">${meta.join('<span aria-hidden="true">·</span>')}</div>
+    ${pr.reviewers.length ? `<div class="reviewers">${pr.reviewers.map(renderReviewer).join('')}</div>` : ''}
+    ${pr.isCompleted ? '' : renderMySignals(pr)}
+    ${warnings.length ? `<ul class="mypr-warnings">${warnings.join('')}</ul>` : ''}
+    ${
+      pr.next
+        ? `<div class="mypr-next ${pr.nextTone}"><span class="mypr-next-label">Next</span>${
+            pr.nextTone === 'danger' ? icon('warning') : ''
+          }<span>${escapeHtml(pr.next)}</span></div>`
+        : ''
+    }
+    ${renderMyActions(pr)}
+  </li>`;
+}
+
+function renderMyPullRequests(current: ViewModel): string {
+  const { items, status, error, showDrafts, hiddenDrafts } = current.pullRequests;
+  const failure =
+    status === 'error'
+      ? `<div class="reviews-error muted">${icon('warning')}<span>Unable to check your pull requests: ${escapeHtml(
+          error ?? ''
+        )}</span><button class="link" data-action="checkMyPullRequests">Retry</button></div>`
+      : '';
+  const hasDrafts = hiddenDrafts > 0 || items.some((item) => item.isDraft);
+  if (!items.length && !hiddenDrafts) {
+    return failure;
+  }
+  const repositories = new Set(items.map((item) => item.repository));
+  const hidden = hiddenDrafts ? `${hiddenDrafts} draft${hiddenDrafts === 1 ? '' : 's'} hidden` : '';
+  const draftsButton = hasDrafts
+    ? `<button class="button small ghost" data-action="toggleDrafts" title="${
+        showDrafts ? 'Hide' : 'Show'
+      } your draft pull requests (saved in your settings)">${showDrafts ? 'Hide drafts' : 'Show drafts'}</button>`
+    : '';
+  return (
+    failure +
+    renderPanel({
+      className: 'mine',
+      collapsed: myPullRequestsCollapsed,
+      toggle: 'toggleMyPullRequests',
+      title: 'My Pull Requests',
+      count: items.length,
+      sub: escapeHtml(hidden),
+      tools: `${draftsButton}<button class="icon-button" data-action="checkMyPullRequests" title="Check now" aria-label="Check your pull requests now">${icon(
+        'refresh'
+      )}</button>`,
+      body: items.length
+        ? `<ul class="mypr-list">${items.map((pr) => renderMyPullRequest(pr, repositories.size > 1)).join('')}</ul>`
+        : '<p class="muted panel-empty">No open pull requests</p>',
+    })
+  );
 }
 
 /** The section opens again when a PR it has not shown yet arrives */
@@ -533,6 +869,13 @@ function trackNewReviews(current: ViewModel): void {
 function sizeReviewBars(): void {
   document.querySelectorAll<HTMLElement>('.review-bar-fill').forEach((fill) => {
     fill.style.width = `${Math.round(Number(fill.dataset.elapsed) * 100)}%`;
+  });
+}
+
+/** Same for the progress of the tasks */
+function sizeTaskBars(): void {
+  document.querySelectorAll<HTMLElement>('.tasks-bar-fill').forEach((fill) => {
+    fill.style.width = `${Math.round(Number(fill.dataset.progress) * 100)}%`;
   });
 }
 
@@ -580,7 +923,7 @@ function render(): void {
     return;
   }
   if (!app.childElementCount) {
-    app.innerHTML = `<div id="reviews"></div>
+    app.innerHTML = `<div id="panels"><div id="reviews"></div><div id="my-prs"></div></div>
       <div class="toolbar">
         <h2 class="list-title">My Work Items</h2>
         <input id="search" type="search" placeholder="Search by ID, title or branch" aria-label="Search work items">
@@ -605,7 +948,9 @@ function render(): void {
   (document.getElementById('filters') as HTMLElement).innerHTML = cardItems(model).length ? renderFilters(model) : '';
   (document.getElementById('list') as HTMLElement).innerHTML = renderList(model);
   (document.getElementById('reviews') as HTMLElement).innerHTML = renderReviews(model);
+  (document.getElementById('my-prs') as HTMLElement).innerHTML = renderMyPullRequests(model);
   sizeReviewBars();
+  sizeTaskBars();
 }
 
 function toggleFilter(kind: FilterKind, value: string): void {
@@ -634,6 +979,45 @@ function toggleFilter(kind: FilterKind, value: string): void {
   saveFilterTimer = setTimeout(() => post({ type: 'setFilter', filter }), SAVE_FILTER_DELAY_MS);
 }
 
+/** The choice of the user wins over the automatic opening caused by task alerts */
+function toggleTasks(id: number): void {
+  const item = model?.workItems.find((candidate) => candidate.id === id);
+  if (!item) {
+    return;
+  }
+  if (isTasksOpen(item)) {
+    expandedTasks.delete(id);
+    collapsedTasks.add(id);
+  } else {
+    collapsedTasks.delete(id);
+    expandedTasks.add(id);
+  }
+  saveState();
+  render();
+}
+
+/** Compact layout: expands a row into the full card, or folds it back */
+function toggleCard(id: number): void {
+  if (!expandedCards.delete(id)) {
+    expandedCards.add(id);
+  }
+  saveState();
+  render();
+}
+
+/** From the view menu. Closing also closes the lists opened because of task alerts */
+function setTasksExpanded(expanded: boolean): void {
+  expandedTasks.clear();
+  collapsedTasks.clear();
+  if (model) {
+    for (const item of cardItems(model)) {
+      (expanded ? expandedTasks : collapsedTasks).add(item.id);
+    }
+  }
+  saveState();
+  render();
+}
+
 document.addEventListener('click', (event) => {
   const target = (event.target as HTMLElement).closest<HTMLElement>('[data-action], [data-filter]');
   if (!target) {
@@ -650,10 +1034,33 @@ document.addEventListener('click', (event) => {
     }
     saveState();
     render();
+  } else if (action === 'toggleCard' && id) {
+    // Rendering again drops the focus of the chevron, which keyboard users need to stay on
+    const fromChevron = target.classList.contains('card-chevron');
+    toggleCard(Number(id));
+    if (fromChevron) {
+      document.querySelector<HTMLElement>(`.card-chevron[data-id="${id}"]`)?.focus();
+    }
+  } else if (action === 'toggleTasks' && id) {
+    toggleTasks(Number(id));
   } else if (action === 'toggleReviews') {
     reviewsCollapsed = !reviewsCollapsed;
     saveState();
     render();
+  } else if (action === 'toggleMyPullRequests') {
+    myPullRequestsCollapsed = !myPullRequestsCollapsed;
+    saveState();
+    render();
+  } else if (action === 'checkMyPullRequests') {
+    post({ type: 'checkMyPullRequests' });
+  } else if (action === 'toggleDrafts' && model) {
+    post({ type: 'setShowDrafts', show: !model.pullRequests.showDrafts });
+  } else if (action === 'checkoutMyPullRequest' && pr) {
+    post({ type: 'checkoutMyPullRequest', pullRequestId: Number(pr) });
+  } else if (action === 'publishMyPullRequest' && pr) {
+    post({ type: 'publishMyPullRequest', pullRequestId: Number(pr) });
+  } else if (action === 'openMyPullRequest' && url) {
+    post({ type: 'openMyPullRequest', url });
   } else if (action === 'checkReviewRequests') {
     post({ type: 'checkReviewRequests' });
   } else if (action === 'checkoutReviewRequest' && pr) {
@@ -675,6 +1082,10 @@ document.addEventListener('click', (event) => {
 });
 
 window.addEventListener('message', ({ data }: MessageEvent<ExtensionMessage>) => {
+  if (data.type === 'setTasksExpanded') {
+    setTasksExpanded(data.expanded);
+    return;
+  }
   // While the last filter is not saved, the extension still sends older filters: keep the user's one
   if (pendingFilter && changedFilterKeys(data.model.filter, pendingFilter).length) {
     model = { ...data.model, filter: pendingFilter };

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { createBranch } from './commands/createBranch';
 import { checkoutPullRequest } from './commands/checkoutPullRequest';
+import { publishPullRequest } from './commands/publishPullRequest';
 import { createPullRequest } from './commands/createPullRequest';
 import { deleteBranch } from './commands/deleteBranch';
 import { resolveContext, SECTION, settings } from './config';
@@ -10,6 +11,11 @@ import { fillIntegrationBuild } from './commands/integrationBuild';
 import { addTask, changeState } from './commands/workItemEdits';
 import { DependencyMapPanel } from './dependencyMap';
 import { CurrentWorkItemStatusBar } from './currentWorkItemStatusBar';
+import {
+  CHECKOUT_MY_PULL_REQUEST_COMMAND,
+  MyPullRequestsWatcher,
+  PUBLISH_PULL_REQUEST_COMMAND,
+} from './myPullRequestsWatcher';
 import { PipelineStatusBar } from './pipelineStatusBar';
 import { PipelineWatcher } from './pipelineWatcher';
 import { PullRequestNotifier } from './pullRequestNotifier';
@@ -17,7 +23,7 @@ import { ReviewStatusBar } from './reviewStatusBar';
 import { CHECKOUT_REVIEW_COMMAND, ReviewRequestsWatcher } from './reviewRequestsWatcher';
 import { WorkItemDetailsPanels } from './workItemDetails';
 import { WorkItemEntry, WorkItemsStore } from './workItemsStore';
-import { VIEW_ID, WorkItemsViewProvider } from './workItemsView';
+import { LAYOUT_CONTEXT, layoutSetting, VIEW_ID, WorkItemsViewProvider } from './workItemsView';
 
 /** Opens the sprint board of a team. When there are several, the user picks one */
 async function openIterationBoard(repository: Repository | undefined, store: WorkItemsStore): Promise<void> {
@@ -75,7 +81,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const currentWorkItemStatusBar = new CurrentWorkItemStatusBar(git, store);
   const reviewRequests = new ReviewRequestsWatcher(context.globalState, store);
   const reviewStatusBar = new ReviewStatusBar(reviewRequests);
-  const view = new WorkItemsViewProvider(context.extensionUri, store, reviewRequests);
+  const myPullRequests = new MyPullRequestsWatcher(store);
+  const view = new WorkItemsViewProvider(context.extensionUri, store, reviewRequests, myPullRequests);
   const currentRepository = () => (git.repositories.length ? pickRepository(git) : undefined);
 
   // Visible even when the sidebar is closed
@@ -108,6 +115,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     });
 
+  // The title bar shows the button of the layout the user is not using
+  const updateLayoutContext = () => void vscode.commands.executeCommand('setContext', LAYOUT_CONTEXT, layoutSetting());
+  const setLayout = (layout: 'compact' | 'large') =>
+    vscode.workspace.getConfiguration(SECTION).update('layout', layout, vscode.ConfigurationTarget.Global);
+  updateLayoutContext();
+
   // Re-render when the checked out branch changes, without reloading from Azure DevOps
   let debounce: NodeJS.Timeout | undefined;
   const watchRepository = (repository: Repository) =>
@@ -118,6 +131,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(VIEW_ID, view),
+    command('azdoWorkItems.useCompactLayout', () => setLayout('compact')),
+    command('azdoWorkItems.useLargeLayout', () => setLayout('large')),
+    command('azdoWorkItems.expandTasks', () => view.setTasksExpanded(true)),
+    command('azdoWorkItems.collapseTasks', () => view.setTasksExpanded(false)),
     details,
     notifier,
     dependencyMap,
@@ -127,6 +144,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     reviewRequests,
     reviewStatusBar,
     reviewRequests.onDidChange(() => view.post()),
+    myPullRequests,
+    myPullRequests.onDidChange(() => view.post()),
     alertsStatus,
     store.onDidChange(() => {
       view.post();
@@ -139,6 +158,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void store.refresh();
       notifier.start();
       reviewRequests.start();
+      myPullRequests.start();
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (!event.affectsConfiguration(SECTION)) {
@@ -151,7 +171,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         reviewRequests.start();
         return;
       }
-      // Filters are applied by the view; other settings need to reload the work items
+      if (event.affectsConfiguration(`${SECTION}.myPullRequests`)) {
+        // Only the polling interval needs to fetch again: showing or hiding the drafts is done by the view
+        if (event.affectsConfiguration(`${SECTION}.myPullRequests.pollIntervalSeconds`)) {
+          myPullRequests.start();
+        }
+        view.post();
+        return;
+      }
+      if (event.affectsConfiguration(`${SECTION}.layout`)) {
+        updateLayoutContext();
+      }
+      // Filters and the layout are applied by the view; other settings need to reload the work items
       const onlyFilters = ['teams', 'organization', 'project', 'repository', 'remote', 'alerts'].every(
         (key) => !event.affectsConfiguration(`${SECTION}.${key}`)
       );
@@ -226,6 +257,39 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await checkoutPullRequest(git, request);
       }
     }),
+    command('azdoWorkItems.checkMyPullRequests', () => myPullRequests.poll()),
+    command(CHECKOUT_MY_PULL_REQUEST_COMMAND, async (pullRequestId?: number) => {
+      const { items } = myPullRequests.models();
+      // From the command palette: pick one of the PRs whose branch is in the open repository
+      const pullRequest =
+        pullRequestId === undefined
+          ? (
+              await vscode.window.showQuickPick(
+                items
+                  .filter((item) => item.canCheckout && !item.isCompleted && !item.isCurrentBranch)
+                  .map((item) => ({
+                    label: `PR ${item.id}: ${item.title}`,
+                    description: item.sourceBranch,
+                    item,
+                  })),
+                { title: 'Check out the branch of one of your PRs' }
+              )
+            )?.item
+          : items.find((item) => item.id === pullRequestId);
+      if (pullRequestId !== undefined && !pullRequest) {
+        throw new Error(`PR ${pullRequestId} is no longer in your list of pull requests.`);
+      }
+      if (pullRequest) {
+        await checkoutPullRequest(git, pullRequest);
+      }
+    }),
+    command(PUBLISH_PULL_REQUEST_COMMAND, async (pullRequestId: number) => {
+      const pullRequest = myPullRequests.find(pullRequestId);
+      if (!pullRequest) {
+        throw new Error(`PR ${pullRequestId} is no longer in your list of pull requests.`);
+      }
+      await publishPullRequest(resolveContext(currentRepository()).client, pullRequest, () => myPullRequests.poll());
+    }),
     command('azdoWorkItems.openIterationBoard', () => openIterationBoard(currentRepository(), store)),
     command('azdoWorkItems.selectTeams', () => selectTeams(currentRepository()))
   );
@@ -233,6 +297,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   if (git.repositories.length) {
     notifier.start();
     reviewRequests.start();
+    myPullRequests.start();
     // Loads the work items even if the sidebar is closed, so the alerts show up in the status bar
     void store.ensureLoaded();
   }

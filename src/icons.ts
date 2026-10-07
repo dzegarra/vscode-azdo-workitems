@@ -23,6 +23,8 @@ export const ICONS = {
   pullRequest:
     '<circle cx="4.5" cy="3.5" r="1.5"/><circle cx="4.5" cy="12.5" r="1.5"/><circle cx="11.5" cy="12.5" r="1.5"/><path d="M4.5 5v6M11.5 11V6.5a2 2 0 0 0-2-2H7m1.5-2-2 2 2 2"/>',
   parent: '<path d="M8 13.5v-11M4 6.5l4-4 4 4"/>',
+  comment: '<path d="M2.5 3h11v7.5H8l-3 2.5v-2.5H2.5z"/>',
+  circle: '<circle cx="8" cy="8" r="5.5" stroke-dasharray="2 2"/>',
   refresh: '<path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5v3h-3"/>',
 };
 
