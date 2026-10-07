@@ -26,7 +26,7 @@ function pr(runs: RunModel[] = [], overrides: Partial<PullRequestModel> = {}): P
   return {
     id: 7,
     title: 'The PR',
-    status: 'Waiting for review',
+    status: 'In review',
     tone: 'review',
     url: '',
     isActive: true,
@@ -57,7 +57,7 @@ describe('compactSignals', () => {
       [],
       NOW
     );
-    expect(signal).toEqual({ kind: 'pullRequest', label: 'Waiting for review', title: 'PR 7: The PR', tone: 'review' });
+    expect(signal).toEqual({ kind: 'pullRequest', label: 'In review', title: 'PR 7: The PR', tone: 'review' });
   });
 
   it('summarises the CI runs with the worst state first', () => {
@@ -83,6 +83,27 @@ describe('compactSignals', () => {
       ({ kind }) => kind === 'ci'
     );
     expect(signal?.title).toBe('pipe 1: Failed\npipe 2: Succeeded');
+  });
+
+  it('explains the failure of a run in the CI tooltip', () => {
+    const failed: RunModel = {
+      ...run('failed', 1),
+      tests: { total: 10, failed: 1, failedTests: [{ title: 'It breaks', file: 'a.spec.ts', error: 'boom' }] },
+    };
+    const linting: RunModel = { ...run('failed', 2), failedStep: 'Linting' };
+    const signal = compactSignals(item({ pullRequests: [pr([failed, linting])] }), [], NOW).find(
+      ({ kind }) => kind === 'ci'
+    );
+    expect(signal?.title).toBe(
+      [
+        'pipe 1: ✗ 1 test failed',
+        '• It breaks (a.spec.ts)',
+        '    boom',
+        'Failed',
+        'pipe 2: ✗ Failed at Linting',
+        'Failed',
+      ].join('\n')
+    );
   });
 
   it('counts the tasks but the removed ones', () => {
@@ -122,7 +143,7 @@ describe('compactSignals', () => {
   it('flags the leftover branch of a finished work item, and ignores a deleted one', () => {
     const leftover = { name: 'f', local: false, remote: true };
     expect(compactSignals(item({ state: 'Done', branch: 'f', leftoverBranch: leftover }), [], NOW)).toEqual([
-      expect.objectContaining({ kind: 'branch', label: 'not deleted', tone: 'waiting' }),
+      expect.objectContaining({ kind: 'branch', label: 'not deleted', tone: 'leftover' }),
     ]);
     expect(compactSignals(item({ state: 'Done', branch: 'f' }), [], NOW)).toEqual([]);
   });

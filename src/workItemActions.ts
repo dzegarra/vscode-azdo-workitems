@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import { resolveContext } from './config';
-import { WebviewMessage } from './viewModel';
+import { testsUrl } from './runDetails';
+import { WorkItemActionMessage } from './viewModel';
 import { WorkItemsStore } from './workItemsStore';
 
-export type WorkItemAction = Extract<WebviewMessage, { id: number }>;
+export type WorkItemAction = WorkItemActionMessage;
 
 const COMMANDS = {
   checkout: 'azdoWorkItems.checkout',
@@ -33,7 +34,7 @@ export async function runWorkItemAction(store: WorkItemsStore, message: WorkItem
     case 'openRun': {
       const run = message.runId === undefined ? undefined : store.findRun(message.runId);
       if (run) {
-        await vscode.env.openExternal(vscode.Uri.parse(run.url));
+        await vscode.env.openExternal(vscode.Uri.parse(message.tests ? testsUrl(run.url) : run.url));
       }
       return;
     }

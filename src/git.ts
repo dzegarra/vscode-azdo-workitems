@@ -42,12 +42,17 @@ export interface RepositoryState {
   readonly remotes: Remote[];
   readonly workingTreeChanges: Change[];
   readonly indexChanges: Change[];
+  /** Only when git.untrackedChanges is "separate" */
+  readonly untrackedChanges?: Change[];
+  readonly mergeChanges?: Change[];
   readonly onDidChange: vscode.Event<void>;
 }
 
 export interface Repository {
   readonly rootUri: vscode.Uri;
   readonly state: RepositoryState;
+  /** Refreshes `state` from the working directory */
+  status(): Promise<void>;
   getBranches(query: { remote?: boolean; pattern?: string }): Promise<Ref[]>;
   getBranch(name: string): Promise<Branch>;
   createBranch(name: string, checkout: boolean, ref?: string): Promise<void>;

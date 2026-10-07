@@ -135,5 +135,5 @@ export function pullRequestStatus(pr: PullRequestState): { label: string; tone: 
   if (!requiredPending && votes.includes(VOTE_APPROVED_WITH_SUGGESTIONS)) {
     return { label: 'Approved with suggestions', tone: 'approved' };
   }
-  return { label: 'Waiting for review', tone: 'review' };
+  return { label: 'In review', tone: 'review' };
 }

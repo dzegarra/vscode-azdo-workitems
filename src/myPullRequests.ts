@@ -4,6 +4,7 @@
  */
 import { isValidPullRequestTitle } from './naming';
 import type { RunModel } from './pipelines';
+import { buildTimeline, publishedAt, Timeline } from './pullRequestTimeline';
 import type { ThreadResponse } from './reviewThreads';
 import { PullRequestReviewer, pullRequestStatus, PullRequestTone } from './workItemLinks';
 
@@ -33,7 +34,7 @@ export interface AuthoredPullRequest {
   mergeStatus?: string;
   creationDate: string;
   closedDate?: string;
-  createdBy: { id: string };
+  createdBy: { id: string; displayName?: string };
   /** E.g. "refs/heads/develop" */
   targetRefName: string;
   sourceRefName: string;
@@ -92,6 +93,8 @@ export interface PullRequestExtras {
   /** Text comment threads still active or pending */
   unresolvedThreads?: number;
   workItems?: { id: number; type: string }[];
+  /** All the threads of the PR: they tell when it was published and what happened to it */
+  threads?: ThreadResponse[];
   runs: RunModel[];
 }
 
@@ -363,9 +366,12 @@ export interface MyPullRequestModel {
   sourceBranch: string;
   /** Only when the PR does not merge into the base branch, e.g. "release/x" */
   target?: string;
-  /** "1 d 2 h" since the PR was created; "completed 3 h ago" for the completed ones */
+  /** "1 d 2 h" since the PR was published (created, for the drafts); "completed 3 h ago" for the completed ones */
   time: string;
-  workItemIds: number[];
+  /** What happened to the PR, oldest first */
+  timeline: Timeline;
+  /** Linked work items; the type is known for the ones that could be fetched */
+  workItems: { id: number; type?: string }[];
   status: string;
   tone: PullRequestTone;
   isDraft: boolean;
@@ -386,6 +392,8 @@ export interface MyPullRequestModel {
   canCheckout?: boolean;
   /** Its branch is the one checked out */
   isCurrentBranch?: boolean;
+  /** Another worktree has its branch checked out: its folder */
+  worktree?: string;
 }
 
 /** "25 min", "5 h", "1 d 2 h" */
@@ -402,20 +410,27 @@ const stripHeads = (ref: string) => ref.replace(/^refs\/heads\//, '');
 
 export interface ListOptions {
   now: Date;
+  /** Formats the dates of the timeline; the local time by default */
+  formatDate?: (isoDate: string) => string;
   baseBranch: string;
   showDrafts: boolean;
   minimumRequiredReviewers: number;
 }
 
-function isCompletedRecently(pr: AuthoredPullRequest, now: Date): boolean {
+export function isCompletedRecently(pr: AuthoredPullRequest, now: Date): boolean {
   return (
     pr.status === 'completed' && !!pr.closedDate && now.getTime() - Date.parse(pr.closedDate) <= COMPLETED_WINDOW_MS
   );
 }
 
+/** When the PR started to wait for reviewers: its publication (the creation for the drafts) */
+function waitingSince({ pr, extras }: AuthoredPullRequestData): string {
+  return pr.isDraft ? pr.creationDate : publishedAt(pr, extras.threads);
+}
+
 function toModel(
   { pr, extras }: AuthoredPullRequestData,
-  { now, baseBranch, minimumRequiredReviewers }: ListOptions
+  { now, baseBranch, minimumRequiredReviewers, formatDate }: ListOptions
 ): MyPullRequestModel {
   const { label, tone } = pullRequestStatus(pr);
   const isCompleted = pr.status === 'completed';
@@ -428,7 +443,8 @@ function toModel(
     url: pr.webUrl,
     sourceBranch: stripHeads(pr.sourceRefName),
     target: target === baseBranch ? undefined : target,
-    workItemIds: (extras.workItems ?? []).map((item) => item.id),
+    workItems: extras.workItems ?? [],
+    timeline: buildTimeline(pr, extras.threads, formatDate),
     status: label,
     tone,
     isDraft: pr.isDraft,
@@ -452,7 +468,7 @@ function toModel(
   const next = nextStep(pr, extras);
   return {
     ...base,
-    time: formatAge(now.getTime() - Date.parse(pr.creationDate)),
+    time: formatAge(now.getTime() - Date.parse(waitingSince({ pr, extras }))),
     reviewers: reviewerModels(pr),
     unresolved: extras.unresolvedThreads,
     conflicts: pr.mergeStatus === 'conflicts',
@@ -465,9 +481,9 @@ function toModel(
   };
 }
 
-/** Active non-draft PRs (oldest first), then the drafts, then the recently completed (latest first) */
-function compare(a: AuthoredPullRequest, b: AuthoredPullRequest): number {
-  const rank = (pr: AuthoredPullRequest) => {
+/** Active non-draft PRs (oldest publication first), then the drafts, then the recently completed (latest first) */
+function compare(a: AuthoredPullRequestData, b: AuthoredPullRequestData): number {
+  const rank = ({ pr }: AuthoredPullRequestData) => {
     if (pr.status === 'completed') {
       return 2;
     }
@@ -476,10 +492,10 @@ function compare(a: AuthoredPullRequest, b: AuthoredPullRequest): number {
   if (rank(a) !== rank(b)) {
     return rank(a) - rank(b);
   }
-  if (a.status === 'completed') {
-    return (b.closedDate ?? '').localeCompare(a.closedDate ?? '');
+  if (a.pr.status === 'completed') {
+    return (b.pr.closedDate ?? '').localeCompare(a.pr.closedDate ?? '');
   }
-  return a.creationDate.localeCompare(b.creationDate);
+  return waitingSince(a).localeCompare(waitingSince(b));
 }
 
 /**
@@ -494,7 +510,7 @@ export function toMyPullRequestModels(
   const hiddenDrafts = options.showDrafts ? 0 : listed.filter(({ pr }) => pr.isDraft).length;
   const items = listed
     .filter(({ pr }) => options.showDrafts || !pr.isDraft)
-    .sort((a, b) => compare(a.pr, b.pr))
+    .sort(compare)
     .map((entry) => toModel(entry, options));
   return { items, hiddenDrafts };
 }

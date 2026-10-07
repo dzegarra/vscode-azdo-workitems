@@ -1,7 +1,9 @@
 import { getAccessToken } from './auth';
 import { buildMyWorkItemsQuery, Iteration, mergeTeamIterations, TeamIteration } from './iterations';
 import { PackageVersion } from './integrationBuild';
+import type { RawCoverageFiles, RawCoverageSummary } from './coverage';
 import { BuildRun, pullRequestBranch } from './pipelines';
+import type { RawFailedResult, RawTestRun, RawTimelineRecord, RunFailures } from './runDetails';
 import { imageMimeType, isOrganizationUrl } from './richTextImages';
 import { AuthoredPullRequest, PolicyEvaluation, RawPolicyEvaluation, toPolicyEvaluation } from './myPullRequests';
 import { ReviewerPullRequest } from './reviewRequests';
@@ -13,6 +15,10 @@ const API_VERSION = '7.1';
 /** The policy evaluations API only exists as a preview: 7.1 is refused */
 const POLICY_API_VERSION = '7.1-preview.1';
 const BASE_URL = 'https://dev.azure.com';
+/** The code coverage summary has its own host */
+const TEST_RESULTS_URL = 'https://vstmr.dev.azure.com';
+/** The code coverage APIs only exist as previews */
+const COVERAGE_API_VERSION = '7.1-preview.1';
 /** Images bigger than this are not embedded in the details of work items */
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 /** Runs fetched per pull request: enough to find the last run of each pipeline */
@@ -351,6 +357,47 @@ export class AzdoClient {
       value: (Omit<BuildRun, 'webUrl'> & { _links: { web: { href: string } } })[];
     }>(this.url(`build/builds?branchName=${branch}&$top=${MAX_BUILDS}&queryOrder=queueTimeDescending`));
     return result.value.map(({ _links: links, ...build }) => ({ ...build, webUrl: links.web.href }));
+  }
+
+  /** Test runs published by a build (one per results file) */
+  async getBuildTestRuns(buildId: number): Promise<RawTestRun[]> {
+    const buildUri = encodeURIComponent(`vstfs:///Build/Build/${buildId}`);
+    const result = await this.request<{ value: RawTestRun[] }>(this.url(`test/runs?buildUri=${buildUri}`));
+    return result.value;
+  }
+
+  /** How many tests of a test run failed, and the first few of them */
+  async getTestRunFailures(runId: number, top: number): Promise<RunFailures> {
+    const [statistics, results] = await Promise.all([
+      this.request<{ runStatistics?: { outcome: string; count: number }[] }>(
+        this.url(`test/runs/${runId}/statistics`)
+      ).catch(() => undefined),
+      this.request<{ value: RawFailedResult[] }>(this.url(`test/runs/${runId}/results?outcomes=Failed&$top=${top}`)),
+    ]);
+    const failed = statistics?.runStatistics?.find((entry) => entry.outcome === 'Failed')?.count ?? 0;
+    return { failed: Math.max(failed, results.value.length), results: results.value };
+  }
+
+  /** Stages, jobs and tasks of a build with their results */
+  async getBuildTimeline(buildId: number): Promise<RawTimelineRecord[]> {
+    const result = await this.request<{ records?: RawTimelineRecord[] }>(this.url(`build/builds/${buildId}/timeline`));
+    return result.records ?? [];
+  }
+
+  /** Lines coverage of a build */
+  getBuildCoverageSummary(buildId: number): Promise<RawCoverageSummary> {
+    return this.request<RawCoverageSummary>(
+      `${TEST_RESULTS_URL}/${encodeURIComponent(this.organization)}/${encodeURIComponent(
+        this.project
+      )}/_apis/testresults/codecoverage?buildId=${buildId}&api-version=${COVERAGE_API_VERSION}`
+    );
+  }
+
+  /** Coverage of each file of a build */
+  getBuildCoverageFiles(buildId: number): Promise<RawCoverageFiles> {
+    return this.request<RawCoverageFiles>(
+      this.url(`test/codecoverage?buildId=${buildId}&flags=7`, undefined, COVERAGE_API_VERSION)
+    );
   }
 
   /** All the versions of a package of an Azure Artifacts feed of the project */

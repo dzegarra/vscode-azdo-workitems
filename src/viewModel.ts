@@ -4,6 +4,7 @@
  */
 import type { WorkItemAlert } from './alerts';
 import { priorityFilterValue } from './priority';
+import type { CoverageThresholds } from './coverage';
 import type { MyPullRequestModel } from './myPullRequests';
 import type { RunModel } from './pipelines';
 import type { ReviewRequestModel } from './reviewRequests';
@@ -41,10 +42,14 @@ export interface WorkItemModel {
   /** "local": the branch is checked out locally; "remote": only exists in the remote */
   branchLocation?: 'local' | 'remote';
   isCurrentBranch: boolean;
+  /** Another worktree has the branch checked out: its folder */
+  worktree?: string;
   /** Finished work items (Done, Ready to Test…) whose branch still exists: it should be deleted */
   leftoverBranch?: { name: string; local: boolean; remote: boolean };
   pullRequests: PullRequestModel[];
 }
+
+export type CheckoutKind = 'myPullRequest' | 'review' | 'workItem';
 
 export interface IterationModel {
   name: string;
@@ -81,6 +86,13 @@ export interface ViewModel {
   /** Work items with alerts skip the state / PR / priority filters (azdoWorkItems.filter.alwaysShowAlerts) */
   alwaysShowAlerts: boolean;
   layout: Layout;
+  coverage: CoverageViewModel;
+}
+
+export interface CoverageViewModel {
+  thresholds: CoverageThresholds;
+  /** "Your best: 98% · streak: 4 PRs ≥ 80%" */
+  records?: string;
 }
 
 export interface ReviewsModel {
@@ -118,7 +130,12 @@ export type WebviewMessage =
       id: number;
       pullRequestId?: number;
       runId?: number;
+      /** openRun: show the tests of the run instead of the run */
+      tests?: boolean;
     }
+  | { type: 'openFile'; path: string }
+  /** The ▾ of a Checkout button (menu) and "Open worktree": the id is the work item or the PR */
+  | { type: 'checkoutMenu' | 'openWorktree' | 'worktreeMenu'; kind: CheckoutKind; id: number }
   | { type: 'checkReviewRequests' }
   | { type: 'checkoutReviewRequest'; pullRequestId: number }
   | { type: 'openReviewRequest' | 'openMyPullRequest'; url: string }
@@ -128,6 +145,12 @@ export type WebviewMessage =
   | { type: 'ready' }
   | { type: 'refresh' }
   | { type: 'setFilter'; filter: FilterModel };
+
+/** Buttons of a work item: run by id */
+export type WorkItemActionMessage = Exclude<
+  Extract<WebviewMessage, { id: number }>,
+  { type: 'checkoutMenu' | 'openWorktree' | 'worktreeMenu' }
+>;
 
 export type ExtensionMessage =
   /** Opens or closes the task list of every card */
@@ -169,6 +192,14 @@ export function changedFilterKeys(a: FilterModel, b: FilterModel): (keyof Filter
 }
 
 /** State of the main PR of the work item (the first one: active PRs come first), used by the PR filter */
+/** PR state labels renamed over time: old value -> current label */
+const LEGACY_PULL_REQUEST_STATES: Record<string, string> = { 'Waiting for review': 'In review' };
+
+/** Maps hidden PR states saved with old labels to the current ones (no duplicates) */
+export function migratePullRequestStates(states: string[]): string[] {
+  return [...new Set(states.map((state) => LEGACY_PULL_REQUEST_STATES[state] ?? state))];
+}
+
 export function pullRequestFilterValue(item: Pick<WorkItemModel, 'pullRequests'>): string {
   return item.pullRequests.at(0)?.status ?? NO_PULL_REQUEST;
 }

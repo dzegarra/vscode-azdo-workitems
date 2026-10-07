@@ -1,6 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
-import { SECTION } from './config';
+import { coverageThresholds, recordsScope, SECTION } from './config';
+import { safeRelativePath } from './coverage';
+import { describeRecords } from './coverageRecords';
+import { CoverageRecordsStore } from './coverageRecordsStore';
 import {
   CHECKOUT_MY_PULL_REQUEST_COMMAND,
   MyPullRequestsWatcher,
@@ -8,7 +11,15 @@ import {
   PUBLISH_PULL_REQUEST_COMMAND,
 } from './myPullRequestsWatcher';
 import { CHECKOUT_REVIEW_COMMAND, ReviewRequestsWatcher, reviewSettings } from './reviewRequestsWatcher';
-import { changedFilterKeys, ExtensionMessage, FilterModel, Layout, ViewModel, WebviewMessage } from './viewModel';
+import {
+  changedFilterKeys,
+  migratePullRequestStates,
+  ExtensionMessage,
+  FilterModel,
+  Layout,
+  ViewModel,
+  WebviewMessage,
+} from './viewModel';
 import { runWorkItemAction } from './workItemActions';
 import { WorkItemsStore } from './workItemsStore';
 
@@ -19,7 +30,7 @@ export function filterSettings(): FilterModel {
   return {
     types: config.get<string[]>('filter.types', []),
     hiddenStates: config.get<string[]>('filter.hiddenStates', []),
-    hiddenPullRequestStates: config.get<string[]>('filter.hiddenPullRequestStates', []),
+    hiddenPullRequestStates: migratePullRequestStates(config.get<string[]>('filter.hiddenPullRequestStates', [])),
     hiddenPriorities: config.get<string[]>('filter.hiddenPriorities', []),
   };
 }
@@ -38,7 +49,8 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     private readonly extensionUri: vscode.Uri,
     private readonly store: WorkItemsStore,
     private readonly reviews: ReviewRequestsWatcher,
-    private readonly myPullRequests: MyPullRequestsWatcher
+    private readonly myPullRequests: MyPullRequestsWatcher,
+    private readonly coverageRecords: CoverageRecordsStore
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -60,6 +72,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       ...this.store.toViewModel(filterSettings()),
       alwaysShowAlerts: vscode.workspace.getConfiguration(SECTION).get<boolean>('filter.alwaysShowAlerts', false),
       layout: layoutSetting(),
+      coverage: this.coverageModel(),
       reviews: {
         status: this.reviews.status,
         error: this.reviews.error,
@@ -86,6 +99,36 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     this.view.description = model.iterations.map((iteration) => iteration.name).join(', ') || undefined;
     const message: ExtensionMessage = { type: 'state', model };
     void this.view.webview.postMessage(message);
+  }
+
+  private coverageModel(): ViewModel['coverage'] {
+    const thresholds = coverageThresholds();
+    const scope = recordsScope(this.store.repository());
+    return {
+      thresholds,
+      records: scope ? describeRecords(this.coverageRecords.records(scope), thresholds.target) : undefined,
+    };
+  }
+
+  /** Opens a file of the repository (a path reported by the coverage of a run) in the editor */
+  private async openFile(path: string): Promise<void> {
+    const relative = safeRelativePath(path);
+    const root = this.store.repository()?.rootUri;
+    const uri = relative && root ? vscode.Uri.joinPath(root, relative) : undefined;
+    let exists = false;
+    if (uri) {
+      try {
+        await vscode.workspace.fs.stat(uri);
+        exists = true;
+      } catch {
+        // Not in this checkout: renamed, deleted or only in the branch of the PR
+      }
+    }
+    if (uri && exists) {
+      await vscode.window.showTextDocument(uri);
+    } else {
+      void vscode.window.showInformationMessage(`${path} is not in the repository you have open.`);
+    }
   }
 
   /** Opens or closes the task list of every card */
@@ -123,6 +166,14 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         await vscode.workspace
           .getConfiguration(`${SECTION}.myPullRequests`)
           .update('showDrafts', message.show, vscode.ConfigurationTarget.Global);
+        return;
+      case 'openFile':
+        await this.openFile(message.path);
+        return;
+      case 'checkoutMenu':
+      case 'openWorktree':
+      case 'worktreeMenu':
+        await vscode.commands.executeCommand(`azdoWorkItems.${message.type}`, message.kind, message.id);
         return;
       case 'openMyPullRequest':
       case 'openReviewRequest':

@@ -8,6 +8,7 @@ export const ICONS = {
   external:
     '<path d="M9.5 2.5h4v4M13.5 2.5 7.5 8.5M12 9.5v3.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-8a.5.5 0 0 1 .5-.5H7"/>',
   chevron: '<path d="m6 3.5 4.5 4.5L6 12.5"/>',
+  caretDown: '<path d="m4 6.5 4 4 4-4"/>',
   clock: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/>',
   sync: '<path d="M13 8a5 5 0 0 1-8.5 3.5M3 8a5 5 0 0 1 8.5-3.5M11.5 2v2.5H9M4.5 14v-2.5H7"/>',
   check: '<circle cx="8" cy="8" r="5.5"/><path d="m5.5 8.2 1.7 1.7 3.3-3.4"/>',
@@ -25,6 +26,8 @@ export const ICONS = {
   parent: '<path d="M8 13.5v-11M4 6.5l4-4 4 4"/>',
   comment: '<path d="M2.5 3h11v7.5H8l-3 2.5v-2.5H2.5z"/>',
   circle: '<circle cx="8" cy="8" r="5.5" stroke-dasharray="2 2"/>',
+  shield: '<path d="M8 1.8 13 3.6v4c0 3-2.1 5.1-5 6.6-2.9-1.5-5-3.6-5-6.6v-4z"/>',
+  trophy: '<path d="M5 2.5h6v4a3 3 0 0 1-6 0zM5 4H2.5a2 2 0 0 0 2.5 3M11 4h2.5A2 2 0 0 1 11 7M8 9.5v2.5M5.5 13.5h5"/>',
   refresh: '<path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5v3h-3"/>',
 };
 
@@ -46,6 +49,12 @@ export const TYPE_CLASSES: Partial<Record<string, string>> = {
   Task: 'type-task',
   Feature: 'type-feature',
 };
+
+/** Class colouring the ID link like the icon of its type ('' for unknown types) */
+export function typeIdClass(type: string): string {
+  const cls = TYPE_CLASSES[type];
+  return cls ? ` id-${cls}` : '';
+}
 
 /** Icon of the work item type, coloured by type */
 export function typeIcon(type: string): string {

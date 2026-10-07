@@ -3,6 +3,8 @@ import { resolveContext, settings } from '../config';
 import { GitAPI, pickRepository } from '../git';
 import { isFinishedState } from '../states';
 import { WorkItemEntry, WorkItemsStore } from '../workItemsStore';
+import { listWorktrees, removeWorktree, worktreeHasChanges } from '../worktreeGit';
+import { findWorktree } from '../worktrees';
 
 /** Work item the command was invoked on, or one of the finished work items whose branch still exists */
 async function resolveEntry(
@@ -28,6 +30,33 @@ async function resolveEntry(
     { title: 'Delete the branch of a finished work item', ignoreFocusOut: true }
   );
   return picked?.entry;
+}
+
+/**
+ * Removes the worktree of the branch. When it has uncommitted changes the user decides: remove it anyway (the changes
+ * are lost) or keep it. Returns false when it was kept
+ */
+async function removeOrKeepWorktree(root: string, folder: string): Promise<boolean> {
+  try {
+    await removeWorktree(root, folder);
+    return true;
+  } catch (error) {
+    if (!(await worktreeHasChanges(folder).catch(() => false))) {
+      throw error;
+    }
+  }
+  const remove = 'Remove anyway (they will be lost)';
+  const picked = await vscode.window.showWarningMessage(
+    'The worktree has uncommitted changes',
+    { modal: true, detail: `${folder}\n\nKeeping it also keeps the local branch.` },
+    remove,
+    'Keep it'
+  );
+  if (picked !== remove) {
+    return false;
+  }
+  await removeWorktree(root, folder, true);
+  return true;
 }
 
 /**
@@ -60,9 +89,12 @@ export async function deleteBranch(git: GitAPI, store: WorkItemsStore, node: Wor
   const { remote, baseBranch } = settings();
   const isCurrent = repository.state.HEAD?.name === leftover.name;
   const local = leftover.local ? await repository.getBranch(leftover.name) : undefined;
+  const root = repository.rootUri.fsPath;
+  const worktree = local ? findWorktree(await listWorktrees(root).catch(() => []), leftover.name, [root]) : undefined;
   const details = [
     ...(leftover.remoteObjectId ? [`• In Azure DevOps (${remote}/${leftover.name})`] : []),
     ...(local ? ['• Local branch'] : []),
+    ...(worktree ? [`• Worktree at ${worktree.path}`] : []),
     ...(isCurrent ? [`\nIt is checked out: VS Code switches to ${baseBranch} first.`] : []),
   ];
   if (local && local.commit !== leftover.remoteObjectId) {
@@ -81,18 +113,22 @@ export async function deleteBranch(git: GitAPI, store: WorkItemsStore, node: Wor
     return;
   }
 
+  let keptWorktree: string | undefined;
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: `Deleting ${leftover.name}…` },
     async () => {
       if (isCurrent) {
         await repository.checkout(baseBranch);
       }
+      if (worktree && !(await removeOrKeepWorktree(root, worktree.path))) {
+        keptWorktree = worktree.path;
+      }
       if (leftover.remoteObjectId) {
         // Refused by Azure DevOps if someone pushed to the branch since it was checked
         const { id } = await client.getRepository(repositoryName);
         await client.deleteRemoteBranch(id, leftover.name, leftover.remoteObjectId);
       }
-      if (local) {
+      if (local && !keptWorktree) {
         // Forced: after a squash merge, git does not see the branch as merged
         await repository.deleteBranch(leftover.name, true);
       }
@@ -104,6 +140,14 @@ export async function deleteBranch(git: GitAPI, store: WorkItemsStore, node: Wor
       }
     }
   );
-  void vscode.window.showInformationMessage(`Deleted the branch ${leftover.name} of ${workItem.type} ${workItem.id}.`);
+  if (keptWorktree) {
+    void vscode.window.showWarningMessage(
+      `Deleted ${leftover.name} in Azure DevOps only: the worktree at ${keptWorktree} has uncommitted changes, so it and the local branch were kept.`
+    );
+  } else {
+    void vscode.window.showInformationMessage(
+      `Deleted the branch ${leftover.name} of ${workItem.type} ${workItem.id}${worktree ? ' and its worktree' : ''}.`
+    );
+  }
   await store.refresh();
 }

@@ -92,6 +92,12 @@
         "icon": "$(trash)"
       },
       {
+        "command": "azdoWorkItems.removeWorktrees",
+        "title": "Remove Worktrees…",
+        "category": "Azure Work Items",
+        "icon": "$(trash)"
+      },
+      {
         "command": "azdoWorkItems.openDetails",
         "title": "Show Work Item Details",
         "category": "Azure Work Items"
@@ -200,6 +206,10 @@
           "when": "view == azdoWorkItems.myItems"
         },
         {
+          "command": "azdoWorkItems.removeWorktrees",
+          "when": "view == azdoWorkItems.myItems"
+        },
+        {
           "command": "azdoWorkItems.expandTasks",
           "when": "view == azdoWorkItems.myItems"
         },
@@ -262,6 +272,21 @@
           "type": "string",
           "default": "develop",
           "description": "Branch new branches are created from and pull requests target."
+        },
+        "azdoWorkItems.checkout.mode": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "branch",
+            "worktree"
+          ],
+          "enumDescriptions": [
+            "Switch branch; when you have uncommitted changes, ask: open a worktree, stash them or check out anyway.",
+            "Always switch the branch of this window, without asking (git carries your changes or refuses on conflicts).",
+            "Always open the branch in a worktree: its own folder next to the repository, in a new window."
+          ],
+          "default": "ask",
+          "description": "What the Checkout buttons do. The ▾ next to them always offers both ways."
         },
         "azdoWorkItems.filter.types": {
           "type": "array",
@@ -661,6 +686,27 @@
           "type": "boolean",
           "default": true,
           "description": "Show the CI runs of your pull requests in the status bar."
+        },
+        "azdoWorkItems.coverage.minimum": {
+          "type": "number",
+          "default": 60,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Coverage (%) of a CI run below which it is shown in red."
+        },
+        "azdoWorkItems.coverage.target": {
+          "type": "number",
+          "default": 80,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Coverage (%) the team aims for. Below it the coverage is orange, from it green. The files under it are listed, and the streak of your pull requests counts the ones at or above it."
+        },
+        "azdoWorkItems.coverage.excellent": {
+          "type": "number",
+          "default": 95,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Coverage (%) from which a CI run is celebrated (gold, with a trophy)."
         },
         "azdoWorkItems.reviews.maxWaitHours": {
           "type": "number",

@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import { createBranch } from './commands/createBranch';
 import { checkoutPullRequest } from './commands/checkoutPullRequest';
+import { BranchTarget, checkoutBranch, openWorktree, showCheckoutMenu } from './commands/checkoutBranch';
+import { removeWorktreesCommand, showWorktreeMenu } from './commands/removeWorktree';
+import { runPendingWorktreeSetup } from './worktreeSetup';
+import { CheckoutKind } from './viewModel';
 import { publishPullRequest } from './commands/publishPullRequest';
 import { createPullRequest } from './commands/createPullRequest';
 import { deleteBranch } from './commands/deleteBranch';
@@ -16,6 +20,7 @@ import {
   MyPullRequestsWatcher,
   PUBLISH_PULL_REQUEST_COMMAND,
 } from './myPullRequestsWatcher';
+import { CoverageRecordsStore } from './coverageRecordsStore';
 import { PipelineStatusBar } from './pipelineStatusBar';
 import { PipelineWatcher } from './pipelineWatcher';
 import { PullRequestNotifier } from './pullRequestNotifier';
@@ -71,19 +76,49 @@ async function selectTeams(repository: Repository | undefined): Promise<void> {
 const DEBOUNCE_MS = 300;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  // A window opened on a new worktree runs `npm ci` once; never blocks nor breaks the activation
+  void runPendingWorktreeSetup();
   const git = await getGitApi();
   const store = new WorkItemsStore(git);
   const details = new WorkItemDetailsPanels(context.extensionUri, store);
   const notifier = new PullRequestNotifier(context.globalState, store);
   const dependencyMap = new DependencyMapPanel(context.extensionUri, store);
-  const pipelineWatcher = new PipelineWatcher(store);
   const pipelineStatusBar = new PipelineStatusBar(store);
   const currentWorkItemStatusBar = new CurrentWorkItemStatusBar(git, store);
   const reviewRequests = new ReviewRequestsWatcher(context.globalState, store);
   const reviewStatusBar = new ReviewStatusBar(reviewRequests);
   const myPullRequests = new MyPullRequestsWatcher(store);
-  const view = new WorkItemsViewProvider(context.extensionUri, store, reviewRequests, myPullRequests);
+  const coverageRecords = new CoverageRecordsStore(context.globalState);
+  const pipelineWatcher = new PipelineWatcher(store, myPullRequests, coverageRecords);
+  const view = new WorkItemsViewProvider(context.extensionUri, store, reviewRequests, myPullRequests, coverageRecords);
   const currentRepository = () => (git.repositories.length ? pickRepository(git) : undefined);
+
+  /** Branch (and PR) behind the Checkout button of a card */
+  const branchTarget = (kind: CheckoutKind, id: number): BranchTarget => {
+    switch (kind) {
+      case 'workItem': {
+        const branch = store.find(id)?.branch;
+        if (!branch) {
+          throw new Error(`Work item ${id} has no branch.`);
+        }
+        return { branch };
+      }
+      case 'review': {
+        const request = reviewRequests.models().find((r) => r.id === id);
+        if (!request) {
+          throw new Error(`PR ${id} is no longer waiting for your review.`);
+        }
+        return { branch: request.sourceBranch, pullRequest: { id, title: request.title } };
+      }
+      case 'myPullRequest': {
+        const pullRequest = myPullRequests.models().items.find((item) => item.id === id);
+        if (!pullRequest) {
+          throw new Error(`PR ${id} is no longer in your list of pull requests.`);
+        }
+        return { branch: pullRequest.sourceBranch, pullRequest: { id, title: pullRequest.title } };
+      }
+    }
+  };
 
   // Visible even when the sidebar is closed
   const alertsStatus = vscode.window.createStatusBarItem('azdoWorkItems.alerts', vscode.StatusBarAlignment.Left);
@@ -126,7 +161,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const watchRepository = (repository: Repository) =>
     repository.state.onDidChange(() => {
       clearTimeout(debounce);
-      debounce = setTimeout(() => view.post(), DEBOUNCE_MS);
+      debounce = setTimeout(() => {
+        view.post();
+        // Worktrees created or removed outside VS Code show up with the next change of the repository
+        void store.refreshWorktrees().then((changed) => changed && view.post());
+      }, DEBOUNCE_MS);
     });
 
   context.subscriptions.push(
@@ -199,10 +238,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     command('azdoWorkItems.checkout', async (entry: WorkItemEntry) => {
       if (entry.branch) {
         // For a branch that only exists in the remote, git creates the local tracking branch
-        await pickRepository(git).checkout(entry.branch);
-        await store.refresh();
+        await checkoutBranch(git, store, { branch: entry.branch });
       }
     }),
+    command('azdoWorkItems.checkoutMenu', async (kind: CheckoutKind, id: number) =>
+      showCheckoutMenu(git, store, branchTarget(kind, id))
+    ),
+    command('azdoWorkItems.openWorktree', async (kind: CheckoutKind, id: number) =>
+      openWorktree(store, branchTarget(kind, id).branch)
+    ),
+    command('azdoWorkItems.worktreeMenu', async (kind: CheckoutKind, id: number) =>
+      showWorktreeMenu(store, git, branchTarget(kind, id).branch)
+    ),
+    command('azdoWorkItems.removeWorktrees', () => removeWorktreesCommand(git, store)),
     command('azdoWorkItems.openDetails', async (id?: number) => {
       // From the command palette: pick one of the work items
       const workItemId = id ?? (await resolveWorkItemEntry(store, undefined))?.workItem.id;
@@ -254,7 +302,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         throw new Error(`PR ${pullRequestId} is no longer waiting for your review.`);
       }
       if (request) {
-        await checkoutPullRequest(git, request);
+        await checkoutPullRequest(git, store, request);
       }
     }),
     command('azdoWorkItems.checkMyPullRequests', () => myPullRequests.poll()),
@@ -280,7 +328,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         throw new Error(`PR ${pullRequestId} is no longer in your list of pull requests.`);
       }
       if (pullRequest) {
-        await checkoutPullRequest(git, pullRequest);
+        await checkoutPullRequest(git, store, pullRequest);
       }
     }),
     command(PUBLISH_PULL_REQUEST_COMMAND, async (pullRequestId: number) => {

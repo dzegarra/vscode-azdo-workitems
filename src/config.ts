@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 import { AzdoClient } from './azdoClient';
+import { CoverageThresholds, normalizeThresholds } from './coverage';
 import { Repository } from './git';
 import { parseAzdoRemote } from './repoContext';
+import { parseCheckoutMode } from './worktrees';
 import { DEFAULT_STATE_ORDER } from './states';
 
 export const SECTION = 'azdoWorkItems';
@@ -18,6 +20,7 @@ export function settings() {
     teams: config.get<string[]>('teams', []),
     remote: config.get<string>('remote', 'origin'),
     baseBranch: config.get<string>('baseBranch', 'develop'),
+    checkoutMode: parseCheckoutMode(config.get<string>('checkout.mode', 'ask')),
     branchTypeByWorkItemType: config.get<Partial<Record<string, string>>>('branchTypeByWorkItemType', {}),
     branchModules: config.get<string[]>('branchModules', []),
     prFeatureNames: config.get<string[]>('prFeatureNames', []),
@@ -50,6 +53,16 @@ export function settings() {
   };
 }
 
+/** Coverage levels: below `minimum` is low, from `target` is good, from `excellent` is excellent */
+export function coverageThresholds(): CoverageThresholds {
+  const config = vscode.workspace.getConfiguration(`${SECTION}.coverage`);
+  return normalizeThresholds({
+    minimum: config.get<number>('minimum'),
+    target: config.get<number>('target'),
+    excellent: config.get<number>('excellent'),
+  });
+}
+
 export interface AzdoContext {
   client: AzdoClient;
   repositoryName: string;
@@ -72,4 +85,14 @@ export function resolveContext(repository: Repository | undefined): AzdoContext 
     client: new AzdoClient(organization, project),
     repositoryName,
   };
+}
+
+/** Organization and project the personal records belong to; undefined when they cannot be told */
+export function recordsScope(repository: Repository | undefined): string | undefined {
+  try {
+    const { client } = resolveContext(repository);
+    return `${client.organization}/${client.project}`;
+  } catch {
+    return undefined;
+  }
 }

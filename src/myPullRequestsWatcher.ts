@@ -5,11 +5,13 @@ import {
   AuthoredPullRequest,
   AuthoredPullRequestData,
   countUnresolvedThreads,
+  isCompletedRecently,
   MyPullRequestModel,
   PullRequestExtras,
   toMyPullRequestModels,
 } from './myPullRequests';
-import { latestRuns } from './pipelines';
+import { latestRuns, RunModel } from './pipelines';
+import { runDetailsLoader } from './runDetailsLoader';
 import { WorkItemsStore } from './workItemsStore';
 
 const MS_PER_SECOND = 1000;
@@ -71,9 +73,30 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
       hiddenDrafts,
       items: items.map((item) => {
         const canCheckout = !!local && item.repository.toLowerCase() === local.name.toLowerCase();
-        return { ...item, canCheckout, isCurrentBranch: canCheckout && local.head === item.sourceBranch };
+        const isCurrentBranch = canCheckout && local.head === item.sourceBranch;
+        return {
+          ...item,
+          canCheckout,
+          isCurrentBranch,
+          worktree: canCheckout && !isCurrentBranch ? this.store.worktreeFor(item.sourceBranch)?.path : undefined,
+        };
       }),
     };
+  }
+
+  /** Whether the user created the PR. False while the list is not loaded */
+  isMine(pullRequestId: number): boolean {
+    return this.data.some(({ pr }) => pr.pullRequestId === pullRequestId);
+  }
+
+  /** CI runs of the active PRs created by the user, whether the store follows them or not */
+  ownRuns(): { pullRequestId: number; runs: RunModel[] }[] {
+    return this.data
+      .filter(({ pr }) => pr.status === 'active')
+      .map(({ pr, extras }) => ({
+        pullRequestId: pr.pullRequestId,
+        runs: this.store.runsOf(pr.pullRequestId) ?? extras.runs,
+      }));
   }
 
   /** The PR as it was in the last check, to act on it */
@@ -109,11 +132,12 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
       const { client } = resolveContext(this.store.repository());
       this.myId ??= client.getMyId();
       const pullRequests = await client.getMyPullRequests(await this.myId);
-      // Only the active PRs need the details: the completed ones are shown faded
+      // Only the active PRs need the details: the completed ones are shown faded, with their timeline
+      const now = new Date();
       this.data = await Promise.all(
         pullRequests.map(async (pr) => ({
           pr,
-          extras: pr.status === 'active' ? await this.fetchExtras(client, pr) : { runs: [] },
+          extras: await this.fetchPollExtras(client, pr, now),
         }))
       );
       this.status = 'ready';
@@ -128,25 +152,33 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
     }
   }
 
+  private async fetchPollExtras(client: AzdoClient, pr: AuthoredPullRequest, now: Date): Promise<PullRequestExtras> {
+    if (pr.status === 'active') {
+      return this.fetchExtras(client, pr);
+    }
+    if (!isCompletedRecently(pr, now)) {
+      return { runs: [] };
+    }
+    const threads = await client.getPullRequestThreads(pr.repository.id, pr.pullRequestId).catch(() => undefined);
+    return { threads, runs: [] };
+  }
+
   private async fetchExtras(client: AzdoClient, pr: AuthoredPullRequest): Promise<PullRequestExtras> {
     const { id: repositoryId, project } = pr.repository;
     const id = pr.pullRequestId;
     // Each part fails alone: the card is shown without it
-    const [evaluations, unresolvedThreads, workItems, runs] = await Promise.all([
+    const [evaluations, threads, workItems, runs] = await Promise.all([
       client.getPolicyEvaluations(project.id, id).catch(() => undefined),
-      client
-        .getPullRequestThreads(repositoryId, id)
-        .then(countUnresolvedThreads)
-        .catch(() => undefined),
+      client.getPullRequestThreads(repositoryId, id).catch(() => undefined),
       this.fetchWorkItems(client, repositoryId, id),
       // The runs of the PRs followed by the store are read from it when the cards are built
       this.store.runsOf(id) ??
         client
           .getPullRequestBuilds(id)
-          .then(latestRuns)
+          .then((builds) => runDetailsLoader.enrich(client, latestRuns(builds)))
           .catch(() => []),
     ]);
-    return { evaluations, unresolvedThreads, workItems, runs };
+    return { evaluations, unresolvedThreads: threads && countUnresolvedThreads(threads), threads, workItems, runs };
   }
 
   /** Linked work items with their type. Undefined when they cannot be told: the Bug warning is skipped */

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { branchActions, changedFilterKeys, describeScope, isVisible, NO_PULL_REQUEST } from './viewModel';
+import {
+  branchActions,
+  changedFilterKeys,
+  describeScope,
+  isVisible,
+  migratePullRequestStates,
+  NO_PULL_REQUEST,
+} from './viewModel';
 import { NO_PRIORITY } from './priority';
 import { parseRelations, pullRequestStatus, PullRequestState } from './workItemLinks';
 
@@ -58,12 +65,12 @@ describe('pullRequestStatus', () => {
     [{ ...active, status: 'abandoned' as const }, 'Abandoned'],
     [{ ...active, isDraft: true }, 'Draft'],
     [{ ...active, mergeStatus: 'conflicts' }, 'Conflicts'],
-    [active, 'Waiting for review'],
+    [active, 'In review'],
     [{ ...active, reviewers: [reviewer(10), reviewer(-10)] }, 'Rejected'],
     [{ ...active, reviewers: [reviewer(10), reviewer(-5)] }, 'Waiting for author'],
     [{ ...active, reviewers: [reviewer(10), reviewer(0)] }, 'Approved'],
     [{ ...active, reviewers: [reviewer(5)] }, 'Approved with suggestions'],
-    [{ ...active, reviewers: [reviewer(10), reviewer(0, true)] }, 'Waiting for review'],
+    [{ ...active, reviewers: [reviewer(10), reviewer(0, true)] }, 'In review'],
   ])('%o is %s', (pr, label) => {
     expect(pullRequestStatus(pr).label).toBe(label);
   });
@@ -201,5 +208,13 @@ describe('branch actions', () => {
     }
     // A PR still active on the branch would be broken
     expect(branchActions({ ...item, state: 'Done', leftoverBranch, pullRequests: [pr(true)] })).toEqual([]);
+  });
+});
+
+describe('migratePullRequestStates', () => {
+  it('maps the old "Waiting for review" label to "In review" without duplicates', () => {
+    expect(migratePullRequestStates(['Draft', 'Waiting for review'])).toEqual(['Draft', 'In review']);
+    expect(migratePullRequestStates(['Waiting for review', 'In review'])).toEqual(['In review']);
+    expect(migratePullRequestStates([])).toEqual([]);
   });
 });

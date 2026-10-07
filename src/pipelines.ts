@@ -1,4 +1,5 @@
 /** CI pipeline runs of pull requests. Pure, so no "vscode" import */
+import type { CoverageSummary } from './coverage';
 
 /** Build as returned by the Azure DevOps Builds API */
 export interface BuildRun {
@@ -12,6 +13,22 @@ export interface BuildRun {
   webUrl: string;
 }
 
+export interface FailedTest {
+  title: string;
+  /** Test file, as reported by the test run */
+  file: string;
+  /** First line of the error, without colour codes */
+  error: string;
+}
+
+export interface TestSummary {
+  /** Tests that ran (the skipped ones are not counted) */
+  total: number;
+  failed: number;
+  /** The first failures, up to a few */
+  failedTests: FailedTest[];
+}
+
 export type RunState = 'canceled' | 'failed' | 'partial' | 'queued' | 'running' | 'succeeded';
 
 export interface RunModel {
@@ -21,6 +38,11 @@ export interface RunModel {
   url: string;
   startTime?: string;
   finishTime?: string;
+  /** Finished runs only, when Azure DevOps has the information */
+  tests?: TestSummary;
+  /** Task that failed when the run failed without failed tests (e.g. "Linting") */
+  failedStep?: string;
+  coverage?: CoverageSummary;
 }
 
 /** Branch Azure DevOps builds for the validation of a pull request */

@@ -191,6 +191,8 @@ export interface ReviewRequestModel extends ReviewRequest {
   canCheckout?: boolean;
   /** Its branch is the one checked out */
   isCurrentBranch?: boolean;
+  /** Another worktree has its branch checked out: its folder */
+  worktree?: string;
 }
 
 export function toReviewModels(requests: ReviewRequest[], now: Date, rules: ReviewRules): ReviewRequestModel[] {

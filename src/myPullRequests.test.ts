@@ -16,6 +16,7 @@ import {
   toPolicyEvaluation,
   voteKind,
 } from './myPullRequests';
+import type { ThreadResponse } from './reviewThreads';
 
 const ME = 'me';
 const NO_RULES = { minimumRequiredReviewers: 0 };
@@ -396,6 +397,66 @@ describe('toMyPullRequestModels', () => {
     expect(items.map((item) => item.id)).toEqual([5, 3, 2, 4, 1]);
   });
 
+  it('sorts the active PRs by publication, not by creation', () => {
+    const published = (at: string): ThreadResponse[] => [
+      {
+        id: 1,
+        publishedDate: at,
+        properties: { CodeReviewThreadType: { $value: 'IsDraftUpdate' }, CodeReviewIsDraftNowSet: { $value: '0' } },
+      },
+    ];
+    const { items } = toMyPullRequestModels(
+      [
+        // Created first, published last
+        data(
+          { pullRequestId: 1, creationDate: '2026-10-01T00:00:00Z' },
+          { threads: published('2026-10-06T00:00:00Z') }
+        ),
+        data({ pullRequestId: 2, creationDate: '2026-10-03T00:00:00Z' }, { threads: [] }),
+        data(
+          { pullRequestId: 3, creationDate: '2026-10-02T00:00:00Z' },
+          { threads: published('2026-10-04T00:00:00Z') }
+        ),
+        // Threads not read: the creation counts
+        data({ pullRequestId: 4, creationDate: '2026-10-05T00:00:00Z' }),
+      ],
+      options
+    );
+    expect(items.map((item) => item.id)).toEqual([2, 3, 4, 1]);
+  });
+
+  it('shows the time since the publication, since the creation when it was never a draft or for the drafts', () => {
+    const published: ThreadResponse = {
+      id: 1,
+      publishedDate: '2026-10-07T09:00:00Z',
+      properties: { CodeReviewThreadType: { $value: 'IsDraftUpdate' }, CodeReviewIsDraftNowSet: { $value: '0' } },
+    };
+    const time = (pr: Partial<AuthoredPullRequest>, threads?: ThreadResponse[]) =>
+      toMyPullRequestModels([data({ creationDate: '2026-10-01T12:00:00Z', ...pr }, { threads })], options).items[0]
+        .time;
+    expect(time({}, [published])).toBe('3 h');
+    expect(time({})).toBe('6 d 0 h');
+    expect(time({}, [])).toBe('6 d 0 h');
+    expect(time({ isDraft: true }, [])).toBe('6 d 0 h');
+    // Back to draft after being published: still the creation
+    expect(time({ isDraft: true }, [published])).toBe('6 d 0 h');
+  });
+
+  it('gives the timeline of the active and the recently completed PRs, with the injected date format', () => {
+    const { items } = toMyPullRequestModels(
+      [
+        data({ pullRequestId: 1, createdBy: { id: ME, displayName: 'Me' } }),
+        data({ pullRequestId: 2, status: 'completed', closedDate: '2026-10-07T01:00:00Z' }),
+      ],
+      { ...options, formatDate: (iso) => `<${iso}>` }
+    );
+    expect(items[0].timeline).toEqual({
+      events: [{ when: '<2026-10-06T10:00:00Z>', text: 'Me created the pull request' }],
+      earlier: 0,
+    });
+    expect(items[1].timeline.events.at(-1)).toEqual({ when: '<2026-10-07T01:00:00Z>', text: 'Pull request completed' });
+  });
+
   it('lists the PRs completed in the last 24 hours and never the abandoned ones', () => {
     const { items } = toMyPullRequestModels(
       [
@@ -456,7 +517,7 @@ describe('toMyPullRequestModels', () => {
     );
     expect(items[0]).toMatchObject({
       time: '1 d 2 h',
-      workItemIds: [66280],
+      workItems: [{ id: 66280, type: 'Product Backlog Item' }],
       status: 'Conflicts',
       conflicts: true,
       unresolved: 2,

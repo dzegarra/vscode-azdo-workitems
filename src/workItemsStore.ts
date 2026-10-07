@@ -6,8 +6,12 @@ import { TeamIteration } from './iterations';
 import { branchBelongsToWorkItem } from './naming';
 import { isFinishedState } from './states';
 import { FilterModel, PullRequestModel, ViewModel, WorkItemModel } from './viewModel';
+import { runDetailsLoader } from './runDetailsLoader';
 import { finishedRuns, isActive, latestRuns, RunModel } from './pipelines';
 import { pullRequestStatus } from './workItemLinks';
+import { listWorktrees } from './worktreeGit';
+import { findWorktree, Worktree } from './worktrees';
+import { realpathSync } from 'node:fs';
 import { parsePriority, PRIORITY_FIELD, SEVERITY_FIELD } from './priority';
 import { AlertRules, findAlerts, parseTags, resolveFieldName, resolveRequiredFields, WorkItemAlert } from './alerts';
 
@@ -197,7 +201,10 @@ function toPullRequestModel(pr: PullRequestDetails, runs: RunModel[]): PullReque
 /** Last CI run of each pipeline of the given PRs. PRs whose runs cannot be fetched are skipped */
 async function fetchRuns(client: AzdoClient, pullRequestIds: number[]): Promise<Map<number, RunModel[]>> {
   const results = await Promise.allSettled(
-    pullRequestIds.map(async (id) => [id, latestRuns(await client.getPullRequestBuilds(id))] as const)
+    pullRequestIds.map(
+      async (id) =>
+        [id, await runDetailsLoader.enrich(client, latestRuns(await client.getPullRequestBuilds(id)))] as const
+    )
   );
   return new Map(results.filter((result) => result.status === 'fulfilled').map((result) => result.value));
 }
@@ -218,6 +225,8 @@ export class WorkItemsStore {
   /** CI runs of the active PRs, by PR */
   private runs = new Map<number, RunModel[]>();
   private loading?: Promise<void>;
+  /** Worktrees of the repository, to offer "Open worktree" instead of Checkout */
+  worktrees: Worktree[] = [];
 
   constructor(private readonly git: GitAPI) {}
 
@@ -293,6 +302,47 @@ export class WorkItemsStore {
     await this.loading;
   }
 
+  /** Folders of the repository open in this window: its branch is not "in another worktree" */
+  openFolders(): string[] {
+    const root = this.repository()?.rootUri.fsPath;
+    if (!root) {
+      return [];
+    }
+    try {
+      return [root, realpathSync(root)];
+    } catch {
+      return [root];
+    }
+  }
+
+  /** Worktree (other than the folder open in this window) where the branch is checked out */
+  worktreeFor(branch: string | undefined): Worktree | undefined {
+    return branch ? findWorktree(this.worktrees, branch, this.openFolders()) : undefined;
+  }
+
+  /** Reads the worktrees with one git call. Returns whether they changed */
+  async refreshWorktrees(): Promise<boolean> {
+    const root = this.repository()?.rootUri.fsPath;
+    let next: Worktree[] = [];
+    if (root) {
+      try {
+        next = await listWorktrees(root);
+      } catch {
+        // Old git or not a repository: no worktrees
+      }
+    }
+    const changed =
+      next.length !== this.worktrees.length ||
+      next.some(
+        (w, i) =>
+          w.path !== this.worktrees[i].path ||
+          w.branch !== this.worktrees[i].branch ||
+          w.prunable !== this.worktrees[i].prunable
+      );
+    this.worktrees = next;
+    return changed;
+  }
+
   /** Lets the view re-render, e.g. when the checked out branch changes */
   notify(): void {
     this.changeEmitter.fire();
@@ -302,6 +352,7 @@ export class WorkItemsStore {
     this.status = 'loading';
     this.changeEmitter.fire();
     try {
+      await this.refreshWorktrees();
       this.entries = await this.fetch();
       this.runs = await fetchRuns(resolveContext(this.repository()).client, this.activePullRequestIds());
       this.status = 'ready';
@@ -371,6 +422,7 @@ export class WorkItemsStore {
       branch,
       branchLocation,
       isCurrentBranch: !!branch && branch === currentBranch,
+      worktree: branch === currentBranch ? undefined : this.worktreeFor(branch)?.path,
       leftoverBranch: leftoverBranch && {
         name: leftoverBranch.name,
         local: leftoverBranch.local,
@@ -389,7 +441,9 @@ export class WorkItemsStore {
     return entry && this.toModel(entry, this.repository()?.state.HEAD?.name);
   }
 
-  toViewModel(filter: FilterModel): Omit<ViewModel, 'alwaysShowAlerts' | 'layout' | 'pullRequests' | 'reviews'> {
+  toViewModel(
+    filter: FilterModel
+  ): Omit<ViewModel, 'alwaysShowAlerts' | 'coverage' | 'layout' | 'pullRequests' | 'reviews'> {
     const currentBranch = this.repository()?.state.HEAD?.name;
     const workItems = this.entries.map((entry) => this.toModel(entry, currentBranch));
     return {

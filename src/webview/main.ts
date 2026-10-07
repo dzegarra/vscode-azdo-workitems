@@ -1,19 +1,33 @@
 import { compactSignals, CompactSignal } from '../compactSignals';
+import { checkoutButton, worktreePill } from '../checkoutButtons';
 import { canHaveTasks, escapeHtml, stateButton } from '../html';
-import { ICONS, icon, TYPE_CLASSES, typeIcon } from '../icons';
-import { describeRun, RunState } from '../pipelines';
+import { ICONS, icon, TYPE_CLASSES, typeIcon, typeIdClass } from '../icons';
+import {
+  coverageLevel,
+  CoverageSummary,
+  DEFAULT_THRESHOLDS,
+  describeFileStats,
+  listedNames,
+  filesBelowTarget,
+  formatDelta,
+  formatPercent,
+} from '../coverage';
+import { RunModel, RunState } from '../pipelines';
+import { runLabel, runTooltip, testsUrl } from '../runDetails';
 import { NO_PRIORITY, priorityFilterValue, severityLevel, severityName, sortWorkItems } from '../priority';
 import { isFinishedState, stateCategory, stateRank } from '../states';
 import { MyPullRequestModel, ReviewerModel, VoteKind } from '../myPullRequests';
 import type { ReviewRequestModel } from '../reviewRequests';
 import { hasTaskAlerts, isTaskListOpen, taskProgress } from '../taskProgress';
 import type {
+  CheckoutKind,
   ExtensionMessage,
   FilterModel,
   IterationModel,
   PullRequestModel,
   ViewModel,
   WebviewMessage,
+  WorkItemActionMessage,
   WorkItemModel,
 } from '../viewModel';
 import {
@@ -88,7 +102,7 @@ function saveState(): void {
 const PULL_REQUEST_ORDER = [
   NO_PULL_REQUEST,
   'Draft',
-  'Waiting for review',
+  'In review',
   'Waiting for author',
   'Conflicts',
   'Rejected',
@@ -226,20 +240,73 @@ const RUN_ICONS: Record<RunState, keyof typeof ICONS> = {
   canceled: 'stop',
 };
 
+/** Coverage thresholds and personal records, from the extension */
+function coverageSettings(): { thresholds: typeof DEFAULT_THRESHOLDS; records?: string } {
+  return model?.coverage ?? { thresholds: DEFAULT_THRESHOLDS };
+}
+
+function renderFileList(coverage: CoverageSummary, target: number): string {
+  const files = filesBelowTarget(coverage.files, target);
+  if (!files.length) {
+    return `<p class="cov-note">Every file is at ${formatPercent(target)} or more.</p>`;
+  }
+  const names = listedNames(files);
+  const items = files.map(
+    (file, index) => `<li><button class="cov-file" data-action="openFile" data-path="${escapeHtml(file.path)}"
+      title="${escapeHtml(`Open ${file.path}`)}"><span class="cov-file-name">${escapeHtml(names[index])}</span>
+      <span class="cov-file-stats">${escapeHtml(describeFileStats(file))}</span></button></li>`
+  );
+  return `<p class="cov-note">Files below ${formatPercent(target)}, least covered first</p>
+    <ul class="cov-files">${items.join('')}</ul>`;
+}
+
+/** Badge with the coverage of a successful run. Its popover lists the files below the target, to open them */
+function renderCoverage(run: RunModel): string {
+  const { coverage } = run;
+  if (!coverage) {
+    return '';
+  }
+  const { thresholds, records } = coverageSettings();
+  const level = coverageLevel(coverage.percent, thresholds);
+  const delta = formatDelta(coverage.delta);
+  const percent = formatPercent(coverage.percent);
+  const deltaBadge = delta
+    ? `<span class="cov-delta cov-delta-${delta.direction}">${escapeHtml(delta.text)}</span>`
+    : '';
+  const trophy = level === 'excellent' ? icon('trophy', 'cov-trophy') : '';
+  const details = [
+    `<p class="cov-title"><strong>Coverage ${percent}</strong> <span>${coverage.covered}/${coverage.total} lines</span> ${deltaBadge}</p>`,
+    '<p class="cov-note">Lines covered by the tests of this run</p>',
+    records ? `<p class="cov-records">${escapeHtml(records)}</p>` : '',
+    renderFileList(coverage, thresholds.target),
+  ];
+  return `<span class="cov-wrap"><button class="cov cov-${level}" aria-label="${escapeHtml(
+    `Coverage ${percent}${delta ? `, ${delta.text}` : ''}: details`
+  )}">${icon('shield')}<span>${percent}</span>${trophy}${deltaBadge}</button>
+    <div class="cov-pop" role="group" aria-label="Coverage details">${details.join('')}</div></span>`;
+}
+
+/** A CI run: its state, and the coverage when it succeeded. `open` and `openTests` are the attributes of the click */
+function renderRun(run: RunModel, open: string, openTests: string): string {
+  const now = new Date();
+  const label = runLabel(run, now);
+  const pill = `<button class="run run-${run.state}" ${label.opensTests ? openTests : open}
+      title="${escapeHtml(runTooltip(run, now))}">
+      ${icon(RUN_ICONS[run.state], run.state === 'running' ? 'spin' : '')}<span>${escapeHtml(label.text)}</span>
+    </button>`;
+  const coverage = run.state === 'succeeded' ? renderCoverage(run) : '';
+  return coverage ? `<span class="run-group">${pill}${coverage}</span>` : pill;
+}
+
 /** Last CI run of each pipeline validating the PR. Clicking one opens it in Azure DevOps */
 function renderRuns(item: WorkItemModel, pr: PullRequestModel): string {
   if (!pr.isActive || !pr.runs.length) {
     return '';
   }
-  const now = new Date();
-  const runs = pr.runs.map(
-    (run) => `<button class="run run-${run.state}" data-action="openRun" data-id="${item.id}" data-run="${run.id}"
-      title="${escapeHtml(`${run.pipeline}: ${describeRun(run, now)}`)}">
-      ${icon(RUN_ICONS[run.state], run.state === 'running' ? 'spin' : '')}<span>${escapeHtml(
-      describeRun(run, now)
-    )}</span>
-    </button>`
-  );
+  const runs = pr.runs.map((run) => {
+    const open = `data-action="openRun" data-id="${item.id}" data-run="${run.id}"`;
+    return renderRun(run, open, `${open} data-tests="true"`);
+  });
   return `<div class="runs">${runs.join('')}</div>`;
 }
 
@@ -262,13 +329,13 @@ function renderBranch(item: WorkItemModel): string {
     return item.leftoverBranch
       ? `<div class="row branch">${icon('branch')}<code title="${escapeHtml(item.branch)}">${escapeHtml(
           item.branch
-        )}</code><span class="pill tone-waiting" title="The PR is merged: the branch should be deleted">not deleted</span></div>`
+        )}</code><span class="pill tone-leftover" title="The PR is merged: the branch should be deleted">not deleted</span></div>`
       : `<div class="row muted">${icon('branch')}<span>Branch deleted</span></div>`;
   }
   const location = item.isCurrentBranch ? 'current' : item.branchLocation ?? 'remote';
   return `<div class="row branch">${icon('branch')}
     <code title="${escapeHtml(item.branch)}">${escapeHtml(item.branch)}</code>
-    <span class="pill tone-${location}">${location}</span></div>`;
+    <span class="pill tone-${location}">${location}</span>${worktreePill(item.worktree)}</div>`;
 }
 
 const BRANCH_ACTION_BUTTONS: Record<BranchAction, { label: string; className: string; title: string }> = {
@@ -283,6 +350,15 @@ const BRANCH_ACTION_BUTTONS: Record<BranchAction, { label: string; className: st
 };
 
 function branchActionButton(action: BranchAction, item: WorkItemModel): string {
+  if (action === 'checkout') {
+    return checkoutButton({
+      kind: 'workItem',
+      id: item.id,
+      mainAttributes: `data-action="checkout" data-id="${item.id}"`,
+      title: BRANCH_ACTION_BUTTONS.checkout.title,
+      worktree: item.worktree,
+    });
+  }
   const { label, className, title } = BRANCH_ACTION_BUTTONS[action];
   return `<button class="button ${className}" data-action="${action}" data-id="${item.id}" title="${title}">${label}</button>`;
 }
@@ -310,7 +386,9 @@ function isTasksOpen(item: WorkItemModel): boolean {
 function renderChild(item: WorkItemModel): string {
   return `<li class="child">
     ${typeIcon(item.type)}
-    <button class="link id" data-action="openDetails" data-id="${item.id}" title="Show details">${item.id}</button>
+    <button class="link id${typeIdClass(item.type)}" data-action="openDetails" data-id="${
+    item.id
+  }" title="Show details">${item.id}</button>
     <span class="child-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
     ${stateButton(item.id, item.state)}
   </li>`;
@@ -416,9 +494,9 @@ function renderCard(
     foldable ? ` data-action="toggleCard" data-id="${item.id}"` : ''
   }>
       ${fold}${typeIcon(item.type)}
-      <button class="link id" data-action="openWorkItem" data-id="${item.id}" title="Open in Azure DevOps">${
+      <button class="link id${typeIdClass(item.type)}" data-action="openWorkItem" data-id="${
     item.id
-  }</button>
+  }" title="Open in Azure DevOps">${item.id}</button>
       ${renderUrgency(item)}
       ${stateButton(item.id, item.state)}
     </header>
@@ -490,9 +568,9 @@ function renderCompactCard(item: WorkItemModel, children: WorkItemModel[]): stri
       <button class="card-chevron" data-action="toggleCard" data-id="${item.id}" aria-expanded="false"
         aria-label="Expand work item ${item.id}" title="Expand">${icon('chevron', 'chevron')}</button>
       ${typeIcon(item.type)}
-      <button class="link id" data-action="openWorkItem" data-id="${item.id}" title="Open in Azure DevOps">${
+      <button class="link id${typeIdClass(item.type)}" data-action="openWorkItem" data-id="${
     item.id
-  }</button>
+  }" title="Open in Azure DevOps">${item.id}</button>
       <span class="compact-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
       ${stateButton(item.id, item.state)}
     </div>
@@ -587,12 +665,18 @@ function renderReviewBranch(request: ReviewRequestModel): string {
   if (request.isCurrentBranch) {
     action = '<span class="pill tone-current">current</span>';
   } else if (request.canCheckout) {
-    action = `<button class="button small" data-action="checkoutReviewRequest" data-pr="${request.id}"
-      title="Fetch the branch of the PR and switch to it">Checkout</button>`;
+    action = checkoutButton({
+      kind: 'review',
+      id: request.id,
+      mainAttributes: `data-action="checkoutReviewRequest" data-pr="${request.id}"`,
+      title: 'Fetch the branch of the PR and switch to it',
+      worktree: request.worktree,
+      small: true,
+    });
   }
   return `<div class="row review-branch">${icon('branch')}<code title="${escapeHtml(
     request.sourceBranch
-  )}">${escapeHtml(request.sourceBranch)}</code>${action}</div>`;
+  )}">${escapeHtml(request.sourceBranch)}</code>${worktreePill(request.worktree)}${action}</div>`;
 }
 
 function renderReview(request: ReviewRequestModel): string {
@@ -714,14 +798,13 @@ function renderReviewer(reviewer: ReviewerModel): string {
 
 /** Last CI run of each pipeline; clicking one opens it in Azure DevOps */
 function renderMyRuns(pr: MyPullRequestModel): string {
-  const now = new Date();
   return pr.runs
-    .map(
-      (run) => `<button class="run run-${run.state}" data-action="openMyPullRequest" data-url="${escapeHtml(run.url)}"
-        title="${escapeHtml(`${run.pipeline}: ${describeRun(run, now)}`)}">
-        ${icon(RUN_ICONS[run.state], run.state === 'running' ? 'spin' : '')}<span>${escapeHtml(
-        describeRun(run, now)
-      )}</span></button>`
+    .map((run) =>
+      renderRun(
+        run,
+        `data-action="openMyPullRequest" data-url="${escapeHtml(run.url)}"`,
+        `data-action="openMyPullRequest" data-url="${escapeHtml(testsUrl(run.url))}"`
+      )
     )
     .join('');
 }
@@ -754,7 +837,13 @@ function renderMyActions(pr: MyPullRequestModel): string {
   ];
   if (!pr.isCompleted && pr.canCheckout && !pr.isCurrentBranch) {
     buttons.push(
-      `<button class="button" data-action="checkoutMyPullRequest" data-pr="${pr.id}" title="Fetch the branch of the PR and switch to it">Checkout</button>`
+      checkoutButton({
+        kind: 'myPullRequest',
+        id: pr.id,
+        mainAttributes: `data-action="checkoutMyPullRequest" data-pr="${pr.id}"`,
+        title: 'Fetch the branch of the PR and switch to it',
+        worktree: pr.worktree,
+      })
     );
   }
   if (pr.isDraft) {
@@ -765,19 +854,45 @@ function renderMyActions(pr: MyPullRequestModel): string {
   return `<footer class="actions">${buttons.join('')}</footer>`;
 }
 
+function renderTimeline(pr: MyPullRequestModel): string {
+  const { events, earlier } = pr.timeline;
+  const rows = events.map(
+    ({ when, text }) =>
+      `<li><time class="timeline-when">${escapeHtml(when)}</time><span class="timeline-text">${escapeHtml(
+        text
+      )}</span></li>`
+  );
+  if (earlier) {
+    rows.unshift(`<li class="timeline-earlier">… ${earlier} earlier event${earlier === 1 ? '' : 's'}</li>`);
+  }
+  return `<div class="timeline" id="timeline-${
+    pr.id
+  }" role="tooltip"><ol class="timeline-card" aria-label="Events of the pull request">${rows.join('')}</ol></div>`;
+}
+
+function renderMyPullRequestTime(pr: MyPullRequestModel): string {
+  return `<span class="mypr-time-wrap"><button class="mypr-time" aria-describedby="timeline-${pr.id}">${escapeHtml(
+    pr.time
+  )}</button>${renderTimeline(pr)}</span>`;
+}
+
+function renderLinkedWorkItems(pr: MyPullRequestModel): string {
+  const links = pr.workItems.map(
+    ({ id, type }) =>
+      `<button class="link id" data-action="openDetails" data-id="${id}" title="${escapeHtml(
+        type ? `${type} ${id}` : `Work item ${id}`
+      )}: show details">#${id}</button>`
+  );
+  return `<span class="mypr-items">${links.join('')}</span>`;
+}
+
 function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean): string {
   const meta = [
     pr.target
       ? `<span class="mypr-target" title="Merges into ${escapeHtml(pr.target)}">→ ${escapeHtml(pr.target)}</span>`
       : '',
-    `<span>${escapeHtml(pr.time)}</span>`,
-    ...(pr.workItemIds.length
-      ? [
-          `<span title="Linked work items">#${pr.workItemIds[0]}${
-            pr.workItemIds.length > 1 ? ` +${pr.workItemIds.length - 1}` : ''
-          }</span>`,
-        ]
-      : []),
+    renderMyPullRequestTime(pr),
+    pr.workItems.length ? renderLinkedWorkItems(pr) : '',
     showRepository ? `<span>${escapeHtml(pr.repository)}</span>` : '',
   ].filter(Boolean);
   const warnings = pr.warnings.map(
@@ -1018,14 +1133,49 @@ function setTasksExpanded(expanded: boolean): void {
   render();
 }
 
+/** Width of the coverage popover, as in the CSS */
+const COVERAGE_POPOVER_WIDTH = 300;
+const VIEW_MARGIN = 8;
+
+/** Keeps the coverage popover inside the view: it opens below the badge, shifted left when it would overflow */
+function placeCoveragePopover(event: Event): void {
+  const wrap = (event.target as HTMLElement).closest<HTMLElement>('.cov-wrap');
+  const popover = wrap?.querySelector<HTMLElement>('.cov-pop');
+  if (!wrap || !popover) {
+    return;
+  }
+  const width = Math.min(COVERAGE_POPOVER_WIDTH, window.innerWidth - 2 * VIEW_MARGIN);
+  const overflow = wrap.getBoundingClientRect().left + width - (window.innerWidth - VIEW_MARGIN);
+  popover.style.left = `${-Math.max(0, overflow)}px`;
+}
+
+document.addEventListener('pointerover', placeCoveragePopover);
+document.addEventListener('focusin', placeCoveragePopover);
+// Escape closes the popover (WCAG 1.4.13): it only shows while the badge or something inside it has the focus or the pointer
+document.addEventListener('keydown', (event) => {
+  const active = document.activeElement;
+  if (event.key === 'Escape' && active instanceof HTMLElement && active.closest('.cov-wrap')) {
+    active.blur();
+    document.body.classList.add('no-popovers');
+  }
+});
+document.addEventListener('pointermove', () => document.body.classList.remove('no-popovers'));
+
 document.addEventListener('click', (event) => {
+  const file = (event.target as HTMLElement).closest<HTMLElement>('[data-action="openFile"]');
+  if (file?.dataset.path) {
+    post({ type: 'openFile', path: file.dataset.path });
+    return;
+  }
   const target = (event.target as HTMLElement).closest<HTMLElement>('[data-action], [data-filter]');
   if (!target) {
     return;
   }
-  const { action, filter, value, id, pr, run, url, path } = target.dataset;
+  const { action, filter, value, id, pr, run, url, path, tests, kind } = target.dataset;
   if (filter && value !== undefined) {
     toggleFilter(filter as FilterKind, value);
+  } else if ((action === 'checkoutMenu' || action === 'openWorktree' || action === 'worktreeMenu') && kind && id) {
+    post({ type: action, kind: kind as CheckoutKind, id: Number(id) });
   } else if (action === 'refresh') {
     post({ type: 'refresh' });
   } else if (action === 'toggleIteration' && path !== undefined) {
@@ -1073,10 +1223,11 @@ document.addEventListener('click', (event) => {
     render();
   } else if (action && id) {
     post({
-      type: action as Extract<WebviewMessage, { id: number }>['type'],
+      type: action as WorkItemActionMessage['type'],
       id: Number(id),
       pullRequestId: pr ? Number(pr) : undefined,
       runId: run ? Number(run) : undefined,
+      tests: tests === 'true' ? true : undefined,
     });
   }
 });

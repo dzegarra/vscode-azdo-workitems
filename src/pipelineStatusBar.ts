@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { SECTION } from './config';
-import { countRunStates, describeRun, RunState } from './pipelines';
+import { countRunStates, RunState } from './pipelines';
+import { runExtraLines, runLabel, testsUrl } from './runDetails';
 import { WorkItemsStore } from './workItemsStore';
 
 /** Codicons of each state; "~spin" animates the icon in the status bar */
@@ -58,12 +59,17 @@ export class PipelineStatusBar implements vscode.Disposable {
     const tooltip = new vscode.MarkdownString(undefined, true);
     tooltip.appendMarkdown('**CI runs of my pull requests**\n\n');
     for (const { pullRequestId, title, run } of runs) {
+      const label = runLabel(run, now);
       tooltip.appendMarkdown(
-        `${STATE_ICONS[run.state]} [PR ${pullRequestId}](${run.url}) · ${run.pipeline} · **${describeRun(
-          run,
-          now
-        )}**  \n`
+        `${STATE_ICONS[run.state]} [PR ${pullRequestId}](${label.opensTests ? testsUrl(run.url) : run.url}) · ${
+          run.pipeline
+        } · **${label.text}**  \n`
       );
+      // Failed tests, coverage…
+      runExtraLines(run).forEach((line) => {
+        tooltip.appendText(line.trimEnd());
+        tooltip.appendMarkdown('  \n');
+      });
       if (title) {
         tooltip.appendText(title);
         tooltip.appendMarkdown('\n\n');
@@ -79,10 +85,10 @@ export class PipelineStatusBar implements vscode.Disposable {
     const now = new Date();
     const picked = await vscode.window.showQuickPick(
       this.store.pullRequestRuns.map(({ pullRequestId, title, run }) => ({
-        label: `${STATE_ICONS[run.state]} PR ${pullRequestId} · ${describeRun(run, now)}`,
+        label: `${STATE_ICONS[run.state]} PR ${pullRequestId} · ${runLabel(run, now).text}`,
         description: run.pipeline,
         detail: title,
-        url: run.url,
+        url: runLabel(run, now).opensTests ? testsUrl(run.url) : run.url,
       })),
       { title: 'CI runs of my pull requests', placeHolder: 'Select a run to open it in Azure DevOps' }
     );

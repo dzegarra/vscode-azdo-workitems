@@ -1,5 +1,6 @@
 /** What the compact work item rows show under the title. Pure, so no "vscode" import */
-import { describeRun, RunState } from './pipelines';
+import { RunState } from './pipelines';
+import { runTooltip } from './runDetails';
 import { severityLevel, severityName } from './priority';
 import { isFinishedState } from './states';
 import { taskProgress } from './taskProgress';
@@ -56,7 +57,7 @@ function branchSignal(item: WorkItemModel): CompactSignal | undefined {
           kind: 'branch',
           label: 'not deleted',
           title: `${item.branch}: the PR is merged, the branch should be deleted`,
-          tone: 'waiting',
+          tone: 'leftover',
         }
       : undefined;
   }
@@ -79,7 +80,7 @@ function ciSignal(item: WorkItemModel, now: Date): CompactSignal | undefined {
   return {
     kind: 'ci',
     label: '',
-    title: pr.runs.map((run) => `${run.pipeline}: ${describeRun(run, now)}`).join('\n'),
+    title: pr.runs.map((run) => runTooltip(run, now)).join('\n'),
     tone: state,
   };
 }

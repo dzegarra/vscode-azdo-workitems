@@ -1,7 +1,8 @@
 /** Body of the work item details panel. Pure, so no "vscode" import */
+import { checkoutButton, worktreePill } from './checkoutButtons';
 import { canHaveTasks, escapeHtml, sanitizeHtml, stateButton } from './html';
 import type { FigmaLink } from './figmaLinks';
-import { icon, typeIcon } from './icons';
+import { icon, typeIcon, typeIdClass } from './icons';
 import { DependencyRisk, RISK_DESCRIPTIONS } from './schedule';
 import { isFinishedState, stateCategory } from './states';
 import { BranchAction, branchActions, type WorkItemModel } from './viewModel';
@@ -100,9 +101,11 @@ function renderDevelopment(card: WorkItemModel | undefined): string {
     branch = `<div class="row muted">${icon('branch')}<span>Branch deleted</span></div>`;
   } else if (card.branch) {
     const pill = card.leftoverBranch
-      ? '<span class="pill tone-waiting" title="The PR is merged: the branch should be deleted">not deleted</span>'
+      ? '<span class="pill tone-leftover" title="The PR is merged: the branch should be deleted">not deleted</span>'
       : `<span class="pill tone-${location}">${location}</span>`;
-    branch = `<div class="row">${icon('branch')}<code>${escapeHtml(card.branch)}</code>${pill}</div>`;
+    branch = `<div class="row">${icon('branch')}<code>${escapeHtml(card.branch)}</code>${pill}${worktreePill(
+      card.worktree
+    )}</div>`;
   }
   const pullRequests = card.pullRequests.map(
     (pr) => `<div class="row">${icon('pullRequest')}
@@ -137,13 +140,20 @@ function renderFigmaActions(data: DetailsData): string[] {
   ];
 }
 
-const BRANCH_BUTTONS: Record<BranchAction, (id: number) => string> = {
-  createPullRequest: (id) =>
+const BRANCH_BUTTONS: Record<BranchAction, (card: WorkItemModel) => string> = {
+  createPullRequest: ({ id }) =>
     `<button class="button primary" data-action="createPullRequest" data-id="${id}">Create PR</button>`,
-  createBranch: (id) =>
+  createBranch: ({ id }) =>
     `<button class="button primary" data-action="createBranch" data-id="${id}">Create branch</button>`,
-  checkout: (id) => `<button class="button" data-action="checkout" data-id="${id}">Checkout</button>`,
-  deleteBranch: (id) =>
+  checkout: ({ id, worktree }) =>
+    checkoutButton({
+      kind: 'workItem',
+      id,
+      mainAttributes: `data-action="checkout" data-id="${id}"`,
+      title: 'Switch to the branch of the work item',
+      worktree,
+    }),
+  deleteBranch: ({ id }) =>
     `<button class="button danger" data-action="deleteBranch" data-id="${id}"
       title="The work item is finished: delete its branch, as the team does once the PR is merged">Delete branch</button>`,
 };
@@ -158,7 +168,7 @@ function renderActions(data: DetailsData): string {
     ...renderFigmaActions(data),
   ];
   // Same branch actions as the cards; finished work items only get "Delete branch"
-  const branchButtons = card ? branchActions(card).map((action) => BRANCH_BUTTONS[action](card.id)) : [];
+  const branchButtons = card ? branchActions(card).map((action) => BRANCH_BUTTONS[action](card)) : [];
   actions.unshift(...branchButtons);
   actions.push(`<button class="button ghost" data-action="reload" data-id="${data.id}">Reload</button>`);
   return `<div class="actions">${actions.join('')}</div>`;
@@ -166,7 +176,9 @@ function renderActions(data: DetailsData): string {
 
 function renderRelated(item: RelatedWorkItem): string {
   return `<li class="child">${typeIcon(item.type)}
-    <button class="link id" data-action="openDetails" data-id="${item.id}" title="Show details">${item.id}</button>
+    <button class="link id${typeIdClass(item.type)}" data-action="openDetails" data-id="${
+    item.id
+  }" title="Show details">${item.id}</button>
     <span class="child-title">${escapeHtml(item.title)}</span>${stateButton(item.id, item.state)}</li>`;
 }
 
@@ -188,7 +200,9 @@ function renderDependency(item: RelatedWorkItem, iterationNames: Partial<Record<
         }</span>`
       : '';
   return `<li class="child dependency">${typeIcon(item.type)}
-    <button class="link id" data-action="openDetails" data-id="${item.id}" title="Show details">${item.id}</button>
+    <button class="link id${typeIdClass(item.type)}" data-action="openDetails" data-id="${
+    item.id
+  }" title="Show details">${item.id}</button>
     <span class="child-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
     ${risk}${iteration}${stateButton(item.id, item.state)}</li>`;
 }

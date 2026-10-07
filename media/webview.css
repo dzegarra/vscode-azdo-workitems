@@ -411,6 +411,19 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+.link.id.id-type-bug {
+  color: var(--red);
+}
+.link.id.id-type-backlog {
+  color: var(--blue);
+}
+.link.id.id-type-task {
+  color: var(--yellow);
+}
+.link.id.id-type-feature {
+  color: var(--purple);
+}
+
 .title {
   display: -webkit-box;
   overflow: hidden;
@@ -459,11 +472,31 @@ button {
 .tone-neutral {
   --pill-color: var(--muted);
 }
+
+/*
+ * Branch of a finished work item still to be deleted: solid amber with dark text, like the P2 pill, so it reads well
+ * in any theme (a tinted orange was barely readable)
+ */
+.pill.tone-leftover,
+.signal.tone-leftover {
+  padding: 0 6px;
+  border-radius: 8px;
+  color: #1f1f1f;
+  background: #f2a900;
+  font-weight: 600;
+}
+
+.signal.tone-leftover .icon {
+  color: #1f1f1f;
+}
 .tone-local {
   --pill-color: var(--blue);
 }
 .tone-remote {
   --pill-color: var(--grey);
+}
+.tone-worktree {
+  --pill-color: var(--purple);
 }
 .tone-current {
   --pill-color: var(--vscode-focusBorder);
@@ -530,6 +563,37 @@ button {
 
 .button.danger:hover {
   background: color-mix(in srgb, var(--vscode-errorForeground, var(--red)) 14%, transparent);
+}
+
+/* "Checkout ▾": the main part and the narrow ▾ part read as one control */
+.button-group {
+  display: inline-flex;
+  flex: none;
+}
+
+.button-group .button:first-child:not(:last-child) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.button.caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  margin-left: 1px;
+  padding: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.button.caret.small {
+  width: 16px;
+}
+
+.button.caret .icon {
+  width: 12px;
+  height: 12px;
 }
 
 .button.ghost + .button.ghost {
@@ -806,8 +870,8 @@ button.state:focus-visible {
 
 .panel-head {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  /* The buttons stay on the first line: in a narrow sidebar the title is shortened instead */
+  align-items: flex-start;
   gap: 4px;
   padding: 2px 6px 2px 0;
 }
@@ -815,7 +879,7 @@ button.state:focus-visible {
 .panel-toggle {
   display: grid;
   flex: 1 1 auto;
-  grid-template-columns: auto auto minmax(min-content, max-content) 1fr;
+  grid-template-columns: auto auto minmax(0, max-content) 1fr;
   align-items: center;
   gap: 4px 6px;
   min-width: 0;
@@ -840,7 +904,7 @@ button.state:focus-visible {
 }
 
 .panel-title {
-  min-width: min-content;
+  min-width: 0;
   overflow: hidden;
   font-size: 13px;
   font-weight: 700;
@@ -1018,6 +1082,7 @@ button.state:focus-visible {
 
 /* The accent is the colour of the PR status (tone-*) */
 .mypr {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -1028,8 +1093,22 @@ button.state:focus-visible {
   background: var(--card-bg);
 }
 
+/* Faded, but not the timeline popover: only what is inside the card is */
 .mypr.completed {
+  border-color: color-mix(in srgb, var(--border) 55%, transparent);
+  border-left-color: color-mix(in srgb, var(--pill-color, var(--grey)) 55%, transparent);
+}
+
+.mypr.completed > *:not(.mypr-meta),
+.mypr.completed .mypr-meta > *:not(.mypr-time-wrap),
+.mypr.completed .mypr-time {
   opacity: 0.55;
+}
+
+/* The card with an open timeline goes over the following ones */
+.mypr:hover,
+.mypr:focus-within {
+  z-index: 20;
 }
 
 .mypr-head {
@@ -1080,11 +1159,91 @@ button.state:focus-visible {
 }
 
 .mypr-meta {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: 2px 6px;
   color: var(--muted);
   font-size: 11.5px;
+}
+
+/* Each ID is a flex item of the line: they wrap like the rest of it */
+.mypr-items {
+  display: contents;
+}
+
+.mypr-items .link.id {
+  font-size: inherit;
+}
+
+/* The age of the PR; hovering or focusing it shows what happened */
+.mypr-time {
+  padding: 0;
+  border: none;
+  border-bottom: 1px dotted currentcolor;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: help;
+}
+
+.mypr-time:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+/* Full width of the card, under the line of the age. The padding keeps the hover while moving to the popover */
+.timeline {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  right: 0;
+  left: 0;
+  display: none;
+  padding-top: 4px;
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  font-size: 11.5px;
+}
+
+.mypr-time-wrap:hover .timeline,
+.mypr-time-wrap:focus-within .timeline {
+  display: block;
+}
+
+.timeline-card {
+  max-height: 240px;
+  margin: 0;
+  padding: 4px 8px;
+  overflow-y: auto;
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--border));
+  border-radius: 4px;
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, var(--card-bg)));
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgb(0 0 0 / 35%));
+  list-style: none;
+}
+
+.timeline-card li {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+  line-height: 1.35;
+}
+
+.timeline-when {
+  flex: none;
+  width: 7em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.timeline-card .timeline-earlier {
+  color: var(--muted);
+  font-style: italic;
 }
 
 /* Not the usual target: worth noticing */
@@ -1353,6 +1512,170 @@ button.state:focus-visible {
   --run-color: var(--vscode-errorForeground, var(--red));
 }
 
+/* The run and its coverage side by side; they wrap together when the card is narrow */
+.run-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cov-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.cov {
+  --cov-color: var(--vscode-descriptionForeground);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  border: 1px solid var(--cov-color);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cov-color);
+  font-size: 10.5px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.cov:hover,
+.cov-wrap:focus-within .cov {
+  background: color-mix(in srgb, var(--cov-color) 15%, transparent);
+}
+
+.cov:focus-visible,
+.cov-file:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.cov .icon {
+  width: 11px;
+  height: 11px;
+}
+
+.cov-low {
+  --cov-color: var(--vscode-errorForeground, var(--red));
+}
+.cov-fair {
+  --cov-color: var(--vscode-editorWarning-foreground, var(--orange));
+}
+.cov-good {
+  --cov-color: var(--vscode-testing-iconPassed, var(--green));
+}
+.cov-excellent {
+  --cov-color: var(--yellow);
+  font-weight: 600;
+}
+
+/* A drop is information, not blame: it stays neutral */
+.cov-delta {
+  font-variant-numeric: tabular-nums;
+}
+.cov-delta-up {
+  color: var(--vscode-testing-iconPassed, var(--green));
+}
+.cov-delta-down {
+  color: var(--muted);
+}
+
+/* Below the badge. The padding keeps the hover while moving to the popover; the script shifts it into the view */
+.cov-pop {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  left: 0;
+  display: none;
+  width: 300px;
+  max-width: calc(100vw - 16px);
+  padding-top: 4px;
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.cov-wrap:hover .cov-pop,
+.cov-wrap:focus-within .cov-pop {
+  display: block;
+}
+
+.no-popovers .cov-pop {
+  display: none !important;
+}
+
+.cov-pop > * {
+  margin: 0;
+  padding: 2px 8px;
+  border-right: 1px solid var(--vscode-editorHoverWidget-border, var(--border));
+  border-left: 1px solid var(--vscode-editorHoverWidget-border, var(--border));
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, var(--card-bg)));
+}
+
+.cov-pop > :first-child {
+  padding-top: 6px;
+  border-top: 1px solid var(--vscode-editorHoverWidget-border, var(--border));
+  border-radius: 4px 4px 0 0;
+}
+
+.cov-pop > :last-child {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--vscode-editorHoverWidget-border, var(--border));
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 4px 8px var(--vscode-widget-shadow, rgb(0 0 0 / 35%));
+}
+
+.cov-title span:not(.cov-delta) {
+  color: var(--muted);
+}
+
+.cov-note {
+  color: var(--muted);
+}
+
+.cov-records {
+  font-weight: 600;
+}
+
+.cov-files {
+  max-height: 200px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.cov-file {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cov-file:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.cov-file-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--vscode-textLink-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cov-file-stats {
+  flex: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .spin {
   animation: spin 1.2s linear infinite;
 }
@@ -1498,4 +1821,9 @@ button.state:focus-visible {
   padding: 0 5px;
   font-size: 10px;
   line-height: 14px;
+}
+
+.panel-head > :not(.panel-toggle) {
+  flex: none;
+  margin-top: 4px;
 }

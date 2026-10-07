@@ -97,7 +97,13 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
     const local = this.localRepository();
     return toReviewModels(this.requests, new Date(), reviewSettings()).map((model) => {
       const canCheckout = !!local && model.repository.toLowerCase() === local.name.toLowerCase();
-      return { ...model, canCheckout, isCurrentBranch: canCheckout && local.head === model.sourceBranch };
+      const isCurrentBranch = canCheckout && local.head === model.sourceBranch;
+      return {
+        ...model,
+        canCheckout,
+        isCurrentBranch,
+        worktree: canCheckout && !isCurrentBranch ? this.store.worktreeFor(model.sourceBranch)?.path : undefined,
+      };
     });
   }
 

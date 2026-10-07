@@ -39,7 +39,7 @@ Each work item is a card with:
 - Title
 - Parent: ID and title of the parent (click it to see its details), unless the card is nested in its parent's card. Children (e.g. Tasks) are nested at the bottom of the parent card
 - Branch: the local branch (`local`, or `current` when checked out) or a branch that only exists in the remote (`remote`)
-- Pull requests linked to the work item with their status: Draft, Waiting for review, Approved, Waiting for author, Rejected, Conflicts, Completed, Abandoned
+- Pull requests linked to the work item with their status: Draft, In review, Approved, Waiting for author, Rejected, Conflicts, Completed, Abandoned
 
 Cards are sorted by state: Done, Ready to Test, Committed, In Progress, Approved, New, To Do (`azdoWorkItems.stateOrder`). Done and Ready to Test are shown in green, Committed and In Progress in blue.
 
@@ -62,7 +62,7 @@ Card actions:
 - **State** (the coloured state of a card, a nested task or the details): pick the new state among the ones allowed for that work item type.
 - **Add task** (Backlog Items and Bugs): creates a Task under the work item, in the same iteration and area and assigned to the same person. Tasks are never shown as cards of their own nor in the filters: they are always nested in the card of their Backlog Item / Bug, where they can be managed (and their state changed).
 - **Open**: shows the details of the work item in an editor tab: description, acceptance criteria / repro steps (with their images), assignee, effort, tags, parent, children, branch and PRs, with the same actions. When the description links to Figma, **Figma design** opens it in the [Figma extension for VS Code](https://marketplace.visualstudio.com/items?itemName=figma.figma-vscode-extension) if it is installed, or in the browser; the button next to it always opens the browser. The Figma extension opens the file but not the linked frame; the browser opens the exact frame. Prototypes, FigJam and Figma Make links open in the browser.
-- **Checkout**: switches to the work item branch (creating the local branch when it only exists in the remote).
+- **Checkout**: switches to the work item branch (creating the local branch when it only exists in the remote). See [Worktrees](#worktrees) for checking it out without touching your current changes.
 - **Delete branch** (Done, Ready to Test and other finished work items): the team deletes the branches once their PR is merged, so finished work items get no **Create branch**, **Checkout** or **Create PR**. When their branch still exists, it is shown as _not deleted_ and **Delete branch** deletes it in Azure DevOps and locally, after a confirmation telling what is deleted (and warning about commits that were not pushed). When the branch is checked out, VS Code switches to `develop` first. It is not offered while a PR is still active on the branch. Whether the branch exists is asked to Azure DevOps: the links of the work item and the local `origin/…` refs remain after a branch is deleted. Also in the command palette: **Delete Branch of a Finished Work Item**.
 - **Create PR** (when the branch has no active PR; also available from the command palette for the current branch): pick extra work items to link, the feature name and the description. The branch is pushed and the PR targets `develop`, optionally as draft.
 
@@ -74,7 +74,8 @@ By default the view lists your work items in the current iteration of **every te
 
 The **My Pull Requests** box, above your work items, lists the pull requests you created, in all the repositories of the project: the active ones (drafts included; **Hide drafts** in its header, or `azdoWorkItems.myPullRequests.showDrafts`) and, faded, the ones completed in the last 24 hours. Each card shows:
 
-- the PR, its status, its age and linked work items, and the target branch when it is not `develop`;
+- the PR, its status, the target branch when it is not `develop`, and its linked work items (click one to see its details);
+- how long it has been published (since its creation for drafts). Hover it, or focus it with the keyboard, to see the history of the PR: creation, publication, pushes, reviewers added, votes, comments, auto-complete, completion;
 - the reviewers with their votes (required ones marked);
 - unresolved comments, conflicts, CI runs (only when the PR has some) and an **Auto-complete** pill;
 - warnings when auto-complete will **not delete the branch** (team rule: branches are deleted after merging), and, in red, when it will **complete a linked Bug**: "Auto-complete shouldn't complete the linked Bug: Only testers have that prerogative.";
@@ -84,6 +85,19 @@ The **My Pull Requests** box, above your work items, lists the pull requests you
 PRs that nothing stops from being merged (published, every blocking policy satisfied, approvals included, no conflicts and no warnings) are highlighted in green (**Ready to merge**). When a PR breaks a rule that only someone else may act on (e.g. auto-complete would complete a Bug), its **Next** line is red with a warning icon, even when it says _Will complete automatically_.
 
 Buttons: **Open PR**, **Checkout** (PRs of the repository open in VS Code) and **Publish** for drafts (after a confirmation: reviewers are notified). PRs are checked every 2 minutes (`azdoWorkItems.myPullRequests.pollIntervalSeconds`, or the refresh button of the box). The box and the _Waiting for your review_ one can be collapsed.
+
+## Worktrees
+
+Every **Checkout** (work items, PRs to review, My Pull Requests, details) can open the branch in a [git worktree](https://git-scm.com/docs/git-worktree) instead, so you do not have to stash your changes:
+
+- When you have uncommitted changes, **Checkout** asks: **Open in a worktree** (recommended), **Stash and checkout**, **Checkout anyway** or Cancel. Without changes it checks out right away.
+- The **▾** next to Checkout always offers **Checkout here** and **Open in a worktree**.
+- Worktrees are created next to the repository, in `<repository>.worktrees/<branch>` (e.g. `User_Interface.worktrees/feature/fui-admin/5641-network-restart-button`), and open in a new window. The `.env.local` files (at the root and in `apps/*`, `packages/*`, `tools/*`) are copied into it, and the new window runs `npm ci` in a terminal.
+- A branch that already has a worktree shows a **worktree** pill, and its button becomes **Open worktree**; its **▾** also offers **Remove worktree**.
+- **Remove Worktrees…** (view menu or command palette) lists all the worktrees of the repository, to remove several at once. Removing a worktree keeps its branch; a worktree with uncommitted changes is only removed after confirming that they will be lost, and locked ones are skipped. Close the VS Code window of a worktree before removing it.
+- **Delete branch** also removes the worktree of the branch (asking first when it has uncommitted changes).
+
+`azdoWorkItems.checkout.mode` sets what **Checkout** does: `ask` (default), `branch` (always in place) or `worktree` (always in a worktree).
 
 ## Work item of the current branch
 
@@ -138,6 +152,21 @@ Next to the state of each active pull request, the card shows the last run of ea
 While a run is queued or running, only the runs are refreshed every 15 seconds (`azdoWorkItems.pipelines.pollIntervalSeconds`); the checks stop when every run is finished. A notification tells you when a run finishes (`azdoWorkItems.pipelines.notifyOnFinish`).
 
 The status bar summarizes the runs of your pull requests even when the view is closed, e.g. `$(rocket) ✗ 1  ↻ 1  ✓ 2` (red when a run failed). Hover it to see each run with its PR, pipeline and duration; click it to pick a run and open it (`azdoWorkItems.pipelines.showInStatusBar`).
+
+### Why a run failed
+
+A failed run tells why: **N tests failed** (hover it for the failing tests and their error; click it to open the **Tests** tab of the run), or **Failed at <step>** when another step failed (lint, build, PR title…). Steps that only publish results are not taken as the cause.
+
+### Code coverage
+
+Successful runs show how many tests ran and the coverage of the code tested by the run (the PR pipeline runs the tests affected by the PR), e.g. `95 tests · 87% ▲ +3.2%`:
+
+- coloured by level: red below 60%, orange below 80%, green from 80%, gold with a trophy from 95% (`azdoWorkItems.coverage.minimum` / `.target` / `.excellent`);
+- `▲` in green when the coverage went up since the previous run of the PR; a decrease is shown without red;
+- hover (or focus) it to see the files below the target, least covered first; click one to open it and add the missing tests;
+- your **personal best** and your **streak** of PRs at or above the target are kept, and celebrated in the notification when a run of your PRs ends ("PR 13713 passed: 95 tests, coverage 100% 🏆 · New personal best!").
+
+When a run fails, the notification says why ("PR 13770 failed: 1 test failed (Other User Without Changes Sees Snackbar)").
 
 ## Pull request notifications
 
@@ -205,6 +234,7 @@ Only the PRs where you are a reviewer yourself are listed: when a group (e.g. a 
 | `azdoWorkItems.layout`                                    | Layout of the cards: `compact` (default) or `large`            |
 | `azdoWorkItems.myPullRequests.*`                          | My pull requests: show drafts, refresh interval                |
 | `azdoWorkItems.statusBar.currentWorkItem`                 | Show the work item of the current branch in the status bar     |
+| `azdoWorkItems.coverage.*`                                | Coverage levels: minimum (60), target (80), excellent (95)     |
 | `azdoWorkItems.pipelines.*`                               | CI runs: refresh interval, notifications, status bar           |
 | `azdoWorkItems.reviews.*`                                 | PRs to review: maximum wait, due soon, reminders, status bar   |
 
