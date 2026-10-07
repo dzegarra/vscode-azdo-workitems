@@ -57,6 +57,10 @@ export function isFinishedState(state: string): boolean {
 /** States in which work on the item has not started yet */
 const NOT_STARTED_STATES = ['New', 'Approved', 'To Do'];
 
+export function isNotStartedState(state: string): boolean {
+  return isOneOf(state, NOT_STARTED_STATES);
+}
+
 /**
  * State the work item should move to when a branch is created for it, if any.
  * Only items not started yet are moved, so an item is never moved backwards

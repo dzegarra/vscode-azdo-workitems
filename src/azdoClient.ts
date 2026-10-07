@@ -234,11 +234,12 @@ export class AzdoClient {
     const items: WorkItem[] = [];
     for (let i = 0; i < ids.length; i += MAX_IDS_PER_REQUEST) {
       const chunk = ids.slice(i, i + MAX_IDS_PER_REQUEST);
-      // "fields" cannot be combined with "$expand"; relations give parent / children / branches / PRs
-      const result = await this.request<{ value: WorkItemResponse[] }>(
-        this.url(`wit/workitems?ids=${chunk.join(',')}&$expand=relations`)
+      // "fields" cannot be combined with "$expand"; relations give parent / children / branches / PRs.
+      // Deleted or inaccessible work items come back as null instead of failing the whole request
+      const result = await this.request<{ value: (WorkItemResponse | null)[] }>(
+        this.url(`wit/workitems?ids=${chunk.join(',')}&$expand=relations&errorPolicy=Omit`)
       );
-      items.push(...result.value.map((wi) => this.toWorkItem(wi)));
+      items.push(...result.value.filter((wi): wi is WorkItemResponse => !!wi).map((wi) => this.toWorkItem(wi)));
     }
     // Keep the order returned by the query
     return ids.map((id) => items.find((wi) => wi.id === id)).filter((wi): wi is WorkItem => !!wi);

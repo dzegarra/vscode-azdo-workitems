@@ -3,6 +3,7 @@
  * Shared by both sides, so it must not import "vscode".
  */
 import type { WorkItemAlert } from './alerts';
+import { OpenPredecessor, predecessorFilterValue } from './predecessors';
 import { priorityFilterValue } from './priority';
 import type { CoverageThresholds } from './coverage';
 import type { MyPullRequestModel } from './myPullRequests';
@@ -47,6 +48,11 @@ export interface WorkItemModel {
   /** Finished work items (Done, Ready to Test…) whose branch still exists: it should be deleted */
   leftoverBranch?: { name: string; local: boolean; remote: boolean };
   pullRequests: PullRequestModel[];
+  /**
+   * Predecessors not completed, the riskiest first. Empty: none open. Undefined: unknown (they could not be
+   * loaded), so nothing is said about them
+   */
+  openPredecessors?: OpenPredecessor[];
 }
 
 export type CheckoutKind = 'myPullRequest' | 'review' | 'workItem';
@@ -66,6 +72,8 @@ export interface FilterModel {
   hiddenPullRequestStates: string[];
   /** Priorities hidden: "P1" … "P4" or NO_PRIORITY */
   hiddenPriorities: string[];
+  /** Predecessor states hidden: "Incomplete predecessors" or "Complete predecessors" */
+  hiddenPredecessorStates: string[];
 }
 
 /** azdoWorkItems.layout: compact rows (2 lines) or the large cards */
@@ -186,9 +194,9 @@ function sameValues(a: string[], b: string[]): boolean {
 
 /** Keys of the filter whose values differ (the order of the values does not matter) */
 export function changedFilterKeys(a: FilterModel, b: FilterModel): (keyof FilterModel)[] {
-  return (['types', 'hiddenStates', 'hiddenPullRequestStates', 'hiddenPriorities'] as const).filter(
-    (key) => !sameValues(a[key], b[key])
-  );
+  return (
+    ['types', 'hiddenStates', 'hiddenPullRequestStates', 'hiddenPriorities', 'hiddenPredecessorStates'] as const
+  ).filter((key) => !sameValues(a[key], b[key]));
 }
 
 /** State of the main PR of the work item (the first one: active PRs come first), used by the PR filter */
@@ -205,14 +213,15 @@ export function pullRequestFilterValue(item: Pick<WorkItemModel, 'pullRequests'>
 }
 
 /**
- * True when the work item passes the type / state / PR / priority filters and matches the search text.
- * With "alwaysShowAlerts", work items with alerts skip the state / PR / priority filters: they must be fixed
+ * True when the work item passes the type / state / PR / priority / predecessors filters and matches the search text.
+ * With "alwaysShowAlerts", work items with alerts skip the state / PR / priority / predecessors filters: they must be fixed
  * ASAP, e.g. a "Done" work item with open tasks would be hidden by the default "Done" filter
  */
 export function isVisible(
   item: Pick<WorkItemModel, 'branch' | 'id' | 'pullRequests' | 'state' | 'title' | 'type'> & {
     alerts?: unknown[];
     priority?: number;
+    openPredecessors?: unknown[];
   },
   filter: FilterModel,
   text = '',
@@ -229,6 +238,11 @@ export function isVisible(
     return false;
   }
   if (!hasAlerts && filter.hiddenPriorities.includes(priorityFilterValue(item))) {
+    return false;
+  }
+  // Work items whose predecessors are unknown are never hidden by this filter
+  const predecessors = predecessorFilterValue(item);
+  if (!hasAlerts && predecessors !== undefined && filter.hiddenPredecessorStates.includes(predecessors)) {
     return false;
   }
   const query = text.trim().toLowerCase();

@@ -154,12 +154,42 @@ describe('compactSignals', () => {
         priority: 2,
         severity: '3 - Medium',
         branch: 'f',
+        openPredecessors: [{ id: 5, title: 'T', type: 'Bug', state: 'New' }],
         pullRequests: [pr([run('running')])],
         alerts: [{ rule: 'missingField', message: 'x' }] as WorkItemModel['alerts'],
       }),
       [{ state: 'To Do' }],
       NOW
     );
-    expect(kinds(signals)).toEqual(['priority', 'severity', 'branch', 'pullRequest', 'ci', 'tasks', 'alerts']);
+    expect(kinds(signals)).toEqual([
+      'priority',
+      'severity',
+      'predecessors',
+      'branch',
+      'pullRequest',
+      'ci',
+      'tasks',
+      'alerts',
+    ]);
+  });
+
+  it('cautions about the open predecessors with their count', () => {
+    const open = (id: number) => ({ id, title: 'T', type: 'Bug', state: 'New' });
+    expect(compactSignals(item({ openPredecessors: [open(5), open(6)] }), [], NOW)).toEqual([
+      {
+        kind: 'predecessors',
+        label: '2',
+        title: '2 open predecessors: agree with their owners before starting',
+        tone: 'caution',
+      },
+    ]);
+    expect(compactSignals(item({ openPredecessors: [open(5)] }), [], NOW)[0].title).toContain('1 open predecessor:');
+  });
+
+  it('hints that a not started work item without open predecessors is ready to start', () => {
+    expect(kinds(compactSignals(item({ state: 'New', openPredecessors: [] }), [], NOW))).toEqual(['ready']);
+    // Started, or unknown predecessors: no hint
+    expect(compactSignals(item({ state: 'Committed', openPredecessors: [] }), [], NOW)).toEqual([]);
+    expect(compactSignals(item({ state: 'New' }), [], NOW)).toEqual([]);
   });
 });

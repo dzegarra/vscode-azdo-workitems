@@ -1,4 +1,5 @@
 /** What the compact work item rows show under the title. Pure, so no "vscode" import */
+import { isReadyToStart } from './predecessors';
 import { RunState } from './pipelines';
 import { runTooltip } from './runDetails';
 import { severityLevel, severityName } from './priority';
@@ -6,7 +7,16 @@ import { isFinishedState } from './states';
 import { taskProgress } from './taskProgress';
 import type { WorkItemModel } from './viewModel';
 
-export type SignalKind = 'alerts' | 'branch' | 'ci' | 'priority' | 'pullRequest' | 'severity' | 'tasks';
+export type SignalKind =
+  | 'alerts'
+  | 'branch'
+  | 'ci'
+  | 'predecessors'
+  | 'priority'
+  | 'pullRequest'
+  | 'ready'
+  | 'severity'
+  | 'tasks';
 
 export interface CompactSignal {
   kind: SignalKind;
@@ -16,7 +26,7 @@ export interface CompactSignal {
   title: string;
   /**
    * Colour: "urgency-N" / "urgency-none" (priority, severity), a branch or PR tone, the run state (ci),
-   * "neutral" or "approved" (tasks), "rejected" (alerts)
+   * "neutral" or "approved" (tasks), "rejected" (alerts), "caution" (open predecessors), "approved" (ready to start)
    */
   tone: string;
 }
@@ -44,6 +54,22 @@ function urgencySignals(item: WorkItemModel): CompactSignal[] {
     });
   }
   return signals;
+}
+
+/** Open predecessors: a caution, not an alert. Ready to start: not started and nothing open before it */
+function predecessorSignal(item: WorkItemModel): CompactSignal | undefined {
+  const count = item.openPredecessors?.length ?? 0;
+  if (count) {
+    return {
+      kind: 'predecessors',
+      label: String(count),
+      title: `${count} open predecessor${count === 1 ? '' : 's'}: agree with their owners before starting`,
+      tone: 'caution',
+    };
+  }
+  return isReadyToStart(item)
+    ? { kind: 'ready', label: 'ready', title: 'Ready to start: no open predecessors', tone: 'approved' }
+    : undefined;
 }
 
 function branchSignal(item: WorkItemModel): CompactSignal | undefined {
@@ -86,7 +112,7 @@ function ciSignal(item: WorkItemModel, now: Date): CompactSignal | undefined {
 }
 
 /**
- * Signals of a work item, in the order they are shown: priority, severity, branch, PR, CI of the PR, tasks, alerts.
+ * Signals of a work item, in the order they are shown: priority, severity, predecessors, branch, PR, CI of the PR, tasks, alerts.
  * Each one only when it applies. `children` are the tasks of the work item
  */
 export function compactSignals(
@@ -95,6 +121,10 @@ export function compactSignals(
   now = new Date()
 ): CompactSignal[] {
   const signals = urgencySignals(item);
+  const predecessors = predecessorSignal(item);
+  if (predecessors) {
+    signals.push(predecessors);
+  }
   const branch = branchSignal(item);
   if (branch) {
     signals.push(branch);

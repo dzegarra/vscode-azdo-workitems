@@ -327,6 +327,36 @@
           "default": [],
           "description": "Priorities hidden (\"P1\" … \"P4\", or \"No priority\"). Also editable with the Priority chips of the view."
         },
+        "azdoWorkItems.filter.hiddenPredecessorStates": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "Incomplete predecessors",
+              "Complete predecessors"
+            ]
+          },
+          "default": [],
+          "description": "Work items hidden by their predecessors: \"Incomplete predecessors\" (some predecessor is not completed) or \"Complete predecessors\". Also editable with the Deps chips of the view."
+        },
+        "azdoWorkItems.dependencies.completedStates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "Done",
+            "Ready to Test",
+            "Closed",
+            "Removed"
+          ],
+          "description": "States in which a predecessor counts as completed. Work items with predecessors in any other state show an \"open predecessors\" caution: the team avoids starting them before their predecessors are completed, unless agreed with their owners."
+        },
+        "azdoWorkItems.dependencies.confirmBeforeStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ask for confirmation before moving a work item to a started state (Committed, In Progress, Active) or creating its branch when some of its predecessors are not completed."
+        },
         "azdoWorkItems.layout": {
           "type": "string",
           "enum": [

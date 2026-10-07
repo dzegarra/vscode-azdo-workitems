@@ -14,6 +14,8 @@ import {
 } from '../coverage';
 import { RunModel, RunState } from '../pipelines';
 import { runLabel, runTooltip, testsUrl } from '../runDetails';
+import { isReadyToStart, NONE_OPEN, OPEN_PREDECESSORS, predecessorFilterValue } from '../predecessors';
+import { RISK_DESCRIPTIONS } from '../schedule';
 import { NO_PRIORITY, priorityFilterValue, severityLevel, severityName, sortWorkItems } from '../priority';
 import { isFinishedState, stateCategory, stateRank } from '../states';
 import { MyPullRequestModel, ReviewerModel, VoteKind } from '../myPullRequests';
@@ -64,7 +66,7 @@ interface SavedState {
 }
 declare function acquireVsCodeApi(): VsCodeApi;
 
-type FilterKind = 'priority' | 'pullRequest' | 'state' | 'type';
+type FilterKind = 'predecessor' | 'priority' | 'pullRequest' | 'state' | 'type';
 
 const vscode = acquireVsCodeApi();
 /** Toggling several chips quickly saves the filter only once */
@@ -163,8 +165,8 @@ function pullRequestTones(items: WorkItemModel[]): Map<string, string> {
   return new Map(items.flatMap((item) => item.pullRequests.map((pr) => [pr.status, pr.tone] as const)));
 }
 
-function filterRow(label: string, chips: string[]): string {
-  return `<div class="filter-row" role="group" aria-label="${label}">
+function filterRow(label: string, chips: string[], wide = false): string {
+  return `<div class="filter-row${wide ? ' wide' : ''}" role="group" aria-label="${label}">
     <span class="filter-label">${label}</span><span class="filter-chips">${chips.join('')}</span></div>`;
 }
 
@@ -176,6 +178,11 @@ function renderFilters(current: ViewModel): string {
   const pullRequests = countBy(workItems, pullRequestFilterValue);
   const priorities = countBy(workItems, priorityFilterValue);
   const tones = pullRequestTones(workItems);
+  // Work items whose predecessors are unknown are in neither group
+  const predecessors = countBy(
+    workItems.filter((item) => predecessorFilterValue(item) !== undefined),
+    (item) => predecessorFilterValue(item) ?? NONE_OPEN
+  );
   // P1 … P4, then the work items without priority
   const sortedPriorities = [...priorities.keys()].sort(
     (a, b) => Number(a === NO_PRIORITY) - Number(b === NO_PRIORITY) || a.localeCompare(b)
@@ -223,6 +230,25 @@ function renderFilters(current: ViewModel): string {
         })
       )
     ),
+    predecessors.size
+      ? filterRow(
+          'Deps',
+          [OPEN_PREDECESSORS, NONE_OPEN]
+            .filter((value) => predecessors.has(value))
+            .map((value) =>
+              chip(
+                'predecessor',
+                value,
+                predecessors.get(value) ?? 0,
+                !filter.hiddenPredecessorStates.includes(value),
+                {
+                  marker: DOT,
+                  colorClass: value === OPEN_PREDECESSORS ? 'chip-pred-open' : 'chip-pred-none',
+                }
+              )
+            )
+        )
+      : '',
   ].join('');
 }
 
@@ -319,6 +345,62 @@ function renderPullRequest(item: WorkItemModel, pr: PullRequestModel): string {
     <span class="pill tone-${pr.tone}">${escapeHtml(pr.status)}</span>
     ${renderRuns(item, pr)}
   </div>`;
+}
+
+/** The predecessors not completed, the riskiest first: what a developer needs to agree with their owners */
+function renderPredecessorList(item: WorkItemModel, id: string): string {
+  const rows = (item.openPredecessors ?? []).map((predecessor) => {
+    const risk = predecessor.risk;
+    const details = [
+      `<span class="pred-state state-${stateCategory(predecessor.state)}">${escapeHtml(predecessor.state)}</span>`,
+      escapeHtml(predecessor.assignedTo ?? 'unassigned'),
+      predecessor.iterationName ? escapeHtml(predecessor.iterationName) : '',
+    ].filter(Boolean);
+    return `<li class="pred-item">
+      <div class="pred-line">${typeIcon(predecessor.type)}
+        <button class="link id${typeIdClass(predecessor.type)}" data-action="openDetails" data-id="${
+      predecessor.id
+    }" title="Show details">${predecessor.id}</button>
+        <span class="pred-title" title="${escapeHtml(predecessor.title)}">${escapeHtml(predecessor.title)}</span></div>
+      <div class="pred-meta">${details.join(' · ')}</div>
+      ${risk ? `<div class="pred-risk risk-${risk}">${escapeHtml(RISK_DESCRIPTIONS[risk])}</div>` : ''}
+    </li>`;
+  });
+  return `<div class="pred-pop" id="${id}" role="group" aria-label="Open predecessors of ${item.id}">
+    <div class="pred-card">
+      <p class="pred-intro">Agree with their owners before starting.</p>
+      <ol class="pred-list">${rows.join('')}</ol>
+      <button class="link pred-map" data-action="openDependencyMap" data-id="${item.id}">Open dependency map</button>
+    </div></div>`;
+}
+
+/**
+ * Amber caution (never red: it is a team rule that can be agreed with the owners, not an error) with the
+ * predecessors in a popover, shown on hover or focus. The button has an action without ID, so clicking it
+ * does not fold the compact row
+ */
+function renderPredecessorTrigger(item: WorkItemModel, compact: boolean): string {
+  const count = item.openPredecessors?.length ?? 0;
+  const id = `pred-${item.id}`;
+  const trigger = compact
+    ? `<button class="signal signal-predecessors tone-caution" data-action="showPredecessors" aria-describedby="${id}"
+      title="${count} open predecessor${count === 1 ? '' : 's'}">${icon('link')}<span>${count}</span></button>`
+    : `<button class="pill tone-caution pred-pill" data-action="showPredecessors" aria-describedby="${id}">${icon(
+        'link'
+      )}${count} open predecessor${count === 1 ? '' : 's'}</button>`;
+  return `<span class="pred-wrap">${trigger}${renderPredecessorList(item, id)}</span>`;
+}
+
+/** Large card: the caution with open predecessors, or the hint that the work item is ready to start */
+function renderPredecessors(item: WorkItemModel): string {
+  if (item.openPredecessors?.length) {
+    return `<div class="row pred-row">${renderPredecessorTrigger(item, false)}</div>`;
+  }
+  return isReadyToStart(item)
+    ? `<div class="row"><span class="pill ready-pill" title="No open predecessors">${icon(
+        'check'
+      )}ready to start</span></div>`
+    : '';
 }
 
 function renderBranch(item: WorkItemModel): string {
@@ -504,6 +586,7 @@ function renderCard(
     <div class="title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
     ${renderParent(item, visibleIds)}
     ${renderAlerts(item)}
+    ${renderPredecessors(item)}
     ${renderBranch(item)}
     ${item.pullRequests.map((pr) => renderPullRequest(item, pr)).join('')}
     ${renderActions(item)}
@@ -522,6 +605,10 @@ function signalMarker(signal: CompactSignal): string {
       return icon('task');
     case 'alerts':
       return icon('warning');
+    case 'predecessors':
+      return icon('link');
+    case 'ready':
+      return icon('check');
     case 'pullRequest':
       return DOT;
     case 'priority':
@@ -530,7 +617,7 @@ function signalMarker(signal: CompactSignal): string {
   }
 }
 
-function renderSignal(signal: CompactSignal): string {
+function renderSignal(signal: CompactSignal, item: WorkItemModel): string {
   const title = escapeHtml(signal.title);
   const label = signal.label ? `<span>${escapeHtml(signal.label)}</span>` : '';
   switch (signal.kind) {
@@ -540,11 +627,14 @@ function renderSignal(signal: CompactSignal): string {
       return `<span class="urgency"><span class="pill ${signal.tone}" title="${title}">${escapeHtml(
         signal.label
       )}</span></span>`;
+    case 'predecessors':
+      return renderPredecessorTrigger(item, true);
     case 'ci':
       return `<span class="signal signal-ci run-${signal.tone}" title="${title}">${signalMarker(signal)}</span>`;
     case 'alerts':
     case 'branch':
     case 'pullRequest':
+    case 'ready':
     case 'tasks':
       return `<span class="signal signal-${signal.kind} tone-${signal.tone}" title="${title}">${signalMarker(
         signal
@@ -563,7 +653,7 @@ function renderCompactCard(item: WorkItemModel, children: WorkItemModel[]): stri
     item.isCurrentBranch ? 'current' : '',
     item.alerts.length ? 'has-alerts' : '',
   ].join(' ');
-  const signals = compactSignals(item, children).map(renderSignal);
+  const signals = compactSignals(item, children).map((signal) => renderSignal(signal, item));
   return `<article class="${classes}" data-action="toggleCard" data-id="${item.id}">
     <div class="compact-head">
       <button class="card-chevron" data-action="toggleCard" data-id="${item.id}" aria-expanded="false"
@@ -1153,6 +1243,8 @@ function toggleFilter(kind: FilterKind, value: string): void {
     filter.hiddenStates = toggle(filter.hiddenStates, value);
   } else if (kind === 'priority') {
     filter.hiddenPriorities = toggle(filter.hiddenPriorities, value);
+  } else if (kind === 'predecessor') {
+    filter.hiddenPredecessorStates = toggle(filter.hiddenPredecessorStates, value);
   } else {
     filter.hiddenPullRequestStates = toggle(filter.hiddenPullRequestStates, value);
   }
@@ -1224,7 +1316,7 @@ document.addEventListener('focusin', placeCoveragePopover);
 // Escape closes the popover (WCAG 1.4.13): it only shows while the badge or something inside it has the focus or the pointer
 document.addEventListener('keydown', (event) => {
   const active = document.activeElement;
-  if (event.key === 'Escape' && active instanceof HTMLElement && active.closest('.cov-wrap')) {
+  if (event.key === 'Escape' && active instanceof HTMLElement && active.closest('.cov-wrap, .pred-wrap')) {
     active.blur();
     document.body.classList.add('no-popovers');
   }
@@ -1238,7 +1330,8 @@ document.addEventListener('click', (event) => {
     return;
   }
   const target = (event.target as HTMLElement).closest<HTMLElement>('[data-action], [data-filter]');
-  if (!target) {
+  // The text of a popover is not the row behind it: clicking it must not fold the row
+  if (!target || ((event.target as HTMLElement).closest('.pred-pop') && !target.closest('.pred-pop'))) {
     return;
   }
   const { action, filter, value, id, pr, run, url, path, tests, kind } = target.dataset;

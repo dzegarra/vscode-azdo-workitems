@@ -90,6 +90,7 @@ describe('isVisible', () => {
     hiddenStates: ['Done'],
     hiddenPullRequestStates: [],
     hiddenPriorities: [],
+    hiddenPredecessorStates: [],
   };
   const draftPr = { id: 1, title: 'PR', status: 'Draft', tone: 'draft' as const, url: '', isActive: true, runs: [] };
 
@@ -133,6 +134,30 @@ describe('isVisible', () => {
     expect(isVisible(item, { ...filter, hiddenPriorities })).toBe(false);
   });
 
+  it('applies the predecessors filter', () => {
+    const open = { ...item, openPredecessors: [{ id: 1 }] };
+    const none = { ...item, openPredecessors: [] };
+    const hideOpen = { ...filter, hiddenPredecessorStates: ['Incomplete predecessors'] };
+    const hideNone = { ...filter, hiddenPredecessorStates: ['Complete predecessors'] };
+    expect(isVisible(open, hideOpen)).toBe(false);
+    expect(isVisible(none, hideOpen)).toBe(true);
+    expect(isVisible(none, hideNone)).toBe(false);
+    expect(isVisible(open, hideNone)).toBe(true);
+  });
+
+  it('never hides work items whose predecessors are unknown with the predecessors filter', () => {
+    const both = { ...filter, hiddenPredecessorStates: ['Incomplete predecessors', 'Complete predecessors'] };
+    expect(isVisible(item, both)).toBe(true);
+  });
+
+  it('can always show work items with alerts whatever their predecessors', () => {
+    const alerts = [{ rule: 'tasksNotDone', message: 'x' }];
+    const open = { ...item, openPredecessors: [{ id: 1 }], alerts };
+    const hideOpen = { ...filter, hiddenPredecessorStates: ['Incomplete predecessors'] };
+    expect(isVisible(open, hideOpen)).toBe(false);
+    expect(isVisible(open, hideOpen, '', true)).toBe(true);
+  });
+
   it('searches by ID, title and branch', () => {
     expect(isVisible(item, filter, '6628')).toBe(true);
     expect(isVisible(item, filter, 'ACCESS')).toBe(true);
@@ -147,10 +172,17 @@ describe('changedFilterKeys', () => {
     hiddenStates: ['Done'],
     hiddenPullRequestStates: [],
     hiddenPriorities: [],
+    hiddenPredecessorStates: [],
   };
 
   it('ignores the order of the values', () => {
     expect(changedFilterKeys(filter, { ...filter, types: ['Product Backlog Item', 'Bug'] })).toEqual([]);
+  });
+
+  it('detects the predecessors filter', () => {
+    expect(changedFilterKeys(filter, { ...filter, hiddenPredecessorStates: ['Complete predecessors'] })).toEqual([
+      'hiddenPredecessorStates',
+    ]);
   });
 
   it('lists the keys that changed', () => {
@@ -161,6 +193,7 @@ describe('changedFilterKeys', () => {
         hiddenStates: [],
         hiddenPullRequestStates: ['Draft'],
         hiddenPriorities: [],
+        hiddenPredecessorStates: [],
       })
     ).toEqual(['types', 'hiddenStates', 'hiddenPullRequestStates']);
   });

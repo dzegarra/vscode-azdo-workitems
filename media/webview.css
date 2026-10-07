@@ -116,6 +116,11 @@ button {
   gap: 4px;
 }
 
+/* A label too long for its column goes over the chips */
+.filter-row.wide {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .filter-label {
   color: var(--muted);
   font-size: 11px;
@@ -232,6 +237,14 @@ button {
 .chip-urgency-none {
   --pill-color: var(--muted);
   --swatch-border: var(--vscode-descriptionForeground);
+}
+
+/* Same colours as the pills of the cards: amber caution, green ready */
+.chip-pred-open {
+  --pill-color: #f2a900;
+}
+.chip-pred-none {
+  --pill-color: var(--vscode-testing-iconPassed, var(--green));
 }
 
 /* ---------- Iterations ---------- */
@@ -478,7 +491,9 @@ button {
  * in any theme (a tinted orange was barely readable)
  */
 .pill.tone-leftover,
-.signal.tone-leftover {
+.signal.tone-leftover,
+.pill.tone-caution,
+.signal.tone-caution {
   padding: 0 6px;
   border-radius: 8px;
   color: #1f1f1f;
@@ -486,7 +501,8 @@ button {
   font-weight: 600;
 }
 
-.signal.tone-leftover .icon {
+.signal.tone-leftover .icon,
+.signal.tone-caution .icon {
   color: #1f1f1f;
 }
 .tone-local {
@@ -1862,4 +1878,149 @@ button.state:focus-visible {
 .panel-head > :not(.panel-toggle) {
   flex: none;
   margin-top: 4px;
+}
+
+/* ---------- Open predecessors ---------- */
+
+/* The popover is as wide as its container (the row of the pill or the signals), like the PR timeline */
+.pred-row,
+.signals {
+  position: relative;
+}
+
+button.pill.pred-pill,
+button.signal-predecessors {
+  border: none;
+  font: inherit;
+  cursor: help;
+}
+
+button.pill.pred-pill {
+  font-size: 10.5px;
+}
+
+button.signal-predecessors {
+  font-size: 10.5px;
+  line-height: 16px;
+}
+
+button.pill.pred-pill:focus-visible,
+button.signal-predecessors:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.pred-wrap {
+  display: inline-flex;
+}
+
+/* The padding keeps the hover while the pointer moves from the pill to the popover */
+.pred-pop {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  right: 0;
+  left: 0;
+  display: none;
+  padding-top: 4px;
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  font-size: 11.5px;
+  font-weight: 400;
+  white-space: normal;
+}
+
+.pred-wrap:hover .pred-pop,
+.pred-wrap:focus-within .pred-pop {
+  display: block;
+}
+
+.no-popovers .pred-pop {
+  display: none !important;
+}
+
+.pred-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--border));
+  border-radius: 4px;
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, var(--card-bg)));
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgb(0 0 0 / 35%));
+}
+
+.pred-intro {
+  margin: 0;
+  color: var(--muted);
+}
+
+.pred-item {
+  min-width: 0;
+}
+
+.pred-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pred-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pred-title {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pred-meta {
+  padding-left: 20px;
+  color: var(--muted);
+}
+
+.pred-state::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: var(--grey);
+}
+
+.pred-state.state-in-progress::before {
+  background: var(--blue);
+}
+
+.pred-risk {
+  padding-left: 20px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* Planned after its successor, or not planned: the ones to talk about first. Amber, not red */
+.pred-risk.risk-late,
+.pred-risk.risk-unscheduled {
+  color: var(--vscode-editorWarning-foreground, var(--orange));
+  font-style: normal;
+  font-weight: 600;
+}
+
+.pred-map {
+  justify-self: start;
+}
+
+/* The card with an open popover goes over the following ones */
+.card:hover,
+.card:focus-within {
+  position: relative;
+  z-index: 20;
 }

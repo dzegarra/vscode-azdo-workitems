@@ -7,6 +7,7 @@ import { branchTypeFor, buildBranchName, isValidModule, slugify } from '../namin
 import { stateAfterBranchCreated } from '../states';
 import { WorkItemEntry, WorkItemsStore } from '../workItemsStore';
 import { resolveWorkItemEntry } from './pickWorkItem';
+import { confirmStart } from './startCheck';
 
 /** Moves the work item to "Committed" (or the configured state) when work on it starts */
 async function moveToStartedState(repository: Repository, workItem: WorkItem): Promise<void> {
@@ -46,6 +47,11 @@ export async function createBranch(git: GitAPI, store: WorkItemsStore, node?: Wo
     if (choice !== 'Create Another') {
       return;
     }
+  }
+
+  // Creating the branch starts the work (and usually moves the work item to a started state): asked once, here
+  if (!(await confirmStart(store, workItem))) {
+    return;
   }
 
   const type = branchTypeFor(workItem.type, s.branchTypeByWorkItemType);

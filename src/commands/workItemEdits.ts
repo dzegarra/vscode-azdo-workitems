@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
 import { AzdoClient, WorkItem } from '../azdoClient';
 import { resolveContext } from '../config';
-import { normalizeState } from '../states';
+import { normalizeState, stateCategory } from '../states';
 import { WorkItemsStore } from '../workItemsStore';
 import { offerIntegrationBuild } from './integrationBuild';
+import { confirmStart } from './startCheck';
 
 const CATEGORY_LABELS: Partial<Record<string, string>> = {
   Proposed: 'Not started',
@@ -38,6 +39,12 @@ export async function changeState(store: WorkItemsStore, id: number): Promise<vo
   );
   if (!picked || normalizeState(picked.state) === current) {
     return;
+  }
+  // Starting work (not moving between started states): the predecessors should be completed
+  if (stateCategory(picked.state) === 'in-progress' && stateCategory(workItem.state) !== 'in-progress') {
+    if (!(await confirmStart(store, workItem))) {
+      return;
+    }
   }
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Window, title: `Moving ${workItem.id} to ${picked.state}` },

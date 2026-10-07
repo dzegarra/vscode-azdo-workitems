@@ -136,6 +136,15 @@ The feed, package, suffix, field and states can be changed in the `azdoWorkItems
 
 ## Dependencies
 
+Starting a work item whose predecessors are not completed should be avoided (unless agreed with whoever works on them). The cards make it visible:
+
+- **`⛓ N open predecessors`** (amber): hover or focus it to see each predecessor, its state, **who it is assigned to** (to agree with them) and its iteration, the riskiest first (planned after this one, not scheduled, same iteration). Click one to see its details, or open the dependency map.
+- **`✓ ready to start`** (green): New / Approved / To Do work items with no open predecessors.
+- The **Deps** filter row (**Incomplete predecessors** / **Complete predecessors**) shows or hides each group.
+- Moving a work item to a started state, or creating its branch, asks first when it has open predecessors: **Start anyway**, **Open dependency map** or Cancel (`azdoWorkItems.dependencies.confirmBeforeStart`).
+
+A predecessor is completed when it is Done, Ready to Test, Closed or Removed (`azdoWorkItems.dependencies.completedStates`).
+
 The details of a work item list its **Predecessors** (work items it depends on) and **Successors** (work items that depend on it), with the iteration each one is planned in. A warning is shown when a predecessor is planned in a later iteration than its successor, in the same iteration, or not scheduled at all.
 
 **Open Dependency Map** (view toolbar, or the _Dependency map_ button of the details) shows the dependencies of your work items in the current iterations:
@@ -241,6 +250,7 @@ Only the PRs where you are a reviewer yourself are listed: when a group (e.g. a 
 | `azdoWorkItems.layout`                                    | Layout of the cards: `compact` (default) or `large`            |
 | `azdoWorkItems.myPullRequests.*`                          | My pull requests: show drafts, refresh interval                |
 | `azdoWorkItems.statusBar.currentWorkItem`                 | Show the work item of the current branch in the status bar     |
+| `azdoWorkItems.dependencies.*`                            | Completed states of predecessors, confirmation before starting |
 | `azdoWorkItems.coverage.*`                                | Coverage levels: minimum (60), target (80), excellent (95)     |
 | `azdoWorkItems.pipelines.*`                               | CI runs: refresh interval, notifications, status bar           |
 | `azdoWorkItems.reviews.*`                                 | PRs to review: maximum wait, due soon, reminders, status bar   |

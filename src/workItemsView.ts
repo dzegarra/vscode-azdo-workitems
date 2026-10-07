@@ -1,3 +1,4 @@
+import { migratePredecessorStates } from './predecessors';
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { coverageThresholds, recordsScope, SECTION } from './config';
@@ -32,6 +33,7 @@ export function filterSettings(): FilterModel {
     hiddenStates: config.get<string[]>('filter.hiddenStates', []),
     hiddenPullRequestStates: migratePullRequestStates(config.get<string[]>('filter.hiddenPullRequestStates', [])),
     hiddenPriorities: config.get<string[]>('filter.hiddenPriorities', []),
+    hiddenPredecessorStates: migratePredecessorStates(config.get<string[]>('filter.hiddenPredecessorStates', [])),
   };
 }
 

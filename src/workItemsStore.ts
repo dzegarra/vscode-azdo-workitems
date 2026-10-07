@@ -5,6 +5,8 @@ import { GitAPI, pickRepository, Ref, REF_TYPE_HEAD, Repository } from './git';
 import { TeamIteration } from './iterations';
 import { branchBelongsToWorkItem } from './naming';
 import { isFinishedState } from './states';
+import { openPredecessors } from './predecessors';
+import { ScheduledIteration } from './schedule';
 import { FilterModel, PullRequestModel, ViewModel, WorkItemModel } from './viewModel';
 import { runDetailsLoader } from './runDetailsLoader';
 import { finishedRuns, isActive, latestRuns, RunModel } from './pipelines';
@@ -24,6 +26,8 @@ export interface WorkItemEntry {
   /** Branch of a finished work item that still exists (it should have been deleted after its PR was merged) */
   leftoverBranch?: LeftoverBranch;
   pullRequests: PullRequestDetails[];
+  /** Work items that must be done before this one; undefined when they could not be loaded */
+  predecessors?: WorkItem[];
 }
 
 export interface LeftoverBranch {
@@ -127,6 +131,34 @@ async function fetchRelated(client: AzdoClient, workItems: WorkItem[]): Promise<
   return byId;
 }
 
+/**
+ * Predecessors of the work items (the ones in the list included), fetched at once. Each work item gets its
+ * own predecessors, or undefined when they cannot be told (the request failed or one is not found): the
+ * cards then say nothing about them
+ */
+async function fetchPredecessors(
+  client: AzdoClient,
+  workItems: WorkItem[]
+): Promise<Map<number, WorkItem[] | undefined>> {
+  const byId = new Map(workItems.map((workItem) => [workItem.id, workItem]));
+  const missing = [...new Set(workItems.flatMap((workItem) => workItem.links.predecessorIds))].filter(
+    (id) => !byId.has(id)
+  );
+  try {
+    (await client.getWorkItems(missing)).forEach((workItem) => byId.set(workItem.id, workItem));
+  } catch {
+    // The ones not in the list stay unknown
+  }
+  return new Map(
+    workItems.map((workItem) => {
+      const ids = workItem.links.predecessorIds;
+      const found = ids.map((id) => byId.get(id));
+      const known = found.every((predecessor) => predecessor);
+      return [workItem.id, known ? found.filter((predecessor): predecessor is WorkItem => !!predecessor) : undefined];
+    })
+  );
+}
+
 /** "Integrated in Build" can be filled automatically from the last release of the deploy image */
 function withQuickFixes(alerts: WorkItemAlert[], integrationBuildField: string | undefined): WorkItemAlert[] {
   return alerts.map((alert) =>
@@ -222,6 +254,8 @@ export class WorkItemsStore {
   entries: WorkItemEntry[] = [];
   /** Current iterations of the listed teams */
   iterations: TeamIteration[] = [];
+  /** Dates of the iterations of the project, to rate the risk of the predecessors; undefined when not loaded */
+  private schedule?: ScheduledIteration[];
   /** CI runs of the active PRs, by PR */
   private runs = new Map<number, RunModel[]>();
   private loading?: Promise<void>;
@@ -377,11 +411,15 @@ export class WorkItemsStore {
         return client.getMyWorkItems(this.iterations.map(({ iteration }) => iteration.path));
       })(),
     ]);
-    const [pullRequests, related, rules] = await Promise.all([
+    const [pullRequests, related, rules, predecessors, schedule] = await Promise.all([
       fetchPullRequests(client, workItems),
       fetchRelated(client, workItems),
       alertRules(client),
+      fetchPredecessors(client, workItems),
+      // Without the schedule the predecessors are listed without their risk
+      client.getIterationSchedule().catch(() => undefined),
     ]);
+    this.schedule = schedule;
     const entries: WorkItemEntry[] = workItems.map((workItem) => {
       const parent = workItem.links.parentId === undefined ? undefined : related.get(workItem.links.parentId);
       const itemPullRequests = workItem.links.pullRequests
@@ -393,6 +431,7 @@ export class WorkItemsStore {
         ...findBranch(workItem, branches, azdoRepository.id),
         pullRequests: itemPullRequests,
         alerts: rules ? alertsOf(workItem, related, itemPullRequests, rules) : [],
+        predecessors: predecessors.get(workItem.id),
       };
     });
     await Promise.all(
@@ -404,8 +443,9 @@ export class WorkItemsStore {
   }
 
   private toModel(
-    { workItem, parent, alerts, branch, branchLocation, leftoverBranch, pullRequests }: WorkItemEntry,
-    currentBranch: string | undefined
+    { workItem, parent, alerts, branch, branchLocation, leftoverBranch, pullRequests, predecessors }: WorkItemEntry,
+    currentBranch: string | undefined,
+    completedStates: string[]
   ): WorkItemModel {
     return {
       id: workItem.id,
@@ -432,20 +472,22 @@ export class WorkItemsStore {
       pullRequests: pullRequests
         .map((pr) => toPullRequestModel(pr, this.runs.get(pr.pullRequestId) ?? []))
         .sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.id - a.id),
+      openPredecessors: predecessors && openPredecessors(workItem, predecessors, completedStates, this.schedule),
     };
   }
 
   /** Card data of one work item, or undefined when it is not in the current iterations */
   workItemModel(id: number): WorkItemModel | undefined {
     const entry = this.find(id);
-    return entry && this.toModel(entry, this.repository()?.state.HEAD?.name);
+    return entry && this.toModel(entry, this.repository()?.state.HEAD?.name, settings().dependencies.completedStates);
   }
 
   toViewModel(
     filter: FilterModel
   ): Omit<ViewModel, 'alwaysShowAlerts' | 'coverage' | 'layout' | 'pullRequests' | 'reviews'> {
     const currentBranch = this.repository()?.state.HEAD?.name;
-    const workItems = this.entries.map((entry) => this.toModel(entry, currentBranch));
+    const { completedStates } = settings().dependencies;
+    const workItems = this.entries.map((entry) => this.toModel(entry, currentBranch, completedStates));
     return {
       status: this.status,
       error: this.error,

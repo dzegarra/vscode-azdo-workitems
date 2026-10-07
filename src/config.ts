@@ -4,6 +4,7 @@ import { CoverageThresholds, normalizeThresholds } from './coverage';
 import { Repository } from './git';
 import { parseAzdoRemote } from './repoContext';
 import { parseCheckoutMode } from './worktrees';
+import { DEFAULT_COMPLETED_STATES } from './predecessors';
 import { DEFAULT_STATE_ORDER } from './states';
 
 export const SECTION = 'azdoWorkItems';
@@ -28,6 +29,10 @@ export function settings() {
     linkBranchToWorkItem: config.get<boolean>('linkBranchToWorkItem', true),
     stateOnBranchCreated: config.get<Partial<Record<string, string>>>('stateOnBranchCreated', {}),
     stateOrder: config.get<string[]>('stateOrder', DEFAULT_STATE_ORDER),
+    dependencies: {
+      completedStates: config.get<string[]>('dependencies.completedStates', DEFAULT_COMPLETED_STATES),
+      confirmBeforeStart: config.get<boolean>('dependencies.confirmBeforeStart', true),
+    },
     integrationBuild: {
       field: config.get<string>('integrationBuild.field', 'Integrated in Build'),
       workItemTypes: config.get<string[]>('integrationBuild.workItemTypes', ['Bug']),
