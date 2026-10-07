@@ -248,9 +248,6 @@ button {
 }
 
 .iteration h2 {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
   margin: 8px 0 0;
   font-size: 11px;
   font-weight: 600;
@@ -258,14 +255,51 @@ button {
   letter-spacing: 0.04em;
 }
 
-.iteration .teams {
+.iteration-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 3px 2px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.iteration-toggle:hover {
+  background: var(--card-hover);
+}
+
+.iteration-name {
+  flex: 1;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.iteration-toggle .count {
   color: var(--muted);
   font-weight: normal;
-  text-overflow: ellipsis;
-  text-transform: none;
-  white-space: nowrap;
-  letter-spacing: 0;
+}
+
+.iteration-toggle .chevron {
+  transition: transform 0.15s;
+  transform: rotate(90deg);
+}
+
+.iteration.collapsed .chevron {
+  transform: none;
+}
+
+.iteration-alerts {
+  --pill-color: var(--red);
 }
 
 /* ---------- Cards ---------- */
@@ -510,6 +544,7 @@ button {
 
 .button:focus-visible,
 .link:focus-visible,
+.iteration-toggle:focus-visible,
 .chip:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: 1px;

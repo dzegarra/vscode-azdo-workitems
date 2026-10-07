@@ -32,6 +32,8 @@ interface SavedState {
   search: string;
   onlyAlerts: boolean;
   reviewsCollapsed: boolean;
+  /** Iteration groups collapsed by the user, by iteration path */
+  collapsedIterations: string[];
   /** PRs to review already shown: the section opens again when a new one arrives */
   seenReviews: number[];
 }
@@ -52,9 +54,16 @@ let search = savedState?.search ?? '';
 let onlyAlerts = savedState?.onlyAlerts ?? false;
 let reviewsCollapsed = savedState?.reviewsCollapsed ?? false;
 let seenReviews = savedState?.seenReviews;
+const collapsedIterations = new Set(savedState?.collapsedIterations ?? []);
 
 function saveState(): void {
-  vscode.setState({ search, onlyAlerts, reviewsCollapsed, seenReviews: seenReviews ?? [] });
+  vscode.setState({
+    search,
+    onlyAlerts,
+    reviewsCollapsed,
+    collapsedIterations: [...collapsedIterations],
+    seenReviews: seenReviews ?? [],
+  });
 }
 
 /** Order of the PR states in the filter */
@@ -367,15 +376,14 @@ function renderCard(item: WorkItemModel, children: WorkItemModel[], visibleIds: 
 }
 
 /**
- * Cards of the visible items. Children of a visible item are nested in its card, whatever the type filter,
- * so the tasks of a Backlog Item / Bug can be managed while Tasks are filtered out
+ * Cards of the visible items. The filters only apply to Backlog Items and Bugs: the children of a visible item
+ * (its tasks) are always nested in its card, so they can be managed whatever the filters or the search
  */
 function renderCards(items: WorkItemModel[], current: ViewModel): string {
   const visibleIds = new Set(items.map((item) => item.id));
-  const childFilter = { ...current.filter, types: [] };
   const childrenOf = (parent: WorkItemModel) =>
     sortWorkItems(
-      current.workItems.filter((child) => child.parentId === parent.id && isVisible(child, childFilter)),
+      current.workItems.filter((child) => child.parentId === parent.id),
       current.stateOrder
     );
   return items
@@ -384,11 +392,25 @@ function renderCards(items: WorkItemModel[], current: ViewModel): string {
     .join('');
 }
 
+/**
+ * Work items of one iteration. The group can be collapsed to keep only the iterations of interest open;
+ * its header keeps counting the work items, and the ones that need attention, while it is collapsed
+ */
 function renderIteration(iteration: IterationModel, items: WorkItemModel[], current: ViewModel): string {
-  return `<section class="iteration">
-    <h2 title="${escapeHtml(iteration.path)}">${escapeHtml(iteration.name)}
-      <span class="teams">${escapeHtml(iteration.teams.join(', '))}</span></h2>
-    ${items.length ? renderCards(items, current) : '<p class="muted empty">Nothing to show</p>'}
+  const collapsed = collapsedIterations.has(iteration.path);
+  const cards = items.filter(
+    (item) => item.parentId === undefined || !items.some((other) => other.id === item.parentId)
+  );
+  const withAlerts = items.filter((item) => item.alerts.length).length;
+  const alerts = withAlerts
+    ? `<span class="pill iteration-alerts" title="${withAlerts} with alerts">${icon('warning')}${withAlerts}</span>`
+    : '';
+  return `<section class="iteration${collapsed ? ' collapsed' : ''}">
+    <h2><button class="iteration-toggle" data-action="toggleIteration" data-path="${escapeHtml(iteration.path)}"
+      aria-expanded="${!collapsed}" title="${escapeHtml(iteration.path)}">
+      ${icon('chevron', 'chevron')}<span class="iteration-name">${escapeHtml(iteration.name)}</span>
+      <span class="count">${cards.length}</span>${alerts}</button></h2>
+    ${collapsed ? '' : items.length ? renderCards(items, current) : '<p class="muted empty">Nothing to show</p>'}
   </section>`;
 }
 
@@ -560,7 +582,7 @@ function render(): void {
   if (!app.childElementCount) {
     app.innerHTML = `<div id="reviews"></div>
       <div class="toolbar">
-        <h2 class="list-title">Work items</h2>
+        <h2 class="list-title">My Work Items</h2>
         <input id="search" type="search" placeholder="Search by ID, title or branch" aria-label="Search work items">
       </div>
       <p id="scope" class="scope"></p>
@@ -617,11 +639,17 @@ document.addEventListener('click', (event) => {
   if (!target) {
     return;
   }
-  const { action, filter, value, id, pr, run, url } = target.dataset;
+  const { action, filter, value, id, pr, run, url, path } = target.dataset;
   if (filter && value !== undefined) {
     toggleFilter(filter as FilterKind, value);
   } else if (action === 'refresh') {
     post({ type: 'refresh' });
+  } else if (action === 'toggleIteration' && path !== undefined) {
+    if (!collapsedIterations.delete(path)) {
+      collapsedIterations.add(path);
+    }
+    saveState();
+    render();
   } else if (action === 'toggleReviews') {
     reviewsCollapsed = !reviewsCollapsed;
     saveState();
