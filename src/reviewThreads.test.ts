@@ -4,6 +4,7 @@ import {
   detectObservationEvents,
   hasOpenObservations,
   myObservations,
+  summarizeOpenObservations,
   ThreadResponse,
   threadUrl,
   toStoredObservations,
@@ -112,5 +113,35 @@ describe('observation events', () => {
       false
     );
     expect(threadUrl(pullRequest.url, 133151)).toBe(`${pullRequest.url}?discussionId=133151`);
+  });
+});
+
+describe('open observations', () => {
+  const observationsOf = (...threads: ThreadResponse[]) => myObservations(threads, ME);
+
+  it('counts the threads still active or pending, not the resolved ones', () => {
+    const observations = observationsOf(
+      thread('active', [mine], 1),
+      thread('pending', [mine], 2),
+      thread('fixed', [mine], 3),
+      thread('wontFix', [mine], 4),
+      thread('active', [comment(1, 'kk', 'Not mine')], 5)
+    );
+    expect(summarizeOpenObservations(observations, ME)).toEqual({ open: 2, answered: false });
+  });
+
+  it('tells when someone else replied after my last comment in an open thread', () => {
+    const observations = observationsOf(thread('active', [mine, comment(2, 'kk', 'Done')]));
+    expect(summarizeOpenObservations(observations, ME)).toEqual({ open: 1, answered: true });
+  });
+
+  it('ignores replies that I already answered', () => {
+    const observations = observationsOf(thread('active', [mine, comment(2, 'kk', 'Done'), comment(3, ME, 'Thanks')]));
+    expect(summarizeOpenObservations(observations, ME)).toEqual({ open: 1, answered: false });
+  });
+
+  it('ignores the replies of resolved threads', () => {
+    const observations = observationsOf(thread('fixed', [mine, comment(2, 'kk', 'Done')]));
+    expect(summarizeOpenObservations(observations, ME)).toEqual({ open: 0, answered: false });
   });
 });

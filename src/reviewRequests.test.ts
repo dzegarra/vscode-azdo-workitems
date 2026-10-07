@@ -27,7 +27,7 @@ function pr(id: number, overrides: Partial<ReviewerPullRequest> = {}, myVote = 0
     createdBy: { id: 'ana', displayName: 'Ana' },
     targetRefName: 'refs/heads/develop',
     sourceRefName: `refs/heads/feature/fui-admin/${id}-change`,
-    repository: { id: 'repo', name: 'User_Interface' },
+    repository: { id: 'repo', name: 'User_Interface', project: { id: 'project' } },
     webUrl: `https://dev.azure.com/org/project/_git/User_Interface/pullrequest/${id}`,
     reviewers: [
       { id: 'team', displayName: '[UI]\\Reviewers', vote: 0, isRequired: true },

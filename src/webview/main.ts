@@ -17,6 +17,7 @@ import { runLabel, runTooltip, testsUrl } from '../runDetails';
 import { NO_PRIORITY, priorityFilterValue, severityLevel, severityName, sortWorkItems } from '../priority';
 import { isFinishedState, stateCategory, stateRank } from '../states';
 import { MyPullRequestModel, ReviewerModel, VoteKind } from '../myPullRequests';
+import { describeTeamRules } from '../reviewCard';
 import type { ReviewRequestModel } from '../reviewRequests';
 import { hasTaskAlerts, isTaskListOpen, taskProgress } from '../taskProgress';
 import type {
@@ -656,6 +657,121 @@ function renderAlertsBanner(current: ViewModel): string {
   </div>`;
 }
 
+/* ---------- Shared by both PR boxes ---------- */
+
+const VOTE_ICONS: Record<VoteKind, keyof typeof ICONS> = {
+  approved: 'check',
+  suggestions: 'check',
+  waiting: 'clock',
+  rejected: 'error',
+  declined: 'stop',
+  none: 'circle',
+};
+
+const VOTE_LABELS: Record<VoteKind, string> = {
+  approved: 'Approved',
+  suggestions: 'Approved with suggestions',
+  waiting: 'Waiting for the author',
+  rejected: 'Rejected',
+  declined: 'Declined',
+  none: 'No vote yet',
+};
+
+/** Groups are named "[Project]\\Team": the project is noise in a chip */
+function reviewerName(name: string): string {
+  return name.replace(/^\[[^\]]*\]\\/, '');
+}
+
+function renderReviewer(reviewer: ReviewerModel): string {
+  const name = reviewer.isMe ? 'you' : reviewerName(reviewer.name);
+  const details = [
+    VOTE_LABELS[reviewer.vote],
+    reviewer.isRequired ? 'required' : '',
+    reviewer.isContainer ? 'group' : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
+  return `<span class="reviewer vote-${reviewer.vote}${reviewer.isContainer ? ' group' : ''}${
+    reviewer.isMe ? ' me' : ''
+  }" title="${escapeHtml(`${reviewer.isMe ? `You (${reviewerName(reviewer.name)})` : name}: ${details}`)}">${icon(
+    VOTE_ICONS[reviewer.vote]
+  )}<span class="reviewer-name">${escapeHtml(name)}</span>${
+    reviewer.isRequired ? '<span class="required" aria-hidden="true">*</span>' : ''
+  }</span>`;
+}
+
+interface SignalsData {
+  unresolved?: number;
+  conflicts: boolean;
+  runs: RunModel[];
+  autoComplete: boolean;
+}
+
+/** Unresolved comments, conflicts, CI runs and auto-complete of a PR; `extra` goes at the end of the row */
+function renderSignals(pr: SignalsData, extra = ''): string {
+  const signals = [
+    pr.unresolved
+      ? `<span class="signal signal-comments" title="Comment threads still active or pending">${icon('comment')}${
+          pr.unresolved
+        } unresolved</span>`
+      : '',
+    pr.conflicts
+      ? `<span class="signal signal-conflicts" title="The branch cannot be merged without resolving the conflicts">${icon(
+          'warning'
+        )}Conflicts</span>`
+      : '',
+    pr.runs
+      .map((run) =>
+        renderRun(
+          run,
+          `data-action="openMyPullRequest" data-url="${escapeHtml(run.url)}"`,
+          `data-action="openMyPullRequest" data-url="${escapeHtml(testsUrl(run.url))}"`
+        )
+      )
+      .join(''),
+    pr.autoComplete
+      ? '<span class="pill tone-approved" title="The PR is completed by itself when its policies pass">Auto-complete</span>'
+      : '',
+    extra,
+  ].filter(Boolean);
+  return signals.length ? `<div class="mypr-signals">${signals.join('')}</div>` : '';
+}
+
+function renderTimeline(id: string, timeline: MyPullRequestModel['timeline']): string {
+  const { events, earlier } = timeline;
+  const rows = events.map(
+    ({ when, text }) =>
+      `<li><time class="timeline-when">${escapeHtml(when)}</time><span class="timeline-text">${escapeHtml(
+        text
+      )}</span></li>`
+  );
+  if (earlier) {
+    rows.unshift(`<li class="timeline-earlier">… ${earlier} earlier event${earlier === 1 ? '' : 's'}</li>`);
+  }
+  return `<div class="timeline" id="${id}" role="tooltip"><ol class="timeline-card" aria-label="Events of the pull request">${rows.join(
+    ''
+  )}</ol></div>`;
+}
+
+/** The age (or time left) of a PR; hovering or focusing it shows what happened */
+function renderTimeText(id: string, text: string, timeline: MyPullRequestModel['timeline'], className = ''): string {
+  return `<span class="mypr-time-wrap"><button class="mypr-time${className}" aria-describedby="${id}">${escapeHtml(
+    text
+  )}</button>${renderTimeline(id, timeline)}</span>`;
+}
+
+function renderLinkedWorkItems(workItems: MyPullRequestModel['workItems']): string {
+  const links = workItems.map(
+    ({ id, type }) =>
+      `<button class="link id${
+        type ? typeIdClass(type) : ''
+      }" data-action="openDetails" data-id="${id}" title="${escapeHtml(
+        type ? `${type} ${id}` : `Work item ${id}`
+      )}: show details">#${id}</button>`
+  );
+  return `<span class="mypr-items">${links.join('')}</span>`;
+}
+
 /* ---------- PRs waiting for my review ---------- */
 
 /** Most urgent first: the section takes the colour of the first one */
@@ -679,20 +795,77 @@ function renderReviewBranch(request: ReviewRequestModel): string {
   )}">${escapeHtml(request.sourceBranch)}</code>${worktreePill(request.worktree)}${action}</div>`;
 }
 
+/** What a reviewer needs to know about the PR, under the title. Empty until the PR is checked in depth */
+function renderReviewDetails({ details }: ReviewRequestModel): string {
+  if (!details) {
+    return '';
+  }
+  const meta = [
+    details.target
+      ? `<span class="mypr-target" title="Merges into ${escapeHtml(details.target)}">→ ${escapeHtml(
+          details.target
+        )}</span>`
+      : '',
+    details.workItems.length ? renderLinkedWorkItems(details.workItems) : '',
+  ].filter(Boolean);
+  const files = details.filesChangedText
+    ? `<span class="signal signal-files" title="Files changed in the latest iteration of the PR">${escapeHtml(
+        details.filesChangedText
+      )}</span>`
+    : '';
+  const rules = describeTeamRules(details.teamRules);
+  const note = details.autoCompleteNote;
+  const notes = [
+    details.approvalCompletes
+      ? `<li class="review-ready" role="note">${icon('check')}<span>Your approval completes it</span></li>`
+      : '',
+    note
+      ? `<li class="mypr-${note.severity}" role="${note.severity === 'error' ? 'alert' : 'note'}">${icon(
+          note.severity === 'error' ? 'error' : 'warning'
+        )}<span>${escapeHtml(note.text)}</span></li>`
+      : '',
+    details.myComments
+      ? `<li class="review-muted" role="note">${icon('comment')}<span>${escapeHtml(details.myComments)}</span></li>`
+      : '',
+    rules
+      ? `<li class="review-muted" role="note" title="${escapeHtml(details.teamRules.join('\n'))}">${icon(
+          'warning'
+        )}<span>${escapeHtml(rules)}</span></li>`
+      : '',
+  ].filter(Boolean);
+  return `${meta.length ? `<div class="mypr-meta">${meta.join('<span aria-hidden="true">·</span>')}</div>` : ''}
+    ${details.reviewers.length ? `<div class="reviewers">${details.reviewers.map(renderReviewer).join('')}</div>` : ''}
+    ${renderSignals(details, files)}
+    ${notes.length ? `<ul class="mypr-warnings review-notes">${notes.join('')}</ul>` : ''}`;
+}
+
 function renderReview(request: ReviewRequestModel): string {
+  const time = request.details
+    ? `<span class="review-time">${renderTimeText(
+        `review-timeline-${request.id}`,
+        request.timeLeft,
+        request.details.timeline
+      )}</span>`
+    : `<span class="review-time">${request.timeLeft}</span>`;
   return `<li class="review urgency-${request.urgency}">
     <div class="review-line">
-      <span class="review-time">${request.timeLeft}</span>
+      ${time}
       <span class="review-meta" title="${escapeHtml(
         `${request.repository}: ${request.author} → ${request.targetBranch}`
       )}">
         PR ${request.id} · ${escapeHtml(request.author)}${request.isRequired ? '' : ' · optional'}</span>
+      ${
+        request.details
+          ? `<span class="pill tone-${request.details.tone} review-status">${escapeHtml(request.details.status)}</span>`
+          : ''
+      }
     </div>
     <button class="link review-title" data-action="openReviewRequest" data-url="${escapeHtml(request.url)}"
       title="Open the PR in Azure DevOps">${escapeHtml(request.title)}</button>
     <div class="review-bar" title="Waiting for ${request.waited} of ${model?.reviews.maxWaitHours ?? 24} h">
       <span class="review-bar-fill" data-elapsed="${request.elapsed}"></span>
     </div>
+    ${renderReviewDetails(request)}
     ${renderReviewBranch(request)}
   </li>`;
 }
@@ -758,77 +931,6 @@ function renderReviews(current: ViewModel): string {
 
 /* ---------- My pull requests ---------- */
 
-const VOTE_ICONS: Record<VoteKind, keyof typeof ICONS> = {
-  approved: 'check',
-  suggestions: 'check',
-  waiting: 'clock',
-  rejected: 'error',
-  declined: 'stop',
-  none: 'circle',
-};
-
-const VOTE_LABELS: Record<VoteKind, string> = {
-  approved: 'Approved',
-  suggestions: 'Approved with suggestions',
-  waiting: 'Waiting for the author',
-  rejected: 'Rejected',
-  declined: 'Declined',
-  none: 'No vote yet',
-};
-
-/** Groups are named "[Project]\\Team": the project is noise in a chip */
-function reviewerName(name: string): string {
-  return name.replace(/^\[[^\]]*\]\\/, '');
-}
-
-function renderReviewer(reviewer: ReviewerModel): string {
-  const details = [
-    VOTE_LABELS[reviewer.vote],
-    reviewer.isRequired ? 'required' : '',
-    reviewer.isContainer ? 'group' : '',
-  ]
-    .filter(Boolean)
-    .join(', ');
-  return `<span class="reviewer vote-${reviewer.vote}${reviewer.isContainer ? ' group' : ''}" title="${escapeHtml(
-    `${reviewerName(reviewer.name)}: ${details}`
-  )}">${icon(VOTE_ICONS[reviewer.vote])}<span class="reviewer-name">${escapeHtml(reviewerName(reviewer.name))}</span>${
-    reviewer.isRequired ? '<span class="required" aria-hidden="true">*</span>' : ''
-  }</span>`;
-}
-
-/** Last CI run of each pipeline; clicking one opens it in Azure DevOps */
-function renderMyRuns(pr: MyPullRequestModel): string {
-  return pr.runs
-    .map((run) =>
-      renderRun(
-        run,
-        `data-action="openMyPullRequest" data-url="${escapeHtml(run.url)}"`,
-        `data-action="openMyPullRequest" data-url="${escapeHtml(testsUrl(run.url))}"`
-      )
-    )
-    .join('');
-}
-
-function renderMySignals(pr: MyPullRequestModel): string {
-  const signals = [
-    pr.unresolved
-      ? `<span class="signal signal-comments" title="Comment threads still active or pending">${icon('comment')}${
-          pr.unresolved
-        } unresolved</span>`
-      : '',
-    pr.conflicts
-      ? `<span class="signal signal-conflicts" title="The branch cannot be merged without resolving the conflicts">${icon(
-          'warning'
-        )}Conflicts</span>`
-      : '',
-    renderMyRuns(pr),
-    pr.autoComplete
-      ? '<span class="pill tone-approved" title="The PR is completed by itself when its policies pass">Auto-complete</span>'
-      : '',
-  ].filter(Boolean);
-  return signals.length ? `<div class="mypr-signals">${signals.join('')}</div>` : '';
-}
-
 function renderMyActions(pr: MyPullRequestModel): string {
   const buttons = [
     `<button class="button" data-action="openMyPullRequest" data-url="${escapeHtml(
@@ -854,45 +956,13 @@ function renderMyActions(pr: MyPullRequestModel): string {
   return `<footer class="actions">${buttons.join('')}</footer>`;
 }
 
-function renderTimeline(pr: MyPullRequestModel): string {
-  const { events, earlier } = pr.timeline;
-  const rows = events.map(
-    ({ when, text }) =>
-      `<li><time class="timeline-when">${escapeHtml(when)}</time><span class="timeline-text">${escapeHtml(
-        text
-      )}</span></li>`
-  );
-  if (earlier) {
-    rows.unshift(`<li class="timeline-earlier">… ${earlier} earlier event${earlier === 1 ? '' : 's'}</li>`);
-  }
-  return `<div class="timeline" id="timeline-${
-    pr.id
-  }" role="tooltip"><ol class="timeline-card" aria-label="Events of the pull request">${rows.join('')}</ol></div>`;
-}
-
-function renderMyPullRequestTime(pr: MyPullRequestModel): string {
-  return `<span class="mypr-time-wrap"><button class="mypr-time" aria-describedby="timeline-${pr.id}">${escapeHtml(
-    pr.time
-  )}</button>${renderTimeline(pr)}</span>`;
-}
-
-function renderLinkedWorkItems(pr: MyPullRequestModel): string {
-  const links = pr.workItems.map(
-    ({ id, type }) =>
-      `<button class="link id" data-action="openDetails" data-id="${id}" title="${escapeHtml(
-        type ? `${type} ${id}` : `Work item ${id}`
-      )}: show details">#${id}</button>`
-  );
-  return `<span class="mypr-items">${links.join('')}</span>`;
-}
-
 function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean): string {
   const meta = [
     pr.target
       ? `<span class="mypr-target" title="Merges into ${escapeHtml(pr.target)}">→ ${escapeHtml(pr.target)}</span>`
       : '',
-    renderMyPullRequestTime(pr),
-    pr.workItems.length ? renderLinkedWorkItems(pr) : '',
+    renderTimeText(`timeline-${pr.id}`, pr.time, pr.timeline),
+    pr.workItems.length ? renderLinkedWorkItems(pr.workItems) : '',
     showRepository ? `<span>${escapeHtml(pr.repository)}</span>` : '',
   ].filter(Boolean);
   const warnings = pr.warnings.map(
@@ -916,7 +986,7 @@ function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean): s
     <div class="mypr-title" title="${escapeHtml(pr.title)}">${escapeHtml(pr.title)}</div>
     <div class="mypr-meta">${meta.join('<span aria-hidden="true">·</span>')}</div>
     ${pr.reviewers.length ? `<div class="reviewers">${pr.reviewers.map(renderReviewer).join('')}</div>` : ''}
-    ${pr.isCompleted ? '' : renderMySignals(pr)}
+    ${pr.isCompleted ? '' : renderSignals(pr)}
     ${warnings.length ? `<ul class="mypr-warnings">${warnings.join('')}</ul>` : ''}
     ${
       pr.next

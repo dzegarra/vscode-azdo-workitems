@@ -980,9 +980,10 @@ button.state:focus-visible {
 }
 
 .review {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   padding: 6px 8px;
   border-left: 3px solid var(--review-accent);
   border-radius: 4px;
@@ -990,6 +991,7 @@ button.state:focus-visible {
 }
 
 .review-line {
+  position: relative;
   display: flex;
   align-items: baseline;
   gap: 8px;
@@ -1008,7 +1010,24 @@ button.state:focus-visible {
   color: var(--vscode-errorForeground, var(--red));
 }
 
+.review-status {
+  flex: none;
+  margin-left: auto;
+}
+
+/* The popover is inside the time left, which is bold */
+.review-time .timeline {
+  font-weight: 400;
+}
+
+/* The card with an open timeline goes over the following ones */
+.review:hover,
+.review:focus-within {
+  z-index: 20;
+}
+
 .review-meta {
+  min-width: 0;
   overflow: hidden;
   color: var(--muted);
   text-overflow: ellipsis;
@@ -1044,6 +1063,23 @@ button.state:focus-visible {
   height: 100%;
   border-radius: 2px;
   background: var(--review-accent);
+}
+
+.review-notes .review-ready {
+  color: var(--vscode-testing-iconPassed, var(--green));
+  font-weight: 600;
+}
+
+.review-notes .review-muted {
+  color: var(--muted);
+}
+
+.signal-files {
+  color: var(--muted);
+}
+
+.reviewer.me {
+  font-weight: 700;
 }
 
 .review-branch {

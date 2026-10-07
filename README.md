@@ -182,7 +182,14 @@ Your own comments and votes, system messages and vote resets are ignored. When m
 
 No PR should wait for its reviewers more than 24 hours. The extension makes sure you do not miss the PRs where you are a **required reviewer** and have not voted yet.
 
-**In the sidebar**, a section at the top of _Assigned to Me_ lists them, most urgent first. Each card shows the time left before the 24 hours run out ("18 h left", "5 h left", "overdue by 3 h"), the PR, its author, and a bar that fills as the time runs out. Click the title to open the PR in Azure DevOps, or **Checkout** to review it locally: the branch of the PR is fetched and checked out (and pulled when your local copy of it is behind). **Checkout** is also offered by the notifications, and by **Check Out a Pull Request Waiting for My Review** in the command palette. It is only available for the PRs of the repository open in VS Code.
+**In the sidebar**, a section at the top of _Assigned to Me_ lists them, most urgent first. Each card shows the time left before the 24 hours run out ("18 h left", "5 h left", "overdue by 3 h"), the PR, its author, and a bar that fills as the time runs out. Each card also shows what you need to review it: the PR status, the target branch when it is not `develop`, the linked work items (click one to see its details), the reviewers and their votes (you first), unresolved comments, conflicts, CI runs (failed tests, coverage), auto-complete and how many files changed. Hover the time left to see the history of the PR. It also tells you:
+
+- **Your approval completes it**, in green, when your vote is the last approval the PR needs;
+- **Auto-complete is set: your approval may merge it right away**, or the red error when auto-complete would complete a linked Bug (only testers complete Bugs);
+- how many of **your comments are still open**, and whether someone replied since your last comment;
+- **N team rules not met — remind the author** (title, description, required reviewers, linked Backlog Item / Bug; hover it for the list).
+
+Click the title to open the PR in Azure DevOps, or **Checkout** to review it locally: the branch of the PR is fetched and checked out (and pulled when your local copy of it is behind). **Checkout** is also offered by the notifications, and by **Check Out a Pull Request Waiting for My Review** in the command palette. It is only available for the PRs of the repository open in VS Code.
 
 | Colour | When                                                                       |
 | ------ | -------------------------------------------------------------------------- |

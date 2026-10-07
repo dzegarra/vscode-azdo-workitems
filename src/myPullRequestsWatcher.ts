@@ -4,14 +4,13 @@ import { resolveContext, SECTION, settings } from './config';
 import {
   AuthoredPullRequest,
   AuthoredPullRequestData,
-  countUnresolvedThreads,
   isCompletedRecently,
   MyPullRequestModel,
   PullRequestExtras,
   toMyPullRequestModels,
 } from './myPullRequests';
-import { latestRuns, RunModel } from './pipelines';
-import { runDetailsLoader } from './runDetailsLoader';
+import { RunModel } from './pipelines';
+import type { PullRequestExtrasLoader } from './pullRequestExtras';
 import { WorkItemsStore } from './workItemsStore';
 
 const MS_PER_SECOND = 1000;
@@ -49,10 +48,8 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
   private ticker?: NodeJS.Timeout;
   private polling = false;
   private myId?: Promise<string>;
-  /** Types of the work items linked to PRs. They do not change: fetched once */
-  private readonly workItemTypes = new Map<number, string>();
 
-  constructor(private readonly store: WorkItemsStore) {}
+  constructor(private readonly store: WorkItemsStore, private readonly extras: PullRequestExtrasLoader) {}
 
   /** The cards to show, with whether their branch can be checked out, right now */
   models(): { items: MyPullRequestModel[]; hiddenDrafts: number } {
@@ -154,60 +151,13 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
 
   private async fetchPollExtras(client: AzdoClient, pr: AuthoredPullRequest, now: Date): Promise<PullRequestExtras> {
     if (pr.status === 'active') {
-      return this.fetchExtras(client, pr);
+      return this.extras.fetch(client, pr);
     }
     if (!isCompletedRecently(pr, now)) {
       return { runs: [] };
     }
     const threads = await client.getPullRequestThreads(pr.repository.id, pr.pullRequestId).catch(() => undefined);
     return { threads, runs: [] };
-  }
-
-  private async fetchExtras(client: AzdoClient, pr: AuthoredPullRequest): Promise<PullRequestExtras> {
-    const { id: repositoryId, project } = pr.repository;
-    const id = pr.pullRequestId;
-    // Each part fails alone: the card is shown without it
-    const [evaluations, threads, workItems, runs] = await Promise.all([
-      client.getPolicyEvaluations(project.id, id).catch(() => undefined),
-      client.getPullRequestThreads(repositoryId, id).catch(() => undefined),
-      this.fetchWorkItems(client, repositoryId, id),
-      // The runs of the PRs followed by the store are read from it when the cards are built
-      this.store.runsOf(id) ??
-        client
-          .getPullRequestBuilds(id)
-          .then((builds) => runDetailsLoader.enrich(client, latestRuns(builds)))
-          .catch(() => []),
-    ]);
-    return { evaluations, unresolvedThreads: threads && countUnresolvedThreads(threads), threads, workItems, runs };
-  }
-
-  /** Linked work items with their type. Undefined when they cannot be told: the Bug warning is skipped */
-  private async fetchWorkItems(
-    client: AzdoClient,
-    repositoryId: string,
-    pullRequestId: number
-  ): Promise<PullRequestExtras['workItems']> {
-    try {
-      const ids = await client.getPullRequestWorkItemIds(repositoryId, pullRequestId);
-      const unknown = ids.filter((id) => !this.workItemTypes.has(id));
-      for (const id of unknown) {
-        // The store already knows the work items assigned to the user
-        const type = this.store.find(id)?.workItem.type;
-        if (type) {
-          this.workItemTypes.set(id, type);
-        }
-      }
-      const missing = unknown.filter((id) => !this.workItemTypes.has(id));
-      if (missing.length) {
-        (await client.getWorkItemTypes(missing)).forEach((type, id) => this.workItemTypes.set(id, type));
-      }
-      return ids.flatMap((id) => {
-        const type = this.workItemTypes.get(id);
-        return type ? [{ id, type }] : [];
-      });
-    } catch {
-      return undefined;
-    }
   }
 
   /** Name of the repository open in VS Code and its checked out branch */

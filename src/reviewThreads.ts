@@ -70,6 +70,22 @@ export function isOpen(observation: Pick<Observation, 'status'>): boolean {
   return OPEN_STATUSES.includes(observation.status);
 }
 
+/** How many of the user's observations are still open, and whether someone answered in any of them */
+export interface OpenObservations {
+  open: number;
+  /** In an open observation, someone else wrote after the last comment of the user */
+  answered: boolean;
+}
+
+export function summarizeOpenObservations(observations: Observation[], myId: string): OpenObservations {
+  const open = observations.filter(isOpen);
+  const answered = open.some(({ comments }) => {
+    const lastOwn = comments.map((comment) => comment.authorId).lastIndexOf(myId);
+    return comments.slice(lastOwn + 1).some((comment) => comment.authorId !== myId);
+  });
+  return { open: open.length, answered };
+}
+
 const STATUS_NAMES: Partial<Record<string, string>> = {
   fixed: 'Resolved',
   wontFix: "Won't fix",

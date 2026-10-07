@@ -25,6 +25,7 @@ import { PipelineStatusBar } from './pipelineStatusBar';
 import { PipelineWatcher } from './pipelineWatcher';
 import { PullRequestNotifier } from './pullRequestNotifier';
 import { ReviewStatusBar } from './reviewStatusBar';
+import { PullRequestExtrasLoader } from './pullRequestExtras';
 import { CHECKOUT_REVIEW_COMMAND, ReviewRequestsWatcher } from './reviewRequestsWatcher';
 import { WorkItemDetailsPanels } from './workItemDetails';
 import { WorkItemEntry, WorkItemsStore } from './workItemsStore';
@@ -85,9 +86,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const dependencyMap = new DependencyMapPanel(context.extensionUri, store);
   const pipelineStatusBar = new PipelineStatusBar(store);
   const currentWorkItemStatusBar = new CurrentWorkItemStatusBar(git, store);
-  const reviewRequests = new ReviewRequestsWatcher(context.globalState, store);
+  // One loader for both PR boxes: they share what it caches
+  const pullRequestExtras = new PullRequestExtrasLoader(store);
+  const reviewRequests = new ReviewRequestsWatcher(context.globalState, store, pullRequestExtras);
   const reviewStatusBar = new ReviewStatusBar(reviewRequests);
-  const myPullRequests = new MyPullRequestsWatcher(store);
+  const myPullRequests = new MyPullRequestsWatcher(store, pullRequestExtras);
   const coverageRecords = new CoverageRecordsStore(context.globalState);
   const pipelineWatcher = new PipelineWatcher(store, myPullRequests, coverageRecords);
   const view = new WorkItemsViewProvider(context.extensionUri, store, reviewRequests, myPullRequests, coverageRecords);

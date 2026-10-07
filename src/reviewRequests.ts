@@ -1,21 +1,29 @@
 /** Pull requests waiting for the user's review, and the notifications about them. Pure, so no "vscode" import */
+import type { ReviewDetails } from './reviewCard';
 
 export interface ReviewerPullRequest {
   pullRequestId: number;
   title: string;
-  status: string;
+  status: 'abandoned' | 'active' | 'completed' | 'notSet';
   isDraft: boolean;
   creationDate: string;
   createdBy: { id: string; displayName: string };
   targetRefName: string;
   sourceRefName: string;
-  repository: { id: string; name: string };
+  repository: { id: string; name: string; project: { id: string } };
   webUrl: string;
+  /** Markdown; the list API may cut it */
+  description?: string;
+  mergeStatus?: string;
+  /** Present while auto-complete is set */
+  autoCompleteSetBy?: { id?: string };
+  completionOptions?: { deleteSourceBranch?: boolean; transitionWorkItems?: boolean; mergeStrategy?: string };
   reviewers: {
     id?: string;
     displayName: string;
     vote: number;
     isRequired?: boolean;
+    isContainer?: boolean;
     hasDeclined?: boolean;
   }[];
 }
@@ -180,6 +188,8 @@ export function describeTimeLeft(request: Pick<ReviewRequest, 'publishedAt'>, no
 
 /** A review request as shown in the views */
 export interface ReviewRequestModel extends ReviewRequest {
+  /** What a reviewer needs to know about the PR. Undefined until the PR is checked in depth */
+  details?: ReviewDetails;
   urgency: ReviewUrgency;
   /** "5 h left", "overdue by 3 h" */
   timeLeft: string;

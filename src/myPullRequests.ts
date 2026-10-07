@@ -118,7 +118,7 @@ function plural(count: number, noun: string): string {
 }
 
 /** Approvals (approved, or approved with suggestions) of people: groups vote through their members */
-function countApprovals(pr: AuthoredPullRequest, creatorVoteCounts: boolean): number {
+export function countApprovals(pr: AuthoredPullRequest, creatorVoteCounts: boolean): number {
   return pr.reviewers.filter(
     (reviewer) =>
       !reviewer.isContainer &&
@@ -227,7 +227,7 @@ export interface WarningOptions {
 export const DEFAULT_WARNING_OPTIONS: WarningOptions = { minimumRequiredReviewers: 2 };
 
 /** The team rules a published PR breaks. Never for drafts nor for PRs that are not active */
-function ruleWarnings(
+export function ruleWarnings(
   pr: AuthoredPullRequest,
   extras: Pick<PullRequestExtras, 'workItems'>,
   options: WarningOptions
@@ -257,19 +257,18 @@ function ruleWarnings(
   return warnings.map((text) => ({ text, severity: 'warning' as const }));
 }
 
-/** Mistakes of the auto-complete settings and rules of the team the PR breaks, the most serious first */
-export function pullRequestWarnings(
+export const BUG_AUTOCOMPLETE_WARNING =
+  "Auto-complete shouldn't complete the linked Bug: Only testers have that prerogative.";
+
+/** Mistakes of the auto-complete settings: only while auto-complete is set */
+export function autoCompleteWarnings(
   pr: AuthoredPullRequest,
-  extras: Pick<PullRequestExtras, 'workItems'>,
-  options: WarningOptions = DEFAULT_WARNING_OPTIONS
+  extras: Pick<PullRequestExtras, 'workItems'>
 ): PullRequestWarning[] {
   const warnings: PullRequestWarning[] = [];
   if (pr.autoCompleteSetBy) {
     if (pr.completionOptions?.transitionWorkItems === true && extras.workItems?.some((item) => item.type === 'Bug')) {
-      warnings.push({
-        text: "Auto-complete shouldn't complete the linked Bug: Only testers have that prerogative.",
-        severity: 'error',
-      });
+      warnings.push({ text: BUG_AUTOCOMPLETE_WARNING, severity: 'error' });
     }
     if (pr.completionOptions?.deleteSourceBranch !== true) {
       warnings.push({
@@ -278,7 +277,16 @@ export function pullRequestWarnings(
       });
     }
   }
-  return [...warnings, ...ruleWarnings(pr, extras, options)];
+  return warnings;
+}
+
+/** Mistakes of the auto-complete settings and rules of the team the PR breaks, the most serious first */
+export function pullRequestWarnings(
+  pr: AuthoredPullRequest,
+  extras: Pick<PullRequestExtras, 'workItems'>,
+  options: WarningOptions = DEFAULT_WARNING_OPTIONS
+): PullRequestWarning[] {
+  return [...autoCompleteWarnings(pr, extras), ...ruleWarnings(pr, extras, options)];
 }
 
 /**
@@ -337,6 +345,8 @@ export function voteKind(reviewer: Pick<AuthoredReviewer, 'hasDeclined' | 'vote'
 
 export interface ReviewerModel {
   name: string;
+  /** The user of the extension (only set in the cards of the PRs to review) */
+  isMe?: boolean;
   vote: VoteKind;
   isRequired: boolean;
   /** A group (e.g. a team): it votes through its members */
@@ -344,7 +354,7 @@ export interface ReviewerModel {
 }
 
 /** The author is left out: they appear in the reviewers when they added themselves. Required ones first */
-function reviewerModels(pr: AuthoredPullRequest): ReviewerModel[] {
+export function reviewerModels(pr: AuthoredPullRequest, myId?: string): ReviewerModel[] {
   return pr.reviewers
     .filter((reviewer) => reviewer.id !== pr.createdBy.id)
     .map((reviewer) => ({
@@ -352,8 +362,14 @@ function reviewerModels(pr: AuthoredPullRequest): ReviewerModel[] {
       vote: voteKind(reviewer),
       isRequired: !!reviewer.isRequired,
       isContainer: !!reviewer.isContainer,
+      ...(myId && reviewer.id === myId ? { isMe: true } : {}),
     }))
-    .sort((a, b) => Number(b.isRequired) - Number(a.isRequired) || Number(a.isContainer) - Number(b.isContainer));
+    .sort(
+      (a, b) =>
+        Number(!!b.isMe) - Number(!!a.isMe) ||
+        Number(b.isRequired) - Number(a.isRequired) ||
+        Number(a.isContainer) - Number(b.isContainer)
+    );
 }
 
 export interface MyPullRequestModel {

@@ -6,6 +6,7 @@ import { BuildRun, pullRequestBranch } from './pipelines';
 import type { RawFailedResult, RawTestRun, RawTimelineRecord, RunFailures } from './runDetails';
 import { imageMimeType, isOrganizationUrl } from './richTextImages';
 import { AuthoredPullRequest, PolicyEvaluation, RawPolicyEvaluation, toPolicyEvaluation } from './myPullRequests';
+import { countChangedFiles } from './reviewCard';
 import { ReviewerPullRequest } from './reviewRequests';
 import { ThreadResponse } from './reviewThreads';
 import { flattenIterations, IterationNode, ScheduledIteration } from './schedule';
@@ -622,6 +623,35 @@ export class AzdoClient {
       this.url(`git/repositories/${repositoryId}/pullRequests/${pullRequestId}/threads`)
     );
     return result.value;
+  }
+
+  /** ID of the latest iteration (push) of the PR; undefined when it has none */
+  async getLastIterationId(repositoryId: string, pullRequestId: number): Promise<number | undefined> {
+    const result = await this.request<{ value: { id: number }[] }>(
+      this.url(`git/repositories/${repositoryId}/pullRequests/${pullRequestId}/iterations`)
+    );
+    return result.value.reduce<number | undefined>((last, { id }) => Math.max(last ?? id, id), undefined);
+  }
+
+  /**
+   * Files changed in an iteration, counted up to `limit`. The API has no total: it pages the changes, so the
+   * first `limit + 1` are asked and `more` tells there were others
+   */
+  async getIterationChangeCount(
+    repositoryId: string,
+    pullRequestId: number,
+    iterationId: number,
+    limit: number
+  ): Promise<{ count: number; more: boolean }> {
+    const result = await this.request<{ changeEntries?: unknown[]; nextSkip?: number }>(
+      this.url(
+        `git/repositories/${repositoryId}/pullRequests/${pullRequestId}/iterations/${iterationId}/changes?$top=${
+          limit + 1
+        }`
+      )
+    );
+    const { count, capped } = countChangedFiles(result.changeEntries?.length ?? 0, !!result.nextSkip, limit);
+    return { count, more: capped };
   }
 
   /** Text comments of the PR (system messages and deleted comments are left out) */

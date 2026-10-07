@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import { AzdoClient } from './azdoClient';
-import { resolveContext, SECTION } from './config';
+import { resolveContext, SECTION, settings as extensionSettings } from './config';
+import { myPullRequestSettings } from './myPullRequestsWatcher';
+import type { PullRequestExtras } from './myPullRequests';
+import type { PullRequestExtrasLoader } from './pullRequestExtras';
+import { FilesChanged, MAX_COUNTED_FILES, toReviewDetails } from './reviewCard';
 import {
   describeReviewEvent,
   describeReviews,
@@ -29,6 +33,13 @@ import {
   toStoredObservations,
 } from './reviewThreads';
 import { WorkItemsStore } from './workItemsStore';
+
+/** What is fetched about a PR to review besides the PR itself */
+interface ReviewCardData {
+  pr: ReviewerPullRequest;
+  extras: PullRequestExtras;
+  filesChanged?: FilesChanged;
+}
 
 const MS_PER_SECOND = 1000;
 /** Time left is refreshed this often in the views, without checking Azure DevOps */
@@ -89,17 +100,42 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
   private ticker?: NodeJS.Timeout;
   private polling = false;
   private myId?: Promise<string>;
+  /** The user, once known */
+  private userId?: string;
+  /** What each card shows besides its urgency; a part is missing when it could not be fetched */
+  private details = new Map<number, ReviewCardData>();
+  /** Files changed per PR in its latest iteration: a new push is the only thing that changes them */
+  private readonly filesChanged = new Map<number, { iteration: number; files: FilesChanged }>();
 
-  constructor(private readonly state: vscode.Memento, private readonly store: WorkItemsStore) {}
+  constructor(
+    private readonly state: vscode.Memento,
+    private readonly store: WorkItemsStore,
+    private readonly extras: PullRequestExtrasLoader
+  ) {}
 
   /** The requests with their urgency, time left and whether their branch can be checked out, right now */
   models(): ReviewRequestModel[] {
     const local = this.localRepository();
+    const { baseBranch } = extensionSettings();
+    const { minimumRequiredReviewers } = myPullRequestSettings();
     return toReviewModels(this.requests, new Date(), reviewSettings()).map((model) => {
       const canCheckout = !!local && model.repository.toLowerCase() === local.name.toLowerCase();
       const isCurrentBranch = canCheckout && local.head === model.sourceBranch;
+      const data = this.details.get(model.id);
       return {
         ...model,
+        details:
+          data && this.userId
+            ? toReviewDetails(
+                {
+                  ...data,
+                  myId: this.userId,
+                  // The store follows the PRs linked to the work items and refreshes their runs every few seconds
+                  extras: { ...data.extras, runs: this.store.runsOf(model.id) ?? data.extras.runs },
+                },
+                { baseBranch, minimumRequiredReviewers }
+              )
+            : undefined,
         canCheckout,
         isCurrentBranch,
         worktree: canCheckout && !isCurrentBranch ? this.store.worktreeFor(model.sourceBranch)?.path : undefined,
@@ -134,6 +170,7 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
       const { client } = resolveContext(this.store.repository());
       this.myId ??= client.getMyId();
       const myId = await this.myId;
+      this.userId = myId;
       const settings = reviewSettings();
       const scope = `${client.organization}/${client.project}`;
       const pullRequests = (await client.getPullRequestsToReview(myId)).filter((pr) => pr.createdBy.id !== myId);
@@ -152,6 +189,8 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
       this.requests = withPublishedDates(requests, publishedDates);
       this.status = 'ready';
       this.error = undefined;
+      // The cards are shown right away; their details come as they are fetched
+      this.changed.fire();
 
       const requestsKey = `reviewRequests.v2:${scope}`;
       // Read just before comparing: another window may have stored a newer state meanwhile
@@ -171,6 +210,7 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
         this.notify(events.filter((event) => settings.notifications.includes(event.kind)));
       }
       this.notifyObservations(observationEvents.filter((event) => settings.notifications.includes(event.kind)));
+      await this.loadDetails(client, pullRequests, threads);
     } catch (error) {
       this.myId = undefined;
       this.status = 'error';
@@ -178,6 +218,55 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
     } finally {
       this.polling = false;
       this.changed.fire();
+    }
+  }
+
+  /** Details of the PRs waiting for review. What cannot be fetched is left out of the card, not of the others */
+  private async loadDetails(
+    client: AzdoClient,
+    pullRequests: ReviewerPullRequest[],
+    threads: Map<number, ThreadResponse[]>
+  ): Promise<void> {
+    const waiting = pullRequests.filter(({ pullRequestId }) => this.requests.some(({ id }) => id === pullRequestId));
+    const entries = await Promise.all(
+      waiting.map(async (pr): Promise<[number, ReviewCardData]> => {
+        const [extras, filesChanged] = await Promise.all([
+          this.extras.fetch(client, pr, threads.get(pr.pullRequestId)),
+          this.fetchFilesChanged(client, pr),
+        ]);
+        return [pr.pullRequestId, { pr, extras, filesChanged }];
+      })
+    );
+    this.details = new Map(entries);
+    for (const id of [...this.filesChanged.keys()]) {
+      if (!this.details.has(id)) {
+        this.filesChanged.delete(id);
+      }
+    }
+  }
+
+  /** Files changed in the latest iteration; asked again only when a new iteration appears */
+  private async fetchFilesChanged(client: AzdoClient, pr: ReviewerPullRequest): Promise<FilesChanged | undefined> {
+    try {
+      const iteration = await client.getLastIterationId(pr.repository.id, pr.pullRequestId);
+      if (iteration === undefined) {
+        return undefined;
+      }
+      const known = this.filesChanged.get(pr.pullRequestId);
+      if (known?.iteration === iteration) {
+        return known.files;
+      }
+      const { count, more } = await client.getIterationChangeCount(
+        pr.repository.id,
+        pr.pullRequestId,
+        iteration,
+        MAX_COUNTED_FILES
+      );
+      const files = { count, capped: more };
+      this.filesChanged.set(pr.pullRequestId, { iteration, files });
+      return files;
+    } catch {
+      return undefined;
     }
   }
 
