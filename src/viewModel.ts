@@ -152,7 +152,8 @@ export type WebviewMessage =
   | { type: 'setShowDrafts'; show: boolean }
   | { type: 'ready' }
   | { type: 'refresh' }
-  | { type: 'setFilter'; filter: FilterModel };
+  | { type: 'setFilter'; filter: FilterModel }
+  | { type: 'setLayout'; layout: Layout };
 
 /** Buttons of a work item: run by id */
 export type WorkItemActionMessage = Exclude<

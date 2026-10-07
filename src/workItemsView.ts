@@ -181,6 +181,12 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       case 'openReviewRequest':
         await vscode.env.openExternal(vscode.Uri.parse(message.url));
         return;
+      case 'setLayout':
+        // Personal, like the filters: the view is posted again when the setting changes
+        await vscode.workspace
+          .getConfiguration(SECTION)
+          .update('layout', message.layout, vscode.ConfigurationTarget.Global);
+        return;
       case 'setFilter': {
         // Filters are personal: saved in the user settings. Each write updates settings.json and
         // re-renders the view, so only the keys that changed are written

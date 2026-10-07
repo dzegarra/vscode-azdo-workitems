@@ -62,8 +62,39 @@ button {
   padding-top: 10px;
 }
 
-.list-title {
+.list-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0 0 6px;
+}
+
+.list-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+/* Compact / large: the current one looks pressed */
+.layout-switch {
+  display: inline-flex;
+  margin-right: 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.layout-switch .icon-button {
+  border-radius: 0;
+}
+
+.layout-switch .icon-button[aria-pressed='true'] {
+  color: var(--vscode-foreground);
+  background: color-mix(in srgb, var(--vscode-focusBorder) 30%, transparent);
+}
+
+.list-title {
+  margin: 0;
   color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground));
   font-size: 11px;
   font-weight: 700;

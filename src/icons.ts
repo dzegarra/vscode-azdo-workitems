@@ -7,6 +7,10 @@ export const ICONS = {
     '<path d="M8 1.5H5.75a2.25 2.25 0 0 0 0 4.5H8zM8 1.5h2.25a2.25 2.25 0 0 1 0 4.5H8zM8 6H5.75a2.25 2.25 0 0 0 0 4.5H8zM8 10.5H5.75A2.25 2.25 0 1 0 8 12.75z"/><circle cx="10.25" cy="8.25" r="2.25"/>',
   external:
     '<path d="M9.5 2.5h4v4M13.5 2.5 7.5 8.5M12 9.5v3.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-8a.5.5 0 0 1 .5-.5H7"/>',
+  rows: '<path d="M2.5 4h11M2.5 8h11M2.5 12h11"/>',
+  cards: '<rect x="2.5" y="2.5" width="11" height="4.5" rx="1"/><rect x="2.5" y="9" width="11" height="4.5" rx="1"/>',
+  expandAll: '<path d="m4 3.5 4 3.5 4-3.5M4 9l4 3.5L12 9"/>',
+  collapseAll: '<path d="m4 7 4-3.5L12 7M4 12.5 8 9l4 3.5"/>',
   chevron: '<path d="m6 3.5 4.5 4.5L6 12.5"/>',
   caretDown: '<path d="m4 6.5 4 4 4-4"/>',
   clock: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/>',

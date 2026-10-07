@@ -1192,6 +1192,25 @@ function renderList(current: ViewModel): string {
 
 /* ---------- Page ---------- */
 
+/** Next to the "My Work Items" title: the layout of the cards and folding all the task lists */
+function renderListTools(current: ViewModel): string {
+  const layoutButton = (layout: ViewModel['layout'], iconName: 'cards' | 'rows', label: string) =>
+    `<button class="icon-button" data-action="setLayout" data-layout="${layout}" aria-pressed="${
+      current.layout === layout
+    }" title="${label}" aria-label="${label}">${icon(iconName)}</button>`;
+  return `<span class="layout-switch" role="group" aria-label="Layout of the work items">${layoutButton(
+    'compact',
+    'rows',
+    'Compact layout'
+  )}${layoutButton('large', 'cards', 'Large layout')}</span>
+    <button class="icon-button" data-action="expandAllTasks" title="Expand all tasks" aria-label="Expand all tasks">${icon(
+      'expandAll'
+    )}</button>
+    <button class="icon-button" data-action="collapseAllTasks" title="Collapse all tasks" aria-label="Collapse all tasks">${icon(
+      'collapseAll'
+    )}</button>`;
+}
+
 function render(): void {
   const app = document.getElementById('app');
   if (!app || !model) {
@@ -1200,7 +1219,7 @@ function render(): void {
   if (!app.childElementCount) {
     app.innerHTML = `<div id="panels"><div id="reviews"></div><div id="my-prs"></div></div>
       <div class="toolbar">
-        <h2 class="list-title">My Work Items</h2>
+        <div class="list-head"><h2 class="list-title">My Work Items</h2><span id="list-tools" class="list-tools"></span></div>
         <input id="search" type="search" placeholder="Search by ID, title or branch" aria-label="Search work items">
       </div>
       <p id="scope" class="scope"></p>
@@ -1222,6 +1241,7 @@ function render(): void {
   (app.querySelector('.progress') as HTMLElement).hidden = model.status !== 'loading';
   (document.getElementById('filters') as HTMLElement).innerHTML = cardItems(model).length ? renderFilters(model) : '';
   (document.getElementById('list') as HTMLElement).innerHTML = renderList(model);
+  (document.getElementById('list-tools') as HTMLElement).innerHTML = renderListTools(model);
   (document.getElementById('reviews') as HTMLElement).innerHTML = renderReviews(model);
   (document.getElementById('my-prs') as HTMLElement).innerHTML = renderMyPullRequests(model);
   sizeReviewBars();
@@ -1334,7 +1354,7 @@ document.addEventListener('click', (event) => {
   if (!target || ((event.target as HTMLElement).closest('.pred-pop') && !target.closest('.pred-pop'))) {
     return;
   }
-  const { action, filter, value, id, pr, run, url, path, tests, kind } = target.dataset;
+  const { action, filter, value, id, pr, run, url, path, tests, kind, layout } = target.dataset;
   if (filter && value !== undefined) {
     toggleFilter(filter as FilterKind, value);
   } else if ((action === 'checkoutMenu' || action === 'openWorktree' || action === 'worktreeMenu') && kind && id) {
@@ -1354,6 +1374,15 @@ document.addEventListener('click', (event) => {
     if (fromChevron) {
       document.querySelector<HTMLElement>(`.card-chevron[data-id="${id}"]`)?.focus();
     }
+  } else if (action === 'setLayout' && (layout === 'compact' || layout === 'large')) {
+    // Shown right away; the extension saves it and posts the view again
+    if (model && model.layout !== layout) {
+      model = { ...model, layout };
+      render();
+      post({ type: 'setLayout', layout });
+    }
+  } else if (action === 'expandAllTasks' || action === 'collapseAllTasks') {
+    setTasksExpanded(action === 'expandAllTasks');
   } else if (action === 'toggleTasks' && id) {
     toggleTasks(Number(id));
   } else if (action === 'toggleReviews') {

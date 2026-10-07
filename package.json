@@ -192,29 +192,11 @@
           "group": "navigation@3"
         },
         {
-          "command": "azdoWorkItems.useCompactLayout",
-          "when": "view == azdoWorkItems.myItems && azdoWorkItems.layout == large",
-          "group": "navigation@4"
-        },
-        {
-          "command": "azdoWorkItems.useLargeLayout",
-          "when": "view == azdoWorkItems.myItems && azdoWorkItems.layout == compact",
-          "group": "navigation@4"
-        },
-        {
           "command": "azdoWorkItems.selectTeams",
           "when": "view == azdoWorkItems.myItems"
         },
         {
           "command": "azdoWorkItems.removeWorktrees",
-          "when": "view == azdoWorkItems.myItems"
-        },
-        {
-          "command": "azdoWorkItems.expandTasks",
-          "when": "view == azdoWorkItems.myItems"
-        },
-        {
-          "command": "azdoWorkItems.collapseTasks",
           "when": "view == azdoWorkItems.myItems"
         }
       ],

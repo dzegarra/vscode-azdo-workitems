@@ -47,14 +47,14 @@ Within each state, cards are sorted by priority, then severity. Use the **Type**
 
 ### Layouts
 
-The cards come in two layouts, switched with the button of the view title bar (`azdoWorkItems.layout`):
+The cards come in two layouts, switched with the **Compact / Large** buttons next to the **My Work Items** title (`azdoWorkItems.layout`):
 
 - **Compact** (default): two lines per work item. The first one has the type, ID, title and state; the second one only the signals that apply: priority / severity, branch (`current`, or `not deleted` for finished work items), main PR state, CI state of the main PR, task progress (`☑ 2/3`) and alerts (`⚠ 2`). Hover a signal for details. Click a row to expand it into the large card, with its buttons and tasks; click its header to fold it back.
 - **Large**: the full cards described below.
 
 ### Tasks
 
-The tasks of a card are folded under a `Tasks 2/3` line with a progress bar: Done tasks out of all the tasks, without the Removed ones. Click it to show them. A card whose alerts are about its tasks shows them unfolded. **Expand All Tasks** / **Collapse All Tasks** are in the view menu.
+The tasks of a card are folded under a `Tasks 2/3` line with a progress bar: Done tasks out of all the tasks, without the Removed ones. Click it to show them. A card whose alerts are about its tasks shows them unfolded. The **Expand all tasks** / **Collapse all tasks** buttons next to the **My Work Items** title fold or unfold every card.
 
 Card actions:
 
