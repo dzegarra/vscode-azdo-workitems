@@ -181,11 +181,15 @@ When a run fails, the notification says why ("PR 13770 failed: 1 test failed (Ot
 
 The extension checks the pull requests you created (every 2 minutes by default) and shows a notification when:
 
-- someone else **comments** on one of them (several comments in the same check are grouped),
-- a reviewer **votes** (approved, approved with suggestions, waiting for the author, rejected),
+- someone else **comments** on one of them: a new comment on a file or on the PR, or a reply (to one of your comments or in another thread). Several comments in the same check are grouped;
+- a comment is **reopened** (it was resolved, won't fix, closed or by design, and is active again);
+- a person **joins or leaves the required reviewers** (added, removed, declined, made required or optional), saying who did it, e.g. "Szymon Kwasek EXT added themselves as a required reviewer of PR 13571";
+- a reviewer **votes** (approved, approved with suggestions, waiting for the author, rejected);
 - it is **merged**.
 
-Your own comments and votes, system messages and vote resets are ignored. When more than 3 updates arrive at once, a single summary notification lists them. Updates that happened while VS Code was closed are notified when it starts. Run **Check My Pull Requests Now** from the command palette to check immediately.
+Notifications about comments have **Open Comment**, which opens the PR at that thread. Choose the events with `azdoWorkItems.notifications.events` (`comments`, `reopened`, `reviewers`, `vote`, `merged`).
+
+Your own comments, votes and reviewer changes, system messages and vote resets are ignored. When more than 3 updates arrive at once, a single summary notification lists them. Updates that happened while VS Code was closed are notified when it starts. Run **Check My Pull Requests Now** from the command palette to check immediately.
 
 ## Pull requests waiting for my review
 

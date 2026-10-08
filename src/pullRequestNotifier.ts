@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { AzdoClient, PullRequestDetails } from './azdoClient';
 import { resolveContext, SECTION } from './config';
 import {
+  commentThreadId,
   describeEvent,
   detectEvents,
   PullRequestEvent,
@@ -10,6 +11,8 @@ import {
   StoredSnapshot,
   toStored,
 } from './pullRequestEvents';
+import { snapshotThreads } from './pullRequestThreadSnapshots';
+import { threadUrl } from './reviewThreads';
 import { WorkItemsStore } from './workItemsStore';
 
 const MS_PER_SECOND = 1000;
@@ -20,21 +23,22 @@ const MAX_NOTIFICATIONS = 3;
 function notificationSettings() {
   const config = vscode.workspace.getConfiguration(`${SECTION}.notifications`);
   return {
-    events: config.get<PullRequestEventKind[]>('events', ['comments', 'vote', 'merged']),
+    events: config.get<PullRequestEventKind[]>('events', ['comments', 'vote', 'merged', 'reviewers', 'reopened']),
     intervalSeconds: Math.max(MIN_INTERVAL_SECONDS, config.get<number>('pollIntervalSeconds', 120)),
   };
 }
 
+/** Comment events open their thread; the others (or "Open PR") the PR */
+function eventUrl(event: PullRequestEvent, preferComment: boolean): string {
+  const threadId = commentThreadId(event);
+  return preferComment && threadId !== undefined ? threadUrl(event.pullRequest.url, threadId) : event.pullRequest.url;
+}
+
 async function toSnapshot(client: AzdoClient, pr: PullRequestDetails): Promise<PullRequestSnapshot> {
   // Only active PRs get new comments; skipping the others saves requests
-  const comments =
+  const threads =
     pr.status === 'active'
-      ? (await client.getPullRequestComments(pr.repository.id, pr.pullRequestId)).map((comment) => ({
-          key: `${comment.threadId}:${comment.id}`,
-          authorId: comment.authorId,
-          author: comment.author,
-          content: comment.content,
-        }))
+      ? snapshotThreads(await client.getPullRequestThreads(pr.repository.id, pr.pullRequestId))
       : undefined;
   return {
     id: pr.pullRequestId,
@@ -43,13 +47,19 @@ async function toSnapshot(client: AzdoClient, pr: PullRequestDetails): Promise<P
     url: pr.webUrl,
     reviewers: pr.reviewers
       .filter((reviewer) => reviewer.id && !reviewer.isContainer)
-      .map((reviewer) => ({ id: reviewer.id as string, name: reviewer.displayName, vote: reviewer.vote })),
-    comments,
+      .map((reviewer) => ({
+        id: reviewer.id as string,
+        name: reviewer.displayName,
+        vote: reviewer.vote,
+        required: !!reviewer.isRequired,
+        declined: !!reviewer.hasDeclined,
+      })),
+    ...threads,
   };
 }
 
 /**
- * Polls the PRs created by the user and notifies new comments, votes and merges.
+ * Polls the PRs created by the user and notifies new comments, reopened comments, reviewer changes, votes and merges.
  * The last snapshot is kept in the global state: events that happened while VS Code was closed
  * are notified on startup, and windows sharing the state do not notify the same event twice
  */
@@ -126,9 +136,11 @@ export class PullRequestNotifier implements vscode.Disposable {
   }
 
   private async show(event: PullRequestEvent): Promise<void> {
-    const open = await vscode.window.showInformationMessage(describeEvent(event), 'Open PR');
-    if (open) {
-      await vscode.env.openExternal(vscode.Uri.parse(event.pullRequest.url));
+    const threadId = commentThreadId(event);
+    const buttons = threadId === undefined ? ['Open PR'] : ['Open Comment', 'Open PR'];
+    const picked = await vscode.window.showInformationMessage(describeEvent(event), ...buttons);
+    if (picked) {
+      await vscode.env.openExternal(vscode.Uri.parse(eventUrl(event, picked === 'Open Comment')));
     }
   }
 
@@ -142,8 +154,8 @@ export class PullRequestNotifier implements vscode.Disposable {
       return;
     }
     const picked = await vscode.window.showQuickPick(
-      events.map((event) => ({ label: describeEvent(event), url: event.pullRequest.url })),
-      { title: 'Updates on your pull requests', placeHolder: 'Select one to open the PR' }
+      events.map((event) => ({ label: describeEvent(event), url: eventUrl(event, true) })),
+      { title: 'Updates on your pull requests', placeHolder: 'Select one to open it' }
     );
     if (picked) {
       await vscode.env.openExternal(vscode.Uri.parse(picked.url));

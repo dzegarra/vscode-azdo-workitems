@@ -87,6 +87,7 @@ export interface PullRequestReviewer {
   displayName: string;
   vote: number;
   isRequired?: boolean;
+  hasDeclined?: boolean;
   /** Groups (e.g. a team) vote through their members */
   isContainer?: boolean;
 }

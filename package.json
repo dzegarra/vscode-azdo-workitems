@@ -524,19 +524,25 @@
             "enum": [
               "comments",
               "vote",
-              "merged"
+              "merged",
+              "reviewers",
+              "reopened"
             ],
             "enumDescriptions": [
-              "New comments from other people",
+              "New comments from other people, and replies to your comments",
               "Votes of the reviewers (approved, waiting for author, rejected…)",
-              "The PR is merged"
+              "The PR is merged",
+              "A person becomes a required reviewer, stops being a reviewer, declines to review, or switches between required and optional (changes made by you are not notified)",
+              "A resolved comment is reopened"
             ]
           },
           "uniqueItems": true,
           "default": [
             "comments",
             "vote",
-            "merged"
+            "merged",
+            "reviewers",
+            "reopened"
           ],
           "description": "Events of the pull requests you created that show a notification. Empty: no notifications."
         },

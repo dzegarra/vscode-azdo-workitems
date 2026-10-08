@@ -70,25 +70,6 @@ const MAX_MY_ACTIVE_PULL_REQUESTS = 100;
 /** Recently completed PRs of the user: the sidebar lists the last 24 hours of them */
 const MAX_MY_COMPLETED_PULL_REQUESTS = 10;
 
-export interface PullRequestComment {
-  threadId: number;
-  id: number;
-  authorId: string;
-  author: string;
-  content: string;
-}
-
-interface PullRequestThreadResponse {
-  id: number;
-  comments?: {
-    id: number;
-    author: { id: string; displayName: string };
-    content?: string;
-    commentType: string;
-    isDeleted?: boolean;
-  }[];
-}
-
 export interface GitRepository {
   id: string;
   name: string;
@@ -653,24 +634,6 @@ export class AzdoClient {
     );
     const { count, capped } = countChangedFiles(result.changeEntries?.length ?? 0, !!result.nextSkip, limit);
     return { count, more: capped };
-  }
-
-  /** Text comments of the PR (system messages and deleted comments are left out) */
-  async getPullRequestComments(repositoryId: string, pullRequestId: number): Promise<PullRequestComment[]> {
-    const result = await this.request<{ value: PullRequestThreadResponse[] }>(
-      this.url(`git/repositories/${repositoryId}/pullRequests/${pullRequestId}/threads`)
-    );
-    return result.value.flatMap((thread) =>
-      (thread.comments ?? [])
-        .filter((comment) => comment.commentType === 'text' && !comment.isDeleted)
-        .map((comment) => ({
-          threadId: thread.id,
-          id: comment.id,
-          authorId: comment.author.id,
-          author: comment.author.displayName,
-          content: comment.content ?? '',
-        }))
-    );
   }
 
   /** PR by ID, in any repository of the project */

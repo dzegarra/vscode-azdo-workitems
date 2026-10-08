@@ -10,6 +10,8 @@ export interface ThreadResponse {
   publishedDate: string;
   threadContext?: { filePath?: string } | null;
   properties?: Partial<Record<string, { $value?: unknown }>>;
+  /** People referenced by the properties of system threads, by the keys used there ("1", "2"…) */
+  identities?: Partial<Record<string, { id: string; displayName: string; isContainer?: boolean }>>;
   comments?: {
     id: number;
     author: { id: string; displayName: string };
