@@ -39,7 +39,10 @@ export async function runWorkItemAction(store: WorkItemsStore, message: WorkItem
       return;
     }
     case 'openPullRequest': {
-      const pr = entry?.pullRequests.find((p) => p.pullRequestId === message.pullRequestId);
+      // Task PRs may belong to tasks of other developers, which are not entries of the list
+      const pr =
+        entry?.pullRequests.find((p) => p.pullRequestId === message.pullRequestId) ??
+        (message.pullRequestId === undefined ? undefined : store.findPullRequest(message.pullRequestId));
       if (pr) {
         await vscode.env.openExternal(vscode.Uri.parse(pr.webUrl));
       }

@@ -354,7 +354,10 @@ export interface ReviewerModel {
 }
 
 /** The author is left out: they appear in the reviewers when they added themselves. Required ones first */
-export function reviewerModels(pr: AuthoredPullRequest, myId?: string): ReviewerModel[] {
+export function reviewerModels(
+  pr: Pick<AuthoredPullRequest, 'reviewers'> & { createdBy: { id?: string } },
+  myId?: string
+): ReviewerModel[] {
   return pr.reviewers
     .filter((reviewer) => reviewer.id !== pr.createdBy.id)
     .map((reviewer) => ({

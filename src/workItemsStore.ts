@@ -4,9 +4,10 @@ import { resolveContext, settings, DEFAULT_PULL_REQUEST_TASK_PATTERN } from './c
 import { GitAPI, pickRepository, Ref, REF_TYPE_HEAD, Repository } from './git';
 import { TeamIteration } from './iterations';
 import { branchBelongsToWorkItem } from './naming';
-import { isFinishedState } from './states';
+import { isFinishedState, stateCategory } from './states';
 import { openPredecessors } from './predecessors';
 import { ScheduledIteration } from './schedule';
+import { sortTaskPullRequests, TaskPullRequestModel, toTaskPullRequestModel } from './taskPullRequests';
 import { FilterModel, PullRequestModel, ViewModel, WorkItemModel } from './viewModel';
 import { runDetailsLoader } from './runDetailsLoader';
 import { isActive, latestRuns, RunModel } from './pipelines';
@@ -28,8 +29,15 @@ export interface WorkItemEntry {
   /** Branch of a finished work item that still exists (it should have been deleted after its PR was merged) */
   leftoverBranch?: LeftoverBranch;
   pullRequests: PullRequestDetails[];
+  /** Tasks under the work item that are not in the list (assigned to other people or in other iterations) */
+  otherTasks: OtherTaskEntry[];
   /** Work items that must be done before this one; undefined when they could not be loaded */
   predecessors?: WorkItem[];
+}
+
+export interface OtherTaskEntry {
+  workItem: WorkItem;
+  pullRequests: PullRequestDetails[];
 }
 
 export interface LeftoverBranch {
@@ -103,18 +111,45 @@ async function findLeftoverBranch(
   return local || remoteObjectId ? { name: branch, local, remoteObjectId } : undefined;
 }
 
-/** PRs linked to the work items, fetched once even when linked to several of them */
-async function fetchPullRequests(client: AzdoClient, workItems: WorkItem[]): Promise<Map<number, PullRequestDetails>> {
-  const ids = [...new Set(workItems.flatMap((wi) => wi.links.pullRequests.map((pr) => pr.id)))];
-  const results = await Promise.allSettled(ids.map((id) => client.getPullRequest(id)));
+interface PullRequestLink {
+  id: number;
+  projectId: string;
+}
+
+/**
+ * PRs of the given links, fetched once even when linked to several work items, one request per PR in parallel.
+ * The ones in another project are fetched through that project; the ones that fail are left out
+ */
+async function fetchPullRequests(
+  client: AzdoClient,
+  links: PullRequestLink[],
+  projectId: string
+): Promise<Map<number, PullRequestDetails>> {
+  const byId = new Map(links.map((link) => [link.id, link]));
+  const results = await Promise.allSettled(
+    [...byId.values()].map((link) =>
+      client.getPullRequest(
+        link.id,
+        link.projectId.toLowerCase() === projectId.toLowerCase() ? undefined : link.projectId
+      )
+    )
+  );
   const pullRequests = new Map<number, PullRequestDetails>();
   for (const result of results) {
-    // PRs of other projects or deleted repositories are ignored
+    // PRs of deleted repositories or inaccessible projects are ignored
     if (result.status === 'fulfilled') {
       pullRequests.set(result.value.pullRequestId, result.value);
     }
   }
   return pullRequests;
+}
+
+/** Child tasks of the work item that are not in the list, e.g. the ones assigned to other developers */
+function otherTasksOf(workItem: WorkItem, related: Map<number, WorkItem>, listed: Set<number>): WorkItem[] {
+  return workItem.links.childIds
+    .filter((id) => !listed.has(id))
+    .map((id) => related.get(id))
+    .filter((child): child is WorkItem => child?.type === 'Task' && stateCategory(child.state) !== 'removed');
 }
 
 /**
@@ -258,6 +293,8 @@ export class WorkItemsStore {
   iterations: TeamIteration[] = [];
   /** Dates of the iterations of the project, to rate the risk of the predecessors; undefined when not loaded */
   private schedule?: ScheduledIteration[];
+  /** Repository open in VS Code, in Azure DevOps; undefined until the first load */
+  private repositoryId?: string;
   /** CI runs of the followed PRs, by PR */
   private readonly tracker = new RunsTracker();
   private readonly followEmitter = new vscode.EventEmitter<void>();
@@ -340,6 +377,13 @@ export class WorkItemsStore {
 
   find(id: number): WorkItemEntry | undefined {
     return this.entries.find((entry) => entry.workItem.id === id);
+  }
+
+  /** A PR linked to a work item of the list or to one of their tasks, e.g. the ones assigned to other developers */
+  findPullRequest(pullRequestId: number): PullRequestDetails | undefined {
+    return this.entries
+      .flatMap((entry) => [entry.pullRequests, ...entry.otherTasks.map((task) => task.pullRequests)].flat())
+      .find((pr) => pr.pullRequestId === pullRequestId);
   }
 
   repository(): Repository | undefined {
@@ -431,22 +475,38 @@ export class WorkItemsStore {
         return client.getMyWorkItems(this.iterations.map(({ iteration }) => iteration.path));
       })(),
     ]);
+    const listed = new Set(workItems.map((workItem) => workItem.id));
+    const relatedRequest = fetchRelated(client, workItems);
     const [pullRequests, related, rules, predecessors, schedule] = await Promise.all([
-      fetchPullRequests(client, workItems),
-      fetchRelated(client, workItems),
+      // The PRs of the tasks of other developers are fetched with the ones of the work items, once their tasks are known
+      relatedRequest.then((relatedItems) =>
+        fetchPullRequests(
+          client,
+          [...workItems, ...workItems.flatMap((workItem) => otherTasksOf(workItem, relatedItems, listed))].flatMap(
+            (workItem) => workItem.links.pullRequests
+          ),
+          azdoRepository.project.id
+        )
+      ),
+      relatedRequest,
       alertRules(client),
       fetchPredecessors(client, workItems),
       // Without the schedule the predecessors are listed without their risk
       client.getIterationSchedule().catch(() => undefined),
     ]);
     this.schedule = schedule;
+    this.repositoryId = azdoRepository.id;
+    const pullRequestsOf = (item: WorkItem) =>
+      item.links.pullRequests.map((link) => pullRequests.get(link.id)).filter((pr): pr is PullRequestDetails => !!pr);
     const entries: WorkItemEntry[] = workItems.map((workItem) => {
       const parent = workItem.links.parentId === undefined ? undefined : related.get(workItem.links.parentId);
-      const itemPullRequests = workItem.links.pullRequests
-        .map((link) => pullRequests.get(link.id))
-        .filter((pr): pr is PullRequestDetails => !!pr);
+      const itemPullRequests = pullRequestsOf(workItem);
       return {
         workItem,
+        otherTasks: otherTasksOf(workItem, related, listed).map((task) => ({
+          workItem: task,
+          pullRequests: pullRequestsOf(task),
+        })),
         parent: parent && { id: parent.id, title: parent.title, type: parent.type },
         ...findBranch(workItem, branches, azdoRepository.id),
         pullRequests: itemPullRequests,
@@ -462,8 +522,26 @@ export class WorkItemsStore {
     return entries;
   }
 
+  /** PRs of a task as the popovers of their icons show them */
+  private taskPullRequests(pullRequests: PullRequestDetails[]): TaskPullRequestModel[] {
+    const context = { repositoryId: this.repositoryId, baseBranch: settings().baseBranch };
+    return sortTaskPullRequests(
+      pullRequests.map((pr) => toTaskPullRequestModel(pr, { ...context, runs: this.runs.get(pr.pullRequestId) }))
+    );
+  }
+
   private toModel(
-    { workItem, parent, alerts, branch, branchLocation, leftoverBranch, pullRequests, predecessors }: WorkItemEntry,
+    {
+      workItem,
+      parent,
+      alerts,
+      branch,
+      branchLocation,
+      leftoverBranch,
+      pullRequests,
+      predecessors,
+      otherTasks,
+    }: WorkItemEntry,
     currentBranch: string | undefined,
     completedStates: string[],
     levels: Map<number, WorkingOnLevel>
@@ -495,6 +573,15 @@ export class WorkItemsStore {
         .map((pr) => toPullRequestModel(pr, this.runs.get(pr.pullRequestId) ?? []))
         .sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.id - a.id),
       openPredecessors: predecessors && openPredecessors(workItem, predecessors, completedStates, this.schedule),
+      taskPullRequests: workItem.type === 'Task' ? this.taskPullRequests(pullRequests) : [],
+      otherTasks: otherTasks.map(({ workItem: task, pullRequests: taskPullRequests }) => ({
+        id: task.id,
+        title: task.title,
+        type: task.type,
+        state: task.state,
+        assignedTo: task.assignedTo,
+        taskPullRequests: this.taskPullRequests(taskPullRequests),
+      })),
     };
   }
 

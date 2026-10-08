@@ -45,6 +45,25 @@ describe('parseRelations', () => {
     });
   });
 
+  it('keeps the project and repository ids of the PRs, which may belong to another project', () => {
+    const links = parseRelations([
+      {
+        rel: 'ArtifactLink',
+        url: 'vstfs:///Git/PullRequestId/814d2323-fa38-46db-9485-ab17cc0911d5%2F2cdbf598-7c0d-425d-845b-d1e8bbf5bb9e%2F13713',
+      },
+      { rel: 'ArtifactLink', url: 'vstfs:///Git/PullRequestId/other-project%2Fother-repo%2F42' },
+      { rel: 'ArtifactLink', url: 'vstfs:///Git/PullRequestId/broken' },
+    ]);
+    expect(links.pullRequests).toEqual([
+      {
+        projectId: '814d2323-fa38-46db-9485-ab17cc0911d5',
+        repositoryId: '2cdbf598-7c0d-425d-845b-d1e8bbf5bb9e',
+        id: 13713,
+      },
+      { projectId: 'other-project', repositoryId: 'other-repo', id: 42 },
+    ]);
+  });
+
   it('handles work items without relations', () => {
     expect(parseRelations(undefined)).toEqual({
       childIds: [],

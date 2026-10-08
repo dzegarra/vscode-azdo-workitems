@@ -22,6 +22,7 @@ import { MyPullRequestModel, ReviewerModel, VoteKind } from '../myPullRequests';
 import { describeTeamRules } from '../reviewCard';
 import type { ReviewRequestModel } from '../reviewRequests';
 import { hasTaskAlerts, isTaskListOpen, taskProgress } from '../taskProgress';
+import { describeTaskPullRequest, splitTaskPullRequests, TaskPullRequestModel } from '../taskPullRequests';
 import { splitWorkingOn, workingOnBadge } from '../workingOn';
 import type {
   CheckoutKind,
@@ -467,13 +468,161 @@ function isTasksOpen(item: WorkItemModel): boolean {
   });
 }
 
-function renderChild(item: WorkItemModel): string {
+/* ---------- Shared by both PR boxes ---------- */
+
+const VOTE_ICONS: Record<VoteKind, keyof typeof ICONS> = {
+  approved: 'check',
+  suggestions: 'check',
+  waiting: 'clock',
+  rejected: 'error',
+  declined: 'stop',
+  none: 'circle',
+};
+
+const VOTE_LABELS: Record<VoteKind, string> = {
+  approved: 'Approved',
+  suggestions: 'Approved with suggestions',
+  waiting: 'Waiting for the author',
+  rejected: 'Rejected',
+  declined: 'Declined',
+  none: 'No vote yet',
+};
+
+/** Groups are named "[Project]\\Team": the project is noise in a chip */
+function reviewerName(name: string): string {
+  return name.replace(/^\[[^\]]*\]\\/, '');
+}
+
+function renderReviewer(reviewer: ReviewerModel): string {
+  const name = reviewer.isMe ? 'you' : reviewerName(reviewer.name);
+  const details = [
+    VOTE_LABELS[reviewer.vote],
+    reviewer.isRequired ? 'required' : '',
+    reviewer.isContainer ? 'group' : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
+  return `<span class="reviewer vote-${reviewer.vote}${reviewer.isContainer ? ' group' : ''}${
+    reviewer.isMe ? ' me' : ''
+  }" title="${escapeHtml(`${reviewer.isMe ? `You (${reviewerName(reviewer.name)})` : name}: ${details}`)}">${icon(
+    VOTE_ICONS[reviewer.vote]
+  )}<span class="reviewer-name">${escapeHtml(name)}</span>${
+    reviewer.isRequired ? '<span class="required" aria-hidden="true">*</span>' : ''
+  }</span>`;
+}
+
+/** A task of a card: the ones in the list, and the ones assigned to other developers (not in the list) */
+type TaskRow = Pick<WorkItemModel, 'id' | 'title' | 'type' | 'state' | 'priority' | 'severity'> & {
+  assignedTo?: string;
+  taskPullRequests: TaskPullRequestModel[];
+};
+
+function taskRowsOf(children: WorkItemModel[], item: WorkItemModel, stateOrder: string[]): TaskRow[] {
+  const own: TaskRow[] = children.map((child) => ({ ...child, taskPullRequests: child.taskPullRequests ?? [] }));
+  const rows: TaskRow[] = [...own, ...(item.otherTasks ?? [])];
+  return sortWorkItems(rows, stateOrder);
+}
+
+function renderTaskPullRequestRuns(task: TaskRow, pr: TaskPullRequestModel): string {
+  if (!pr.runs.length) {
+    return '';
+  }
+  const runs = pr.runs.map((run) => {
+    const open = `data-action="openRun" data-id="${task.id}" data-run="${run.id}"`;
+    return renderRun(run, open, `${open} data-tests="true"`);
+  });
+  return `<div class="runs">${runs.join('')}</div>`;
+}
+
+/** What the popover of a PR icon says about the PR; the icon and the popover are described by the same text */
+function renderTaskPullRequestCard(task: TaskRow, pr: TaskPullRequestModel): string {
+  const meta = [
+    `<span class="task-pr-repo" title="Repository">${escapeHtml(pr.repository)}</span>${
+      pr.otherRepository
+        ? '<span class="pill tone-neutral" title="Not the repository open in VS Code">other repository</span>'
+        : ''
+    }`,
+    pr.author ? `<span title="Author">${escapeHtml(pr.author)}</span>` : '',
+    pr.target ? `<span title="Target branch">→ ${escapeHtml(pr.target)}</span>` : '',
+  ].filter(Boolean);
+  const reviewers = pr.reviewers.length
+    ? `<div class="reviewers">${pr.reviewers.map(renderReviewer).join('')}${
+        pr.moreReviewers ? `<span class="reviewer-more">+${pr.moreReviewers}</span>` : ''
+      }</div>`
+    : '';
+  return `<div class="task-pr-head"><strong>PR ${pr.id}</strong>
+      <span class="pill tone-${pr.tone}">${escapeHtml(pr.status)}</span></div>
+    <div class="task-pr-title">${escapeHtml(pr.title)}</div>
+    <div class="task-pr-meta">${meta.join('<span aria-hidden="true">·</span>')}</div>
+    ${reviewers}${renderTaskPullRequestRuns(task, pr)}`;
+}
+
+/** One PR icon, coloured by the state of the PR. Clicking it opens the PR; hovering or focusing it shows its popover */
+function renderTaskPullRequestIcon(task: TaskRow, pr: TaskPullRequestModel): string {
+  const id = `task-pr-${task.id}-${pr.id}`;
+  return `<span class="task-pr-wrap"><button class="task-pr tone-${pr.tone}" data-action="openPullRequest"
+      data-id="${task.id}" data-pr="${pr.id}" aria-describedby="${id}"
+      aria-label="${escapeHtml(`PR ${pr.id}, ${pr.status}: ${pr.title}`)}">${icon('pullRequest')}</button>
+    <div class="task-pr-pop" id="${id}" role="tooltip"><div class="task-pr-card">${renderTaskPullRequestCard(
+    task,
+    pr
+  )}</div></div></span>`;
+}
+
+/** "+N": the PRs without icon, listed in a popover where each one opens */
+function renderTaskPullRequestMore(task: TaskRow, hidden: TaskPullRequestModel[]): string {
+  const id = `task-pr-more-${task.id}`;
+  const rows = hidden.map(
+    (pr) => `<li><button class="link" data-action="openPullRequest" data-id="${task.id}" data-pr="${pr.id}"
+        title="${escapeHtml(describeTaskPullRequest(pr))}">PR ${pr.id}</button>
+      <span class="pill tone-${pr.tone}">${escapeHtml(pr.status)}</span>
+      <span class="task-pr-more-title">${escapeHtml(pr.title)}</span></li>`
+  );
+  return `<span class="task-pr-wrap"><button class="task-pr task-pr-more" aria-describedby="${id}"
+      aria-label="${escapeHtml(
+        `${hidden.length} more pull requests: ${hidden.map(describeTaskPullRequest).join('; ')}`
+      )}"
+      title="${escapeHtml(hidden.map(describeTaskPullRequest).join('\n'))}">+${hidden.length}</button>
+    <div class="task-pr-pop" id="${id}" role="tooltip"><div class="task-pr-card">
+      <ul class="task-pr-more-list">${rows.join('')}</ul></div></div></span>`;
+}
+
+function renderTaskPullRequests(task: TaskRow): string {
+  if (!task.taskPullRequests.length) {
+    return '';
+  }
+  const { shown, hidden } = splitTaskPullRequests(task.taskPullRequests);
+  return `<span class="task-prs">${shown.map((pr) => renderTaskPullRequestIcon(task, pr)).join('')}${
+    hidden.length ? renderTaskPullRequestMore(task, hidden) : ''
+  }</span>`;
+}
+
+/** "Szymon Kwasek EXT" -> "SK" */
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter((word) => /^\p{L}/u.test(word) && word !== 'EXT')
+    .slice(0, 2)
+    .map((word) => word[0].toUpperCase())
+    .join('');
+}
+
+function renderChild(item: TaskRow): string {
+  const title = item.assignedTo ? `${item.title} (${item.assignedTo})` : item.title;
   return `<li class="child">
     ${typeIcon(item.type)}
     <button class="link id${typeIdClass(item.type)}" data-action="openDetails" data-id="${
     item.id
   }" title="Show details">${item.id}</button>
-    <span class="child-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
+    <span class="child-title" title="${escapeHtml(title)}">${escapeHtml(item.title)}</span>
+    ${
+      item.assignedTo
+        ? `<span class="child-owner" title="Assigned to ${escapeHtml(item.assignedTo)}">${escapeHtml(
+            initials(item.assignedTo)
+          )}</span>`
+        : ''
+    }
+    ${renderTaskPullRequests(item)}
     ${stateButton(item.id, item.state)}
   </li>`;
 }
@@ -537,7 +686,7 @@ function renderParent(item: WorkItemModel, visibleIds: Set<number>): string {
 }
 
 /** Task list with a header to open / close it. Cards without tasks show nothing */
-function renderTasks(item: WorkItemModel, children: WorkItemModel[]): string {
+function renderTasks(item: WorkItemModel, children: TaskRow[]): string {
   if (!children.length) {
     return '';
   }
@@ -573,12 +722,7 @@ function renderWorkingOn(item: WorkItemModel): string {
  * Full card. In the compact layout, an expanded card gets a chevron and a header that fold it back
  * into its row
  */
-function renderCard(
-  item: WorkItemModel,
-  children: WorkItemModel[],
-  visibleIds: Set<number>,
-  foldable: boolean
-): string {
+function renderCard(item: WorkItemModel, children: TaskRow[], visibleIds: Set<number>, foldable: boolean): string {
   const classes = [
     'card',
     `state-border-${stateCategory(item.state)}`,
@@ -668,7 +812,7 @@ function renderSignal(signal: CompactSignal, item: WorkItemModel): string {
  * Two lines: type, ID, title and state; then the small signals that apply. Clicking the row expands it into the
  * full card: the ID and the state keep their own actions (closest [data-action])
  */
-function renderCompactCard(item: WorkItemModel, children: WorkItemModel[]): string {
+function renderCompactCard(item: WorkItemModel, children: TaskRow[]): string {
   const classes = [
     'card compact',
     `state-border-${stateCategory(item.state)}`,
@@ -698,8 +842,9 @@ function renderCompactCard(item: WorkItemModel, children: WorkItemModel[]): stri
 function renderCards(items: WorkItemModel[], current: ViewModel): string {
   const visibleIds = new Set(items.map((item) => item.id));
   const childrenOf = (parent: WorkItemModel) =>
-    sortWorkItems(
+    taskRowsOf(
       current.workItems.filter((child) => child.parentId === parent.id),
+      parent,
       current.stateOrder
     );
   return items
@@ -791,49 +936,6 @@ function renderAlertsBanner(current: ViewModel): string {
   }</span>
     <button class="button small" data-action="toggleAlerts">${onlyAlerts ? 'Show all' : 'Show only these'}</button>
   </div>`;
-}
-
-/* ---------- Shared by both PR boxes ---------- */
-
-const VOTE_ICONS: Record<VoteKind, keyof typeof ICONS> = {
-  approved: 'check',
-  suggestions: 'check',
-  waiting: 'clock',
-  rejected: 'error',
-  declined: 'stop',
-  none: 'circle',
-};
-
-const VOTE_LABELS: Record<VoteKind, string> = {
-  approved: 'Approved',
-  suggestions: 'Approved with suggestions',
-  waiting: 'Waiting for the author',
-  rejected: 'Rejected',
-  declined: 'Declined',
-  none: 'No vote yet',
-};
-
-/** Groups are named "[Project]\\Team": the project is noise in a chip */
-function reviewerName(name: string): string {
-  return name.replace(/^\[[^\]]*\]\\/, '');
-}
-
-function renderReviewer(reviewer: ReviewerModel): string {
-  const name = reviewer.isMe ? 'you' : reviewerName(reviewer.name);
-  const details = [
-    VOTE_LABELS[reviewer.vote],
-    reviewer.isRequired ? 'required' : '',
-    reviewer.isContainer ? 'group' : '',
-  ]
-    .filter(Boolean)
-    .join(', ');
-  return `<span class="reviewer vote-${reviewer.vote}${reviewer.isContainer ? ' group' : ''}${
-    reviewer.isMe ? ' me' : ''
-  }" title="${escapeHtml(`${reviewer.isMe ? `You (${reviewerName(reviewer.name)})` : name}: ${details}`)}">${icon(
-    VOTE_ICONS[reviewer.vote]
-  )}<span class="reviewer-name">${escapeHtml(name)}</span>${
-    reviewer.isRequired ? '<span class="required" aria-hidden="true">*</span>' : ''
-  }</span>`;
 }
 
 interface SignalsData {
@@ -1448,7 +1550,8 @@ document.addEventListener('click', (event) => {
   }
   const target = (event.target as HTMLElement).closest<HTMLElement>('[data-action], [data-filter]');
   // The text of a popover is not the row behind it: clicking it must not fold the row
-  if (!target || ((event.target as HTMLElement).closest('.pred-pop') && !target.closest('.pred-pop'))) {
+  const popover = '.pred-pop, .task-pr-pop';
+  if (!target || ((event.target as HTMLElement).closest(popover) && !target.closest(popover))) {
     return;
   }
   const { action, filter, value, id, pr, run, url, path, tests, kind, layout } = target.dataset;

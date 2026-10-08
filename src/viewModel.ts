@@ -9,6 +9,7 @@ import type { CoverageThresholds } from './coverage';
 import type { MyPullRequestModel } from './myPullRequests';
 import type { RunModel } from './pipelines';
 import type { ReviewRequestModel } from './reviewRequests';
+import type { TaskPullRequestModel } from './taskPullRequests';
 import { isFinishedState } from './states';
 import type { PullRequestTone } from './workItemLinks';
 import type { WorkingOnLevel } from './workingOn';
@@ -22,6 +23,15 @@ export interface PullRequestModel {
   isActive: boolean;
   /** Last CI run of each pipeline validating the PR */
   runs: RunModel[];
+}
+
+export interface OtherTaskModel {
+  id: number;
+  title: string;
+  type: string;
+  state: string;
+  assignedTo?: string;
+  taskPullRequests: TaskPullRequestModel[];
 }
 
 export interface WorkItemModel {
@@ -51,6 +61,13 @@ export interface WorkItemModel {
   /** Finished work items (Done, Ready to Test…) whose branch still exists: it should be deleted */
   leftoverBranch?: { name: string; local: boolean; remote: boolean };
   pullRequests: PullRequestModel[];
+  /** Tasks only: their PRs for the icons of the task rows, active ones first */
+  taskPullRequests?: TaskPullRequestModel[];
+  /**
+   * Tasks under the work item that are not in the list (assigned to other developers or in other iterations),
+   * shown with the tasks of the list
+   */
+  otherTasks?: OtherTaskModel[];
   /**
    * Predecessors not completed, the riskiest first. Empty: none open. Undefined: unknown (they could not be
    * loaded), so nothing is said about them

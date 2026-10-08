@@ -86,7 +86,10 @@ export interface PullRequest {
 export interface PullRequestDetails extends PullRequest, PullRequestState {
   title: string;
   sourceRefName: string;
-  repository: { id: string; name: string };
+  /** E.g. "refs/heads/develop" */
+  targetRefName?: string;
+  createdBy?: { id?: string; displayName?: string };
+  repository: { id: string; name: string; project?: { id?: string; name?: string } };
 }
 
 export interface Team {
@@ -636,14 +639,19 @@ export class AzdoClient {
     return { count, more: capped };
   }
 
-  /** PR by ID, in any repository of the project */
-  async getPullRequest(id: number): Promise<PullRequestDetails> {
+  /**
+   * A PR of the project, whatever its repository. A PR of another project is fetched with that project
+   * (its id or name) in the URL
+   */
+  async getPullRequest(id: number, project = this.project): Promise<PullRequestDetails> {
     // "reviewers" is missing when the PR has none
     const pr = await this.request<Omit<PullRequestDetails, 'reviewers' | 'webUrl'> & Partial<PullRequestDetails>>(
-      this.url(`git/pullrequests/${id}`)
+      `${BASE_URL}/${encodeURIComponent(this.organization)}/${encodeURIComponent(
+        project
+      )}/_apis/git/pullrequests/${id}?api-version=${API_VERSION}`
     );
     const webUrl = `${BASE_URL}/${encodeURIComponent(this.organization)}/${encodeURIComponent(
-      this.project
+      pr.repository.project?.name ?? this.project
     )}/_git/${encodeURIComponent(pr.repository.name)}/pullrequest/${id}`;
     return { ...pr, reviewers: pr.reviewers ?? [], webUrl };
   }

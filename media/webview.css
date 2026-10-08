@@ -2199,3 +2199,151 @@ button.signal-predecessors:focus-visible {
   position: relative;
   z-index: 20;
 }
+
+/* ---------- PRs of the tasks ---------- */
+
+/* The popover is as wide as the row of the task, like the PR timeline */
+.child {
+  position: relative;
+}
+
+.child-owner {
+  flex: none;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.task-prs {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+/* The icon is a flex item of the row, so the popover is positioned by the row */
+.task-pr-wrap {
+  display: contents;
+}
+
+button.task-pr {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 2px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--pill-color, var(--muted));
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.task-pr:hover {
+  background: var(--card-hover);
+}
+
+button.task-pr:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+button.task-pr .icon {
+  width: 13px;
+  height: 13px;
+}
+
+/* Abandoned PRs are faded: they are history, not work to follow */
+button.task-pr.tone-abandoned {
+  opacity: 0.55;
+}
+
+button.task-pr-more {
+  color: var(--muted);
+}
+
+/* The padding keeps the hover while the pointer moves from the icon to the popover */
+.task-pr-pop {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  right: 0;
+  left: 0;
+  display: none;
+  padding-top: 4px;
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  font-size: 11.5px;
+  white-space: normal;
+}
+
+.task-pr-wrap:hover .task-pr-pop,
+.task-pr-wrap:focus-within .task-pr-pop {
+  display: block;
+}
+
+.no-popovers .task-pr-pop {
+  display: none !important;
+}
+
+.task-pr-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--border));
+  border-radius: 4px;
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, var(--card-bg)));
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgb(0 0 0 / 35%));
+}
+
+.task-pr-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.task-pr-title {
+  overflow-wrap: anywhere;
+}
+
+.task-pr-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  color: var(--muted);
+}
+
+.task-pr-meta > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.reviewer-more {
+  color: var(--muted);
+}
+
+.task-pr-more-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-pr-more-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.task-pr-more-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

@@ -54,7 +54,7 @@ The cards come in two layouts, switched with the **Compact / Large** buttons nex
 
 ### Tasks
 
-The tasks of a card are folded under a `Tasks 2/3` line with a progress bar: Done tasks out of all the tasks, without the Removed ones. Click it to show them. A card whose alerts are about its tasks shows them unfolded. The **Expand all tasks** / **Collapse all tasks** buttons next to the **My Work Items** title fold or unfold every card.
+The tasks of a card are folded under a `Tasks 2/3` line with a progress bar: Done tasks out of all the tasks, without the Removed ones. Tasks assigned to other developers are listed too, with their initials. Each task shows an icon per pull request linked to it, coloured by its state (up to 3, then `+N`): hover or focus it to see the PR, its state, repository (flagged when it is not the one open in VS Code), author, target branch, reviewers and CI; click it to open the PR. Click it to show them. A card whose alerts are about its tasks shows them unfolded. The **Expand all tasks** / **Collapse all tasks** buttons next to the **My Work Items** title fold or unfold every card.
 
 Card actions:
 
