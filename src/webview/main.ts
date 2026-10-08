@@ -1,4 +1,5 @@
 import { compactSignals, CompactSignal } from '../compactSignals';
+import { renderBranchList } from '../branchRows';
 import { checkoutButton, worktreePill } from '../checkoutButtons';
 import { canHaveTasks, escapeHtml, stateButton } from '../html';
 import { ICONS, icon, TYPE_CLASSES, typeIcon, typeIdClass } from '../icons';
@@ -17,7 +18,7 @@ import { runLabel, runTooltip, testsUrl } from '../runDetails';
 import { isReadyToStart, NONE_OPEN, OPEN_PREDECESSORS, predecessorFilterValue } from '../predecessors';
 import { RISK_DESCRIPTIONS } from '../schedule';
 import { NO_PRIORITY, priorityFilterValue, severityLevel, severityName, sortWorkItems } from '../priority';
-import { isFinishedState, stateCategory, stateRank } from '../states';
+import { stateCategory, stateRank } from '../states';
 import { MyPullRequestModel, ReviewerModel, VoteKind } from '../myPullRequests';
 import { describeTeamRules } from '../reviewCard';
 import { dueSoonZoneStart } from '../reviewDue';
@@ -412,24 +413,6 @@ function renderPredecessors(item: WorkItemModel): string {
     : '';
 }
 
-function renderBranch(item: WorkItemModel): string {
-  if (!item.branch) {
-    return `<div class="row muted">${icon('branch')}<span>No branch</span></div>`;
-  }
-  if (isFinishedState(item.state)) {
-    // The links of the work item remain after the branch is deleted
-    return item.leftoverBranch
-      ? `<div class="row branch">${icon('branch')}<code title="${escapeHtml(item.branch)}">${escapeHtml(
-          item.branch
-        )}</code><span class="pill tone-leftover" title="The PR is merged: the branch should be deleted">not deleted</span></div>`
-      : `<div class="row muted">${icon('branch')}<span>Branch deleted</span></div>`;
-  }
-  const location = item.isCurrentBranch ? 'current' : item.branchLocation ?? 'remote';
-  return `<div class="row branch">${icon('branch')}
-    <code title="${escapeHtml(item.branch)}">${escapeHtml(item.branch)}</code>
-    <span class="pill tone-${location}">${location}</span>${worktreePill(item.worktree)}</div>`;
-}
-
 const BRANCH_ACTION_BUTTONS: Record<BranchAction, { label: string; className: string; title: string }> = {
   createBranch: { label: 'Create branch', className: 'primary', title: 'Create the branch of the work item' },
   checkout: { label: 'Checkout', className: '', title: 'Switch to the branch of the work item' },
@@ -756,7 +739,7 @@ function renderCard(item: WorkItemModel, children: TaskRow[], visibleIds: Set<nu
     ${renderParent(item, visibleIds)}
     ${renderAlerts(item)}
     ${renderPredecessors(item)}
-    ${renderBranch(item)}
+    ${renderBranchList(item)}
     ${item.pullRequests.map((pr) => renderPullRequest(item, pr)).join('')}
     ${renderActions(item)}
     ${renderTasks(item, children)}
@@ -1629,11 +1612,11 @@ document.addEventListener('click', (event) => {
   if (!target || ((event.target as HTMLElement).closest(popover) && !target.closest(popover))) {
     return;
   }
-  const { action, filter, value, id, pr, run, url, path, tests, kind, layout } = target.dataset;
+  const { action, filter, value, id, pr, run, url, path, tests, kind, layout, branch } = target.dataset;
   if (filter && value !== undefined) {
     toggleFilter(filter as FilterKind, value);
   } else if ((action === 'checkoutMenu' || action === 'openWorktree' || action === 'worktreeMenu') && kind && id) {
-    post({ type: action, kind: kind as CheckoutKind, id: Number(id) });
+    post({ type: action, kind: kind as CheckoutKind, id: Number(id), branch });
   } else if (action === 'refresh') {
     post({ type: 'refresh' });
   } else if (action === 'toggleIteration' && path !== undefined) {
@@ -1701,6 +1684,7 @@ document.addEventListener('click', (event) => {
       pullRequestId: pr ? Number(pr) : undefined,
       runId: run ? Number(run) : undefined,
       tests: tests === 'true' ? true : undefined,
+      branch,
     });
   }
 });

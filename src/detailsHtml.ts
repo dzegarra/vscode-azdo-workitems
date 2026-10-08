@@ -1,10 +1,11 @@
 /** Body of the work item details panel. Pure, so no "vscode" import */
-import { checkoutButton, worktreePill } from './checkoutButtons';
+import { renderBranchList } from './branchRows';
+import { checkoutButton } from './checkoutButtons';
 import { canHaveTasks, escapeHtml, sanitizeHtml, stateButton } from './html';
 import type { FigmaLink } from './figmaLinks';
 import { icon, typeIcon, typeIdClass } from './icons';
 import { DependencyRisk, RISK_DESCRIPTIONS } from './schedule';
-import { isFinishedState, stateCategory } from './states';
+import { stateCategory } from './states';
 import { pullRequestTooltip } from './pullRequestModel';
 import { BranchAction, branchActions, type WorkItemModel } from './viewModel';
 
@@ -95,19 +96,7 @@ function renderDevelopment(card: WorkItemModel | undefined): string {
   if (!card) {
     return '<p class="muted">Not in the current iterations: branch and pull requests are not tracked.</p>';
   }
-  const location = card.isCurrentBranch ? 'current' : card.branchLocation ?? 'remote';
-  let branch = `<div class="row muted">${icon('branch')}<span>No branch</span></div>`;
-  if (card.branch && isFinishedState(card.state) && !card.leftoverBranch) {
-    // The links of the work item remain after the branch is deleted
-    branch = `<div class="row muted">${icon('branch')}<span>Branch deleted</span></div>`;
-  } else if (card.branch) {
-    const pill = card.leftoverBranch
-      ? '<span class="pill tone-leftover" title="The PR is merged: the branch should be deleted">not deleted</span>'
-      : `<span class="pill tone-${location}">${location}</span>`;
-    branch = `<div class="row">${icon('branch')}<code>${escapeHtml(card.branch)}</code>${pill}${worktreePill(
-      card.worktree
-    )}</div>`;
-  }
+  const branch = renderBranchList(card);
   const pullRequests = card.pullRequests.map(
     (pr) => `<div class="row${pr.otherRepository ? ' pr other-repo' : ''}" title="${escapeHtml(
       pullRequestTooltip(pr)

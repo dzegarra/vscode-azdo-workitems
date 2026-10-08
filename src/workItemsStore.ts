@@ -4,6 +4,7 @@ import { resolveContext, settings, DEFAULT_PULL_REQUEST_TASK_PATTERN } from './c
 import { GitAPI, pickRepository, Ref, REF_TYPE_HEAD, Repository } from './git';
 import { TeamIteration } from './iterations';
 import { branchBelongsToWorkItem } from './naming';
+import { collectBranches, EntryBranch, toBranchModels, unknownRepositoryIds } from './workItemBranches';
 import { isFinishedState, stateCategory } from './states';
 import { openPredecessors } from './predecessors';
 import { ScheduledIteration } from './schedule';
@@ -26,6 +27,8 @@ export interface WorkItemEntry {
   alerts: WorkItemAlert[];
   branch?: string;
   branchLocation?: 'local' | 'remote';
+  /** Every branch of the work item (the main one included), in this repository and in others */
+  branches: EntryBranch[];
   /** Branch of a finished work item that still exists (it should have been deleted after its PR was merged) */
   leftoverBranch?: LeftoverBranch;
   pullRequests: PullRequestDetails[];
@@ -433,6 +436,8 @@ export class WorkItemsStore {
     this.changeEmitter.fire();
   }
 
+  private readonly repositoryNameCache = new Map<string, Promise<string>>();
+
   private async load(): Promise<void> {
     this.status = 'loading';
     this.changeEmitter.fire();
@@ -483,6 +488,12 @@ export class WorkItemsStore {
     ]);
     this.schedule = schedule;
     this.repositoryId = azdoRepository.id;
+    const repositoryNames = await this.repositoryNames(
+      client,
+      workItems,
+      [...pullRequests.values()],
+      azdoRepository.id
+    );
     const pullRequestsOf = (item: WorkItem) =>
       item.links.pullRequests.map((link) => pullRequests.get(link.id)).filter((pr): pr is PullRequestDetails => !!pr);
     const entries: WorkItemEntry[] = workItems.map((workItem) => {
@@ -496,6 +507,14 @@ export class WorkItemsStore {
         })),
         parent: parent && { id: parent.id, title: parent.title, type: parent.type },
         ...findBranch(workItem, branches, azdoRepository.id),
+        branches: collectBranches({
+          workItem,
+          local: branches.local,
+          remote: branches.remote,
+          pullRequests: itemPullRequests,
+          repositoryId: azdoRepository.id,
+          repositoryNames,
+        }),
         pullRequests: itemPullRequests,
         alerts: rules ? alertsOf(workItem, related, itemPullRequests, rules) : [],
         predecessors: predecessors.get(workItem.id),
@@ -507,6 +526,37 @@ export class WorkItemsStore {
       })
     );
     return entries;
+  }
+
+  /**
+   * Names of the other repositories of the Development links (the PRs already say theirs), by lower case id. One
+   * request per repository, kept for the session; the ones that fail are left out and tried again next time
+   */
+  private async repositoryNames(
+    client: AzdoClient,
+    workItems: WorkItem[],
+    pullRequests: PullRequestDetails[],
+    repositoryId: string
+  ): Promise<Map<string, string>> {
+    const names = new Map(pullRequests.map((pr) => [pr.repository.id.toLowerCase(), pr.repository.name]));
+    const missing = unknownRepositoryIds(workItems, repositoryId, names);
+    await Promise.all(
+      missing.map(async (id) => {
+        const key = `${client.organization}/${client.project}/${id}`;
+        let request = this.repositoryNameCache.get(key);
+        if (!request) {
+          request = client.getRepository(id).then((repository) => repository.name);
+          this.repositoryNameCache.set(key, request);
+          request.catch(() => this.repositoryNameCache.delete(key));
+        }
+        try {
+          names.set(id, await request);
+        } catch {
+          // Shown as "another repository"
+        }
+      })
+    );
+    return names;
   }
 
   /** PRs of a task as the popovers of their icons show them */
@@ -524,6 +574,7 @@ export class WorkItemsStore {
       alerts,
       branch,
       branchLocation,
+      branches,
       leftoverBranch,
       pullRequests,
       predecessors,
@@ -548,6 +599,11 @@ export class WorkItemsStore {
       branch,
       branchLocation,
       isCurrentBranch: !!branch && branch === currentBranch,
+      branches: toBranchModels(branches, {
+        currentBranch,
+        mainBranch: branch,
+        worktreeFor: (name) => this.worktreeFor(name)?.path,
+      }),
       workingOn: levels.get(workItem.id),
       worktree: branch === currentBranch ? undefined : this.worktreeFor(branch)?.path,
       leftoverBranch: leftoverBranch && {

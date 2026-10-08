@@ -216,7 +216,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       case 'checkoutMenu':
       case 'openWorktree':
       case 'worktreeMenu':
-        await vscode.commands.executeCommand(`azdoWorkItems.${message.type}`, message.kind, message.id);
+        await vscode.commands.executeCommand(`azdoWorkItems.${message.type}`, message.kind, message.id, message.branch);
         return;
       case 'openMyPullRequest':
       case 'openReviewRequest':

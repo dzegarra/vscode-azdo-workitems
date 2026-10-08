@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { createBranch } from './commands/createBranch';
 import { checkoutPullRequest } from './commands/checkoutPullRequest';
+import { isCheckoutBranch } from './workItemBranches';
 import { BranchTarget, checkoutBranch, openWorktree, showCheckoutMenu } from './commands/checkoutBranch';
 import { removeWorktreesCommand, showWorktreeMenu } from './commands/removeWorktree';
 import { runPendingWorktreeSetup } from './worktreeSetup';
@@ -105,14 +106,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const currentRepository = () => (git.repositories.length ? pickRepository(git) : undefined);
 
   /** Branch (and PR) behind the Checkout button of a card */
-  const branchTarget = (kind: CheckoutKind, id: number): BranchTarget => {
+  const branchTarget = (kind: CheckoutKind, id: number, branch?: string): BranchTarget => {
     switch (kind) {
       case 'workItem': {
-        const branch = store.find(id)?.branch;
-        if (!branch) {
+        const entry = store.find(id);
+        if (branch) {
+          // A row of the card: any branch of the work item in this repository
+          if (!entry || !isCheckoutBranch(entry.branches, branch)) {
+            throw new Error(`${branch} is not a branch of work item ${id} in this repository.`);
+          }
+          return { branch };
+        }
+        if (!entry?.branch) {
           throw new Error(`Work item ${id} has no branch.`);
         }
-        return { branch };
+        return { branch: entry.branch };
       }
       case 'review': {
         const request = reviewRequests.models().find((r) => r.id === id);
@@ -251,20 +259,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     command('azdoWorkItems.createBranch', (entry?: WorkItemEntry) => createBranch(git, store, entry)),
     command('azdoWorkItems.createPullRequest', (entry?: WorkItemEntry) => createPullRequest(git, store, entry)),
     command('azdoWorkItems.deleteBranch', (entry?: WorkItemEntry) => deleteBranch(git, store, entry)),
-    command('azdoWorkItems.checkout', async (entry: WorkItemEntry) => {
-      if (entry.branch) {
-        // For a branch that only exists in the remote, git creates the local tracking branch
-        await checkoutBranch(git, store, { branch: entry.branch });
+    command('azdoWorkItems.checkout', async (entry: WorkItemEntry, branch?: string) => {
+      // The main branch of the card, or the branch of one of its rows. For a branch that only exists in the
+      // remote, git creates the local tracking branch
+      const target = branch
+        ? branchTarget('workItem', entry.workItem.id, branch)
+        : entry.branch && { branch: entry.branch };
+      if (target) {
+        await checkoutBranch(git, store, target);
       }
     }),
-    command('azdoWorkItems.checkoutMenu', async (kind: CheckoutKind, id: number) =>
-      showCheckoutMenu(git, store, branchTarget(kind, id))
+    command('azdoWorkItems.checkoutMenu', async (kind: CheckoutKind, id: number, branch?: string) =>
+      showCheckoutMenu(git, store, branchTarget(kind, id, branch))
     ),
-    command('azdoWorkItems.openWorktree', async (kind: CheckoutKind, id: number) =>
-      openWorktree(store, branchTarget(kind, id).branch)
+    command('azdoWorkItems.openWorktree', async (kind: CheckoutKind, id: number, branch?: string) =>
+      openWorktree(store, branchTarget(kind, id, branch).branch)
     ),
-    command('azdoWorkItems.worktreeMenu', async (kind: CheckoutKind, id: number) =>
-      showWorktreeMenu(store, git, branchTarget(kind, id).branch)
+    command('azdoWorkItems.worktreeMenu', async (kind: CheckoutKind, id: number, branch?: string) =>
+      showWorktreeMenu(store, git, branchTarget(kind, id, branch).branch)
     ),
     command('azdoWorkItems.removeWorktrees', () => removeWorktreesCommand(git, store)),
     command('azdoWorkItems.openDetails', async (id?: number) => {

@@ -5,6 +5,7 @@ import { RunState } from './pipelines';
 import { runTooltip } from './runDetails';
 import { severityLevel, severityName } from './priority';
 import { isFinishedState } from './states';
+import { branchTooltip } from './workItemBranches';
 import { taskProgress } from './taskProgress';
 import type { WorkItemModel } from './viewModel';
 import { workingOnBadge } from './workingOn';
@@ -33,7 +34,7 @@ export interface CompactSignal {
    * "working-here" / "working-worktree" (working on)
    */
   tone: string;
-  /** The PR is in another repository: shown dimmed */
+  /** The PR (or the branches) is in another repository: shown dimmed */
   otherRepository?: boolean;
 }
 
@@ -78,9 +79,30 @@ function predecessorSignal(item: WorkItemModel): CompactSignal | undefined {
     : undefined;
 }
 
+/** Several branches: their count, and the list of them in the tooltip */
+function severalBranchesSignal(item: WorkItemModel): CompactSignal {
+  const location = item.isCurrentBranch ? 'current' : item.branchLocation ?? 'remote';
+  return {
+    kind: 'branch',
+    label: String(item.branches.length),
+    title: `${item.branches.length} branches\n${item.branches
+      .map((branch) => `${branchTooltip(branch)}${branch.worktree ? ' · worktree' : ''}`)
+      .join('\n')}`,
+    tone: location,
+    otherRepository: item.branches.every((branch) => branch.otherRepository),
+  };
+}
+
 function branchSignal(item: WorkItemModel): CompactSignal | undefined {
+  if (!isFinishedState(item.state) && item.branches.length > 1) {
+    return severalBranchesSignal(item);
+  }
   if (!item.branch) {
-    return undefined;
+    // Only branches of other repositories
+    const [other] = item.branches;
+    return other && !isFinishedState(item.state)
+      ? { kind: 'branch', label: '', title: branchTooltip(other), tone: 'remote', otherRepository: true }
+      : undefined;
   }
   if (isFinishedState(item.state)) {
     // Once the branch is deleted nothing is left to tell

@@ -1840,8 +1840,30 @@ button.state:focus-visible {
   row-gap: 3px;
 }
 
-/* PR of another repository: dimmed and italic, back to normal when the user reaches for it */
+/* Branches: the name takes what is left of the line; the pills and the Checkout go below it when they do not fit */
+.row.branch {
+  flex-wrap: wrap;
+  row-gap: 3px;
+}
+
+.row.branch code {
+  flex: 1 1 12ch;
+}
+
+.branch-meta {
+  display: inline-flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* PR or branch of another repository: dimmed and italic, back to normal when the user reaches for it */
 .row.pr.other-repo,
+.row.branch.other-repo,
 .signal.other-repo {
   opacity: 0.6;
   font-style: italic;
@@ -1849,6 +1871,8 @@ button.state:focus-visible {
 
 .row.pr.other-repo:hover,
 .row.pr.other-repo:focus-within,
+.row.branch.other-repo:hover,
+.row.branch.other-repo:focus-within,
 .signal.other-repo:hover,
 .signal.other-repo:focus-within {
   opacity: 1;

@@ -13,6 +13,8 @@ export interface CheckoutButtonOptions {
   /** Folder of the worktree that has the branch: the button opens it instead of checking out */
   worktree?: string;
   small?: boolean;
+  /** A branch of the card other than its main one (a row of the branch list): sent with the ▾ and "Open worktree" buttons */
+  branch?: string;
 }
 
 /**
@@ -21,16 +23,17 @@ export interface CheckoutButtonOptions {
  */
 export function checkoutButton(options: CheckoutButtonOptions): string {
   const size = options.small ? ' small' : '';
+  const branch = options.branch === undefined ? '' : ` data-branch="${escapeHtml(options.branch)}"`;
   if (options.worktree) {
     return `<span class="button-group checkout-group"><button class="button${size}" data-action="openWorktree" data-kind="${
       options.kind
-    }" data-id="${options.id}" title="${escapeHtml(
+    }" data-id="${options.id}"${branch} title="${escapeHtml(
       `The branch is checked out in a worktree: open ${options.worktree}`
     )}">Open worktree</button><button class="button caret${size}" data-action="worktreeMenu" data-kind="${
       options.kind
     }" data-id="${
       options.id
-    }" title="More worktree options" aria-label="More worktree options" aria-haspopup="menu">${icon(
+    }"${branch} title="More worktree options" aria-label="More worktree options" aria-haspopup="menu">${icon(
       'caretDown'
     )}</button></span>`;
   }
@@ -42,7 +45,7 @@ export function checkoutButton(options: CheckoutButtonOptions): string {
     options.kind
   }" data-id="${
     options.id
-  }" title="More checkout options" aria-label="More checkout options" aria-haspopup="menu">${icon(
+  }"${branch} title="More checkout options" aria-label="More checkout options" aria-haspopup="menu">${icon(
     'caretDown'
   )}</button></span>`;
 }

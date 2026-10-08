@@ -38,7 +38,7 @@ Each work item is a card with:
 - ID (opens the work item in Azure DevOps), **Priority** (`P1`–`P4`) and, for Bugs, **Severity** (`S1 Critical` … `S4 Low`), coloured from red (most urgent) to grey; the type is shown by the icon. And the state
 - Title
 - Parent: ID and title of the parent (click it to see its details), unless the card is nested in its parent's card. Children (e.g. Tasks) are nested at the bottom of the parent card
-- Branch: the local branch (`local`, or `current` when checked out) or a branch that only exists in the remote (`remote`)
+- Branches: every branch of the work item: the ones named after it (`local`, `current` when checked out, or `remote` when it only exists in the remote), the ones linked in its Development section (`linked`) and the source branches of its active PRs. The branches of other repositories are faded and in italics (hover them to see the repository). With several branches, each one of this repository has its own **Checkout ▾** (or **Open worktree ▾**); the card's buttons act on the main one
 - Pull requests linked to the work item with their status (the PRs of other repositories are faded and in italics; hover them to see the repository). Only the PRs of this repository decide whether **Create PR** is offered: Draft, In review, Approved, Waiting for author, Rejected, Conflicts, Completed, Abandoned
 
 Cards are sorted by state: Done, Ready to Test, Committed, In Progress, Approved, New, To Do (`azdoWorkItems.stateOrder`). Done and Ready to Test are shown in green, Committed and In Progress in blue.

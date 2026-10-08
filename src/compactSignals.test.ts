@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { compactSignals } from './compactSignals';
 import type { RunModel } from './pipelines';
-import type { PullRequestModel, WorkItemModel } from './viewModel';
+import type { BranchModel, PullRequestModel, WorkItemModel } from './viewModel';
 
 const NOW = new Date('2026-01-01T12:00:00Z');
 
@@ -15,6 +15,7 @@ function item(overrides: Partial<WorkItemModel> = {}): WorkItemModel {
     url: '',
     alerts: [],
     isCurrentBranch: false,
+    branches: [],
     pullRequests: [],
     ...overrides,
   };
@@ -146,6 +147,49 @@ describe('compactSignals', () => {
       tone: 'local',
     });
     expect(compactSignals(item({ branch: 'f' }), [], NOW)[0]).toMatchObject({ label: '', tone: 'remote' });
+  });
+
+  it('counts several branches and lists them, the ones of other repositories marked', () => {
+    const branch = (name: string, overrides: Partial<BranchModel> = {}): BranchModel => ({
+      name,
+      location: 'local',
+      isCurrent: false,
+      otherRepository: false,
+      ...overrides,
+    });
+    const branches = [
+      branch('feature/a/1-a', { location: 'current', isCurrent: true }),
+      branch('feature/a/1-b', { worktree: '/w' }),
+      branch('feature/a/1-c', { location: 'linked', otherRepository: true, repository: 'Common' }),
+    ];
+    const [signal] = compactSignals(
+      item({ branch: 'feature/a/1-a', isCurrentBranch: true, branchLocation: 'local', branches }),
+      [],
+      NOW
+    );
+    expect(signal).toEqual({
+      kind: 'branch',
+      label: '3',
+      title:
+        '3 branches\nfeature/a/1-a (current)\nfeature/a/1-b (local) · worktree\nfeature/a/1-c · Common — in another repository',
+      tone: 'current',
+      otherRepository: false,
+    });
+  });
+
+  it('dims the branch signal when every branch is in another repository', () => {
+    const other: BranchModel = {
+      name: 'feature/x/1',
+      location: 'linked',
+      isCurrent: false,
+      otherRepository: true,
+      repository: 'Common',
+    };
+    expect(compactSignals(item({ branches: [other] }), [], NOW)[0]).toMatchObject({
+      kind: 'branch',
+      otherRepository: true,
+      title: 'feature/x/1 · Common — in another repository',
+    });
   });
 
   it('flags the leftover branch of a finished work item, and ignores a deleted one', () => {

@@ -115,7 +115,7 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
   private async onAction(message: WebviewMessage): Promise<void> {
     try {
       if ('kind' in message) {
-        await vscode.commands.executeCommand(`azdoWorkItems.${message.type}`, message.kind, message.id);
+        await vscode.commands.executeCommand(`azdoWorkItems.${message.type}`, message.kind, message.id, message.branch);
       } else if ('id' in message) {
         await runWorkItemAction(this.store, message);
       }
@@ -206,8 +206,8 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
     document.addEventListener('click', (event) => {
       const target = event.target.closest('[data-action]');
       if (target) {
-        const { action, id, pr, kind } = target.dataset;
-        vscode.postMessage({ type: action, id: Number(id), pullRequestId: pr ? Number(pr) : undefined, kind });
+        const { action, id, pr, kind, branch } = target.dataset;
+        vscode.postMessage({ type: action, id: Number(id), pullRequestId: pr ? Number(pr) : undefined, kind, branch });
       }
     });
   </script>

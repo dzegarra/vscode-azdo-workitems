@@ -38,6 +38,20 @@ export interface OtherTaskModel {
   taskPullRequests: TaskPullRequestModel[];
 }
 
+/** A git branch of a work item (see workItemBranches.ts) */
+export interface BranchModel {
+  name: string;
+  /** "current": checked out here; "local" / "remote": exist in the open repository; "linked": only known from a link or a PR */
+  location: 'current' | 'linked' | 'local' | 'remote';
+  isCurrent: boolean;
+  /** Another worktree has the branch checked out: its folder */
+  worktree?: string;
+  /** Name of the repository, when the branch is in another one */
+  repository?: string;
+  /** The branch is in a repository other than the open one: shown dimmed, it cannot be checked out */
+  otherRepository: boolean;
+}
+
 export interface WorkItemModel {
   id: number;
   title: string;
@@ -58,6 +72,8 @@ export interface WorkItemModel {
   /** "local": the branch is checked out locally; "remote": only exists in the remote */
   branchLocation?: 'local' | 'remote';
   isCurrentBranch: boolean;
+  /** Every branch of the work item (main branch included): current first, then the main one, the rest of this repository and the other repositories */
+  branches: BranchModel[];
   /** The user is working on it: its branch (or the PR of the branch) is checked out here or in another worktree */
   workingOn?: WorkingOnLevel;
   /** Another worktree has the branch checked out: its folder */
@@ -175,10 +191,12 @@ export type WebviewMessage =
       runId?: number;
       /** openRun: show the tests of the run instead of the run */
       tests?: boolean;
+      /** checkout: a branch of the work item other than its main one */
+      branch?: string;
     }
   | { type: 'openFile'; path: string }
-  /** The ▾ of a Checkout button (menu) and "Open worktree": the id is the work item or the PR */
-  | { type: 'checkoutMenu' | 'openWorktree' | 'worktreeMenu'; kind: CheckoutKind; id: number }
+  /** The ▾ of a Checkout button (menu) and "Open worktree": the id is the work item or the PR; `branch`: a branch of the row of a work item */
+  | { type: 'checkoutMenu' | 'openWorktree' | 'worktreeMenu'; kind: CheckoutKind; id: number; branch?: string }
   | { type: 'checkReviewRequests' }
   | { type: 'checkoutReviewRequest'; pullRequestId: number }
   | { type: 'openReviewRequest' | 'openMyPullRequest'; url: string }

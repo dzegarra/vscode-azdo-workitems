@@ -53,7 +53,7 @@ export async function runWorkItemAction(store: WorkItemsStore, message: WorkItem
     case 'createPullRequest':
     case 'deleteBranch':
       if (entry) {
-        await vscode.commands.executeCommand(COMMANDS[message.type], entry);
+        await vscode.commands.executeCommand(COMMANDS[message.type], entry, message.branch);
       }
   }
 }
