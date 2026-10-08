@@ -167,7 +167,7 @@ interface DatedEvent {
 }
 
 /**
- * The events of the PR, oldest first: its creation, the system threads that tell something (publication, reviewers,
+ * The events of the PR, latest first: its creation, the system threads that tell something (publication, reviewers,
  * votes, pushes, auto-complete, status), the comments written by people and its completion. At most the latest
  * MAX_TIMELINE_EVENTS are kept. Undefined threads (not fetched) give just the creation and the completion
  */
@@ -200,7 +200,11 @@ export function buildTimeline(
   events.sort((a, b) => a.at.localeCompare(b.at));
   const earlier = Math.max(0, events.length - MAX_TIMELINE_EVENTS);
   return {
-    events: events.slice(earlier).map(({ at, text }) => ({ when: format(at), text })),
+    // Latest first: what happened last is what matters
+    events: events
+      .slice(earlier)
+      .reverse()
+      .map(({ at, text }) => ({ when: format(at), text })),
     earlier,
   };
 }

@@ -983,8 +983,9 @@ function renderTimeline(id: string, timeline: MyPullRequestModel['timeline']): s
         text
       )}</span></li>`
   );
+  // Latest first: the events left out are the oldest ones, at the end
   if (earlier) {
-    rows.unshift(`<li class="timeline-earlier">… ${earlier} earlier event${earlier === 1 ? '' : 's'}</li>`);
+    rows.push(`<li class="timeline-earlier">… ${earlier} earlier event${earlier === 1 ? '' : 's'}</li>`);
   }
   return `<div class="timeline" id="${id}" role="tooltip"><ol class="timeline-card" aria-label="Events of the pull request">${rows.join(
     ''

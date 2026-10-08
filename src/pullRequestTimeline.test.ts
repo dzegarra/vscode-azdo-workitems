@@ -106,24 +106,24 @@ describe('publication date', () => {
 });
 
 describe('buildTimeline', () => {
-  it('tells the story of a PR created as a draft, oldest first, skipping the policy updates', () => {
+  it('tells the story of a PR created as a draft, latest first, skipping the policy updates', () => {
     const { events, earlier } = buildTimeline(PR_13713, THREADS_13713, utc);
     expect(earlier).toBe(0);
     expect(events.map((event) => `${event.when} ${event.text}`)).toEqual([
-      'Sep 30, 17:44 Daniel Zegarra EXT created the pull request as a draft',
-      'Sep 30, 18:48 1 new commit pushed',
-      'Oct 5, 13:26 3 new commits pushed',
-      'Oct 5, 21:24 Daniel Zegarra EXT published the pull request',
-      'Oct 5, 21:25 Daniel Zegarra EXT added Szymon Kwasek EXT as a reviewer',
-      'Oct 6, 11:08 Szymon Kwasek EXT approved',
-      'Oct 7, 16:04 Daniel Zegarra EXT set auto-complete',
       'Oct 7, 16:04 Daniel Zegarra EXT cancelled auto-complete',
+      'Oct 7, 16:04 Daniel Zegarra EXT set auto-complete',
+      'Oct 6, 11:08 Szymon Kwasek EXT approved',
+      'Oct 5, 21:25 Daniel Zegarra EXT added Szymon Kwasek EXT as a reviewer',
+      'Oct 5, 21:24 Daniel Zegarra EXT published the pull request',
+      'Oct 5, 13:26 3 new commits pushed',
+      'Sep 30, 18:48 1 new commit pushed',
+      'Sep 30, 17:44 Daniel Zegarra EXT created the pull request as a draft',
     ]);
   });
 
   it('says "as a draft" only when the first draft update is a publication (or the PR is a draft without updates)', () => {
     const created = (pr: Partial<TimelineSource>, threads: ThreadResponse[]) =>
-      buildTimeline({ ...PR_13713, ...pr }, threads, utc).events[0].text;
+      buildTimeline({ ...PR_13713, ...pr }, threads, utc).events.at(-1)?.text;
     expect(created({}, [])).toBe('Daniel Zegarra EXT created the pull request');
     expect(created({ isDraft: true }, [])).toBe('Daniel Zegarra EXT created the pull request as a draft');
     const toDraft = system(1, '2026-10-01T00:00:00Z', 'IsDraftUpdate', 'x marked as draft', {
@@ -132,7 +132,7 @@ describe('buildTimeline', () => {
     const publish = system(2, '2026-10-02T00:00:00Z', 'IsDraftUpdate', 'x published', { CodeReviewIsDraftNowSet: '0' });
     expect(created({}, [toDraft, publish])).toBe('Daniel Zegarra EXT created the pull request');
     expect(created({}, [publish])).toBe('Daniel Zegarra EXT created the pull request as a draft');
-    expect(buildTimeline({ ...PR_13713, createdBy: {} }, [], utc).events[0].text).toBe('Pull request created');
+    expect(buildTimeline({ ...PR_13713, createdBy: {} }, [], utc).events.at(-1)?.text).toBe('Pull request created');
   });
 
   it('describes votes, resets, pushes and the PR status', () => {
@@ -140,7 +140,8 @@ describe('buildTimeline', () => {
       system(1, '2026-10-01T10:00:00Z', 'VoteUpdate', `${name} voted ${result}`, { CodeReviewVoteResult: result });
     const lines = (threads: ThreadResponse[]) =>
       buildTimeline(PR_13713, threads, utc)
-        .events.slice(1)
+        .events.slice(0, -1)
+        .reverse()
         .map((e) => e.text);
     expect(lines([vote('10'), vote('5'), vote('0'), vote('-5'), vote('-10')])).toEqual([
       'Kamil approved',
@@ -183,15 +184,20 @@ describe('buildTimeline', () => {
       ],
       utc
     );
-    expect(events.slice(1).map((event) => event.text)).toEqual([
+    expect(
+      events
+        .slice(0, -1)
+        .reverse()
+        .map((event) => event.text)
+    ).toEqual([
       'Szymon Kwasek EXT commented: “This small change will be needed by !13765”',
       `Szymon Kwasek EXT commented on SystemInfoWifi.tsx: “${long.trim().slice(0, 69)}…”`,
     ]);
   });
 
-  it('ends a completed PR with its completion, once', () => {
+  it('starts a completed PR with its completion, once', () => {
     const completed: TimelineSource = { ...PR_13713, status: 'completed', closedDate: '2026-10-07T20:00:00Z' };
-    expect(buildTimeline(completed, [], utc).events.at(-1)).toEqual({
+    expect(buildTimeline(completed, [], utc).events[0]).toEqual({
       when: 'Oct 7, 20:00',
       text: 'Pull request completed',
     });
@@ -206,8 +212,8 @@ describe('buildTimeline', () => {
     );
     const { events } = buildTimeline(completed, [status], utc);
     expect(events.map((event) => event.text)).toEqual([
-      'Daniel Zegarra EXT created the pull request',
       'Daniel Zegarra EXT updated the pull request status to Completed',
+      'Daniel Zegarra EXT created the pull request',
     ]);
   });
 
@@ -218,7 +224,7 @@ describe('buildTimeline', () => {
     });
   });
 
-  it('keeps the latest events and counts the earlier ones', () => {
+  it('keeps the latest events, latest first, and counts the earlier ones', () => {
     const pushes = Array.from({ length: 25 }, (_, index) =>
       system(index, `2026-10-${String(index + 1).padStart(2, '0')}T10:30:00Z`, 'RefUpdate', 'updated', {
         CodeReviewRefNewCommitsCount: index + 1,
@@ -227,7 +233,7 @@ describe('buildTimeline', () => {
     const { events, earlier } = buildTimeline(PR_13713, pushes.reverse(), utc);
     expect(events).toHaveLength(MAX_TIMELINE_EVENTS);
     expect(earlier).toBe(6);
-    expect(events[0].text).toBe('6 new commits pushed');
-    expect(events.at(-1)?.text).toBe('25 new commits pushed');
+    expect(events[0].text).toBe('25 new commits pushed');
+    expect(events.at(-1)?.text).toBe('6 new commits pushed');
   });
 });

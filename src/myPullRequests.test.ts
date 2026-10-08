@@ -454,7 +454,8 @@ describe('toMyPullRequestModels', () => {
       events: [{ when: '<2026-10-06T10:00:00Z>', text: 'Me created the pull request' }],
       earlier: 0,
     });
-    expect(items[1].timeline.events.at(-1)).toEqual({ when: '<2026-10-07T01:00:00Z>', text: 'Pull request completed' });
+    // Latest first: the completion opens the list
+    expect(items[1].timeline.events[0]).toEqual({ when: '<2026-10-07T01:00:00Z>', text: 'Pull request completed' });
   });
 
   it('lists the PRs completed in the last 24 hours and never the abandoned ones', () => {
