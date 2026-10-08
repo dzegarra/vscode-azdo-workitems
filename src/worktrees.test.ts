@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  branchActionOrder,
   decideCheckout,
   emptyParentCandidates,
   envFileCandidates,
@@ -270,5 +271,16 @@ describe('emptyParentCandidates', () => {
   it('has none when the worktree is outside the root (never walks up to unrelated folders)', () => {
     expect(emptyParentCandidates('/elsewhere/a/b', '/dev/app.worktrees')).toEqual([]);
     expect(emptyParentCandidates('/dev/app.worktrees-other/a/b', '/dev/app.worktrees')).toEqual([]);
+  });
+});
+
+describe('branchActionOrder', () => {
+  it('puts the worktree first in worktree mode', () => {
+    expect(branchActionOrder('worktree')).toEqual(['worktree', 'here']);
+  });
+
+  it('puts the checkout first in the other modes', () => {
+    expect(branchActionOrder('ask')).toEqual(['here', 'worktree']);
+    expect(branchActionOrder('branch')).toEqual(['here', 'worktree']);
   });
 });

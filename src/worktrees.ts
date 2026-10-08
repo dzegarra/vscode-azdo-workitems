@@ -158,6 +158,11 @@ export function decideCheckout(options: {
   }
 }
 
+/** Actions offered after creating a branch, in the order of the buttons: the one of azdoWorkItems.checkout.mode first */
+export function branchActionOrder(mode: CheckoutMode): CheckoutChoice[] {
+  return mode === 'worktree' ? ['worktree', 'here'] : ['here', 'worktree'];
+}
+
 /** Marker written in the private git directory of a new worktree: the window that opens it runs `npm ci` once */
 export const SETUP_MARKER_FILE = 'azdo-workitems-setup.json';
 

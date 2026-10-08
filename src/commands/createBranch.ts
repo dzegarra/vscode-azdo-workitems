@@ -6,6 +6,7 @@ import { GitAPI, pickRepository, Repository } from '../git';
 import { branchTypeFor, buildBranchName, isValidModule, slugify } from '../naming';
 import { stateAfterBranchCreated } from '../states';
 import { WorkItemEntry, WorkItemsStore } from '../workItemsStore';
+import { offerBranchActions } from './checkoutBranch';
 import { resolveWorkItemEntry } from './pickWorkItem';
 import { confirmStart } from './startCheck';
 
@@ -35,15 +36,13 @@ export async function createBranch(git: GitAPI, store: WorkItemsStore, node?: Wo
   const s = settings();
 
   if (target.branch) {
-    const choice = await vscode.window.showInformationMessage(
+    const choice = await offerBranchActions(
+      git,
+      store,
+      { branch: target.branch },
       `Work item ${workItem.id} already has the branch "${target.branch}".`,
-      'Checkout',
-      'Create Another'
+      ['Create Another']
     );
-    if (choice === 'Checkout') {
-      await repository.checkout(target.branch);
-      return;
-    }
     if (choice !== 'Create Another') {
       return;
     }
@@ -78,25 +77,13 @@ export async function createBranch(git: GitAPI, store: WorkItemsStore, node?: Wo
   }
   const branchName = buildBranchName(type, module, workItem.id, slug);
 
-  const hasChanges = repository.state.workingTreeChanges.length + repository.state.indexChanges.length > 0;
-  if (hasChanges) {
-    const proceed = await vscode.window.showWarningMessage(
-      'You have uncommitted changes. They will be carried over to the new branch.',
-      { modal: true },
-      'Continue'
-    );
-    if (proceed !== 'Continue') {
-      return;
-    }
-  }
-
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: `Creating ${branchName}` },
     async (progress) => {
       progress.report({ message: `fetching ${s.remote}/${s.baseBranch}` });
       await repository.fetch(s.remote, s.baseBranch);
-      progress.report({ message: 'creating branch' });
-      await repository.createBranch(branchName, true, `${s.remote}/${s.baseBranch}`);
+      progress.report({ message: 'creating the branch' });
+      await repository.createBranch(branchName, false, `${s.remote}/${s.baseBranch}`);
 
       if (s.linkBranchToWorkItem) {
         progress.report({ message: `publishing to ${s.remote}` });
@@ -111,5 +98,6 @@ export async function createBranch(git: GitAPI, store: WorkItemsStore, node?: Wo
 
   await moveToStartedState(repository, workItem);
   void store.refresh();
-  void vscode.window.showInformationMessage(`Switched to the new branch "${branchName}".`);
+  // The store refreshes first (the card shows the branch at once); the notification then waits for the user's answer
+  await offerBranchActions(git, store, { branch: branchName }, `Branch ${branchName} created.`);
 }

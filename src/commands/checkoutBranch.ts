@@ -4,7 +4,9 @@ import { GitAPI, pickRepository, Repository } from '../git';
 import { WorkItemsStore } from '../workItemsStore';
 import { copyEnvFiles, createWorktree, listWorktrees, stashPop, stashPush, writeSetupMarker } from '../worktreeGit';
 import {
+  branchActionOrder,
   CheckoutChoice,
+  CheckoutMode,
   decideCheckout,
   findWorktree,
   hasUncommittedChanges,
@@ -19,6 +21,7 @@ export interface BranchTarget {
 }
 
 const OPEN_IN_WORKTREE = 'Open in a worktree';
+const CHECKOUT = 'Checkout';
 const STASH_AND_CHECKOUT = 'Stash and checkout';
 const CHECKOUT_ANYWAY = 'Checkout anyway';
 
@@ -187,7 +190,9 @@ export async function checkoutBranch(
   git: GitAPI,
   store: WorkItemsStore,
   target: BranchTarget,
-  choice?: CheckoutChoice
+  choice?: CheckoutChoice,
+  /** Overrides azdoWorkItems.checkout.mode, e.g. "ask" for a button that explicitly says "Checkout" */
+  modeOverride?: CheckoutMode
 ): Promise<void> {
   const repository = pickRepository(git);
   const { branch } = target;
@@ -202,7 +207,7 @@ export async function checkoutBranch(
     await openFolder(other.path);
     return;
   }
-  const mode = settings().checkoutMode;
+  const mode = modeOverride ?? settings().checkoutMode;
   const dirty = mode === 'ask' && !choice && (await hasChanges(repository));
   const decided = decideCheckout({ mode, dirty, choice });
   const decision = decided === 'ask' ? await askWhatToDo(repository.state.HEAD?.name) : decided;
@@ -245,4 +250,33 @@ export async function showCheckoutMenu(git: GitAPI, store: WorkItemsStore, targe
   if (picked) {
     await checkoutBranch(git, store, target, picked.choice);
   }
+}
+
+/** Buttons that offer "Checkout" and "Open in a worktree", ordered by azdoWorkItems.checkout.mode */
+function branchActionButtons(): string[] {
+  return branchActionOrder(settings().checkoutMode).map((choice) =>
+    choice === 'worktree' ? OPEN_IN_WORKTREE : CHECKOUT
+  );
+}
+
+/**
+ * Offers to check out the branch or open it in a worktree (a notification, not modal: dismissing it stays on the
+ * current branch). Resolves when the user answered and the chosen action finished
+ */
+export async function offerBranchActions(
+  git: GitAPI,
+  store: WorkItemsStore,
+  target: BranchTarget,
+  message: string,
+  extraButtons: string[] = []
+): Promise<string | undefined> {
+  const picked = await vscode.window.showInformationMessage(message, ...branchActionButtons(), ...extraButtons);
+  if (picked === CHECKOUT) {
+    // The button says "Checkout": check out here even when the setting prefers worktrees, still asking first
+    // when there are uncommitted changes
+    await checkoutBranch(git, store, target, undefined, 'ask');
+  } else if (picked === OPEN_IN_WORKTREE) {
+    await openInWorktree(pickRepository(git), store, target);
+  }
+  return picked;
 }
