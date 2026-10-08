@@ -99,6 +99,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         error: this.reviews.error,
         requests: this.reviews.models(),
         maxWaitHours: reviewSettings().maxWaitHours,
+        dueSoonHours: reviewSettings().dueSoonHours,
       },
       pullRequests: {
         status: this.myPullRequests.status,

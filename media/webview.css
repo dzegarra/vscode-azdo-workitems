@@ -1290,21 +1290,110 @@ button.state:focus-visible {
   color: var(--vscode-textLink-foreground);
 }
 
-/* Share of the maximum wait already used */
-.review-bar {
-  height: 4px;
+/* Caption and due time of the bar: one line, wrapping when the view is narrow */
+.review-bar-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 8px;
   margin-top: 2px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.review-caption {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--vscode-foreground);
+}
+
+.review-caption .icon {
+  width: 12px;
+  height: 12px;
+  color: var(--review-accent);
+}
+
+.review.urgency-overdue .review-caption {
+  color: var(--vscode-errorForeground, var(--red));
+  font-weight: 600;
+}
+
+.review-due {
+  color: var(--muted);
+}
+
+/* Waiting time against the maximum wait: the track ends at the limit */
+.review-bar {
+  position: relative;
+  height: 6px;
   overflow: hidden;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--review-accent) 20%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--review-accent) 18%, transparent);
+}
+
+/* The last hours before the limit, when the PR is due soon */
+.review-bar-zone {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 100%;
+  background: color-mix(in srgb, var(--orange) 35%, transparent);
 }
 
 .review-bar-fill {
+  position: relative;
   display: block;
   width: 0;
   height: 100%;
-  border-radius: 2px;
+  border-radius: 3px;
   background: var(--review-accent);
+}
+
+/* Overdue: not just a full bar, a red one with diagonal stripes */
+.review.urgency-overdue .review-bar {
+  background: color-mix(in srgb, var(--red) 30%, transparent);
+}
+
+.review.urgency-overdue .review-bar-zone {
+  display: none;
+}
+
+.review.urgency-overdue .review-bar-fill {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--red) 0,
+    var(--red) 4px,
+    color-mix(in srgb, var(--red) 45%, var(--vscode-editor-background, #1e1e1e)) 4px,
+    color-mix(in srgb, var(--red) 45%, var(--vscode-editor-background, #1e1e1e)) 8px
+  );
+}
+
+/* The urgency of the card changed while the view was open */
+.review.pulse {
+  animation: review-pulse 1.2s ease-out 1;
+}
+
+@keyframes review-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--review-accent) 70%, transparent);
+    background: color-mix(in srgb, var(--review-accent) 25%, var(--card-bg));
+  }
+  100% {
+    box-shadow: 0 0 0 8px transparent;
+    background: var(--card-bg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No animation: a static outline for the same time */
+  .review.pulse {
+    animation: none;
+    outline: 2px solid var(--review-accent);
+    outline-offset: 1px;
+  }
 }
 
 .review-notes .review-ready {

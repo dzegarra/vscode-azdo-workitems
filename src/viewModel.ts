@@ -141,6 +141,8 @@ export interface ReviewsModel {
   error?: string;
   requests: ReviewRequestModel[];
   maxWaitHours: number;
+  /** Hours before the maximum wait when a PR is due soon */
+  dueSoonHours: number;
 }
 
 export interface MyPullRequestsModel {

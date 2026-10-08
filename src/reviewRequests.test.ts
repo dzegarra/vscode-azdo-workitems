@@ -103,8 +103,14 @@ describe('review requests', () => {
     const models = toReviewModels(
       [request(1, '2026-10-05T07:00:00Z'), request(2, '2026-10-05T15:00:00Z'), request(3, '2026-10-06T04:00:00Z')],
       now,
-      rules
+      rules,
+      'UTC'
     );
+    expect(models.map((m) => [m.dueText, m.barCaption, m.barValueText, m.waitedHours])).toEqual([
+      ['was due today 07:00', '27 h of 24 h', 'Overdue by 3 hours', 24],
+      ['due today 15:00', '19 h of 24 h', 'Waited 19 hours of 24; due today at 15:00', 19],
+      ['due tomorrow 04:00', '6 h of 24 h', 'Waited 6 hours of 24; due tomorrow at 04:00', 6],
+    ]);
     expect(models.map((m) => [m.urgency, m.timeLeft, m.waited, m.elapsed])).toEqual([
       ['overdue', 'overdue by 3 h', '1 d 3 h', 1],
       ['dueSoon', '5 h left', '19 h', 19 / 24],

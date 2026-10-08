@@ -1,5 +1,6 @@
 /** Pull requests waiting for the user's review, and the notifications about them. Pure, so no "vscode" import */
 import type { ReviewDetails } from './reviewCard';
+import { describeBarCaption, describeBarValue, describeDue } from './reviewDue';
 
 export interface ReviewerPullRequest {
   pullRequestId: number;
@@ -197,6 +198,14 @@ export interface ReviewRequestModel extends ReviewRequest {
   waited: string;
   /** Share of the maximum wait already used, from 0 to 1 */
   elapsed: number;
+  /** "due today 14:30", "was due today 10:30" */
+  dueText: string;
+  /** Under the bar: "19 h of 24 h", "overdue by 3 h" */
+  barCaption: string;
+  /** For screen readers: "Waited 19 hours of 24; due today at 14:30", "Overdue by 3 hours" */
+  barValueText: string;
+  /** Hours waited, up to the maximum wait */
+  waitedHours: number;
   /** The PR belongs to the repository open in VS Code: its branch can be checked out */
   canCheckout?: boolean;
   /** Its branch is the one checked out */
@@ -205,14 +214,31 @@ export interface ReviewRequestModel extends ReviewRequest {
   worktree?: string;
 }
 
-export function toReviewModels(requests: ReviewRequest[], now: Date, rules: ReviewRules): ReviewRequestModel[] {
-  return requests.map((request) => ({
-    ...request,
-    urgency: reviewUrgency(request, now, rules),
-    timeLeft: describeTimeLeft(request, now, rules.maxWaitHours),
-    waited: formatWait(waitingMs(request, now)),
-    elapsed: Math.min(1, waitingMs(request, now) / (rules.maxWaitHours * MS_PER_HOUR)),
-  }));
+/** The time zone only matters for tests: it is the local one otherwise */
+export function toReviewModels(
+  requests: ReviewRequest[],
+  now: Date,
+  rules: ReviewRules,
+  timeZone?: string
+): ReviewRequestModel[] {
+  return requests.map((request) => {
+    const waited = waitingMs(request, now);
+    const left = timeLeftMs(request, now, rules.maxWaitHours);
+    const timeLeft = describeTimeLeft(request, now, rules.maxWaitHours);
+    const due = new Date(new Date(request.publishedAt).getTime() + rules.maxWaitHours * MS_PER_HOUR);
+    const dueText = describeDue(due, now, timeZone);
+    return {
+      ...request,
+      urgency: reviewUrgency(request, now, rules),
+      timeLeft,
+      waited: formatWait(waited),
+      elapsed: Math.min(1, waited / (rules.maxWaitHours * MS_PER_HOUR)),
+      dueText,
+      barCaption: describeBarCaption(waited, rules.maxWaitHours),
+      barValueText: describeBarValue(waited, rules.maxWaitHours, left > 0 ? undefined : -left, dueText),
+      waitedHours: Math.min(rules.maxWaitHours, Math.floor(waited / MS_PER_HOUR)),
+    };
+  });
 }
 
 /** "3 pull requests are waiting for your review: 1 overdue, 1 due soon" */

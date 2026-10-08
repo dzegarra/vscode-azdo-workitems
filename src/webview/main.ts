@@ -20,7 +20,8 @@ import { NO_PRIORITY, priorityFilterValue, severityLevel, severityName, sortWork
 import { isFinishedState, stateCategory, stateRank } from '../states';
 import { MyPullRequestModel, ReviewerModel, VoteKind } from '../myPullRequests';
 import { describeTeamRules } from '../reviewCard';
-import type { ReviewRequestModel } from '../reviewRequests';
+import { dueSoonZoneStart } from '../reviewDue';
+import type { ReviewRequestModel, ReviewUrgency } from '../reviewRequests';
 import { hasTaskAlerts, isTaskListOpen, taskProgress } from '../taskProgress';
 import { pullRequestTooltip } from '../pullRequestModel';
 import { describeTaskPullRequest, splitTaskPullRequests, TaskPullRequestModel } from '../taskPullRequests';
@@ -1091,7 +1092,9 @@ function renderReview(request: ReviewRequestModel): string {
         request.details.timeline
       )}</span>`
     : `<span class="review-time">${request.timeLeft}</span>`;
-  return `<li class="review urgency-${request.urgency}">
+  const maxWaitHours = model?.reviews.maxWaitHours ?? 24;
+  const zoneStart = dueSoonZoneStart(maxWaitHours, model?.reviews.dueSoonHours ?? 6);
+  return `<li class="review urgency-${request.urgency}" data-review="${request.id}">
     <div class="review-line">
       ${time}
       <span class="review-meta" title="${escapeHtml(
@@ -1106,7 +1109,15 @@ function renderReview(request: ReviewRequestModel): string {
     </div>
     <button class="link review-title" data-action="openReviewRequest" data-url="${escapeHtml(request.url)}"
       title="Open the PR in Azure DevOps">${escapeHtml(request.title)}</button>
-    <div class="review-bar" title="Waiting for ${request.waited} of ${model?.reviews.maxWaitHours ?? 24} h">
+    <div class="review-bar-text">
+      <span class="review-caption">${icon('clock')}<span>${escapeHtml(request.barCaption)}</span></span>
+      <span class="review-due">${escapeHtml(request.dueText)}</span>
+    </div>
+    <div class="review-bar" role="progressbar" aria-label="Time waiting for review" aria-valuemin="0"
+      aria-valuemax="${maxWaitHours}" aria-valuenow="${request.waitedHours}"
+      aria-valuetext="${escapeHtml(request.barValueText)}"
+      title="Waiting for ${request.waited} of ${maxWaitHours} h; ${escapeHtml(request.dueText)}">
+      <span class="review-bar-zone" data-zone-start="${zoneStart}"></span>
       <span class="review-bar-fill" data-elapsed="${request.elapsed}"></span>
     </div>
     ${renderReviewDetails(request)}
@@ -1303,9 +1314,34 @@ function trackNewReviews(current: ViewModel): void {
 
 /** Progress bars are sized with CSSOM: the CSP of the view blocks inline styles */
 function sizeReviewBars(): void {
+  document.querySelectorAll<HTMLElement>('.review-bar-zone').forEach((zone) => {
+    zone.style.left = `${Math.round(Number(zone.dataset.zoneStart) * 1000) / 10}%`;
+  });
   document.querySelectorAll<HTMLElement>('.review-bar-fill').forEach((fill) => {
     fill.style.width = `${Math.round(Number(fill.dataset.elapsed) * 100)}%`;
   });
+}
+
+/** Urgency each PR to review had when last rendered, to pulse the cards whose level changes */
+const reviewUrgencies = new Map<number, ReviewUrgency>();
+const PULSE_MS = 1200;
+
+/** One-shot pulse on the cards whose urgency changed since the last render; not on the first one nor on new cards */
+function pulseChangedReviews(current: ViewModel): void {
+  if (current.reviews.status !== 'ready') {
+    return;
+  }
+  document.querySelectorAll<HTMLElement>('.review[data-review]').forEach((card) => {
+    const id = Number(card.dataset.review);
+    const urgency = current.reviews.requests.find((request) => request.id === id)?.urgency;
+    const previous = reviewUrgencies.get(id);
+    if (urgency && previous && previous !== urgency) {
+      card.classList.add('pulse');
+      setTimeout(() => card.classList.remove('pulse'), PULSE_MS);
+    }
+  });
+  reviewUrgencies.clear();
+  current.reviews.requests.forEach((request) => reviewUrgencies.set(request.id, request.urgency));
 }
 
 /** Same for the progress of the tasks */
@@ -1479,6 +1515,7 @@ function render(): void {
   (document.getElementById('reviews') as HTMLElement).innerHTML = renderReviews(model);
   (document.getElementById('my-prs') as HTMLElement).innerHTML = renderMyPullRequests(model);
   sizeReviewBars();
+  pulseChangedReviews(model);
   sizeTaskBars();
   if (revealPending()) {
     render();
