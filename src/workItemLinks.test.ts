@@ -111,7 +111,17 @@ describe('isVisible', () => {
     hiddenPriorities: [],
     hiddenPredecessorStates: [],
   };
-  const draftPr = { id: 1, title: 'PR', status: 'Draft', tone: 'draft' as const, url: '', isActive: true, runs: [] };
+  const draftPr = {
+    id: 1,
+    title: 'PR',
+    status: 'Draft',
+    tone: 'draft' as const,
+    url: '',
+    isActive: true,
+    runs: [],
+    repository: 'Repo',
+    otherRepository: false,
+  };
 
   it('applies the type and state filters', () => {
     expect(isVisible(item, filter)).toBe(true);
@@ -257,6 +267,8 @@ describe('branch actions', () => {
     url: '',
     isActive,
     runs: [],
+    repository: 'Repo',
+    otherRepository: false,
   });
   const item = { state: 'Committed', branch: 'feature/x/1-a', isCurrentBranch: false, pullRequests: [] };
   const leftoverBranch = { name: 'feature/x/1-a', local: true, remote: true };

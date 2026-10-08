@@ -1700,6 +1700,20 @@ button.state:focus-visible {
   row-gap: 3px;
 }
 
+/* PR of another repository: dimmed and italic, back to normal when the user reaches for it */
+.row.pr.other-repo,
+.signal.other-repo {
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.row.pr.other-repo:hover,
+.row.pr.other-repo:focus-within,
+.signal.other-repo:hover,
+.signal.other-repo:focus-within {
+  opacity: 1;
+}
+
 .runs {
   display: inline-flex;
   flex-wrap: wrap;

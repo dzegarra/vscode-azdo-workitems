@@ -5,6 +5,7 @@ import type { FigmaLink } from './figmaLinks';
 import { icon, typeIcon, typeIdClass } from './icons';
 import { DependencyRisk, RISK_DESCRIPTIONS } from './schedule';
 import { isFinishedState, stateCategory } from './states';
+import { pullRequestTooltip } from './pullRequestModel';
 import { BranchAction, branchActions, type WorkItemModel } from './viewModel';
 
 export interface RelatedWorkItem {
@@ -108,7 +109,9 @@ function renderDevelopment(card: WorkItemModel | undefined): string {
     )}</div>`;
   }
   const pullRequests = card.pullRequests.map(
-    (pr) => `<div class="row">${icon('pullRequest')}
+    (pr) => `<div class="row${pr.otherRepository ? ' pr other-repo' : ''}" title="${escapeHtml(
+      pullRequestTooltip(pr)
+    )}">${icon('pullRequest')}
       <button class="link" data-action="openPullRequest" data-id="${card.id}" data-pr="${pr.id}">PR ${pr.id}</button>
       <span class="pr-title">${escapeHtml(pr.title)}</span>
       <span class="pill tone-${pr.tone}">${escapeHtml(pr.status)}</span></div>`

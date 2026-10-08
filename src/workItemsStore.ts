@@ -8,11 +8,11 @@ import { isFinishedState, stateCategory } from './states';
 import { openPredecessors } from './predecessors';
 import { ScheduledIteration } from './schedule';
 import { sortTaskPullRequests, TaskPullRequestModel, toTaskPullRequestModel } from './taskPullRequests';
-import { FilterModel, PullRequestModel, ViewModel, WorkItemModel } from './viewModel';
+import { FilterModel, ViewModel, WorkItemModel } from './viewModel';
 import { runDetailsLoader } from './runDetailsLoader';
 import { isActive, latestRuns, RunModel } from './pipelines';
 import { followedPullRequestIds, RunsTracker } from './runsPolling';
-import { pullRequestStatus } from './workItemLinks';
+import { toPullRequestModel } from './pullRequestModel';
 import { listWorktrees } from './worktreeGit';
 import { findWorktree, otherWorktreeBranches, Worktree } from './worktrees';
 import { WorkingOnLevel, workingOnLevels } from './workingOn';
@@ -251,19 +251,6 @@ async function alertRules(client: AzdoClient): Promise<(AlertRules & { integrati
     pullRequestTaskPattern,
     requiredFields: resolveRequiredFields(s.requiredFields, fields),
     integrationBuildField: resolveFieldName(settings().integrationBuild.field, fields),
-  };
-}
-
-function toPullRequestModel(pr: PullRequestDetails, runs: RunModel[]): PullRequestModel {
-  const { label, tone } = pullRequestStatus(pr);
-  return {
-    id: pr.pullRequestId,
-    title: pr.title,
-    status: label,
-    tone,
-    url: pr.webUrl,
-    isActive: pr.status === 'active',
-    runs,
   };
 }
 
@@ -570,7 +557,7 @@ export class WorkItemsStore {
       },
       // Active PRs first, then the most recent
       pullRequests: pullRequests
-        .map((pr) => toPullRequestModel(pr, this.runs.get(pr.pullRequestId) ?? []))
+        .map((pr) => toPullRequestModel(pr, this.runs.get(pr.pullRequestId) ?? [], this.repositoryId))
         .sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.id - a.id),
       openPredecessors: predecessors && openPredecessors(workItem, predecessors, completedStates, this.schedule),
       taskPullRequests: workItem.type === 'Task' ? this.taskPullRequests(pullRequests) : [],

@@ -39,7 +39,7 @@ Each work item is a card with:
 - Title
 - Parent: ID and title of the parent (click it to see its details), unless the card is nested in its parent's card. Children (e.g. Tasks) are nested at the bottom of the parent card
 - Branch: the local branch (`local`, or `current` when checked out) or a branch that only exists in the remote (`remote`)
-- Pull requests linked to the work item with their status: Draft, In review, Approved, Waiting for author, Rejected, Conflicts, Completed, Abandoned
+- Pull requests linked to the work item with their status (the PRs of other repositories are faded and in italics; hover them to see the repository). Only the PRs of this repository decide whether **Create PR** is offered: Draft, In review, Approved, Waiting for author, Rejected, Conflicts, Completed, Abandoned
 
 Cards are sorted by state: Done, Ready to Test, Committed, In Progress, Approved, New, To Do (`azdoWorkItems.stateOrder`). Done and Ready to Test are shown in green, Committed and In Progress in blue.
 

@@ -31,6 +31,8 @@ function pr(runs: RunModel[] = [], overrides: Partial<PullRequestModel> = {}): P
     url: '',
     isActive: true,
     runs,
+    repository: 'User_Interface',
+    otherRepository: false,
     ...overrides,
   };
 }
@@ -57,7 +59,13 @@ describe('compactSignals', () => {
       [],
       NOW
     );
-    expect(signal).toEqual({ kind: 'pullRequest', label: 'In review', title: 'PR 7: The PR', tone: 'review' });
+    expect(signal).toEqual({
+      kind: 'pullRequest',
+      label: 'In review',
+      title: 'PR 7: The PR',
+      tone: 'review',
+      otherRepository: false,
+    });
   });
 
   it('summarises the CI runs with the worst state first', () => {
@@ -202,5 +210,15 @@ describe('compactSignals', () => {
       tone: 'working-worktree',
     });
     expect(compactSignals(item(), [], NOW)).toEqual([]);
+  });
+
+  it('names the repository of a PR from another repository and flags it', () => {
+    const other = pr([], { repository: 'Common_Translations', otherRepository: true });
+    const signal = compactSignals(item({ pullRequests: [other] }), [], NOW).find((s) => s.kind === 'pullRequest');
+    expect(signal?.otherRepository).toBe(true);
+    expect(signal?.title).toBe('PR 7 · Common_Translations: The PR — in another repository');
+    const own = compactSignals(item({ pullRequests: [pr()] }), [], NOW).find((s) => s.kind === 'pullRequest');
+    expect(own?.otherRepository).toBe(false);
+    expect(own?.title).toBe('PR 7: The PR');
   });
 });

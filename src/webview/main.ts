@@ -22,6 +22,7 @@ import { MyPullRequestModel, ReviewerModel, VoteKind } from '../myPullRequests';
 import { describeTeamRules } from '../reviewCard';
 import type { ReviewRequestModel } from '../reviewRequests';
 import { hasTaskAlerts, isTaskListOpen, taskProgress } from '../taskProgress';
+import { pullRequestTooltip } from '../pullRequestModel';
 import { describeTaskPullRequest, splitTaskPullRequests, TaskPullRequestModel } from '../taskPullRequests';
 import { splitWorkingOn, workingOnBadge } from '../workingOn';
 import type {
@@ -340,10 +341,10 @@ function renderRuns(item: WorkItemModel, pr: PullRequestModel): string {
 }
 
 function renderPullRequest(item: WorkItemModel, pr: PullRequestModel): string {
-  return `<div class="row pr">
+  return `<div class="row pr${pr.otherRepository ? ' other-repo' : ''}">
     ${icon('pullRequest')}
     <button class="link" data-action="openPullRequest" data-id="${item.id}" data-pr="${pr.id}"
-      title="${escapeHtml(pr.title)}">PR ${pr.id}</button>
+      title="${escapeHtml(pullRequestTooltip(pr))}">PR ${pr.id}</button>
     <span class="pill tone-${pr.tone}">${escapeHtml(pr.status)}</span>
     ${renderRuns(item, pr)}
   </div>`;
@@ -801,10 +802,9 @@ function renderSignal(signal: CompactSignal, item: WorkItemModel): string {
     case 'ready':
     case 'tasks':
     case 'workingOn':
-      return `<span class="signal signal-${signal.kind} tone-${signal.tone}" title="${title}">${signalMarker(
-        signal,
-        item
-      )}${label}</span>`;
+      return `<span class="signal signal-${signal.kind} tone-${signal.tone}${
+        signal.otherRepository ? ' other-repo' : ''
+      }" title="${title}">${signalMarker(signal, item)}${label}</span>`;
   }
 }
 

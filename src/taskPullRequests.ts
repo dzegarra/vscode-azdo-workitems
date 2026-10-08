@@ -2,6 +2,7 @@
  * PRs linked to the tasks nested in a work item card: an icon per PR and a popover with what it is about.
  * Pure, so no "vscode" import: the webview bundles it
  */
+import { isOtherRepository } from './pullRequestModel';
 import { reviewerModels, ReviewerModel } from './myPullRequests';
 import type { RunModel } from './pipelines';
 import { pullRequestStatus, PullRequestState, PullRequestTone } from './workItemLinks';
@@ -68,7 +69,7 @@ export function toTaskPullRequestModel(
     tone,
     url: pr.webUrl,
     repository: pr.repository.name,
-    otherRepository: !!context.repositoryId && pr.repository.id.toLowerCase() !== context.repositoryId.toLowerCase(),
+    otherRepository: isOtherRepository(pr.repository.id, context.repositoryId),
     author: pr.createdBy?.displayName,
     target: target && target !== context.baseBranch ? target : undefined,
     reviewers: reviewers.slice(0, MAX_TASK_REVIEWERS),

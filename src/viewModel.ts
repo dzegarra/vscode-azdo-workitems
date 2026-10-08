@@ -23,6 +23,10 @@ export interface PullRequestModel {
   isActive: boolean;
   /** Last CI run of each pipeline validating the PR */
   runs: RunModel[];
+  /** Name of the repository of the PR */
+  repository: string;
+  /** The PR is in a repository other than the one open in VS Code */
+  otherRepository: boolean;
 }
 
 export interface OtherTaskModel {
@@ -208,7 +212,8 @@ export type BranchAction = 'checkout' | 'createBranch' | 'createPullRequest' | '
 export function branchActions(
   item: Pick<WorkItemModel, 'branch' | 'isCurrentBranch' | 'leftoverBranch' | 'pullRequests' | 'state'>
 ): BranchAction[] {
-  const hasActivePullRequest = item.pullRequests.some((pr) => pr.isActive);
+  // Only the PRs of this repository count: an active PR in another one does not cover this branch
+  const hasActivePullRequest = item.pullRequests.some((pr) => pr.isActive && !pr.otherRepository);
   if (isFinishedState(item.state)) {
     return item.leftoverBranch && !hasActivePullRequest ? ['deleteBranch'] : [];
   }

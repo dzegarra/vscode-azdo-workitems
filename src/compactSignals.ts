@@ -1,5 +1,6 @@
 /** What the compact work item rows show under the title. Pure, so no "vscode" import */
 import { isReadyToStart } from './predecessors';
+import { pullRequestTooltip } from './pullRequestModel';
 import { RunState } from './pipelines';
 import { runTooltip } from './runDetails';
 import { severityLevel, severityName } from './priority';
@@ -32,6 +33,8 @@ export interface CompactSignal {
    * "working-here" / "working-worktree" (working on)
    */
   tone: string;
+  /** The PR is in another repository: shown dimmed */
+  otherRepository?: boolean;
 }
 
 /** Worst state first: the one run that matters most stands for the rest. Canceled runs say nothing useful */
@@ -139,7 +142,13 @@ export function compactSignals(
   }
   const pr = item.pullRequests.at(0);
   if (pr) {
-    signals.push({ kind: 'pullRequest', label: pr.status, title: `PR ${pr.id}: ${pr.title}`, tone: pr.tone });
+    signals.push({
+      kind: 'pullRequest',
+      label: pr.status,
+      title: pr.otherRepository ? pullRequestTooltip(pr) : `PR ${pr.id}: ${pr.title}`,
+      tone: pr.tone,
+      otherRepository: pr.otherRepository,
+    });
   }
   const ci = ciSignal(item, now);
   if (ci) {
