@@ -1,4 +1,5 @@
 import { getAccessToken } from './auth';
+import { CommitsDiff, hasSkipTag, PullRequestLabel } from './buildNotes';
 import { buildMyWorkItemsQuery, Iteration, mergeTeamIterations, TeamIteration } from './iterations';
 import { PackageVersion } from './integrationBuild';
 import type { RawCoverageFiles, RawCoverageSummary } from './coverage';
@@ -67,6 +68,8 @@ const MAX_PULL_REQUESTS = 30;
 const MAX_REVIEW_REQUESTS = 100;
 /** Active PRs of the user listed in the sidebar */
 const MAX_MY_ACTIVE_PULL_REQUESTS = 100;
+/** Changes asked for the diff between two commits; the response says when there are more */
+const MAX_DIFF_CHANGES = 2000;
 /** Recently completed PRs of the user: the sidebar lists the last 24 hours of them */
 const MAX_MY_COMPLETED_PULL_REQUESTS = 10;
 
@@ -578,6 +581,30 @@ export class AzdoClient {
     return types;
   }
 
+  /**
+   * Changes between the target and the source commit of a PR: one request. The list is cut at `$top`;
+   * `allChangesIncluded` tells whether it is complete
+   */
+  async getCommitsDiff(repositoryId: string, baseCommit: string, targetCommit: string): Promise<CommitsDiff> {
+    return this.request<CommitsDiff>(
+      this.url(
+        `git/repositories/${repositoryId}/diffs/commits?baseVersion=${encodeURIComponent(
+          baseCommit
+        )}&baseVersionType=commit&targetVersion=${encodeURIComponent(
+          targetCommit
+        )}&targetVersionType=commit&diffCommonCommit=true&$top=${MAX_DIFF_CHANGES}`
+      )
+    );
+  }
+
+  /** Adds a tag (label) to the PR; it is created when the repository does not have it yet */
+  async addPullRequestLabel(repositoryId: string, pullRequestId: number, name: string): Promise<void> {
+    await this.request(this.url(`git/repositories/${repositoryId}/pullRequests/${pullRequestId}/labels`), {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
+
   /** Takes the PR out of draft: the reviewers are notified */
   async publishPullRequest(repositoryId: string, pullRequestId: number): Promise<void> {
     await this.request(this.url(`git/repositories/${repositoryId}/pullrequests/${pullRequestId}`), {
@@ -669,19 +696,38 @@ export class AzdoClient {
 
   async createPullRequest(
     repository: GitRepository,
-    pr: { source: string; target: string; title: string; description: string; isDraft: boolean; workItemIds: number[] }
+    pr: {
+      source: string;
+      target: string;
+      title: string;
+      description: string;
+      isDraft: boolean;
+      workItemIds: number[];
+      /** Tags to put on the PR */
+      labels?: string[];
+    }
   ): Promise<PullRequest> {
-    const created = await this.request<PullRequest>(this.url(`git/repositories/${repository.id}/pullrequests`), {
-      method: 'POST',
-      body: JSON.stringify({
-        sourceRefName: `refs/heads/${pr.source}`,
-        targetRefName: `refs/heads/${pr.target}`,
-        title: pr.title,
-        description: pr.description,
-        isDraft: pr.isDraft,
-        workItemRefs: pr.workItemIds.map((id) => ({ id: String(id) })),
-      }),
-    });
+    const created = await this.request<PullRequest & { labels?: PullRequestLabel[] }>(
+      this.url(`git/repositories/${repository.id}/pullrequests`),
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          sourceRefName: `refs/heads/${pr.source}`,
+          targetRefName: `refs/heads/${pr.target}`,
+          title: pr.title,
+          description: pr.description,
+          isDraft: pr.isDraft,
+          workItemRefs: pr.workItemIds.map((id) => ({ id: String(id) })),
+          ...(pr.labels?.length ? { labels: pr.labels.map((name) => ({ name })) } : {}),
+        }),
+      }
+    );
+    // The tags go in the create body; when the response does not show them, they are added one by one
+    for (const name of pr.labels ?? []) {
+      if (!hasSkipTag(created.labels, name)) {
+        await this.addPullRequestLabel(repository.id, created.pullRequestId, name);
+      }
+    }
     return { ...created, webUrl: this.pullRequestWebUrl(repository, created.pullRequestId) };
   }
 

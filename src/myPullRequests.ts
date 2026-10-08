@@ -2,6 +2,13 @@
  * The pull requests created by the user, shaped for the "My Pull Requests" box of the sidebar: what is still
  * missing before each one can be merged. Pure, so no "vscode" import
  */
+import {
+  BuildNotesOptions,
+  BuildNotesStatus,
+  buildNotesWarningText,
+  needsBuildNotesWarning,
+  PullRequestLabel,
+} from './buildNotes';
 import { isValidPullRequestTitle } from './naming';
 import type { RunModel } from './pipelines';
 import { buildTimeline, publishedAt, Timeline } from './pullRequestTimeline';
@@ -44,6 +51,10 @@ export interface AuthoredPullRequest {
   /** Present while auto-complete is set */
   autoCompleteSetBy?: { id?: string };
   completionOptions?: { deleteSourceBranch?: boolean; transitionWorkItems?: boolean; mergeStrategy?: string };
+  /** Tags of the PR. The API leaves the key out when there are none */
+  labels?: PullRequestLabel[];
+  lastMergeSourceCommit?: { commitId: string };
+  lastMergeTargetCommit?: { commitId: string };
 }
 
 /** Evaluation of a branch policy on a PR, flattened from the policy evaluations API */
@@ -96,6 +107,8 @@ export interface PullRequestExtras {
   /** All the threads of the PR: they tell when it was published and what happened to it */
   threads?: ThreadResponse[];
   runs: RunModel[];
+  /** The build notes rule; undefined while it is not known */
+  buildNotes?: BuildNotesStatus;
 }
 
 export interface AuthoredPullRequestData {
@@ -197,6 +210,9 @@ export function nextStep(pr: AuthoredPullRequest, extras: PullRequestExtras): st
 export interface PullRequestWarning {
   text: string;
   severity: 'error' | 'warning';
+  /** A fix the card offers as a button */
+  action?: 'addSkipTag';
+  actionLabel?: string;
 }
 
 /** Reviewers that must approve: people marked as required, not the author nor those who declined */
@@ -222,6 +238,8 @@ const BACKLOG_TYPES = ['Product Backlog Item', 'User Story', 'Bug'];
 export interface WarningOptions {
   /** 0 disables the check of the required reviewers */
   minimumRequiredReviewers: number;
+  /** The build notes rule; unchecked when undefined */
+  buildNotes?: BuildNotesOptions;
 }
 
 export const DEFAULT_WARNING_OPTIONS: WarningOptions = { minimumRequiredReviewers: 2 };
@@ -229,7 +247,7 @@ export const DEFAULT_WARNING_OPTIONS: WarningOptions = { minimumRequiredReviewer
 /** The team rules a published PR breaks. Never for drafts nor for PRs that are not active */
 export function ruleWarnings(
   pr: AuthoredPullRequest,
-  extras: Pick<PullRequestExtras, 'workItems'>,
+  extras: Pick<PullRequestExtras, 'buildNotes' | 'workItems'>,
   options: WarningOptions
 ): PullRequestWarning[] {
   if (pr.isDraft || pr.status !== 'active') {
@@ -254,7 +272,16 @@ export function ruleWarnings(
   if (extras.workItems && !extras.workItems.some((item) => BACKLOG_TYPES.includes(item.type))) {
     warnings.push('Link the Backlog Item or Bug of this PR');
   }
-  return warnings.map((text) => ({ text, severity: 'warning' as const }));
+  const found = warnings.map((text): PullRequestWarning => ({ text, severity: 'warning' }));
+  if (options.buildNotes && needsBuildNotesWarning(pr, extras.buildNotes, options.buildNotes)) {
+    found.push({
+      text: buildNotesWarningText(options.buildNotes),
+      severity: 'warning',
+      action: 'addSkipTag',
+      actionLabel: `Add tag ${options.buildNotes.skipTag}`,
+    });
+  }
+  return found;
 }
 
 export const BUG_AUTOCOMPLETE_WARNING =
@@ -283,7 +310,7 @@ export function autoCompleteWarnings(
 /** Mistakes of the auto-complete settings and rules of the team the PR breaks, the most serious first */
 export function pullRequestWarnings(
   pr: AuthoredPullRequest,
-  extras: Pick<PullRequestExtras, 'workItems'>,
+  extras: Pick<PullRequestExtras, 'buildNotes' | 'workItems'>,
   options: WarningOptions = DEFAULT_WARNING_OPTIONS
 ): PullRequestWarning[] {
   return [...autoCompleteWarnings(pr, extras), ...ruleWarnings(pr, extras, options)];
@@ -434,6 +461,7 @@ export interface ListOptions {
   baseBranch: string;
   showDrafts: boolean;
   minimumRequiredReviewers: number;
+  buildNotes?: BuildNotesOptions;
 }
 
 export function isCompletedRecently(pr: AuthoredPullRequest, now: Date): boolean {
@@ -449,7 +477,7 @@ function waitingSince({ pr, extras }: AuthoredPullRequestData): string {
 
 function toModel(
   { pr, extras }: AuthoredPullRequestData,
-  { now, baseBranch, minimumRequiredReviewers, formatDate }: ListOptions
+  { now, baseBranch, minimumRequiredReviewers, buildNotes, formatDate }: ListOptions
 ): MyPullRequestModel {
   const { label, tone } = pullRequestStatus(pr);
   const isCompleted = pr.status === 'completed';
@@ -483,7 +511,7 @@ function toModel(
       nextTone: 'pending',
     };
   }
-  const warnings = pullRequestWarnings(pr, extras, { minimumRequiredReviewers });
+  const warnings = pullRequestWarnings(pr, extras, { minimumRequiredReviewers, buildNotes });
   const next = nextStep(pr, extras);
   return {
     ...base,

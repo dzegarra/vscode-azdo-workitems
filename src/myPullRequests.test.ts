@@ -591,3 +591,37 @@ describe('helpers', () => {
     ).toMatchObject({ status: 'queued', isBlocking: true, type: 'Build', displayName: 'Pull Request Build' });
   });
 });
+
+describe('build notes warning', () => {
+  const buildNotes = { enabled: true, path: 'build-notes/developer-notes.md', skipTag: 'no-build-notes' };
+  const options = { minimumRequiredReviewers: 0, buildNotes };
+  const extras = { buildNotes: { localRepo: true, fileExists: true, changed: false } };
+
+  it('comes last, with the quick fix', () => {
+    const warnings = pullRequestWarnings(pr({ description: '' }), extras, options);
+    expect(warnings.at(-1)).toEqual({
+      text: 'Explain the changes for testers in build-notes/developer-notes.md, or tag the PR "no-build-notes"',
+      severity: 'warning',
+      action: 'addSkipTag',
+      actionLabel: 'Add tag no-build-notes',
+    });
+    expect(warnings).toHaveLength(2);
+  });
+
+  it('is not shown for drafts, tagged PRs, changed or unknown results', () => {
+    expect(pullRequestWarnings(pr({ isDraft: true }), extras, options)).toEqual([]);
+    expect(pullRequestWarnings(pr({ labels: [{ name: 'No-Build-Notes', active: true }] }), extras, options)).toEqual(
+      []
+    );
+    expect(pullRequestWarnings(pr(), { buildNotes: { ...extras.buildNotes, changed: true } }, options)).toEqual([]);
+    expect(pullRequestWarnings(pr(), { buildNotes: { ...extras.buildNotes, changed: undefined } }, options)).toEqual(
+      []
+    );
+    expect(pullRequestWarnings(pr(), {}, options)).toEqual([]);
+  });
+
+  it('prevents ready to merge', () => {
+    const warnings = pullRequestWarnings(pr(), extras, options);
+    expect(isReadyToMerge(pr(), { evaluations: [] }, warnings)).toBe(false);
+  });
+});

@@ -6,6 +6,7 @@ import { removeWorktreesCommand, showWorktreeMenu } from './commands/removeWorkt
 import { runPendingWorktreeSetup } from './worktreeSetup';
 import { CheckoutKind } from './viewModel';
 import { publishPullRequest } from './commands/publishPullRequest';
+import { addBuildNotesSkipTag } from './commands/addBuildNotesSkipTag';
 import { createPullRequest } from './commands/createPullRequest';
 import { deleteBranch } from './commands/deleteBranch';
 import { resolveContext, SECTION, settings } from './config';
@@ -16,6 +17,7 @@ import { addTask, changeState } from './commands/workItemEdits';
 import { DependencyMapPanel } from './dependencyMap';
 import { CurrentWorkItemStatusBar } from './currentWorkItemStatusBar';
 import {
+  ADD_BUILD_NOTES_SKIP_TAG_COMMAND,
   CHECKOUT_MY_PULL_REQUEST_COMMAND,
   MyPullRequestsWatcher,
   PUBLISH_PULL_REQUEST_COMMAND,
@@ -220,6 +222,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         reviewRequests.start();
         return;
       }
+      if (event.affectsConfiguration(`${SECTION}.buildNotes`)) {
+        void myPullRequests.poll();
+        return;
+      }
       if (event.affectsConfiguration(`${SECTION}.myPullRequests`)) {
         // Only the polling interval needs to fetch again: showing or hiding the drafts is done by the view
         if (event.affectsConfiguration(`${SECTION}.myPullRequests.pollIntervalSeconds`)) {
@@ -347,6 +353,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         throw new Error(`PR ${pullRequestId} is no longer in your list of pull requests.`);
       }
       await publishPullRequest(resolveContext(currentRepository()).client, pullRequest, () => myPullRequests.poll());
+    }),
+    command(ADD_BUILD_NOTES_SKIP_TAG_COMMAND, async (pullRequestId: number) => {
+      const pullRequest = myPullRequests.find(pullRequestId);
+      if (!pullRequest) {
+        throw new Error(`PR ${pullRequestId} is no longer in your list of pull requests.`);
+      }
+      await addBuildNotesSkipTag(resolveContext(currentRepository()).client, pullRequest, () => myPullRequests.poll());
     }),
     command('azdoWorkItems.openIterationBoard', () => openIterationBoard(currentRepository(), store)),
     command('azdoWorkItems.selectTeams', () => selectTeams(currentRepository()))

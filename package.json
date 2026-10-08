@@ -164,6 +164,11 @@
         "category": "Azure Work Items"
       },
       {
+        "command": "azdoWorkItems.addBuildNotesSkipTag",
+        "title": "Tag a Pull Request as Having No Build Notes",
+        "category": "Azure Work Items"
+      },
+      {
         "command": "azdoWorkItems.revealWorkItem",
         "title": "Show Work Item in the Sidebar",
         "category": "Azure Work Items"
@@ -220,6 +225,10 @@
         },
         {
           "command": "azdoWorkItems.publishPullRequest",
+          "when": "false"
+        },
+        {
+          "command": "azdoWorkItems.addBuildNotesSkipTag",
           "when": "false"
         },
         {
@@ -843,6 +852,21 @@
           "default": 2,
           "minimum": 0,
           "description": "Team rule: how many required reviewers (people, not groups) a published pull request of yours should have. The box warns when it has fewer. 0 disables the warning."
+        },
+        "azdoWorkItems.buildNotes.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Team rule: a pull request with changes testers should know about explains them in the build notes file; any other one is tagged. Warns in My Pull Requests when neither is done, and asks before creating a PR whose branch does not change the file."
+        },
+        "azdoWorkItems.buildNotes.path": {
+          "type": "string",
+          "default": "build-notes/developer-notes.md",
+          "description": "Build notes file, relative to the repository root. The rule only applies to the repository open in VS Code, and when the file exists in it."
+        },
+        "azdoWorkItems.buildNotes.skipTag": {
+          "type": "string",
+          "default": "no-build-notes",
+          "description": "Azure DevOps pull request tag (label) of the PRs without changes for testers."
         },
         "azdoWorkItems.statusBar.currentWorkItem": {
           "type": "boolean",

@@ -6,6 +6,7 @@ import { safeRelativePath } from './coverage';
 import { describeRecords } from './coverageRecords';
 import { CoverageRecordsStore } from './coverageRecordsStore';
 import {
+  ADD_BUILD_NOTES_SKIP_TAG_COMMAND,
   CHECKOUT_MY_PULL_REQUEST_COMMAND,
   MyPullRequestsWatcher,
   myPullRequestSettings,
@@ -198,6 +199,9 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         return;
       case 'publishMyPullRequest':
         await vscode.commands.executeCommand(PUBLISH_PULL_REQUEST_COMMAND, message.pullRequestId);
+        return;
+      case 'addBuildNotesSkipTag':
+        await vscode.commands.executeCommand(ADD_BUILD_NOTES_SKIP_TAG_COMMAND, message.pullRequestId);
         return;
       case 'setShowDrafts':
         // Personal preference: saved in the user settings, which re-renders the view

@@ -1,10 +1,14 @@
+import { access } from 'node:fs/promises';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AzdoClient, GitRepository } from '../azdoClient';
 import { pickFromCatalog } from '../catalog';
-import { resolveContext, settings } from '../config';
+import { buildNotesSettings, resolveContext, settings } from '../config';
+import { localDiffChangesFile } from '../buildNotes';
 import { GitAPI, pickRepository } from '../git';
 import { buildPrDescription, buildPrTitle, parseBranchName } from '../naming';
 import { WorkItemEntry, WorkItemsStore } from '../workItemsStore';
+import { git as runGit } from '../worktreeGit';
 
 /** The work item in the branch name, plus any other the user wants to link */
 async function pickWorkItemIds(store: WorkItemsStore, primaryId: number | undefined): Promise<number[] | undefined> {
@@ -77,6 +81,65 @@ async function openExistingPullRequest(
   return true;
 }
 
+function pickDraft(title: string, placeHolder: string): Thenable<{ isDraft: boolean } | undefined> {
+  return vscode.window.showQuickPick(
+    [
+      { label: 'Create', isDraft: false },
+      { label: 'Create as Draft', isDraft: true },
+    ],
+    { title, placeHolder, ignoreFocusOut: true }
+  );
+}
+
+const WRITE_NOTES = "Yes, I'll write the notes";
+
+/**
+ * Team rule: the branch explains its changes for testers in the build notes file or the PR is tagged. Checked
+ * locally (no request). Returns the tags to put on the PR, or undefined when the user wants to stop
+ */
+async function checkBuildNotes(root: string, base: string, head: string): Promise<string[] | undefined> {
+  const notes = buildNotesSettings();
+  if (!notes.enabled) {
+    return [];
+  }
+  let changed: boolean;
+  try {
+    await access(path.join(root, notes.path));
+    changed = localDiffChangesFile(await runGit(root, ['diff', '--name-only', `${base}...${head}`]), notes.path);
+  } catch {
+    // No notes file in this repository, or the base branch is not available locally: nothing to check
+    return [];
+  }
+  if (changed) {
+    return [];
+  }
+  const tagChoice = `No, tag the PR "${notes.skipTag}"`;
+  const choice = await vscode.window.showWarningMessage(
+    `This branch does not change ${notes.path}. Does it have changes testers should know about?`,
+    { modal: true },
+    WRITE_NOTES,
+    tagChoice
+  );
+  if (choice === WRITE_NOTES) {
+    await vscode.window.showTextDocument(vscode.Uri.file(path.join(root, notes.path)));
+    return undefined;
+  }
+  return choice === tagChoice ? [notes.skipTag] : undefined;
+}
+
+/** Draft or not, then the build notes rule. Undefined when the user cancels or wants to write the notes first */
+async function askCreateOptions(
+  title: string,
+  placeHolder: string,
+  root: string,
+  base: string,
+  head: string
+): Promise<{ isDraft: boolean; labels: string[] } | undefined> {
+  const draft = await pickDraft(title, placeHolder);
+  const labels = draft && (await checkBuildNotes(root, base, head));
+  return draft && labels ? { isDraft: draft.isDraft, labels } : undefined;
+}
+
 export async function createPullRequest(git: GitAPI, store: WorkItemsStore, node?: WorkItemEntry): Promise<void> {
   const repository = pickRepository(git);
   const s = settings();
@@ -125,14 +188,14 @@ export async function createPullRequest(git: GitAPI, store: WorkItemsStore, node
   }
   const title = buildPrTitle(workItemIds, featureName, description);
 
-  const draft = await vscode.window.showQuickPick(
-    [
-      { label: 'Create', isDraft: false },
-      { label: 'Create as Draft', isDraft: true },
-    ],
-    { title, placeHolder: `${branch} → ${s.baseBranch}`, ignoreFocusOut: true }
+  const options = await askCreateOptions(
+    title,
+    `${branch} → ${s.baseBranch}`,
+    repository.rootUri.fsPath,
+    `${s.remote}/${s.baseBranch}`,
+    isLocal ? branch : `${s.remote}/${branch}`
   );
-  if (!draft) {
+  if (!options) {
     return;
   }
 
@@ -152,8 +215,9 @@ export async function createPullRequest(git: GitAPI, store: WorkItemsStore, node
         target: s.baseBranch,
         title,
         description: buildPrDescription(commits.map((c) => c.message.split('\n')[0]).reverse()),
-        isDraft: draft.isDraft,
+        isDraft: options.isDraft,
         workItemIds,
+        labels: options.labels,
       });
     }
   );

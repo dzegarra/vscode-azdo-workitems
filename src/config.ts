@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { AzdoClient } from './azdoClient';
+import { BuildNotesOptions, DEFAULT_BUILD_NOTES_OPTIONS, normalizeRepoPath } from './buildNotes';
 import { CoverageThresholds, normalizeThresholds } from './coverage';
 import { Repository } from './git';
 import { parseAzdoRemote } from './repoContext';
@@ -61,6 +62,16 @@ export function settings() {
         []
       ),
     },
+  };
+}
+
+/** Team rule about the notes for testers. Blank settings fall back to the defaults */
+export function buildNotesSettings(): BuildNotesOptions {
+  const config = vscode.workspace.getConfiguration(`${SECTION}.buildNotes`);
+  return {
+    enabled: config.get<boolean>('enabled', DEFAULT_BUILD_NOTES_OPTIONS.enabled),
+    path: normalizeRepoPath(config.get<string>('path', '')) || DEFAULT_BUILD_NOTES_OPTIONS.path,
+    skipTag: config.get<string>('skipTag', '').trim() || DEFAULT_BUILD_NOTES_OPTIONS.skipTag,
   };
 }
 

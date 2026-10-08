@@ -177,7 +177,7 @@ export type WebviewMessage =
   | { type: 'checkoutReviewRequest'; pullRequestId: number }
   | { type: 'openReviewRequest' | 'openMyPullRequest'; url: string }
   | { type: 'checkMyPullRequests' }
-  | { type: 'checkoutMyPullRequest' | 'publishMyPullRequest'; pullRequestId: number }
+  | { type: 'addBuildNotesSkipTag' | 'checkoutMyPullRequest' | 'publishMyPullRequest'; pullRequestId: number }
   | { type: 'setShowDrafts'; show: boolean }
   | { type: 'ready' }
   | { type: 'refresh' }

@@ -1582,6 +1582,21 @@ button.state:focus-visible {
   gap: 4px;
 }
 
+.mypr-warnings li:has(.mypr-fix) {
+  flex-wrap: wrap;
+}
+
+.mypr-warnings li:has(.mypr-fix) > span {
+  flex: 1 1 calc(100% - 20px);
+}
+
+.mypr-warnings .mypr-fix {
+  flex: none;
+  margin-left: 16px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
 .mypr-warnings .icon {
   width: 12px;
   height: 12px;

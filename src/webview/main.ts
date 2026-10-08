@@ -1204,10 +1204,17 @@ function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean): s
     showRepository ? `<span>${escapeHtml(pr.repository)}</span>` : '',
   ].filter(Boolean);
   const warnings = pr.warnings.map(
-    ({ text, severity }) =>
+    ({ text, severity, action, actionLabel }) =>
       `<li class="mypr-${severity}" role="${severity === 'error' ? 'alert' : 'note'}">${icon(
         severity === 'error' ? 'error' : 'warning'
-      )}<span>${escapeHtml(text)}</span></li>`
+      )}<span>${escapeHtml(text)}</span>${
+        action === 'addSkipTag'
+          ? `<button class="button small mypr-fix" data-action="addBuildNotesSkipTag" data-pr="${pr.id}"
+              title="Tag the PR when it has no changes testers should know about">${escapeHtml(
+                actionLabel ?? 'Add tag'
+              )}</button>`
+          : ''
+      }</li>`
   );
   return `<li class="mypr tone-${pr.tone}${pr.isCompleted ? ' completed' : ''}${
     pr.readyToMerge ? ' ready-to-merge' : ''
@@ -1599,6 +1606,8 @@ document.addEventListener('click', (event) => {
     post({ type: 'setShowDrafts', show: !model.pullRequests.showDrafts });
   } else if (action === 'checkoutMyPullRequest' && pr) {
     post({ type: 'checkoutMyPullRequest', pullRequestId: Number(pr) });
+  } else if (action === 'addBuildNotesSkipTag' && pr) {
+    post({ type: 'addBuildNotesSkipTag', pullRequestId: Number(pr) });
   } else if (action === 'publishMyPullRequest' && pr) {
     post({ type: 'publishMyPullRequest', pullRequestId: Number(pr) });
   } else if (action === 'openMyPullRequest' && url) {

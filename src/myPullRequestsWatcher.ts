@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
+import { access } from 'node:fs/promises';
+import * as path from 'node:path';
 import { AzdoClient } from './azdoClient';
-import { resolveContext, SECTION, settings } from './config';
+import { BuildNotesDiffCache, BuildNotesStatus, checkPullRequestNotes } from './buildNotes';
+import { buildNotesSettings, resolveContext, SECTION, settings } from './config';
 import {
   AuthoredPullRequest,
   AuthoredPullRequestData,
@@ -19,6 +22,23 @@ const TICK_MS = 60 * MS_PER_SECOND;
 const MIN_INTERVAL_SECONDS = 30;
 export const CHECKOUT_MY_PULL_REQUEST_COMMAND = 'azdoWorkItems.checkoutMyPullRequest';
 export const PUBLISH_PULL_REQUEST_COMMAND = 'azdoWorkItems.publishPullRequest';
+export const ADD_BUILD_NOTES_SKIP_TAG_COMMAND = 'azdoWorkItems.addBuildNotesSkipTag';
+
+interface NotesContext {
+  options: ReturnType<typeof buildNotesSettings>;
+  /** Folder of the repository open in VS Code */
+  root?: string;
+  repositoryName?: string;
+}
+
+async function fileExistsIn(root: string, relativePath: string): Promise<boolean> {
+  try {
+    await access(path.join(root, relativePath));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function myPullRequestSettings(): {
   showDrafts: boolean;
@@ -48,6 +68,8 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
   private ticker?: NodeJS.Timeout;
   private polling = false;
   private myId?: Promise<string>;
+  /** Whether each PR changes the build notes file, by head commit: asked again only after a push */
+  private readonly buildNotesCache = new BuildNotesDiffCache();
 
   constructor(private readonly store: WorkItemsStore, private readonly extras: PullRequestExtrasLoader) {}
 
@@ -65,6 +87,7 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
       baseBranch: settings().baseBranch,
       showDrafts,
       minimumRequiredReviewers,
+      buildNotes: buildNotesSettings(),
     });
     return {
       hiddenDrafts,
@@ -131,10 +154,12 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
       const pullRequests = await client.getMyPullRequests(await this.myId);
       // Only the active PRs need the details: the completed ones are shown faded, with their timeline
       const now = new Date();
+      const notes = this.buildNotesContext();
+      this.buildNotesCache.keepOnly(pullRequests.map((pr) => pr.pullRequestId));
       this.data = await Promise.all(
         pullRequests.map(async (pr) => ({
           pr,
-          extras: await this.fetchPollExtras(client, pr, now),
+          extras: await this.fetchPollExtras(client, pr, now, notes),
         }))
       );
       this.status = 'ready';
@@ -155,15 +180,52 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
     }
   }
 
-  private async fetchPollExtras(client: AzdoClient, pr: AuthoredPullRequest, now: Date): Promise<PullRequestExtras> {
+  private async fetchPollExtras(
+    client: AzdoClient,
+    pr: AuthoredPullRequest,
+    now: Date,
+    notes: NotesContext
+  ): Promise<PullRequestExtras> {
     if (pr.status === 'active') {
-      return this.extras.fetch(client, pr);
+      const [extras, buildNotes] = await Promise.all([
+        this.extras.fetch(client, pr),
+        this.fetchBuildNotes(client, pr, notes),
+      ]);
+      return { ...extras, buildNotes };
     }
     if (!isCompletedRecently(pr, now)) {
       return { runs: [] };
     }
     const threads = await client.getPullRequestThreads(pr.repository.id, pr.pullRequestId).catch(() => undefined);
     return { threads, runs: [] };
+  }
+
+  /** Where the PR stands about the build notes rule: the tag costs nothing, the diff one request per push */
+  private async fetchBuildNotes(
+    client: AzdoClient,
+    pr: AuthoredPullRequest,
+    { options, root, repositoryName }: NotesContext
+  ): Promise<BuildNotesStatus> {
+    const localRepo = !!root && pr.repository.name.toLowerCase() === repositoryName?.toLowerCase();
+    const fileExists = localRepo && !!root && (await fileExistsIn(root, options.path));
+    const status = { localRepo, fileExists };
+    const changed = await checkPullRequestNotes(pr, status, options, this.buildNotesCache, (base, target) =>
+      client.getCommitsDiff(pr.repository.id, base, target)
+    );
+    return { ...status, changed };
+  }
+
+  private buildNotesContext(): NotesContext {
+    const repository = this.store.repository();
+    try {
+      return {
+        options: buildNotesSettings(),
+        root: repository?.rootUri.fsPath,
+        repositoryName: repository && resolveContext(repository).repositoryName,
+      };
+    } catch {
+      return { options: buildNotesSettings() };
+    }
   }
 
   /** Name of the repository open in VS Code and its checked out branch */
