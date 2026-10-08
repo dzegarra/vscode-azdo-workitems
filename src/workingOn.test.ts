@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { splitWorkingOn, WorkingOnEntry, workingOnBadge, workingOnLevels } from './workingOn';
+import { linkCandidates, splitWorkingOn, WorkingOnEntry, workingOnBadge, workingOnLevels } from './workingOn';
 import { otherWorktreeBranches, Worktree } from './worktrees';
 
 function entry(
@@ -171,5 +171,43 @@ describe('splitWorkingOn', () => {
 
   it('keeps everything in place without a section', () => {
     expect(splitWorkingOn(items, false)).toEqual({ workingOn: [], rest: items });
+  });
+});
+
+describe('linkCandidates', () => {
+  const titled = (base: WorkingOnEntry, type = 'Product Backlog Item') => ({
+    ...base,
+    workItem: { ...base.workItem, title: `Item ${base.workItem.id}`, type },
+  });
+
+  it('puts first, as likely, the other work items that use the branch, and leaves out the primary one', () => {
+    const entries = [
+      titled(entry(300)),
+      titled(entry(100, { branch: BRANCH })),
+      titled(entry(200, { links: [`refs/heads/${BRANCH}`] }), 'Bug'),
+      titled(entry(400, { branch: BRANCH })),
+      titled(entry(500, { branch: 'feature/common/500-other' })),
+    ];
+    expect(linkCandidates(entries, 100, BRANCH)).toEqual([
+      { id: 200, title: 'Item 200', type: 'Bug', likely: true },
+      { id: 400, title: 'Item 400', type: 'Product Backlog Item', likely: true },
+      { id: 300, title: 'Item 300', type: 'Product Backlog Item', likely: false },
+      { id: 500, title: 'Item 500', type: 'Product Backlog Item', likely: false },
+    ]);
+  });
+
+  it('marks the work item whose ID is in the branch name when it is not the primary one', () => {
+    expect(
+      linkCandidates([titled(entry(100)), titled(entry(7))], undefined, BRANCH).map((c) => [c.id, c.likely])
+    ).toEqual([
+      [100, true],
+      [7, false],
+    ]);
+  });
+
+  it('pre-selects nothing when no other work item uses the branch', () => {
+    expect(linkCandidates([titled(entry(1)), titled(entry(2))], 1, BRANCH)).toEqual([
+      { id: 2, title: 'Item 2', type: 'Product Backlog Item', likely: false },
+    ]);
   });
 });

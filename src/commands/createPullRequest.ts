@@ -7,22 +7,31 @@ import { buildNotesSettings, resolveContext, settings } from '../config';
 import { localDiffChangesFile } from '../buildNotes';
 import { GitAPI, pickRepository } from '../git';
 import { buildPrDescription, buildPrTitle, parseBranchName } from '../naming';
+import { linkCandidates } from '../workingOn';
 import { WorkItemEntry, WorkItemsStore } from '../workItemsStore';
 import { git as runGit } from '../worktreeGit';
 
-/** The work item in the branch name, plus any other the user wants to link */
-async function pickWorkItemIds(store: WorkItemsStore, primaryId: number | undefined): Promise<number[] | undefined> {
+/**
+ * The work item in the branch name, plus any other the user wants to link. The ones that already use the branch
+ * (Development link, same branch…) come first, pre-selected
+ */
+async function pickWorkItemIds(
+  store: WorkItemsStore,
+  primaryId: number | undefined,
+  branch: string
+): Promise<number[] | undefined> {
   await store.ensureLoaded();
-  const otherItems = store.workItems.filter((wi) => wi.workItem.id !== primaryId);
+  const candidates = linkCandidates(store.workItems, primaryId, branch);
   const primary = primaryId ? [primaryId] : [];
-  if (!otherItems.length) {
+  if (!candidates.length) {
     return primary;
   }
   const extra = await vscode.window.showQuickPick(
-    otherItems.map((wi) => ({
-      label: `${wi.workItem.id} ${wi.workItem.title}`,
-      description: wi.workItem.type,
-      id: wi.workItem.id,
+    candidates.map((candidate) => ({
+      label: `${candidate.id} ${candidate.title}`,
+      description: candidate.likely ? `${candidate.type} · uses this branch` : candidate.type,
+      picked: candidate.likely,
+      id: candidate.id,
     })),
     {
       title: primaryId ? `Other work items to link besides ${primaryId} (optional)` : 'Work items to link',
@@ -95,7 +104,8 @@ const WRITE_NOTES = "Yes, I'll write the notes";
 
 /**
  * Team rule: the branch explains its changes for testers in the build notes file or the PR is tagged. Checked
- * locally (no request). Returns the tags to put on the PR, or undefined when the user wants to stop
+ * locally (no request), before any other question: stopping to write the notes loses no answer. Returns the tags
+ * to put on the PR, or undefined when the user wants to stop
  */
 async function checkBuildNotes(root: string, base: string, head: string): Promise<string[] | undefined> {
   const notes = buildNotesSettings();
@@ -127,17 +137,30 @@ async function checkBuildNotes(root: string, base: string, head: string): Promis
   return choice === tagChoice ? [notes.skipTag] : undefined;
 }
 
-/** Draft or not, then the build notes rule. Undefined when the user cancels or wants to write the notes first */
-async function askCreateOptions(
-  title: string,
-  placeHolder: string,
-  root: string,
-  base: string,
-  head: string
-): Promise<{ isDraft: boolean; labels: string[] } | undefined> {
-  const draft = await pickDraft(title, placeHolder);
-  const labels = draft && (await checkBuildNotes(root, base, head));
-  return draft && labels ? { isDraft: draft.isDraft, labels } : undefined;
+/** Work items, feature name and description: the title "[ids] Feature: description". Undefined when cancelled */
+async function askTitle(
+  client: AzdoClient,
+  store: WorkItemsStore,
+  branch: string,
+  workItemId: number | undefined
+): Promise<{ workItemIds: number[]; title: string } | undefined> {
+  const parsed = parseBranchName(branch);
+  const workItemIds = await pickWorkItemIds(store, workItemId ?? parsed?.id, branch);
+  if (!workItemIds?.length) {
+    return undefined;
+  }
+  const featureName = await pickFromCatalog({
+    setting: 'prFeatureNames',
+    title: `[${workItemIds.join(',')}] <Feature Name>: …`,
+    placeholder: 'Select the feature that best aligns with the changes',
+    preselected: parsed ? settings().moduleToFeature[parsed.module] : undefined,
+    newItemPrompt: 'New feature name, following the style of the existing ones (e.g. FUI Something)',
+  });
+  if (!featureName) {
+    return undefined;
+  }
+  const description = await askDescription(client, store, workItemIds, featureName);
+  return description ? { workItemIds, title: buildPrTitle(workItemIds, featureName, description) } : undefined;
 }
 
 export async function createPullRequest(git: GitAPI, store: WorkItemsStore, node?: WorkItemEntry): Promise<void> {
@@ -165,37 +188,21 @@ export async function createPullRequest(git: GitAPI, store: WorkItemsStore, node
     return;
   }
 
-  const parsed = parseBranchName(branch);
-  const workItemIds = await pickWorkItemIds(store, node?.workItem.id ?? parsed?.id);
-  if (!workItemIds?.length) {
+  // First question: answering "I'll write the notes" stops here, before any other answer is given
+  const head = isLocal ? branch : `${s.remote}/${branch}`;
+  const labels = await checkBuildNotes(repository.rootUri.fsPath, `${s.remote}/${s.baseBranch}`, head);
+  if (!labels) {
     return;
   }
 
-  const featureName = await pickFromCatalog({
-    setting: 'prFeatureNames',
-    title: `[${workItemIds.join(',')}] <Feature Name>: …`,
-    placeholder: 'Select the feature that best aligns with the changes',
-    preselected: parsed ? s.moduleToFeature[parsed.module] : undefined,
-    newItemPrompt: 'New feature name, following the style of the existing ones (e.g. FUI Something)',
-  });
-  if (!featureName) {
+  const content = await askTitle(client, store, branch, node?.workItem.id);
+  if (!content) {
     return;
   }
+  const { workItemIds, title } = content;
 
-  const description = await askDescription(client, store, workItemIds, featureName);
-  if (!description) {
-    return;
-  }
-  const title = buildPrTitle(workItemIds, featureName, description);
-
-  const options = await askCreateOptions(
-    title,
-    `${branch} → ${s.baseBranch}`,
-    repository.rootUri.fsPath,
-    `${s.remote}/${s.baseBranch}`,
-    isLocal ? branch : `${s.remote}/${branch}`
-  );
-  if (!options) {
+  const draft = await pickDraft(title, `${branch} → ${s.baseBranch}`);
+  if (!draft) {
     return;
   }
 
@@ -207,7 +214,6 @@ export async function createPullRequest(git: GitAPI, store: WorkItemsStore, node
         progress.report({ message: `pushing ${branch}` });
         await repository.push(s.remote, branch, true);
       }
-      const head = isLocal ? branch : `${s.remote}/${branch}`;
       const commits = await repository.log({ range: `${s.remote}/${s.baseBranch}..${head}` });
       progress.report({ message: 'creating pull request' });
       return client.createPullRequest(azdoRepository, {
@@ -215,9 +221,9 @@ export async function createPullRequest(git: GitAPI, store: WorkItemsStore, node
         target: s.baseBranch,
         title,
         description: buildPrDescription(commits.map((c) => c.message.split('\n')[0]).reverse()),
-        isDraft: options.isDraft,
+        isDraft: draft.isDraft,
         workItemIds,
-        labels: options.labels,
+        labels,
       });
     }
   );

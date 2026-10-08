@@ -24,7 +24,7 @@ function stripHeads(ref: string): string {
  * Work items that a checked out branch belongs to. Always the one whose branch it is; with `includeLinked`, also the
  * ones whose ID is in the branch name, whose active PR has the branch as source, or whose Development section links to it
  */
-function workItemsOfBranch(branch: string, entries: WorkingOnEntry[], includeLinked: boolean): number[] {
+export function workItemsOfBranch(branch: string, entries: WorkingOnEntry[], includeLinked: boolean): number[] {
   return entries
     .filter(({ workItem, branch: entryBranch, pullRequests }) => {
       if (entryBranch === branch) {
@@ -38,6 +38,34 @@ function workItemsOfBranch(branch: string, entries: WorkingOnEntry[], includeLin
       );
     })
     .map(({ workItem }) => workItem.id);
+}
+
+/** A work item offered to be linked to a new PR */
+export interface LinkCandidate {
+  id: number;
+  title: string;
+  type: string;
+  /** It already uses the branch of the PR: pre-selected */
+  likely: boolean;
+}
+
+/**
+ * The work items to offer when creating a PR from a branch, all but the primary one (always linked). The ones that
+ * already use the branch (same branch, Development link, ID in its name, PR from it) come first, to be pre-selected
+ */
+export function linkCandidates(
+  entries: (WorkingOnEntry & { workItem: { title: string; type: string } })[],
+  primaryId: number | undefined,
+  branch: string
+): LinkCandidate[] {
+  const likely = new Set(workItemsOfBranch(branch, entries, true));
+  const candidates = entries
+    .filter(({ workItem }) => workItem.id !== primaryId)
+    .map(({ workItem: { id, title, type } }) => ({ id, title, type, likely: likely.has(id) }));
+  return [
+    ...candidates.filter((candidate) => candidate.likely),
+    ...candidates.filter((candidate) => !candidate.likely),
+  ];
 }
 
 export interface WorkingOnInput {
