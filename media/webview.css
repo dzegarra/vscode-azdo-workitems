@@ -104,8 +104,17 @@ button {
   text-transform: uppercase;
 }
 
+/* Search box and the button folding the filters */
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 #search {
   box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
   width: 100%;
   padding: 4px 6px;
   color: var(--vscode-input-foreground);
@@ -117,6 +126,48 @@ button {
 
 #search:focus {
   border-color: var(--vscode-focusBorder);
+}
+
+/* Funnel button; the badge counts the filters hiding work items, also while they are folded */
+.filters-toggle {
+  position: relative;
+  flex: none;
+}
+
+.filters-toggle[aria-expanded='true'] {
+  color: var(--vscode-foreground);
+  background: color-mix(in srgb, var(--vscode-focusBorder) 30%, transparent);
+}
+
+.filters-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  box-sizing: border-box;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  color: var(--vscode-badge-foreground);
+  background: var(--vscode-badge-background);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+
+/* "N work items hidden by filters": opens the filters */
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--vscode-textLink-foreground);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
 }
 
 .progress {

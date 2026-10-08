@@ -37,6 +37,7 @@ import type {
   WorkItemModel,
 } from '../viewModel';
 import {
+  activeFilterCount,
   BranchAction,
   branchActions,
   changedFilterKeys,
@@ -55,6 +56,8 @@ interface SavedState {
   search: string;
   onlyAlerts: boolean;
   reviewsCollapsed: boolean;
+  /** Filter chips shown under the search box (folded by default) */
+  filtersExpanded: boolean;
   myPullRequestsCollapsed: boolean;
   /** Iteration groups collapsed by the user, by iteration path */
   collapsedIterations: string[];
@@ -83,6 +86,7 @@ let search = savedState?.search ?? '';
 /** Show only the work items with alerts */
 let onlyAlerts = savedState?.onlyAlerts ?? false;
 let reviewsCollapsed = savedState?.reviewsCollapsed ?? false;
+let filtersExpanded = savedState?.filtersExpanded ?? false;
 let myPullRequestsCollapsed = savedState?.myPullRequestsCollapsed ?? false;
 let seenReviews = savedState?.seenReviews;
 const collapsedIterations = new Set(savedState?.collapsedIterations ?? []);
@@ -95,6 +99,7 @@ function saveState(): void {
     search,
     onlyAlerts,
     reviewsCollapsed,
+    filtersExpanded,
     myPullRequestsCollapsed,
     collapsedIterations: [...collapsedIterations],
     seenReviews: seenReviews ?? [],
@@ -1329,7 +1334,13 @@ function renderList(current: ViewModel): string {
   const hidden = cards.length - visible.length;
   const split = splitWorkingOn(visible, current.workingOn.section);
   const hiddenNote = hidden
-    ? `<p class="muted note">${hidden} work item${hidden === 1 ? '' : 's'} hidden by filters</p>`
+    ? `<p class="muted note">${
+        filtersExpanded
+          ? `${hidden} work item${hidden === 1 ? '' : 's'} hidden by filters`
+          : `<button class="link-button" data-action="showFilters" title="Show the filters">${hidden} work item${
+              hidden === 1 ? '' : 's'
+            } hidden by filters</button>`
+      }</p>`
     : '';
   // Group by iteration only when the teams are in different sprints
   let body: string;
@@ -1415,6 +1426,20 @@ function revealPending(): boolean {
   return false;
 }
 
+/** Funnel button next to the search box. The badge counts the filters hiding work items, also while they are folded */
+function renderFiltersToggle(current: ViewModel): void {
+  const button = document.getElementById('filters-toggle') as HTMLButtonElement;
+  const active = activeFilterCount(current.filter, cardItems(current));
+  const label = filtersExpanded ? 'Hide filters' : 'Show filters';
+  const full = active ? `${label} (${active} active)` : label;
+  button.title = full;
+  button.setAttribute('aria-label', full);
+  button.setAttribute('aria-expanded', String(filtersExpanded));
+  button.innerHTML = `${icon('filter')}${
+    active ? `<span class="filters-badge" aria-hidden="true">${active}</span>` : ''
+  }`;
+}
+
 function render(): void {
   const app = document.getElementById('app');
   if (!app || !model) {
@@ -1424,7 +1449,10 @@ function render(): void {
     app.innerHTML = `<div id="panels"><div id="reviews"></div><div id="my-prs"></div></div>
       <div class="toolbar">
         <div class="list-head"><h2 class="list-title">My Work Items</h2><span id="list-tools" class="list-tools"></span></div>
-        <input id="search" type="search" placeholder="Search by ID, title or branch" aria-label="Search work items">
+        <div class="search-row">
+          <input id="search" type="search" placeholder="Search by ID, title or branch" aria-label="Search work items">
+          <button id="filters-toggle" class="icon-button filters-toggle" data-action="toggleFilters" aria-controls="filters"></button>
+        </div>
       </div>
       <p id="scope" class="scope"></p>
       <div class="progress" hidden></div>
@@ -1443,7 +1471,9 @@ function render(): void {
   scopeElement.textContent = scope.text;
   scopeElement.title = scope.tooltip;
   (app.querySelector('.progress') as HTMLElement).hidden = model.status !== 'loading';
-  (document.getElementById('filters') as HTMLElement).innerHTML = cardItems(model).length ? renderFilters(model) : '';
+  (document.getElementById('filters') as HTMLElement).innerHTML =
+    filtersExpanded && cardItems(model).length ? renderFilters(model) : '';
+  renderFiltersToggle(model);
   (document.getElementById('list') as HTMLElement).innerHTML = renderList(model);
   (document.getElementById('list-tools') as HTMLElement).innerHTML = renderListTools(model);
   (document.getElementById('reviews') as HTMLElement).innerHTML = renderReviews(model);
@@ -1593,6 +1623,10 @@ document.addEventListener('click', (event) => {
     setTasksExpanded(action === 'expandAllTasks');
   } else if (action === 'toggleTasks' && id) {
     toggleTasks(Number(id));
+  } else if (action === 'toggleFilters' || action === 'showFilters') {
+    filtersExpanded = action === 'showFilters' ? true : !filtersExpanded;
+    saveState();
+    render();
   } else if (action === 'toggleReviews') {
     reviewsCollapsed = !reviewsCollapsed;
     saveState();

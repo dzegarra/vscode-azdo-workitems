@@ -292,6 +292,41 @@ export function isVisible(
   );
 }
 
+type FilterableItem = Pick<WorkItemModel, 'pullRequests' | 'state' | 'type'> & {
+  priority?: number;
+  openPredecessors?: unknown[];
+};
+
+/**
+ * Filter values hiding something among the given work items: types left out, and states, PR states, priorities and
+ * predecessor states hidden. Values no work item has are not counted: they have no chip to switch back on
+ */
+export function activeFilterCount(filter: FilterModel, workItems: FilterableItem[]): number {
+  const present = (key: (item: FilterableItem) => string | undefined): Set<string> => {
+    const values = new Set<string>();
+    for (const item of workItems) {
+      const value = key(item);
+      if (value !== undefined) {
+        values.add(value);
+      }
+    }
+    return values;
+  };
+  const hiddenAmong = (values: Set<string>, hidden: string[]): number =>
+    [...values].filter((value) => hidden.includes(value)).length;
+  const types = filter.types.length ? [...present((item) => item.type)].filter((t) => !filter.types.includes(t)) : [];
+  return (
+    types.length +
+    hiddenAmong(
+      present((item) => item.state),
+      filter.hiddenStates
+    ) +
+    hiddenAmong(present(pullRequestFilterValue), filter.hiddenPullRequestStates) +
+    hiddenAmong(present(priorityFilterValue), filter.hiddenPriorities) +
+    hiddenAmong(present(predecessorFilterValue), filter.hiddenPredecessorStates)
+  );
+}
+
 /**
  * Scope of the list, so it is clear it only shows the work items assigned to the user,
  * e.g. "Assigned to you in Sprint 42 (FUI Team)"
