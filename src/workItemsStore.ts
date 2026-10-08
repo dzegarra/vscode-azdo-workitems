@@ -9,7 +9,8 @@ import { openPredecessors } from './predecessors';
 import { ScheduledIteration } from './schedule';
 import { FilterModel, PullRequestModel, ViewModel, WorkItemModel } from './viewModel';
 import { runDetailsLoader } from './runDetailsLoader';
-import { finishedRuns, isActive, latestRuns, RunModel } from './pipelines';
+import { isActive, latestRuns, RunModel } from './pipelines';
+import { followedPullRequestIds, RunsTracker } from './runsPolling';
 import { pullRequestStatus } from './workItemLinks';
 import { listWorktrees } from './worktreeGit';
 import { findWorktree, Worktree } from './worktrees';
@@ -256,8 +257,11 @@ export class WorkItemsStore {
   iterations: TeamIteration[] = [];
   /** Dates of the iterations of the project, to rate the risk of the predecessors; undefined when not loaded */
   private schedule?: ScheduledIteration[];
-  /** CI runs of the active PRs, by PR */
-  private runs = new Map<number, RunModel[]>();
+  /** CI runs of the followed PRs, by PR */
+  private readonly tracker = new RunsTracker();
+  private readonly followEmitter = new vscode.EventEmitter<void>();
+  /** Fired when the PRs registered with followPullRequests change: their runs must be loaded */
+  readonly onDidChangeFollowed = this.followEmitter.event;
   private loading?: Promise<void>;
   /** Worktrees of the repository, to offer "Open worktree" instead of Checkout */
   worktrees: Worktree[] = [];
@@ -268,11 +272,23 @@ export class WorkItemsStore {
     return this.entries;
   }
 
+  private get runs(): Map<number, RunModel[]> {
+    return this.tracker.runs;
+  }
+
+  /** The active PRs linked to the work items plus the ones registered with followPullRequests */
   private activePullRequestIds(): number[] {
-    const ids = this.entries.flatMap((entry) =>
+    const linked = this.entries.flatMap((entry) =>
       entry.pullRequests.filter((pr) => pr.status === 'active').map((pr) => pr.pullRequestId)
     );
-    return [...new Set(ids)];
+    return followedPullRequestIds(linked, this.tracker.extraIds);
+  }
+
+  /** Also follows the CI runs of these PRs (e.g. the active ones of the user), replacing the previous ones */
+  followPullRequests(pullRequests: { id: number; title: string }[]): void {
+    if (this.tracker.follow(pullRequests)) {
+      this.followEmitter.fire();
+    }
   }
 
   /** True while a CI run of an active PR is queued or running */
@@ -286,11 +302,15 @@ export class WorkItemsStore {
       this.entries.flatMap((entry) => entry.pullRequests).map((pr) => [pr.pullRequestId, pr.title])
     );
     return [...this.runs].flatMap(([pullRequestId, runs]) =>
-      runs.map((run) => ({ pullRequestId, title: titles.get(pullRequestId) ?? '', run }))
+      runs.map((run) => ({
+        pullRequestId,
+        title: titles.get(pullRequestId) ?? this.tracker.titleOf(pullRequestId) ?? '',
+        run,
+      }))
     );
   }
 
-  /** CI runs of an active PR linked to a work item; undefined when the store does not follow the PR */
+  /** CI runs of a followed PR; undefined when the store does not follow it (yet) */
   runsOf(pullRequestId: number): RunModel[] | undefined {
     return this.runs.get(pullRequestId);
   }
@@ -301,16 +321,15 @@ export class WorkItemsStore {
 
   /**
    * Reloads only the CI runs (much cheaper than a full refresh).
-   * Returns the runs that finished since the previous check, with their PR
+   * Returns the runs that finished since the previous check, with their PR; undefined when another reload is in progress
    */
-  async refreshRuns(): Promise<{ pullRequestId: number; run: RunModel }[]> {
-    const previous = new Map([...this.runs.values()].flat().map((run) => [run.id, run.state]));
-    const runs = await fetchRuns(resolveContext(this.repository()).client, this.activePullRequestIds());
-    this.runs = runs;
-    this.changeEmitter.fire();
-    return [...runs].flatMap(([pullRequestId, prRuns]) =>
-      finishedRuns(previous, prRuns).map((run) => ({ pullRequestId, run }))
-    );
+  async refreshRuns(): Promise<{ pullRequestId: number; run: RunModel }[] | undefined> {
+    const client = resolveContext(this.repository()).client;
+    const finished = await this.tracker.refresh(this.activePullRequestIds(), (ids) => fetchRuns(client, ids));
+    if (finished) {
+      this.changeEmitter.fire();
+    }
+    return finished;
   }
 
   /** Work items with problems the developers must fix ASAP */
@@ -388,7 +407,7 @@ export class WorkItemsStore {
     try {
       await this.refreshWorktrees();
       this.entries = await this.fetch();
-      this.runs = await fetchRuns(resolveContext(this.repository()).client, this.activePullRequestIds());
+      this.tracker.runs = await fetchRuns(resolveContext(this.repository()).client, this.activePullRequestIds());
       this.status = 'ready';
       this.error = undefined;
       this.loadEmitter.fire();

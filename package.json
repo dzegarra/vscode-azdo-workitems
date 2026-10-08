@@ -687,7 +687,13 @@
           "type": "number",
           "default": 15,
           "minimum": 5,
-          "description": "While a CI run of your pull requests is queued or running, how often its state is refreshed (seconds). Checks stop when every run is finished."
+          "description": "While a CI run of your pull requests is queued or running, how often its state is refreshed (seconds). See idlePollIntervalSeconds for when none is running."
+        },
+        "azdoWorkItems.pipelines.idlePollIntervalSeconds": {
+          "type": "number",
+          "default": 60,
+          "minimum": 0,
+          "description": "When no CI run of your pull requests is queued or running, how often to check for new runs (re-runs, new pushes), in seconds (at least 30). 0 disables these checks."
         },
         "azdoWorkItems.pipelines.notifyOnFinish": {
           "type": "boolean",

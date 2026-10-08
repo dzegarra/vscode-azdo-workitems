@@ -57,7 +57,7 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
     const { showDrafts, minimumRequiredReviewers } = myPullRequestSettings();
     const data = this.data.map(({ pr, extras }) => ({
       pr,
-      // The store follows the PRs linked to the work items and refreshes their runs every few seconds
+      // The store follows the active PRs of the user and refreshes their runs; the own fetch is the fallback
       extras: { ...extras, runs: this.store.runsOf(pr.pullRequestId) ?? extras.runs },
     }));
     const { items, hiddenDrafts } = toMyPullRequestModels(data, {
@@ -139,6 +139,12 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
       );
       this.status = 'ready';
       this.error = undefined;
+      // The store keeps the runs of these PRs fresh (every few seconds while one is running)
+      this.store.followPullRequests(
+        this.data
+          .filter(({ pr }) => pr.status === 'active')
+          .map(({ pr }) => ({ id: pr.pullRequestId, title: pr.title }))
+      );
     } catch (error) {
       this.myId = undefined;
       this.status = 'error';

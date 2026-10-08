@@ -158,7 +158,7 @@ The details of a work item list its **Predecessors** (work items it depends on) 
 
 Next to the state of each active pull request, the card shows the last run of each pipeline validating it (the builds of `refs/pull/<id>/merge`): queued, running with its elapsed time, succeeded, failed or canceled. Clicking a run opens it in Azure DevOps.
 
-While a run is queued or running, only the runs are refreshed every 15 seconds (`azdoWorkItems.pipelines.pollIntervalSeconds`); the checks stop when every run is finished. A notification tells you when a run finishes (`azdoWorkItems.pipelines.notifyOnFinish`).
+The runs of the PRs of your work items and of all your pull requests are followed. While a run is queued or running, only the runs are refreshed every 15 seconds (`azdoWorkItems.pipelines.pollIntervalSeconds`); when none is, new runs (re-runs, new pushes) are looked for every minute (`azdoWorkItems.pipelines.idlePollIntervalSeconds`, 0 to turn it off). A notification tells you when a run finishes (`azdoWorkItems.pipelines.notifyOnFinish`).
 
 The status bar summarizes the runs of your pull requests even when the view is closed, e.g. `$(rocket) ✗ 1  ↻ 1  ✓ 2` (red when a run failed). Hover it to see each run with its PR, pipeline and duration; click it to pick a run and open it (`azdoWorkItems.pipelines.showInStatusBar`).
 

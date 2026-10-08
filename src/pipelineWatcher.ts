@@ -6,26 +6,29 @@ import { CoverageRecordsStore } from './coverageRecordsStore';
 import { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import { RunModel } from './pipelines';
 import { finishedRunMessage, testsUrl } from './runDetails';
+import { FinishedRun, RunsPoller } from './runsPolling';
 import { WorkItemsStore } from './workItemsStore';
 
-const MS_PER_SECOND = 1000;
 const MIN_INTERVAL_SECONDS = 5;
+const MIN_IDLE_SECONDS = 30;
 
 function pipelineSettings() {
   const config = vscode.workspace.getConfiguration(`${SECTION}.pipelines`);
+  const idle = config.get<number>('idlePollIntervalSeconds', 60);
   return {
     intervalSeconds: Math.max(MIN_INTERVAL_SECONDS, config.get<number>('pollIntervalSeconds', 15)),
+    idleSeconds: idle > 0 ? Math.max(MIN_IDLE_SECONDS, idle) : 0,
     notifyOnFinish: config.get<boolean>('notifyOnFinish', true),
   };
 }
 
 /**
- * Keeps the CI runs of the PRs live: while a run is queued or running, only the runs are reloaded
- * every few seconds. Stops by itself once every run is finished.
+ * Keeps the CI runs of the PRs live: every few seconds while a run is queued or running and, when all are
+ * finished, a slower check that discovers the runs queued later (re-runs, new pushes). It never stops.
  * Also keeps the personal coverage records of the user's own PRs
  */
 export class PipelineWatcher implements vscode.Disposable {
-  private timer?: NodeJS.Timeout;
+  private readonly poller: RunsPoller;
   private readonly subscriptions: vscode.Disposable[];
 
   constructor(
@@ -33,40 +36,42 @@ export class PipelineWatcher implements vscode.Disposable {
     private readonly myPullRequests: MyPullRequestsWatcher,
     private readonly records: CoverageRecordsStore
   ) {
+    this.poller = new RunsPoller({
+      settings: () => {
+        const { intervalSeconds, idleSeconds } = pipelineSettings();
+        return { fastSeconds: intervalSeconds, idleSeconds };
+      },
+      hasActive: () => store.hasActiveRuns,
+      refresh: () => store.refreshRuns(),
+      onFinished: (finished) => this.onFinished(finished),
+    });
     this.subscriptions = [
-      store.onDidLoad(() => this.schedule()),
+      store.onDidLoad(() => this.poller.schedule()),
+      // New PRs to follow: load their runs now instead of waiting for the next tick
+      store.onDidChangeFollowed(() => void this.poller.tick()),
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration(`${SECTION}.pipelines`)) {
+          this.poller.schedule();
+        }
+      }),
       // Catches up with the runs that finished while the extension was not watching
       myPullRequests.onDidChange(() => void this.syncRecords(myPullRequests.ownRuns().flatMap(({ runs }) => runs))),
     ];
   }
 
   dispose(): void {
-    clearTimeout(this.timer);
+    this.poller.dispose();
     this.subscriptions.forEach((subscription) => subscription.dispose());
   }
 
-  private schedule(): void {
-    clearTimeout(this.timer);
-    if (!this.store.hasActiveRuns) {
-      return;
-    }
-    this.timer = setTimeout(() => void this.tick(), pipelineSettings().intervalSeconds * MS_PER_SECOND);
-  }
-
-  private async tick(): Promise<void> {
-    try {
-      const finished = await this.store.refreshRuns();
-      const notify = pipelineSettings().notifyOnFinish;
-      for (const { pullRequestId, run } of finished) {
-        const records = await this.syncRecords(this.myPullRequests.isMine(pullRequestId) ? [run] : []);
-        if (notify) {
-          void this.notify(pullRequestId, run, records);
-        }
+  private async onFinished(finished: FinishedRun[]): Promise<void> {
+    const notify = pipelineSettings().notifyOnFinish;
+    for (const { pullRequestId, run } of finished) {
+      const records = await this.syncRecords(this.myPullRequests.isMine(pullRequestId) ? [run] : []);
+      if (notify) {
+        void this.notify(pullRequestId, run, records);
       }
-    } catch {
-      // Network hiccups: try again on the next tick
     }
-    this.schedule();
   }
 
   /**
