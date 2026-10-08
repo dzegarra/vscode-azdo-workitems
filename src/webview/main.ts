@@ -22,6 +22,7 @@ import { MyPullRequestModel, ReviewerModel, VoteKind } from '../myPullRequests';
 import { describeTeamRules } from '../reviewCard';
 import type { ReviewRequestModel } from '../reviewRequests';
 import { hasTaskAlerts, isTaskListOpen, taskProgress } from '../taskProgress';
+import { splitWorkingOn, workingOnBadge } from '../workingOn';
 import type {
   CheckoutKind,
   ExtensionMessage,
@@ -552,6 +553,22 @@ function renderTasks(item: WorkItemModel, children: WorkItemModel[]): string {
   </section>`;
 }
 
+/** Highlight of the work items being worked on: here (this window) or in another worktree */
+function workingOnClass(item: WorkItemModel): string {
+  return item.workingOn ? `working-on working-${item.workingOn}` : '';
+}
+
+/** Badge in the header of a large card */
+function renderWorkingOn(item: WorkItemModel): string {
+  if (!item.workingOn) {
+    return '';
+  }
+  const badge = workingOnBadge(item.workingOn, item.worktree);
+  return `<span class="pill working-pill working-${item.workingOn}" title="${escapeHtml(
+    badge.title
+  )}"><span class="working-glyph" aria-hidden="true">${badge.glyph}</span>${badge.label}</span>`;
+}
+
 /**
  * Full card. In the compact layout, an expanded card gets a chevron and a header that fold it back
  * into its row
@@ -565,14 +582,14 @@ function renderCard(
   const classes = [
     'card',
     `state-border-${stateCategory(item.state)}`,
-    item.isCurrentBranch ? 'current' : '',
+    workingOnClass(item),
     item.alerts.length ? 'has-alerts' : '',
   ].join(' ');
   const fold = foldable
     ? `<button class="card-chevron" data-action="toggleCard" data-id="${item.id}" aria-expanded="true"
       aria-label="Collapse work item ${item.id}" title="Collapse">${icon('chevron', 'chevron')}</button>`
     : '';
-  return `<article class="${classes}">
+  return `<article class="${classes}" data-card="${item.id}">
     <header class="card-head${foldable ? ' foldable' : ''}"${
     foldable ? ` data-action="toggleCard" data-id="${item.id}"` : ''
   }>
@@ -580,6 +597,7 @@ function renderCard(
       <button class="link id${typeIdClass(item.type)}" data-action="openWorkItem" data-id="${
     item.id
   }" title="Open in Azure DevOps">${item.id}</button>
+      ${renderWorkingOn(item)}
       ${renderUrgency(item)}
       ${stateButton(item.id, item.state)}
     </header>
@@ -595,7 +613,7 @@ function renderCard(
 }
 
 /** Marker of a compact signal: a coloured dot for the PR, an icon for the others */
-function signalMarker(signal: CompactSignal): string {
+function signalMarker(signal: CompactSignal, item: WorkItemModel): string {
   switch (signal.kind) {
     case 'branch':
       return icon('branch');
@@ -609,6 +627,8 @@ function signalMarker(signal: CompactSignal): string {
       return icon('link');
     case 'ready':
       return icon('check');
+    case 'workingOn':
+      return `<span class="working-glyph" aria-hidden="true">${workingOnBadge(item.workingOn ?? 'here').glyph}</span>`;
     case 'pullRequest':
       return DOT;
     case 'priority':
@@ -630,14 +650,16 @@ function renderSignal(signal: CompactSignal, item: WorkItemModel): string {
     case 'predecessors':
       return renderPredecessorTrigger(item, true);
     case 'ci':
-      return `<span class="signal signal-ci run-${signal.tone}" title="${title}">${signalMarker(signal)}</span>`;
+      return `<span class="signal signal-ci run-${signal.tone}" title="${title}">${signalMarker(signal, item)}</span>`;
     case 'alerts':
     case 'branch':
     case 'pullRequest':
     case 'ready':
     case 'tasks':
+    case 'workingOn':
       return `<span class="signal signal-${signal.kind} tone-${signal.tone}" title="${title}">${signalMarker(
-        signal
+        signal,
+        item
       )}${label}</span>`;
   }
 }
@@ -650,15 +672,15 @@ function renderCompactCard(item: WorkItemModel, children: WorkItemModel[]): stri
   const classes = [
     'card compact',
     `state-border-${stateCategory(item.state)}`,
-    item.isCurrentBranch ? 'current' : '',
+    workingOnClass(item),
     item.alerts.length ? 'has-alerts' : '',
   ].join(' ');
   const signals = compactSignals(item, children).map((signal) => renderSignal(signal, item));
-  return `<article class="${classes}" data-action="toggleCard" data-id="${item.id}">
+  return `<article class="${classes}" data-card="${item.id}" data-action="toggleCard" data-id="${item.id}">
     <div class="compact-head">
       <button class="card-chevron" data-action="toggleCard" data-id="${item.id}" aria-expanded="false"
         aria-label="Expand work item ${item.id}" title="Expand">${icon('chevron', 'chevron')}</button>
-      ${typeIcon(item.type)}
+      ${item.workingOn ? '<span class="working-dot" aria-hidden="true"></span>' : ''}${typeIcon(item.type)}
       <button class="link id${typeIdClass(item.type)}" data-action="openWorkItem" data-id="${
     item.id
   }" title="Open in Azure DevOps">${item.id}</button>
@@ -706,12 +728,34 @@ function renderIteration(iteration: IterationModel, items: WorkItemModel[], curr
   const alerts = withAlerts
     ? `<span class="pill iteration-alerts" title="${withAlerts} with alerts">${icon('warning')}${withAlerts}</span>`
     : '';
+  // A collapsed group keeps listing the work items being worked on, which are never hidden
+  const shown = collapsed ? items.filter((item) => item.workingOn && current.workingOn.ignoreFilters) : items;
+  let body = '<p class="muted empty">Nothing to show</p>';
+  if (shown.length) {
+    body = renderCards(shown, current);
+  } else if (collapsed) {
+    body = '';
+  }
   return `<section class="iteration${collapsed ? ' collapsed' : ''}">
     <h2><button class="iteration-toggle" data-action="toggleIteration" data-path="${escapeHtml(iteration.path)}"
       aria-expanded="${!collapsed}" title="${escapeHtml(iteration.path)}">
       ${icon('chevron', 'chevron')}<span class="iteration-name">${escapeHtml(iteration.name)}</span>
       <span class="count">${cards.length}</span>${alerts}</button></h2>
-    ${collapsed ? '' : items.length ? renderCards(items, current) : '<p class="muted empty">Nothing to show</p>'}
+    ${body}
+  </section>`;
+}
+
+/** Work items being worked on, at the top of the list, under the toolbar and above the iteration groups */
+function renderWorkingOnSection(items: WorkItemModel[], current: ViewModel): string {
+  if (!items.length) {
+    return '';
+  }
+  return `<section class="working-section" aria-label="Working on">
+    <h2 class="working-section-head"><span class="working-glyph" aria-hidden="true">●</span>
+      <span class="working-section-title">Working on</span><span class="working-section-count">${
+        items.length
+      }</span></h2>
+    ${renderCards(items, current)}
   </section>`;
 }
 
@@ -720,10 +764,12 @@ function renderIteration(iteration: IterationModel, items: WorkItemModel[], curr
  * state / PR / priority filters hide
  */
 function isCardVisible(item: WorkItemModel, current: ViewModel): boolean {
-  if (onlyAlerts) {
-    return item.alerts.length > 0 && isVisible(item, current.filter, search, true);
+  const { ignoreFilters } = current.workingOn;
+  // The work items being worked on (workingOn.ignoreFilters) are not hidden by the toggle either
+  if (onlyAlerts && !(ignoreFilters && item.workingOn)) {
+    return item.alerts.length > 0 && isVisible(item, current.filter, search, true, ignoreFilters);
   }
-  return isVisible(item, current.filter, search, current.alwaysShowAlerts);
+  return isVisible(item, current.filter, search, current.alwaysShowAlerts, ignoreFilters);
 }
 
 /** Summary of the work items with problems, with a toggle to show only them */
@@ -1171,23 +1217,28 @@ function renderList(current: ViewModel): string {
     current.stateOrder
   );
   const hidden = cards.length - visible.length;
+  const split = splitWorkingOn(visible, current.workingOn.section);
   const hiddenNote = hidden
     ? `<p class="muted note">${hidden} work item${hidden === 1 ? '' : 's'} hidden by filters</p>`
     : '';
   // Group by iteration only when the teams are in different sprints
-  const body =
-    current.iterations.length > 1
-      ? current.iterations
-          .map((iteration) =>
-            renderIteration(
-              iteration,
-              visible.filter((item) => item.iterationPath === iteration.path),
-              current
-            )
-          )
-          .join('')
-      : renderCards(visible, current) || '<p class="message muted">No work items match the filters.</p>';
-  return renderAlertsBanner(current) + body + hiddenNote;
+  let body: string;
+  if (current.iterations.length > 1) {
+    body = current.iterations
+      .map((iteration) =>
+        renderIteration(
+          iteration,
+          split.rest.filter((item) => item.iterationPath === iteration.path),
+          current
+        )
+      )
+      .join('');
+  } else {
+    body =
+      renderCards(split.rest, current) ||
+      (split.workingOn.length ? '' : '<p class="message muted">No work items match the filters.</p>');
+  }
+  return renderAlertsBanner(current) + renderWorkingOnSection(split.workingOn, current) + body + hiddenNote;
 }
 
 /* ---------- Page ---------- */
@@ -1209,6 +1260,49 @@ function renderListTools(current: ViewModel): string {
     <button class="icon-button" data-action="collapseAllTasks" title="Collapse all tasks" aria-label="Collapse all tasks">${icon(
       'collapseAll'
     )}</button>`;
+}
+
+/** Work item the extension asked to show; kept until its card is rendered (the list may still be loading) */
+let revealId: number | undefined;
+let flashTimer: ReturnType<typeof setTimeout> | undefined;
+const FLASH_MS = 1500;
+
+function findCard(id: number): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`[data-card="${id}"]`);
+}
+
+/**
+ * Scrolls to the card and flashes it. When the card is not listed because its iteration group is collapsed, the
+ * group is opened and true is returned: the list must be rendered again
+ */
+function revealPending(): boolean {
+  if (revealId === undefined || !model) {
+    return false;
+  }
+  const id = revealId;
+  const card = findCard(id);
+  if (!card) {
+    const item = model.workItems.find((candidate) => candidate.id === id);
+    if (item && collapsedIterations.delete(item.iterationPath)) {
+      saveState();
+      return true;
+    }
+    // Hidden by the filters or the search: nothing to show, unless the list is still loading
+    if (model.status !== 'loading') {
+      revealId = undefined;
+    }
+    return false;
+  }
+  revealId = undefined;
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  card.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+  clearTimeout(flashTimer);
+  document.querySelectorAll('.reveal-flash').forEach((flashing) => flashing.classList.remove('reveal-flash'));
+  // Reading the layout restarts the animation when the same card is revealed twice in a row
+  void card.offsetWidth;
+  card.classList.add('reveal-flash');
+  flashTimer = setTimeout(() => findCard(id)?.classList.remove('reveal-flash'), FLASH_MS);
+  return false;
 }
 
 function render(): void {
@@ -1246,6 +1340,9 @@ function render(): void {
   (document.getElementById('my-prs') as HTMLElement).innerHTML = renderMyPullRequests(model);
   sizeReviewBars();
   sizeTaskBars();
+  if (revealPending()) {
+    render();
+  }
 }
 
 function toggleFilter(kind: FilterKind, value: string): void {
@@ -1427,6 +1524,13 @@ document.addEventListener('click', (event) => {
 window.addEventListener('message', ({ data }: MessageEvent<ExtensionMessage>) => {
   if (data.type === 'setTasksExpanded') {
     setTasksExpanded(data.expanded);
+    return;
+  }
+  if (data.type === 'revealWorkItem') {
+    revealId = data.id;
+    if (revealPending()) {
+      render();
+    }
     return;
   }
   // While the last filter is not saved, the extension still sends older filters: keep the user's one

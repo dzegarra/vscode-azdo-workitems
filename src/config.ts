@@ -42,6 +42,12 @@ export function settings() {
       protocolType: config.get<string>('integrationBuild.protocolType', 'UPack'),
       suffix: config.get<string>('integrationBuild.suffix', '+'),
     },
+    workingOn: {
+      showWorktrees: config.get<boolean>('workingOn.showWorktrees', true),
+      includeLinkedWorkItems: config.get<boolean>('workingOn.includeLinkedWorkItems', true),
+      ignoreFilters: config.get<boolean>('workingOn.ignoreFilters', true),
+      section: config.get<boolean>('workingOn.section', true),
+    },
     alerts: {
       enabled: config.get<boolean>('alerts.enabled', true),
       workItemTypes: config.get<string[]>('alerts.workItemTypes', ['Product Backlog Item', 'Bug']),

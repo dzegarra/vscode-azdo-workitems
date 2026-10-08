@@ -10,7 +10,9 @@ import {
 } from './currentWorkItem';
 import { GitAPI } from './git';
 import { workItemIdFromBranch } from './naming';
+import { canHaveTasks } from './html';
 import { WorkItemsStore } from './workItemsStore';
+import { REVEAL_WORK_ITEM_COMMAND } from './workItemsView';
 
 const DEBOUNCE_MS = 300;
 const SHOW_DETAILS_COMMAND = 'azdoWorkItems.openDetails';
@@ -160,6 +162,16 @@ export class CurrentWorkItemStatusBar implements vscode.Disposable {
     tooltip.appendMarkdown('  \nBranch: ');
     tooltip.appendText(branch);
     tooltip.appendMarkdown('\n\n_Click to show the details_');
+    // Only the work items listed in the sidebar can be shown there
+    const listed = this.store.find(info.id);
+    if (listed && canHaveTasks(listed.workItem.type)) {
+      const args = encodeURIComponent(JSON.stringify([info.id]));
+      tooltip.appendMarkdown(
+        `  \n[Show in sidebar](command:${REVEAL_WORK_ITEM_COMMAND}?${args} "Show it in the work items list")`
+      );
+      // Trusted for this command only
+      tooltip.isTrusted = { enabledCommands: [REVEAL_WORK_ITEM_COMMAND] };
+    }
     this.item.tooltip = tooltip;
     this.item.show();
   }

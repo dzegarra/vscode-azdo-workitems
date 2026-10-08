@@ -1,0 +1,117 @@
+/**
+ * "Working on" work items: the ones whose branch (or the PR of that branch) is checked out in this window
+ * ("here") or in another worktree of the repository ("worktree"). Pure: no "vscode" import
+ */
+import { branchBelongsToWorkItem } from './naming';
+
+export type WorkingOnLevel = 'here' | 'worktree';
+
+/** The part of a work item entry the levels are computed from */
+export interface WorkingOnEntry {
+  workItem: { id: number; links: { branches: { name: string }[] } };
+  /** Branch of the work item (by name, or linked to it) */
+  branch?: string;
+  pullRequests: { status: string; sourceRefName: string }[];
+}
+
+const HEADS = 'refs/heads/';
+
+function stripHeads(ref: string): string {
+  return ref.startsWith(HEADS) ? ref.slice(HEADS.length) : ref;
+}
+
+/**
+ * Work items that a checked out branch belongs to. Always the one whose branch it is; with `includeLinked`, also the
+ * ones whose ID is in the branch name, whose active PR has the branch as source, or whose Development section links to it
+ */
+function workItemsOfBranch(branch: string, entries: WorkingOnEntry[], includeLinked: boolean): number[] {
+  return entries
+    .filter(({ workItem, branch: entryBranch, pullRequests }) => {
+      if (entryBranch === branch) {
+        return true;
+      }
+      return (
+        includeLinked &&
+        (branchBelongsToWorkItem(branch, workItem.id) ||
+          pullRequests.some((pr) => pr.status === 'active' && stripHeads(pr.sourceRefName) === branch) ||
+          workItem.links.branches.some((link) => stripHeads(link.name) === branch))
+      );
+    })
+    .map(({ workItem }) => workItem.id);
+}
+
+export interface WorkingOnInput {
+  /** Branch checked out in this window */
+  currentBranch?: string;
+  /** Branches checked out in the other worktrees; empty when they are not wanted */
+  worktreeBranches: string[];
+  entries: WorkingOnEntry[];
+  /** Also the work items linked to the branch through their PR or Development section, or by the ID in its name */
+  includeLinked: boolean;
+}
+
+/** Level of every work item being worked on. "here" wins over "worktree" */
+export function workingOnLevels({
+  currentBranch,
+  worktreeBranches,
+  entries,
+  includeLinked,
+}: WorkingOnInput): Map<number, WorkingOnLevel> {
+  const levels = new Map<number, WorkingOnLevel>();
+  for (const branch of worktreeBranches) {
+    for (const id of workItemsOfBranch(branch, entries, includeLinked)) {
+      levels.set(id, 'worktree');
+    }
+  }
+  if (currentBranch) {
+    for (const id of workItemsOfBranch(currentBranch, entries, includeLinked)) {
+      levels.set(id, 'here');
+    }
+  }
+  return levels;
+}
+
+export interface WorkingOnBadge {
+  glyph: string;
+  label: string;
+  title: string;
+}
+
+/** Text of the badge of a card (and of the compact signal) */
+export function workingOnBadge(level: WorkingOnLevel, worktreePath?: string): WorkingOnBadge {
+  if (level === 'here') {
+    return {
+      glyph: '●',
+      label: 'Working on',
+      title: 'You are working on this: its branch (or the PR of the branch) is checked out in this window',
+    };
+  }
+  return {
+    glyph: '⧉',
+    label: 'In worktree',
+    title: worktreePath
+      ? `Checked out in the worktree ${worktreePath}`
+      : 'Its branch (or the PR of the branch) is checked out in another worktree of this repository',
+  };
+}
+
+/**
+ * Splits the visible cards into the "Working on" section (here first, then worktree; the order of the rest is kept)
+ * and the rest. Without a section, nothing moves
+ */
+export function splitWorkingOn<T extends { workingOn?: WorkingOnLevel }>(
+  items: T[],
+  section: boolean
+): { workingOn: T[]; rest: T[] } {
+  if (!section) {
+    return { workingOn: [], rest: items };
+  }
+  const workingOn = items.filter((item) => item.workingOn);
+  return {
+    workingOn: [
+      ...workingOn.filter((item) => item.workingOn === 'here'),
+      ...workingOn.filter((item) => item.workingOn === 'worktree'),
+    ],
+    rest: items.filter((item) => !item.workingOn),
+  };
+}

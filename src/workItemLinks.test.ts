@@ -114,6 +114,21 @@ describe('isVisible', () => {
     expect(isVisible({ ...item, alerts }, { ...filter, hiddenPullRequestStates: [NO_PULL_REQUEST] })).toBe(false);
   });
 
+  it('can skip the filters of the work items being worked on, which still respect the type and the search', () => {
+    const working = { ...item, state: 'Done', workingOn: 'here' as const };
+    const hidden = { ...filter, hiddenPullRequestStates: [NO_PULL_REQUEST], hiddenPriorities: [NO_PRIORITY] };
+    expect(isVisible(working, hidden)).toBe(false);
+    expect(isVisible(working, hidden, '', false, true)).toBe(true);
+    expect(isVisible({ ...working, workingOn: 'worktree' }, hidden, '', false, true)).toBe(true);
+    // Without ignoreFilters, or when not being worked on, they apply
+    expect(isVisible({ ...item, state: 'Done' }, filter, '', false, true)).toBe(false);
+    expect(isVisible(working, filter, '', false, false)).toBe(false);
+    // Type and search still apply
+    expect(isVisible({ ...working, type: 'Task' }, filter, '', false, true)).toBe(false);
+    expect(isVisible(working, filter, 'nothing like this', false, true)).toBe(false);
+    expect(isVisible(working, filter, 'access', false, true)).toBe(true);
+  });
+
   it('can always show work items with alerts, whatever their state, PR or priority', () => {
     const alerts = [{ rule: 'tasksNotDone', message: 'Is Done but 1 task is not done' }];
     expect(isVisible({ ...item, state: 'Done', alerts }, filter, '', true)).toBe(true);

@@ -13,7 +13,8 @@ import { isActive, latestRuns, RunModel } from './pipelines';
 import { followedPullRequestIds, RunsTracker } from './runsPolling';
 import { pullRequestStatus } from './workItemLinks';
 import { listWorktrees } from './worktreeGit';
-import { findWorktree, Worktree } from './worktrees';
+import { findWorktree, otherWorktreeBranches, Worktree } from './worktrees';
+import { WorkingOnLevel, workingOnLevels } from './workingOn';
 import { realpathSync } from 'node:fs';
 import { parsePriority, PRIORITY_FIELD, SEVERITY_FIELD } from './priority';
 import { AlertRules, findAlerts, parseTags, resolveFieldName, resolveRequiredFields, WorkItemAlert } from './alerts';
@@ -464,7 +465,8 @@ export class WorkItemsStore {
   private toModel(
     { workItem, parent, alerts, branch, branchLocation, leftoverBranch, pullRequests, predecessors }: WorkItemEntry,
     currentBranch: string | undefined,
-    completedStates: string[]
+    completedStates: string[],
+    levels: Map<number, WorkingOnLevel>
   ): WorkItemModel {
     return {
       id: workItem.id,
@@ -481,6 +483,7 @@ export class WorkItemsStore {
       branch,
       branchLocation,
       isCurrentBranch: !!branch && branch === currentBranch,
+      workingOn: levels.get(workItem.id),
       worktree: branch === currentBranch ? undefined : this.worktreeFor(branch)?.path,
       leftoverBranch: leftoverBranch && {
         name: leftoverBranch.name,
@@ -495,18 +498,34 @@ export class WorkItemsStore {
     };
   }
 
+  /** Work items being worked on: their branch (or the PR of the branch) is checked out here or in another worktree */
+  private workingOnLevels(currentBranch: string | undefined): Map<number, WorkingOnLevel> {
+    const { showWorktrees, includeLinkedWorkItems } = settings().workingOn;
+    return workingOnLevels({
+      currentBranch,
+      worktreeBranches: showWorktrees ? otherWorktreeBranches(this.worktrees, this.openFolders()) : [],
+      entries: this.entries,
+      includeLinked: includeLinkedWorkItems,
+    });
+  }
+
   /** Card data of one work item, or undefined when it is not in the current iterations */
   workItemModel(id: number): WorkItemModel | undefined {
     const entry = this.find(id);
-    return entry && this.toModel(entry, this.repository()?.state.HEAD?.name, settings().dependencies.completedStates);
+    const currentBranch = this.repository()?.state.HEAD?.name;
+    return (
+      entry &&
+      this.toModel(entry, currentBranch, settings().dependencies.completedStates, this.workingOnLevels(currentBranch))
+    );
   }
 
   toViewModel(
     filter: FilterModel
-  ): Omit<ViewModel, 'alwaysShowAlerts' | 'coverage' | 'layout' | 'pullRequests' | 'reviews'> {
+  ): Omit<ViewModel, 'alwaysShowAlerts' | 'coverage' | 'layout' | 'pullRequests' | 'reviews' | 'workingOn'> {
     const currentBranch = this.repository()?.state.HEAD?.name;
     const { completedStates } = settings().dependencies;
-    const workItems = this.entries.map((entry) => this.toModel(entry, currentBranch, completedStates));
+    const levels = this.workingOnLevels(currentBranch);
+    const workItems = this.entries.map((entry) => this.toModel(entry, currentBranch, completedStates, levels));
     return {
       status: this.status,
       error: this.error,

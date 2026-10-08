@@ -99,6 +99,17 @@ Every **Checkout** (work items, PRs to review, My Pull Requests, details) can op
 
 `azdoWorkItems.checkout.mode` sets what **Checkout** does: `ask` (default), `branch` (always in place) or `worktree` (always in a worktree).
 
+## Work items you are working on
+
+The work items of the checked-out branch are highlighted: a tinted card with an accent border and a **● Working on** badge (in compact rows too). You may work on several at once:
+
+- **Worktrees**: the work items of branches checked out in other worktrees are marked **⧉ In worktree**, in a lighter purple style (`azdoWorkItems.workingOn.showWorktrees`).
+- **Linked work items**: besides the work item whose ID is in the branch name, the ones linked to the PR of the branch or to the branch itself (Development links) are highlighted too (`azdoWorkItems.workingOn.includeLinkedWorkItems`).
+- **Never hidden**: they ignore the State / PR / Priority filters and stay visible in a collapsed iteration group; the Type filter and the search still apply (`azdoWorkItems.workingOn.ignoreFilters`).
+- **Working on section**: they are moved to a section at the top of the list, this window's first (`azdoWorkItems.workingOn.section`).
+
+Turn any of these settings off to keep only the highlight. The status bar item of the current work item has **Show in sidebar**, which scrolls to its card and makes it flash.
+
 ## Work item of the current branch
 
 The status bar shows the work item of the checked out branch, e.g. `66280 Access point label shows the SSID`. Click it to see its details. The work item is found by the number in the branch name (`feature/<module>/<id>-<name>`); branches of colleagues that do not follow the convention exactly, like `feature/MA/60800_unit_config`, work too. Nothing is shown when the branch has no work item (`develop`, `release/…`).

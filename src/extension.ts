@@ -29,7 +29,13 @@ import { PullRequestExtrasLoader } from './pullRequestExtras';
 import { CHECKOUT_REVIEW_COMMAND, ReviewRequestsWatcher } from './reviewRequestsWatcher';
 import { WorkItemDetailsPanels } from './workItemDetails';
 import { WorkItemEntry, WorkItemsStore } from './workItemsStore';
-import { LAYOUT_CONTEXT, layoutSetting, VIEW_ID, WorkItemsViewProvider } from './workItemsView';
+import {
+  LAYOUT_CONTEXT,
+  layoutSetting,
+  REVEAL_WORK_ITEM_COMMAND,
+  VIEW_ID,
+  WorkItemsViewProvider,
+} from './workItemsView';
 
 /** Opens the sprint board of a team. When there are several, the user picks one */
 async function openIterationBoard(repository: Repository | undefined, store: WorkItemsStore): Promise<void> {
@@ -175,6 +181,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.registerWebviewViewProvider(VIEW_ID, view),
     command('azdoWorkItems.useCompactLayout', () => setLayout('compact')),
     command('azdoWorkItems.useLargeLayout', () => setLayout('large')),
+    command(REVEAL_WORK_ITEM_COMMAND, (id: number) => view.reveal(id)),
     command('azdoWorkItems.expandTasks', () => view.setTasksExpanded(true)),
     command('azdoWorkItems.collapseTasks', () => view.setTasksExpanded(false)),
     details,

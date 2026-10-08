@@ -192,4 +192,15 @@ describe('compactSignals', () => {
     expect(compactSignals(item({ state: 'Committed', openPredecessors: [] }), [], NOW)).toEqual([]);
     expect(compactSignals(item({ state: 'New' }), [], NOW)).toEqual([]);
   });
+  it('shows the working on badge first', () => {
+    const signals = compactSignals(item({ priority: 2, workingOn: 'here' }), [], NOW);
+    expect(signals[0]).toMatchObject({ kind: 'workingOn', label: 'Working on', tone: 'working-here' });
+    expect(kinds(signals)).toEqual(['workingOn', 'priority']);
+    expect(compactSignals(item({ workingOn: 'worktree', worktree: '/dev/wt' }), [], NOW)[0]).toMatchObject({
+      label: 'In worktree',
+      title: expect.stringContaining('/dev/wt'),
+      tone: 'working-worktree',
+    });
+    expect(compactSignals(item(), [], NOW)).toEqual([]);
+  });
 });

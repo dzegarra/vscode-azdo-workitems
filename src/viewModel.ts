@@ -11,6 +11,7 @@ import type { RunModel } from './pipelines';
 import type { ReviewRequestModel } from './reviewRequests';
 import { isFinishedState } from './states';
 import type { PullRequestTone } from './workItemLinks';
+import type { WorkingOnLevel } from './workingOn';
 
 export interface PullRequestModel {
   id: number;
@@ -43,6 +44,8 @@ export interface WorkItemModel {
   /** "local": the branch is checked out locally; "remote": only exists in the remote */
   branchLocation?: 'local' | 'remote';
   isCurrentBranch: boolean;
+  /** The user is working on it: its branch (or the PR of the branch) is checked out here or in another worktree */
+  workingOn?: WorkingOnLevel;
   /** Another worktree has the branch checked out: its folder */
   worktree?: string;
   /** Finished work items (Done, Ready to Test…) whose branch still exists: it should be deleted */
@@ -95,6 +98,15 @@ export interface ViewModel {
   alwaysShowAlerts: boolean;
   layout: Layout;
   coverage: CoverageViewModel;
+  workingOn: WorkingOnViewModel;
+}
+
+/** azdoWorkItems.workingOn.* */
+export interface WorkingOnViewModel {
+  /** The work items being worked on skip the State / PR / Priority filters and the "Show only these" toggle */
+  ignoreFilters: boolean;
+  /** They are moved to a "Working on" section at the top of the list */
+  section: boolean;
 }
 
 export interface CoverageViewModel {
@@ -163,7 +175,10 @@ export type WorkItemActionMessage = Exclude<
 
 export type ExtensionMessage =
   /** Opens or closes the task list of every card */
-  { type: 'setTasksExpanded'; expanded: boolean } | { type: 'state'; model: ViewModel };
+  | { type: 'setTasksExpanded'; expanded: boolean }
+  /** Scrolls to the card of the work item and flashes it, opening its iteration group when collapsed */
+  | { type: 'revealWorkItem'; id: number }
+  | { type: 'state'; model: ViewModel };
 
 export const NO_PULL_REQUEST = 'No PR';
 
@@ -216,22 +231,25 @@ export function pullRequestFilterValue(item: Pick<WorkItemModel, 'pullRequests'>
 /**
  * True when the work item passes the type / state / PR / priority / predecessors filters and matches the search text.
  * With "alwaysShowAlerts", work items with alerts skip the state / PR / priority / predecessors filters: they must be fixed
- * ASAP, e.g. a "Done" work item with open tasks would be hidden by the default "Done" filter
+ * ASAP, e.g. a "Done" work item with open tasks would be hidden by the default "Done" filter. With "workingOnIgnoresFilters",
+ * so do the ones being worked on (workingOn.ignoreFilters)
  */
 export function isVisible(
   item: Pick<WorkItemModel, 'branch' | 'id' | 'pullRequests' | 'state' | 'title' | 'type'> & {
     alerts?: unknown[];
+    workingOn?: WorkingOnLevel;
     priority?: number;
     openPredecessors?: unknown[];
   },
   filter: FilterModel,
   text = '',
-  alwaysShowAlerts = false
+  alwaysShowAlerts = false,
+  workingOnIgnoresFilters = false
 ): boolean {
   if (filter.types.length && !filter.types.includes(item.type)) {
     return false;
   }
-  const hasAlerts = alwaysShowAlerts && !!item.alerts?.length;
+  const hasAlerts = (alwaysShowAlerts && !!item.alerts?.length) || (workingOnIgnoresFilters && !!item.workingOn);
   if (!hasAlerts && filter.hiddenStates.includes(item.state)) {
     return false;
   }

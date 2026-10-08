@@ -74,6 +74,19 @@ export function findWorktree(worktrees: Worktree[], branch: string, exclude: str
   );
 }
 
+/** Branches checked out in the worktrees other than the folders open in this window */
+export function otherWorktreeBranches(worktrees: Worktree[], openFolders: string[]): string[] {
+  return worktrees
+    .filter(
+      (worktree) =>
+        worktree.branch &&
+        !worktree.bare &&
+        !worktree.prunable &&
+        !openFolders.some((folder) => samePath(folder, worktree.path))
+    )
+    .map((worktree) => worktree.branch as string);
+}
+
 /**
  * Where the worktree of a branch is created: next to the repository, in "<repository folder>.worktrees", with the
  * slashes of the branch name as subfolders: /dev/app + feature/x/12-y -> /dev/app.worktrees/feature/x/12-y

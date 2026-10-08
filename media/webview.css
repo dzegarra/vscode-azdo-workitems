@@ -12,6 +12,8 @@
   --purple: var(--vscode-charts-purple, #b180d7);
   --orange: var(--vscode-charts-orange, #d18616);
   --grey: var(--vscode-disabledForeground, #8b8b8b);
+  --working-here: var(--vscode-focusBorder, #007fd4);
+  --working-worktree: var(--purple);
 }
 
 body {
@@ -362,9 +364,151 @@ button {
   background: var(--card-hover);
 }
 
-.card.current {
-  border-color: var(--vscode-focusBorder);
-  border-left-color: var(--vscode-focusBorder);
+/*
+ * Work items being worked on. "here" (checked out in this window) is the strongest: blue accent (the focus colour,
+ * which is not the red of the alerts nor the green of "ready to merge"), thick border, tint and a solid badge.
+ * "worktree" (checked out in another worktree) is the same idea in purple with a lighter touch. They come before
+ * .has-alerts, which keeps its red border: the badge and the tint still show on a card with alerts
+ */
+.card.working-here {
+  border-color: color-mix(in srgb, var(--working-here) 65%, var(--border));
+  border-left-width: 5px;
+  border-left-color: var(--working-here);
+  background: color-mix(in srgb, var(--working-here) 14%, var(--card-bg));
+}
+
+.card.working-worktree {
+  border-color: color-mix(in srgb, var(--working-worktree) 45%, var(--border));
+  border-left-width: 4px;
+  border-left-color: var(--working-worktree);
+  background: color-mix(in srgb, var(--working-worktree) 9%, var(--card-bg));
+}
+
+.card.working-here:hover {
+  background: color-mix(in srgb, var(--working-here) 20%, var(--card-bg));
+}
+
+.card.working-worktree:hover {
+  background: color-mix(in srgb, var(--working-worktree) 14%, var(--card-bg));
+}
+
+/* The badge makes the header longer than a narrow sidebar: the state moves to a second line instead of overlapping */
+.card.working-on .card-head {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.pill.working-pill {
+  gap: 4px;
+  font-weight: 600;
+}
+
+.pill.working-pill.working-here {
+  color: var(--vscode-button-foreground, #ffffff);
+  background: var(--vscode-button-background, var(--working-here));
+}
+
+.pill.working-pill.working-worktree {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--working-worktree) 70%, transparent);
+  color: var(--working-worktree);
+  background: color-mix(in srgb, var(--working-worktree) 14%, transparent);
+}
+
+.working-glyph {
+  font-size: 0.9em;
+  line-height: 1;
+}
+
+/* Compact rows: an accent dot before the type icon (filled: here, ring: worktree) and a bold title */
+.working-dot {
+  flex: none;
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.working-here .working-dot {
+  background: var(--working-here);
+}
+
+.working-worktree .working-dot {
+  border: 2px solid var(--working-worktree);
+}
+
+.card.compact.working-on .compact-title {
+  font-weight: 600;
+}
+
+.signal-workingOn {
+  font-weight: 600;
+}
+
+.signal.tone-working-here {
+  --pill-color: var(--working-here);
+}
+
+.signal.tone-working-worktree {
+  --pill-color: var(--working-worktree);
+}
+
+/* "Working on" section: a tinted band with a bold heading, unlike the framed panels and the plain iteration headers */
+.working-section {
+  display: grid;
+  gap: var(--gap);
+  margin: 8px -12px 0;
+  padding: 0 12px 10px;
+  border-top: 2px solid var(--working-here);
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--working-here) 13%, transparent), transparent 80px);
+}
+
+.working-section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.working-section-head .working-glyph {
+  color: var(--working-here);
+}
+
+.working-section-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  color: var(--vscode-button-foreground, #ffffff);
+  background: var(--vscode-button-background, var(--working-here));
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* Brief flash of the card shown from the status bar ("Show in sidebar") */
+.card.reveal-flash {
+  animation: reveal-flash 1.5s ease-out;
+}
+
+@keyframes reveal-flash {
+  0%,
+  35% {
+    box-shadow: 0 0 0 3px var(--vscode-focusBorder), 0 0 14px 2px var(--vscode-focusBorder);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No animation: a static outline for the same time */
+  .card.reveal-flash {
+    animation: none;
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+  }
 }
 
 .state-border-proposed {

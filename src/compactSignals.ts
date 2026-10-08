@@ -6,6 +6,7 @@ import { severityLevel, severityName } from './priority';
 import { isFinishedState } from './states';
 import { taskProgress } from './taskProgress';
 import type { WorkItemModel } from './viewModel';
+import { workingOnBadge } from './workingOn';
 
 export type SignalKind =
   | 'alerts'
@@ -16,7 +17,8 @@ export type SignalKind =
   | 'pullRequest'
   | 'ready'
   | 'severity'
-  | 'tasks';
+  | 'tasks'
+  | 'workingOn';
 
 export interface CompactSignal {
   kind: SignalKind;
@@ -26,7 +28,8 @@ export interface CompactSignal {
   title: string;
   /**
    * Colour: "urgency-N" / "urgency-none" (priority, severity), a branch or PR tone, the run state (ci),
-   * "neutral" or "approved" (tasks), "rejected" (alerts), "caution" (open predecessors), "approved" (ready to start)
+   * "neutral" or "approved" (tasks), "rejected" (alerts), "caution" (open predecessors), "approved" (ready to start),
+   * "working-here" / "working-worktree" (working on)
    */
   tone: string;
 }
@@ -112,7 +115,7 @@ function ciSignal(item: WorkItemModel, now: Date): CompactSignal | undefined {
 }
 
 /**
- * Signals of a work item, in the order they are shown: priority, severity, predecessors, branch, PR, CI of the PR, tasks, alerts.
+ * Signals of a work item, in the order they are shown: working on, priority, severity, predecessors, branch, PR, CI of the PR, tasks, alerts.
  * Each one only when it applies. `children` are the tasks of the work item
  */
 export function compactSignals(
@@ -120,7 +123,12 @@ export function compactSignals(
   children: Pick<WorkItemModel, 'state'>[] = [],
   now = new Date()
 ): CompactSignal[] {
-  const signals = urgencySignals(item);
+  const signals: CompactSignal[] = [];
+  if (item.workingOn) {
+    const badge = workingOnBadge(item.workingOn, item.worktree);
+    signals.push({ kind: 'workingOn', label: badge.label, title: badge.title, tone: `working-${item.workingOn}` });
+  }
+  signals.push(...urgencySignals(item));
   const predecessors = predecessorSignal(item);
   if (predecessors) {
     signals.push(predecessors);

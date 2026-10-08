@@ -1,7 +1,7 @@
 import { migratePredecessorStates } from './predecessors';
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
-import { coverageThresholds, recordsScope, SECTION } from './config';
+import { coverageThresholds, recordsScope, SECTION, settings } from './config';
 import { safeRelativePath } from './coverage';
 import { describeRecords } from './coverageRecords';
 import { CoverageRecordsStore } from './coverageRecordsStore';
@@ -25,6 +25,7 @@ import { runWorkItemAction } from './workItemActions';
 import { WorkItemsStore } from './workItemsStore';
 
 export const VIEW_ID = 'azdoWorkItems.myItems';
+export const REVEAL_WORK_ITEM_COMMAND = 'azdoWorkItems.revealWorkItem';
 
 export function filterSettings(): FilterModel {
   const config = vscode.workspace.getConfiguration(SECTION);
@@ -37,6 +38,11 @@ export function filterSettings(): FilterModel {
   };
 }
 
+export function workingOnSettings(): ViewModel['workingOn'] {
+  const { ignoreFilters, section } = settings().workingOn;
+  return { ignoreFilters, section };
+}
+
 export const LAYOUT_CONTEXT = 'azdoWorkItems.layout';
 
 export function layoutSetting(): Layout {
@@ -46,6 +52,10 @@ export function layoutSetting(): Layout {
 /** Sidebar view rendering the work items as cards */
 export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
+  /** The webview has loaded its script and asked for the state (it does not survive a hidden view) */
+  private ready = false;
+  /** Work item to reveal as soon as the webview can: the view may still be opening */
+  private pendingReveal?: number;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -57,11 +67,18 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
+    this.ready = false;
     const roots = [vscode.Uri.joinPath(this.extensionUri, 'dist'), vscode.Uri.joinPath(this.extensionUri, 'media')];
     view.webview.options = { enableScripts: true, localResourceRoots: roots };
     view.webview.html = this.html(view.webview);
     view.webview.onDidReceiveMessage((message: WebviewMessage) => this.onMessage(message));
-    view.onDidChangeVisibility(() => view.visible && this.post());
+    view.onDidChangeVisibility(() => {
+      // A hidden webview is destroyed: it asks for the state again when it is shown
+      this.ready &&= view.visible;
+      if (view.visible) {
+        this.post();
+      }
+    });
   }
 
   /** Sends the current state to the webview */
@@ -74,6 +91,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       ...this.store.toViewModel(filterSettings()),
       alwaysShowAlerts: vscode.workspace.getConfiguration(SECTION).get<boolean>('filter.alwaysShowAlerts', false),
       layout: layoutSetting(),
+      workingOn: workingOnSettings(),
       coverage: this.coverageModel(),
       reviews: {
         status: this.reviews.status,
@@ -133,6 +151,22 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  /** Shows the view and scrolls its card of the work item into view (the webview flashes it) */
+  async reveal(id: number): Promise<void> {
+    this.pendingReveal = id;
+    await vscode.commands.executeCommand(`${VIEW_ID}.focus`);
+    this.flushReveal();
+  }
+
+  private flushReveal(): void {
+    if (this.pendingReveal === undefined || !this.ready || !this.view?.visible) {
+      return;
+    }
+    const message: ExtensionMessage = { type: 'revealWorkItem', id: this.pendingReveal };
+    this.pendingReveal = undefined;
+    void this.view.webview.postMessage(message);
+  }
+
   /** Opens or closes the task list of every card */
   setTasksExpanded(expanded: boolean): void {
     const message: ExtensionMessage = { type: 'setTasksExpanded', expanded };
@@ -142,7 +176,9 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
   private async onMessage(message: WebviewMessage): Promise<void> {
     switch (message.type) {
       case 'ready':
+        this.ready = true;
         this.post();
+        this.flushReveal();
         await this.store.ensureLoaded();
         return;
       case 'refresh':
