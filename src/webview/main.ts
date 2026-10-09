@@ -383,7 +383,7 @@ function renderPredecessorList(item: WorkItemModel, id: string): string {
       <div class="pred-line">${typeIcon(predecessor.type)}
         <button class="link id${typeIdClass(predecessor.type)}" data-action="openDetails" data-id="${
       predecessor.id
-    }" title="Show details">${predecessor.id}</button>
+    }" title="Open the Work Item Details panel">${predecessor.id}</button>
         <span class="pred-title" title="${escapeHtml(predecessor.title)}">${escapeHtml(predecessor.title)}</span></div>
       <div class="pred-meta">${details.join(' · ')}</div>
       ${risk ? `<div class="pred-risk risk-${risk}">${escapeHtml(RISK_DESCRIPTIONS[risk])}</div>` : ''}
@@ -508,7 +508,7 @@ function renderActions(item: WorkItemModel): string {
     );
   }
   actions.push(
-    `<button class="button ghost" data-action="openDetails" data-id="${item.id}" title="Show the details of the work item">Open</button>`
+    `<button class="button ghost" data-action="openDetails" data-id="${item.id}" title="Open the Work Item Details panel">Details</button>`
   );
   return `<footer class="actions">${actions.join('')}</footer>`;
 }
@@ -665,7 +665,7 @@ function renderChild(item: TaskRow): string {
     ${typeIcon(item.type)}
     <button class="link id${typeIdClass(item.type)}" data-action="openDetails" data-id="${
     item.id
-  }" title="Show details">${item.id}</button>
+  }" title="Open the Work Item Details panel">${item.id}</button>
     <span class="child-title" title="${escapeHtml(title)}">${escapeHtml(item.title)}</span>
     ${
       item.assignedTo
@@ -1065,7 +1065,7 @@ function renderLinkedWorkItems(workItems: MyPullRequestModel['workItems']): stri
         type ? typeIdClass(type) : ''
       }" data-action="openDetails" data-id="${id}" title="${escapeHtml(
         type ? `${type} ${id}` : `Work item ${id}`
-      )}: show details">#${id}</button>`
+      )}: open the Work Item Details panel">#${id}</button>`
   );
   return `<span class="mypr-items">${links.join('')}</span>`;
 }

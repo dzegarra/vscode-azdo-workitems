@@ -40,19 +40,42 @@ export function flattenIterations(root: IterationNode): ScheduledIteration[] {
 }
 
 /**
- * Orders the given iteration paths by start date. Iterations without dates (e.g. the project backlog)
- * go last; paths not found in the schedule are treated as not scheduled
+ * Azure DevOps iterations are nested as "Project\Container\Sprint": the container is usually a release whose
+ * dates cover the sprints of several teams. Work items planned in the container are in the release but not in a sprint
+ * yet, and the ones directly in the project are not planned in any release (limbo)
  */
-export function orderIterations(paths: string[], schedule: ScheduledIteration[]): ScheduledIteration[] {
-  const byPath = new Map(schedule.map((iteration) => [iteration.path, iteration]));
-  return [...new Set(paths)]
-    .map((path) => byPath.get(path) ?? { path, name: path.split('\\').at(-1) ?? path })
-    .sort((a, b) => {
-      if (a.start && b.start) {
-        return a.start.localeCompare(b.start);
-      }
-      return Number(!a.start) - Number(!b.start) || a.path.localeCompare(b.path);
-    });
+export type IterationKind = 'container' | 'limbo' | 'sprint';
+
+export function iterationKind(path: string): IterationKind {
+  const depth = path.split('\\').filter(Boolean).length - 1;
+  if (depth < 1) {
+    return 'limbo';
+  }
+  return depth === 1 ? 'container' : 'sprint';
+}
+
+/** "Project\Release\Platform Sprint 1" → "Project\Release" */
+export function containerPath(path: string): string {
+  return path.split('\\').filter(Boolean).slice(0, 2).join('\\');
+}
+
+/** Dates of a sprint, when the schedule knows them (YYYY-MM-DD) */
+export function sprintDates(
+  path: string,
+  schedule: ScheduledIteration[]
+): { start: string; finish: string } | undefined {
+  if (iterationKind(path) !== 'sprint') {
+    return undefined;
+  }
+  const iteration = schedule.find((candidate) => candidate.path === path);
+  return iteration?.start && iteration.finish
+    ? { start: iteration.start.slice(0, 10), finish: iteration.finish.slice(0, 10) }
+    : undefined;
+}
+
+/** Negative when the first period starts (or, starting together, finishes) before the second one */
+export function compareDates(a: { start: string; finish: string }, b: { start: string; finish: string }): number {
+  return a.start.localeCompare(b.start) || a.finish.localeCompare(b.finish);
 }
 
 export function isCurrentIteration(iteration: ScheduledIteration, today: Date): boolean {
@@ -65,10 +88,10 @@ export function isCurrentIteration(iteration: ScheduledIteration, today: Date): 
 
 /**
  * - done: the predecessor is finished, nothing to worry about
- * - late: the predecessor is planned in a later iteration than its successor
- * - tight: both are planned in the same iteration
- * - unscheduled: the successor is planned but the predecessor is not
- * - ok: the predecessor is planned before its successor (or the successor is not planned)
+ * - late: the predecessor is planned in a sprint period after the one of its successor
+ * - tight: both are planned in the same sprint period (even if they are sprints of different teams)
+ * - unscheduled: the successor is in a sprint but the predecessor is not (it is in a release, or in no release at all)
+ * - ok: the predecessor is planned before its successor (or the successor is not in a sprint)
  */
 export type DependencyRisk = 'done' | 'late' | 'ok' | 'tight' | 'unscheduled';
 
@@ -80,25 +103,32 @@ export function dependencyRisk(
   if (['done', 'removed'].includes(stateCategory(predecessor.state))) {
     return 'done';
   }
-  const start = (path: string) => schedule.find((iteration) => iteration.path === path)?.start;
-  const predecessorStart = start(predecessor.iterationPath);
-  const successorStart = start(successor.iterationPath);
-  if (!successorStart) {
+  // Nothing is scheduled to be late against
+  if (iterationKind(successor.iterationPath) !== 'sprint') {
     return 'ok';
   }
-  if (!predecessorStart) {
+  if (iterationKind(predecessor.iterationPath) !== 'sprint') {
     return 'unscheduled';
   }
-  if (predecessor.iterationPath === successor.iterationPath) {
+  const successorDates = sprintDates(successor.iterationPath, schedule);
+  const predecessorDates = sprintDates(predecessor.iterationPath, schedule);
+  if (!successorDates) {
+    return 'ok';
+  }
+  if (!predecessorDates) {
+    return 'unscheduled';
+  }
+  const order = compareDates(predecessorDates, successorDates);
+  if (order === 0) {
     return 'tight';
   }
-  return predecessorStart > successorStart ? 'late' : 'ok';
+  return order > 0 ? 'late' : 'ok';
 }
 
 export const RISK_DESCRIPTIONS: Record<DependencyRisk, string> = {
   done: 'Predecessor done',
   late: 'Predecessor planned after its successor',
-  tight: 'Planned in the same iteration',
-  unscheduled: 'Predecessor not scheduled',
+  tight: 'Planned in the same sprint period',
+  unscheduled: 'Predecessor not scheduled yet',
   ok: 'Predecessor planned before',
 };

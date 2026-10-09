@@ -99,7 +99,7 @@
       },
       {
         "command": "totalflowx.openDetails",
-        "title": "Show Work Item Details",
+        "title": "Open Work Item Details Panel",
         "category": "Totalflow X"
       },
       {

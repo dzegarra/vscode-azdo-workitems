@@ -50,7 +50,7 @@ export class CurrentWorkItemStatusBar implements vscode.Disposable {
 
   constructor(private readonly git: GitAPI, private readonly store: WorkItemsStore) {
     this.item.name = 'Work item of the current branch';
-    this.item.command = { command: SHOW_DETAILS_COMMAND, title: 'Show Work Item Details', arguments: [] };
+    this.item.command = { command: SHOW_DETAILS_COMMAND, title: 'Open Work Item Details Panel', arguments: [] };
     const watch = (repository: GitAPI['repositories'][number]) => repository.state.onDidChange(() => this.schedule());
     this.subscriptions.push(
       ...git.repositories.map(watch),
@@ -146,7 +146,7 @@ export class CurrentWorkItemStatusBar implements vscode.Disposable {
 
   private show({ branch, info, view }: Resolved): void {
     this.item.text = `${view.isMine ? '$(git-branch)' : '$(eye)'} ${statusBarText(info, view)}`;
-    this.item.command = { command: SHOW_DETAILS_COMMAND, title: 'Show Work Item Details', arguments: [info.id] };
+    this.item.command = { command: SHOW_DETAILS_COMMAND, title: 'Open Work Item Details Panel', arguments: [info.id] };
 
     const tooltip = new vscode.MarkdownString(undefined, true);
     tooltip.appendMarkdown(
@@ -161,7 +161,7 @@ export class CurrentWorkItemStatusBar implements vscode.Disposable {
     }
     tooltip.appendMarkdown('  \nBranch: ');
     tooltip.appendText(branch);
-    tooltip.appendMarkdown('\n\n_Click to show the details_');
+    tooltip.appendMarkdown('\n\n_Click to open the Work Item Details panel_');
     // Only the work items listed in the sidebar can be shown there
     const listed = this.store.find(info.id);
     if (listed && canHaveTasks(listed.workItem.type)) {

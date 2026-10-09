@@ -13,9 +13,10 @@ import {
 import type { ScheduledIteration } from './schedule';
 
 const schedule: ScheduledIteration[] = [
-  { path: 'P\\Sprint 1', name: 'Sprint 1', start: '2026-01-01', finish: '2026-01-14' },
-  { path: 'P\\Sprint 2', name: 'Sprint 2', start: '2026-01-15', finish: '2026-01-28' },
-  { path: 'P\\Sprint 3', name: 'Sprint 3', start: '2026-01-29', finish: '2026-02-11' },
+  { path: 'P\\R\\Sprint 1', name: 'Sprint 1', start: '2026-01-01', finish: '2026-01-14' },
+  { path: 'P\\R\\Sprint 2', name: 'Sprint 2', start: '2026-01-15', finish: '2026-01-28' },
+  { path: 'P\\R\\Sprint 3', name: 'Sprint 3', start: '2026-01-29', finish: '2026-02-11' },
+  { path: 'P\\R', name: 'R' },
   { path: 'P', name: 'P' },
 ];
 
@@ -48,15 +49,15 @@ describe('isCompletedState', () => {
 });
 
 describe('openPredecessors', () => {
-  const item = { iterationPath: 'P\\Sprint 2' };
+  const item = { iterationPath: 'P\\R\\Sprint 2' };
 
   it('drops the completed predecessors', () => {
     const result = openPredecessors(
       item,
       [
-        predecessor(1, 'Done', 'P\\Sprint 1'),
-        predecessor(2, 'Ready-to-Test', 'P\\Sprint 1'),
-        predecessor(3, 'New', 'P\\Sprint 1'),
+        predecessor(1, 'Done', 'P\\R\\Sprint 1'),
+        predecessor(2, 'Ready-to-Test', 'P\\R\\Sprint 1'),
+        predecessor(3, 'New', 'P\\R\\Sprint 1'),
       ],
       DEFAULT_COMPLETED_STATES,
       schedule
@@ -65,7 +66,7 @@ describe('openPredecessors', () => {
   });
 
   it('honours the completed states setting', () => {
-    const predecessors = [predecessor(1, 'Done', 'P\\Sprint 1'), predecessor(2, 'Resolved', 'P\\Sprint 1')];
+    const predecessors = [predecessor(1, 'Done', 'P\\R\\Sprint 1'), predecessor(2, 'Resolved', 'P\\R\\Sprint 1')];
     expect(openPredecessors(item, predecessors, ['Resolved'], schedule).map((p) => p.id)).toEqual([1]);
   });
 
@@ -73,10 +74,10 @@ describe('openPredecessors', () => {
     const result = openPredecessors(
       item,
       [
-        predecessor(1, 'New', 'P\\Sprint 1'),
-        predecessor(2, 'New', 'P\\Sprint 2'),
-        predecessor(3, 'New', 'P'),
-        predecessor(4, 'New', 'P\\Sprint 3'),
+        predecessor(1, 'New', 'P\\R\\Sprint 1'),
+        predecessor(2, 'New', 'P\\R\\Sprint 2'),
+        predecessor(3, 'New', 'P\\R'),
+        predecessor(4, 'New', 'P\\R\\Sprint 3'),
       ],
       DEFAULT_COMPLETED_STATES,
       schedule
@@ -90,19 +91,19 @@ describe('openPredecessors', () => {
   });
 
   it('keeps the risk of an open predecessor even when its state looks done', () => {
-    const [result] = openPredecessors(item, [predecessor(1, 'Resolved', 'P\\Sprint 3')], [], schedule);
+    const [result] = openPredecessors(item, [predecessor(1, 'Resolved', 'P\\R\\Sprint 3')], [], schedule);
     expect(result.risk).toBe('late');
   });
 
   it('gives the assignee and the iteration name', () => {
-    const [result] = openPredecessors(item, [predecessor(1, 'In Progress', 'P\\Sprint 3', 'Ana')], [], schedule);
+    const [result] = openPredecessors(item, [predecessor(1, 'In Progress', 'P\\R\\Sprint 3', 'Ana')], [], schedule);
     expect(result).toMatchObject({ assignedTo: 'Ana', iterationName: 'Sprint 3', state: 'In Progress' });
   });
 
   it('has no risk without the schedule and then sorts by ID', () => {
     const result = openPredecessors(
       item,
-      [predecessor(9, 'New', 'P\\Sprint 3'), predecessor(4, 'New', 'P\\Sprint 1')],
+      [predecessor(9, 'New', 'P\\R\\Sprint 3'), predecessor(4, 'New', 'P\\R\\Sprint 1')],
       DEFAULT_COMPLETED_STATES,
       undefined
     );

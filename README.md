@@ -15,7 +15,7 @@ Brings the Azure DevOps work of the current sprint into VS Code: your Backlog It
 - **[Two layouts](#layouts)**: compact rows (default) or large cards.
 - **[Work item editing](#usage)**: change states, add tasks, and see the full details (description, acceptance criteria, effort, tags, parent, children) in an editor tab.
 - **[Alerts](#alerts)** for the work items that break the team rules (Done with open tasks, missing PR task, blocking tags, empty required fields…), in the cards, the view badge and the status bar. **[Integrated in Build](#integrated-in-build)** can be filled in one click from the last release of the deploy image.
-- **[Dependencies](#dependencies)**: predecessors and successors in the details, and an interactive map by iteration that highlights the risky ones.
+- **[Dependencies](#dependencies)**: predecessors and successors in the Work Item Details panel, and an interactive map by iteration that highlights the risky ones.
 - **[CI pipelines](#ci-pipelines)**: live state of the runs validating your pull requests, in the cards and the status bar, with a notification when they finish.
 - **[Pull request notifications](#pull-request-notifications)** when your PRs get comments or votes, or are merged.
 - **[Reviews](#pull-requests-waiting-for-my-review)**: the PRs waiting for your review at the top of the sidebar and in the status bar, with the time left before the 24 hours run out, orange when due soon and red when overdue, one-click checkout of their branch, plus notifications, reminders, a daily digest, and notifications when your review comments are answered or resolved.
@@ -37,9 +37,9 @@ Each work item is a card with:
 
 - ID (opens the work item in Azure DevOps), **Priority** (`P1`–`P4`) and, for Bugs, **Severity** (`S1 Critical` … `S4 Low`), coloured from red (most urgent) to grey; the type is shown by the icon. And the state
 - Title
-- Parent: ID and title of the parent (click it to see its details), unless the card is nested in its parent's card. Children (e.g. Tasks) are nested at the bottom of the parent card
+- Parent: ID and title of the parent (click it to open its Work Item Details panel), unless the card is nested in its parent's card. Children (e.g. Tasks) are nested at the bottom of the parent card
 - Branches: every branch of the work item: the ones named after it (`local`, `current` when checked out, or `remote` when it only exists in the remote), the ones linked in its Development section (`linked`) and the source branches of its active PRs. The branches of other repositories are faded and in italics (hover them to see the repository). With several branches, each one of this repository has its own **Checkout ▾** (or **Open worktree ▾**); the card's buttons act on the main one
-- Bugs fixed by a Backlog Item (the Backlog Item is a predecessor of the Bug): the Backlog Item shows **Fixes N bugs** with their IDs, and the Bug shows **Fixed by** the Backlog Item with its state (click an ID to see its details; done ones are faded). The details panel marks these links in its Predecessors / Successors lists
+- Bugs fixed by a Backlog Item (the Backlog Item is a predecessor of the Bug): the Backlog Item shows **Fixes N bugs** with their IDs, and the Bug shows **Fixed by** the Backlog Item with its state (click an ID to open its Work Item Details panel; done ones are faded). The Work Item Details panel marks these links in its Predecessors / Successors lists
 - Pull requests linked to the work item with their status (the PRs of other repositories are faded and in italics; hover them to see the repository). Only the PRs of this repository decide whether **Create PR** is offered: Draft, In review, Approved, Waiting for author, Rejected, Conflicts, Completed, Abandoned
 
 Cards are sorted by state: Done, Ready to Test, Committed, In Progress, Approved, New, To Do (`totalflowx.stateOrder`). Done and Ready to Test are shown in green, Committed and In Progress in blue.
@@ -60,9 +60,9 @@ The tasks of a card are folded under a `Tasks 2/3` line with a progress bar: Don
 Card actions:
 
 - **Create branch**: pick the module, adjust the short name. The branch is created from `origin/develop` (without switching to it), published and linked to the work item's _Development_ section; then a notification offers to **Checkout** it or **Open in a worktree** (or just stay where you are). Product Backlog Items and Bugs in New / Approved / To Do are moved to **Committed** (`totalflowx.stateOnBranchCreated`).
-- **State** (the coloured state of a card, a nested task or the details): pick the new state among the ones allowed for that work item type.
+- **State** (the coloured state of a card, a nested task or the Work Item Details panel): pick the new state among the ones allowed for that work item type.
 - **Add task** (Backlog Items and Bugs): creates a Task under the work item, in the same iteration and area and assigned to the same person. Tasks are never shown as cards of their own nor in the filters: they are always nested in the card of their Backlog Item / Bug, where they can be managed (and their state changed).
-- **Open**: shows the details of the work item in an editor tab: description, acceptance criteria / repro steps (with their images), assignee, effort, tags, parent, children, branch and PRs, with the same actions. When the description links to Figma, **Figma design** opens it in the [Figma extension for VS Code](https://marketplace.visualstudio.com/items?itemName=figma.figma-vscode-extension) if it is installed, or in the browser; the button next to it always opens the browser. The Figma extension opens the file but not the linked frame; the browser opens the exact frame. Prototypes, FigJam and Figma Make links open in the browser.
+- **Details**: opens the **Work Item Details panel** (an editor tab, one per work item): description, acceptance criteria / repro steps (with their images), assignee, effort, tags, parent, children, branch and PRs, with the same actions. When the description links to Figma, **Figma design** opens it in the [Figma extension for VS Code](https://marketplace.visualstudio.com/items?itemName=figma.figma-vscode-extension) if it is installed, or in the browser; the button next to it always opens the browser. The Figma extension opens the file but not the linked frame; the browser opens the exact frame. Prototypes, FigJam and Figma Make links open in the browser.
 - **Checkout**: switches to the work item branch (creating the local branch when it only exists in the remote). See [Worktrees](#worktrees) for checking it out without touching your current changes.
 - **Delete branch** (Done, Ready to Test and other finished work items): the team deletes the branches once their PR is merged, so finished work items get no **Create branch**, **Checkout** or **Create PR**. When their branch still exists, it is shown as _not deleted_ and **Delete branch** deletes it in Azure DevOps and locally, after a confirmation telling what is deleted (and warning about commits that were not pushed). When the branch is checked out, VS Code switches to `develop` first. It is not offered while a PR is still active on the branch. Whether the branch exists is asked to Azure DevOps: the links of the work item and the local `origin/…` refs remain after a branch is deleted. Also in the command palette: **Delete Branch of a Finished Work Item**.
 - **Create PR** (when the branch has no active PR; also available from the command palette for the current branch): pick extra work items to link (the ones already using the same branch are pre-selected), the feature name and the description. The branch is pushed and the PR targets `develop`, optionally as draft.
@@ -75,7 +75,7 @@ By default the view lists your work items in the current iteration of **every te
 
 The **My Pull Requests** box, above your work items, lists the pull requests you created, in all the repositories of the project: the active ones (drafts included; **Hide drafts** in its header, or `totalflowx.myPullRequests.showDrafts`) and, faded, the ones completed in the last 24 hours. Each card shows:
 
-- the PR, its status, the target branch when it is not `develop`, and its linked work items (click one to see its details);
+- the PR, its status, the target branch when it is not `develop`, and its linked work items (click one to open its Work Item Details panel);
 - how long it has been published (since its creation for drafts). Hover it, or focus it with the keyboard, to see the history of the PR: creation, publication, pushes, reviewers added, votes, comments, auto-complete, completion;
 - the reviewers with their votes (required ones marked);
 - unresolved comments, conflicts, CI runs (only when the PR has some) and an **Auto-complete** pill;
@@ -119,7 +119,7 @@ Turn any of these settings off to keep only the highlight. The status bar item o
 
 ## Work item of the current branch
 
-The status bar shows the work item of the checked out branch, e.g. `66280 Access point label shows the SSID`. Click it to see its details. The work item is found by the number in the branch name (`feature/<module>/<id>-<name>`); branches of colleagues that do not follow the convention exactly, like `feature/MA/60800_unit_config`, work too. Nothing is shown when the branch has no work item (`develop`, `release/…`).
+The status bar shows the work item of the checked out branch, e.g. `66280 Access point label shows the SSID`. Click it to open its Work Item Details panel. The work item is found by the number in the branch name (`feature/<module>/<id>-<name>`); branches of colleagues that do not follow the convention exactly, like `feature/MA/60800_unit_config`, work too. Nothing is shown when the branch has no work item (`develop`, `release/…`).
 
 When the work item is **not assigned to you**, e.g. you checked out a colleague's branch to review a PR, it is shown with an eye icon and the name of the **owner of the branch** (the person who created it in Azure DevOps): `60800 Update Unit Configuration… · Borislav Surovi EXT`. Hover it to see who the work item is assigned to, its state and the branch. When the branch was not pushed yet, the person the work item is assigned to is named instead.
 
@@ -156,20 +156,23 @@ The feed, package, suffix, field and states can be changed in the `totalflowx.in
 
 Starting a work item whose predecessors are not completed should be avoided (unless agreed with whoever works on them). The cards make it visible:
 
-- **`⛓ N open predecessors`** (amber): hover or focus it to see each predecessor, its state, **who it is assigned to** (to agree with them) and its iteration, the riskiest first (planned after this one, not scheduled, same iteration). Click one to see its details, or open the dependency map.
+- **`⛓ N open predecessors`** (amber): hover or focus it to see each predecessor, its state, **who it is assigned to** (to agree with them) and its iteration, the riskiest first (planned after this one, not scheduled, same iteration). Click one to open its Work Item Details panel, or open the dependency map.
 - **`✓ ready to start`** (green): New / Approved / To Do work items with no open predecessors.
 - The **Deps** filter row (**Incomplete predecessors** / **Complete predecessors**) shows or hides each group.
 - Moving a work item to a started state, or creating its branch, asks first when it has open predecessors: **Start anyway**, **Open dependency map** or Cancel (`totalflowx.dependencies.confirmBeforeStart`).
 
 A predecessor is completed when it is Done, Ready to Test, Closed or Removed (`totalflowx.dependencies.completedStates`).
 
-The details of a work item list its **Predecessors** (work items it depends on) and **Successors** (work items that depend on it), with the iteration each one is planned in. A warning is shown when a predecessor is planned in a later iteration than its successor, in the same iteration, or not scheduled at all.
+The details of a work item list its **Predecessors** (work items it depends on) and **Successors** (work items that depend on it), with the iteration each one is planned in. A warning is shown when a predecessor is planned in a later sprint period than its successor, in the same sprint period, or not scheduled in a sprint yet.
 
-**Open Dependency Map** (view toolbar, or the _Dependency map_ button of the details) shows the dependencies of your work items in the current iterations:
+**Open Dependency Map** (view toolbar, or the _Dependency map_ button of the Work Item Details panel; not for Tasks) shows the dependencies of your work items in the current iterations:
 
-- One column per iteration, ordered by date; the current iteration is highlighted and unscheduled work items go last.
-- Arrows go from the predecessor to the successor, coloured by risk: red when the predecessor is planned after its successor, orange when both are in the same iteration or the predecessor is not scheduled, blue when it is planned before, grey (dashed) when it is done.
-- Your work items have a blue border. Hover a work item to highlight its direct dependencies; click it to highlight its whole chain (everything it depends on and everything that depends on it); double-click or **Open** to see its details.
+- Iterations are read as `<Project>\<Release>\<Sprint>` (e.g. `Flow Digital Architecture\MVP R3\Platform Sprint 122`).
+- One column per **sprint period** (sprints with the same dates, e.g. Sprint 122 · Sep 30 – Oct 13), ordered by date; the current one is highlighted. The sprints of each team are stacked inside it (Interface Apps Sprint 122, Platform Sprint 122…), always in the same team order.
+- Work items still in the release (e.g. `…\MVP R3`) are in the release's own column, **not scheduled in a sprint yet**, after its sprints. Work items directly in the project (not planned in any release) are not shown; the toolbar tells how many. Tasks are never shown: they are part of their Backlog Item / Bug.
+- Arrows go from the predecessor to the successor, coloured by risk: red when the predecessor is planned in a later sprint period than its successor, orange when both are in the same sprint period (even in different teams) or the predecessor is not scheduled in a sprint yet, blue when it is planned before, grey (dashed) when it is done.
+- Your work items have a blue border. Hover a work item to highlight its direct dependencies; click it to highlight its whole chain (everything it depends on and everything that depends on it); double-click or **Details** to open its Work Item Details panel.
+- Your work items without dependencies are hidden: tick **Show work items without dependencies** to place them in their sprint too.
 - **+N** loads the dependencies of a work item not shown yet. **Hide done** hides finished work items; Ctrl + wheel or the buttons zoom; drag the background to move around.
 
 ## CI pipelines
@@ -213,7 +216,7 @@ Your own comments, votes and reviewer changes, system messages and vote resets a
 
 No PR should wait for its reviewers more than 24 hours. The extension makes sure you do not miss the PRs where you are a **required reviewer** and have not voted yet.
 
-**In the sidebar**, a section at the top of _Assigned to Me_ lists them, most urgent first. Each card shows the time left before the 24 hours run out ("18 h left", "5 h left", "overdue by 3 h"), the PR, its author, and a labelled bar of the time waited out of the limit with the due time (`⏱ 19 h of 24 h · due today 14:30`). The last 6 hours are marked on the bar, which turns orange when the PR is due soon and red with stripes once it is overdue; a card pulses once when it changes level. Each card also shows what you need to review it: the PR status, the target branch when it is not `develop`, the linked work items (click one to see its details), the reviewers and their votes (you first), unresolved comments, conflicts, CI runs (failed tests, coverage), auto-complete and how many files changed. Hover the time left to see the history of the PR. It also tells you:
+**In the sidebar**, a section at the top of _Assigned to Me_ lists them, most urgent first. Each card shows the time left before the 24 hours run out ("18 h left", "5 h left", "overdue by 3 h"), the PR, its author, and a labelled bar of the time waited out of the limit with the due time (`⏱ 19 h of 24 h · due today 14:30`). The last 6 hours are marked on the bar, which turns orange when the PR is due soon and red with stripes once it is overdue; a card pulses once when it changes level. Each card also shows what you need to review it: the PR status, the target branch when it is not `develop`, the linked work items (click one to open its Work Item Details panel), the reviewers and their votes (you first), unresolved comments, conflicts, CI runs (failed tests, coverage), auto-complete and how many files changed. Hover the time left to see the history of the PR. It also tells you:
 
 - **Your approval completes it**, in green, when your vote is the last approval the PR needs;
 - **Auto-complete is set: your approval may merge it right away**, or the red error when auto-complete would complete a linked Bug (only testers complete Bugs);

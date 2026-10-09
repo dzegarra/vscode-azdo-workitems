@@ -1,4 +1,4 @@
-/** Body of the work item details panel. Pure, so no "vscode" import */
+/** Body of the Work Item Details panel. Pure, so no "vscode" import */
 import { renderBranchList } from './branchRows';
 import { checkoutButton } from './checkoutButtons';
 import { canHaveTasks, escapeHtml, sanitizeHtml, stateButton } from './html';
@@ -155,9 +155,14 @@ function renderActions(data: DetailsData): string {
   const { card } = data;
   const actions = [
     `<button class="button" data-action="openWorkItem" data-id="${data.id}">Open in Azure DevOps</button>`,
-    `<button class="button with-icon" data-action="openDependencyMap" data-id="${data.id}">${icon(
-      'graph'
-    )}Dependency map</button>`,
+    // Tasks are not shown in the dependency map
+    ...(data.type === 'Task'
+      ? []
+      : [
+          `<button class="button with-icon" data-action="openDependencyMap" data-id="${data.id}">${icon(
+            'graph'
+          )}Dependency map</button>`,
+        ]),
     ...renderFigmaActions(data),
   ];
   // Same branch actions as the cards; finished work items only get "Delete branch"
@@ -171,7 +176,7 @@ function renderRelated(item: RelatedWorkItem): string {
   return `<li class="child">${typeIcon(item.type)}
     <button class="link id${typeIdClass(item.type)}" data-action="openDetails" data-id="${
     item.id
-  }" title="Show details">${item.id}</button>
+  }" title="Open the Work Item Details panel">${item.id}</button>
     <span class="child-title">${escapeHtml(item.title)}</span>${stateButton(item.id, item.state)}</li>`;
 }
 
@@ -200,7 +205,7 @@ function renderDependency(
   return `<li class="child dependency">${typeIcon(item.type)}
     <button class="link id${typeIdClass(item.type)}" data-action="openDetails" data-id="${
     item.id
-  }" title="Show details">${item.id}</button>
+  }" title="Open the Work Item Details panel">${item.id}</button>
     <span class="child-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
     ${fix}${risk}${iteration}${stateButton(item.id, item.state)}</li>`;
 }

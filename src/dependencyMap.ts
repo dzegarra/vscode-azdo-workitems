@@ -13,8 +13,10 @@ export type DependencyMapMessage =
 
 export type DependencyMapUpdate =
   | { type: 'error'; message: string }
-  | { type: 'graph'; graph: DependencyGraph; withoutDependencies: number }
-  | { type: 'loading' };
+  | { type: 'graph'; graph: DependencyGraph }
+  | { type: 'loading' }
+  /** Select the work item and scroll to it (each time the map is opened for it) */
+  | { type: 'focus'; id: number };
 
 function dependencyIds(workItem: WorkItem): number[] {
   return [...workItem.links.predecessorIds, ...workItem.links.successorIds];
@@ -41,7 +43,6 @@ export class DependencyMapPanel implements vscode.Disposable {
   private panel?: vscode.WebviewPanel;
   private readonly items = new Map<number, WorkItem>();
   private focusId?: number;
-  private withoutDependencies = 0;
   private readonly subscription: vscode.Disposable;
 
   constructor(private readonly extensionUri: vscode.Uri, private readonly store: WorkItemsStore) {
@@ -80,6 +81,10 @@ export class DependencyMapPanel implements vscode.Disposable {
       });
     }
     await this.load();
+    if (focusId !== undefined) {
+      // Also when the map was already open on it: the user expects to see it
+      void this.panel?.webview.postMessage({ type: 'focus', id: focusId } satisfies DependencyMapUpdate);
+    }
   }
 
   private async onMessage(message: DependencyMapMessage): Promise<void> {
@@ -114,16 +119,16 @@ export class DependencyMapPanel implements vscode.Disposable {
     }
   }
 
-  /** My work items with dependencies (plus the focused one) and their direct predecessors / successors */
+  /** My work items (plus the focused one) and their direct predecessors / successors */
   private async load(): Promise<void> {
     void this.panel?.webview.postMessage({ type: 'loading' } satisfies DependencyMapUpdate);
     try {
       await this.store.ensureLoaded();
       this.items.clear();
-      const mine = this.store.workItems.map((entry) => entry.workItem);
-      const withDependencies = mine.filter((workItem) => dependencyIds(workItem).length);
-      this.withoutDependencies = mine.length - withDependencies.length;
-      withDependencies.forEach((workItem) => this.items.set(workItem.id, workItem));
+      // Tasks are not shown in the map
+      const mine = this.store.workItems.map((entry) => entry.workItem).filter((workItem) => workItem.type !== 'Task');
+      // All of them: the map shows the ones without dependencies on demand
+      mine.forEach((workItem) => this.items.set(workItem.id, workItem));
       if (this.focusId !== undefined) {
         await this.add([this.focusId]);
       }
@@ -156,7 +161,6 @@ export class DependencyMapPanel implements vscode.Disposable {
     await this.panel.webview.postMessage({
       type: 'graph',
       graph,
-      withoutDependencies: this.withoutDependencies,
     } satisfies DependencyMapUpdate);
   }
 
