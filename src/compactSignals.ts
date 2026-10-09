@@ -1,4 +1,5 @@
 /** What the compact work item rows show under the title. Pure, so no "vscode" import */
+import { fixesBugsText, fixLinksTooltip } from './fixLinks';
 import { isReadyToStart } from './predecessors';
 import { pullRequestTooltip } from './pullRequestModel';
 import type { RunModel, RunState } from './pipelines';
@@ -14,6 +15,8 @@ export type SignalKind =
   | 'alerts'
   | 'branch'
   | 'ci'
+  | 'fixedBy'
+  | 'fixesBugs'
   | 'predecessors'
   | 'priority'
   | 'pullRequest'
@@ -31,7 +34,7 @@ export interface CompactSignal {
   /**
    * Colour: "urgency-N" / "urgency-none" (priority, severity), a branch or PR tone, the run state (ci),
    * "neutral" or "approved" (tasks), "rejected" (alerts), "caution" (open predecessors), "approved" (ready to start),
-   * "working-here" / "working-worktree" (working on)
+   * "working-here" / "working-worktree" (working on), "bug" (fixes bugs, red) / "backlog" (fixed by, blue)
    */
   tone: string;
   /** The PR (or the branches) is in another repository: shown dimmed */
@@ -82,6 +85,29 @@ function predecessorSignal(item: WorkItemModel): CompactSignal | undefined {
   return isReadyToStart(item)
     ? { kind: 'ready', label: 'ready', title: 'Ready to start: no open predecessors', tone: 'approved' }
     : undefined;
+}
+
+/** Backlog Item: the bugs it fixes (count). Bug: the Backlog Item that fixes it (its ID, or the count when several) */
+function fixLinkSignal(item: WorkItemModel): CompactSignal | undefined {
+  if (item.fixesBugs?.length) {
+    const text = fixesBugsText(item.fixesBugs.length);
+    return {
+      kind: 'fixesBugs',
+      label: String(item.fixesBugs.length),
+      title: fixLinksTooltip(text, item.fixesBugs),
+      tone: 'bug',
+    };
+  }
+  if (item.fixedBy?.length) {
+    const [first] = item.fixedBy;
+    return {
+      kind: 'fixedBy',
+      label: item.fixedBy.length === 1 ? String(first.id) : String(item.fixedBy.length),
+      title: fixLinksTooltip('Fixed by', item.fixedBy),
+      tone: 'backlog',
+    };
+  }
+  return undefined;
 }
 
 /** Several branches: their count, and the list of them in the tooltip */
@@ -145,7 +171,7 @@ function ciSignal(item: WorkItemModel, now: Date): CompactSignal | undefined {
 }
 
 /**
- * Signals of a work item, in the order they are shown: working on, priority, severity, predecessors, branch, PR, CI of the PR, tasks, alerts.
+ * Signals of a work item, in the order they are shown: working on, priority, severity, predecessors, fix links, branch, PR, CI of the PR, tasks, alerts.
  * Each one only when it applies. `children` are the tasks of the work item
  */
 export function compactSignals(
@@ -162,6 +188,10 @@ export function compactSignals(
   const predecessors = predecessorSignal(item);
   if (predecessors) {
     signals.push(predecessors);
+  }
+  const fix = fixLinkSignal(item);
+  if (fix) {
+    signals.push(fix);
   }
   const branch = branchSignal(item);
   if (branch) {

@@ -3,6 +3,7 @@
  * Shared by both sides, so it must not import "vscode".
  */
 import type { WorkItemAlert } from './alerts';
+import type { FixLink } from './fixLinks';
 import { OpenPredecessor, predecessorFilterValue } from './predecessors';
 import { priorityFilterValue } from './priority';
 import type { CoverageThresholds } from './coverage';
@@ -93,6 +94,10 @@ export interface WorkItemModel {
    * loaded), so nothing is said about them
    */
   openPredecessors?: OpenPredecessor[];
+  /** Backlog Items only: the bugs they fix (successors of type Bug). Undefined: not applicable or unknown */
+  fixesBugs?: FixLink[];
+  /** Bugs only: the Backlog Items that fix them (predecessors). Undefined: not applicable or unknown */
+  fixedBy?: FixLink[];
 }
 
 export type CheckoutKind = 'myPullRequest' | 'review' | 'workItem';

@@ -2437,6 +2437,44 @@ button.state:focus-visible {
   color: var(--vscode-errorForeground, var(--red));
 }
 
+/* ---------- Bugs fixed by Backlog Items ---------- */
+
+.pill.tone-bug,
+.signal.tone-bug {
+  --pill-color: var(--red);
+}
+.pill.tone-backlog,
+.signal.tone-backlog {
+  --pill-color: var(--blue);
+}
+
+.row.fix-row {
+  flex-wrap: wrap;
+  row-gap: 3px;
+}
+
+.fix-text {
+  color: var(--muted);
+}
+
+.fix-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Finished ones: faded, still readable and clickable */
+.fix-item.fix-done {
+  opacity: 0.6;
+}
+
+.fix-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 /* ---------- Open predecessors ---------- */
 
 /* The popover is as wide as its container (the row of the pill or the signals), like the PR timeline */

@@ -244,6 +244,18 @@ describe('compactSignals', () => {
     expect(compactSignals(item({ state: 'Committed', openPredecessors: [] }), [], NOW)).toEqual([]);
     expect(compactSignals(item({ state: 'New' }), [], NOW)).toEqual([]);
   });
+  it('signals the bugs a Backlog Item fixes and the Backlog Item that fixes a Bug', () => {
+    const link = (id: number, state = 'New') => ({ id, title: `t${id}`, state, stateCategory: 'proposed' as const });
+    expect(compactSignals(item({ fixesBugs: [link(1), link(2, 'Done')] }), [], NOW)).toEqual([
+      { kind: 'fixesBugs', label: '2', title: 'Fixes 2 bugs\n#1 New · t1\n#2 Done · t2', tone: 'bug' },
+    ]);
+    expect(compactSignals(item({ type: 'Bug', fixedBy: [link(66068, 'In Progress')] }), [], NOW)).toEqual([
+      { kind: 'fixedBy', label: '66068', title: 'Fixed by\n#66068 In Progress · t66068', tone: 'backlog' },
+    ]);
+    expect(compactSignals(item({ type: 'Bug', fixedBy: [link(1), link(2)] }), [], NOW)[0].label).toBe('2');
+    expect(compactSignals(item({ fixesBugs: [], fixedBy: [] }), [], NOW)).toEqual([]);
+  });
+
   it('shows the working on badge first', () => {
     const signals = compactSignals(item({ priority: 2, workingOn: 'here' }), [], NOW);
     expect(signals[0]).toMatchObject({ kind: 'workingOn', label: 'Working on', tone: 'working-here' });

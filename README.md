@@ -39,6 +39,7 @@ Each work item is a card with:
 - Title
 - Parent: ID and title of the parent (click it to see its details), unless the card is nested in its parent's card. Children (e.g. Tasks) are nested at the bottom of the parent card
 - Branches: every branch of the work item: the ones named after it (`local`, `current` when checked out, or `remote` when it only exists in the remote), the ones linked in its Development section (`linked`) and the source branches of its active PRs. The branches of other repositories are faded and in italics (hover them to see the repository). With several branches, each one of this repository has its own **Checkout ▾** (or **Open worktree ▾**); the card's buttons act on the main one
+- Bugs fixed by a Backlog Item (the Backlog Item is a predecessor of the Bug): the Backlog Item shows **Fixes N bugs** with their IDs, and the Bug shows **Fixed by** the Backlog Item with its state (click an ID to see its details; done ones are faded). The details panel marks these links in its Predecessors / Successors lists
 - Pull requests linked to the work item with their status (the PRs of other repositories are faded and in italics; hover them to see the repository). Only the PRs of this repository decide whether **Create PR** is offered: Draft, In review, Approved, Waiting for author, Rejected, Conflicts, Completed, Abandoned
 
 Cards are sorted by state: Done, Ready to Test, Committed, In Progress, Approved, New, To Do (`totalflowx.stateOrder`). Done and Ready to Test are shown in green, Committed and In Progress in blue.

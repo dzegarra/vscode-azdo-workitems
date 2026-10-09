@@ -6,6 +6,7 @@ import { TeamIteration } from './iterations';
 import { branchBelongsToWorkItem } from './naming';
 import { collectBranches, EntryBranch, toBranchModels, unknownRepositoryIds } from './workItemBranches';
 import { isFinishedState, stateCategory } from './states';
+import { fixLinks } from './fixLinks';
 import { openPredecessors } from './predecessors';
 import { ScheduledIteration } from './schedule';
 import { sortTaskPullRequests, TaskPullRequestModel, toTaskPullRequestModel } from './taskPullRequests';
@@ -36,6 +37,8 @@ export interface WorkItemEntry {
   otherTasks: OtherTaskEntry[];
   /** Work items that must be done before this one; undefined when they could not be loaded */
   predecessors?: WorkItem[];
+  /** Work items that depend on this one; undefined when they could not be loaded */
+  successors?: WorkItem[];
 }
 
 export interface OtherTaskEntry {
@@ -171,32 +174,48 @@ async function fetchRelated(client: AzdoClient, workItems: WorkItem[]): Promise<
   return byId;
 }
 
+interface Dependencies {
+  /** Predecessors of each work item; undefined when they cannot be told */
+  predecessors: Map<number, WorkItem[] | undefined>;
+  /** Successors of each work item; undefined when they cannot be told */
+  successors: Map<number, WorkItem[] | undefined>;
+}
+
 /**
- * Predecessors of the work items (the ones in the list included), fetched at once. Each work item gets its
- * own predecessors, or undefined when they cannot be told (the request failed or one is not found): the
- * cards then say nothing about them
+ * Predecessors and successors of the work items (the ones in the list included), fetched in one batched request.
+ * Each work item gets its own predecessors, or undefined when they cannot be told (the request failed or one is
+ * not found): the cards then say nothing about them. The successors (for the "fixes bugs" links) are lenient:
+ * the ones not found (deleted) are left out, and they are only unknown when the request failed
  */
-async function fetchPredecessors(
-  client: AzdoClient,
-  workItems: WorkItem[]
-): Promise<Map<number, WorkItem[] | undefined>> {
+async function fetchDependencies(client: AzdoClient, workItems: WorkItem[]): Promise<Dependencies> {
   const byId = new Map(workItems.map((workItem) => [workItem.id, workItem]));
-  const missing = [...new Set(workItems.flatMap((workItem) => workItem.links.predecessorIds))].filter(
-    (id) => !byId.has(id)
-  );
+  const missing = [
+    ...new Set(workItems.flatMap((workItem) => [...workItem.links.predecessorIds, ...workItem.links.successorIds])),
+  ].filter((id) => !byId.has(id));
+  let failed = false;
   try {
     (await client.getWorkItems(missing)).forEach((workItem) => byId.set(workItem.id, workItem));
   } catch {
     // The ones not in the list stay unknown
+    failed = true;
   }
-  return new Map(
-    workItems.map((workItem) => {
-      const ids = workItem.links.predecessorIds;
-      const found = ids.map((id) => byId.get(id));
-      const known = found.every((predecessor) => predecessor);
-      return [workItem.id, known ? found.filter((predecessor): predecessor is WorkItem => !!predecessor) : undefined];
-    })
-  );
+  const found = (ids: number[]) => ids.map((id) => byId.get(id)).filter((related): related is WorkItem => !!related);
+  return {
+    predecessors: new Map(
+      workItems.map((workItem) => {
+        const ids = workItem.links.predecessorIds;
+        const related = found(ids);
+        return [workItem.id, related.length === ids.length ? related : undefined];
+      })
+    ),
+    successors: new Map(
+      workItems.map((workItem) => {
+        const ids = workItem.links.successorIds;
+        const related = found(ids);
+        return [workItem.id, failed && related.length < ids.length ? undefined : related];
+      })
+    ),
+  };
 }
 
 /** "Integrated in Build" can be filled automatically from the last release of the deploy image */
@@ -469,7 +488,7 @@ export class WorkItemsStore {
     ]);
     const listed = new Set(workItems.map((workItem) => workItem.id));
     const relatedRequest = fetchRelated(client, workItems);
-    const [pullRequests, related, rules, predecessors, schedule] = await Promise.all([
+    const [pullRequests, related, rules, dependencies, schedule] = await Promise.all([
       // The PRs of the tasks of other developers are fetched with the ones of the work items, once their tasks are known
       relatedRequest.then((relatedItems) =>
         fetchPullRequests(
@@ -482,7 +501,7 @@ export class WorkItemsStore {
       ),
       relatedRequest,
       alertRules(client),
-      fetchPredecessors(client, workItems),
+      fetchDependencies(client, workItems),
       // Without the schedule the predecessors are listed without their risk
       client.getIterationSchedule().catch(() => undefined),
     ]);
@@ -517,7 +536,8 @@ export class WorkItemsStore {
         }),
         pullRequests: itemPullRequests,
         alerts: rules ? alertsOf(workItem, related, itemPullRequests, rules) : [],
-        predecessors: predecessors.get(workItem.id),
+        predecessors: dependencies.predecessors.get(workItem.id),
+        successors: dependencies.successors.get(workItem.id),
       };
     });
     await Promise.all(
@@ -578,6 +598,7 @@ export class WorkItemsStore {
       leftoverBranch,
       pullRequests,
       predecessors,
+      successors,
       otherTasks,
     }: WorkItemEntry,
     currentBranch: string | undefined,
@@ -616,6 +637,7 @@ export class WorkItemsStore {
         .map((pr) => toPullRequestModel(pr, this.runs.get(pr.pullRequestId) ?? [], this.repositoryId))
         .sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.id - a.id),
       openPredecessors: predecessors && openPredecessors(workItem, predecessors, completedStates, this.schedule),
+      ...fixLinks(workItem, predecessors, successors),
       taskPullRequests: workItem.type === 'Task' ? this.taskPullRequests(pullRequests) : [],
       otherTasks: otherTasks.map(({ workItem: task, pullRequests: taskPullRequests }) => ({
         id: task.id,

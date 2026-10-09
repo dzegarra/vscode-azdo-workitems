@@ -15,10 +15,11 @@ import {
 } from '../coverage';
 import { RunModel, RunState } from '../pipelines';
 import { runLabel, runTooltip, testsUrl } from '../runDetails';
+import { fixesBugsText, type FixLink } from '../fixLinks';
 import { isReadyToStart, NONE_OPEN, OPEN_PREDECESSORS, predecessorFilterValue } from '../predecessors';
 import { RISK_DESCRIPTIONS } from '../schedule';
 import { NO_PRIORITY, priorityFilterValue, severityLevel, severityName, sortWorkItems } from '../priority';
-import { stateCategory, stateRank } from '../states';
+import { stateCategory, stateRank, type StateCategory } from '../states';
 import { MyPullRequestModel, ReviewerModel, VoteKind } from '../myPullRequests';
 import { describeTeamRules } from '../reviewCard';
 import { dueSoonZoneStart } from '../reviewDue';
@@ -425,6 +426,55 @@ function renderPredecessors(item: WorkItemModel): string {
     : '';
 }
 
+/** Pill colour of the state of the Backlog Item that fixes a Bug */
+const FIX_STATE_TONES: Record<StateCategory, string> = {
+  done: 'tone-approved',
+  'in-progress': 'tone-local',
+  proposed: 'tone-neutral',
+  removed: 'tone-rejected',
+};
+
+function fixLinkClass(link: FixLink): string {
+  return link.stateCategory === 'done' || link.stateCategory === 'removed' ? ' fix-done' : '';
+}
+
+/** ID link of a fix link, opening its details */
+function fixLinkButton(link: FixLink, type: 'Bug' | 'Product Backlog Item'): string {
+  return `<button class="link id${typeIdClass(type)}" data-action="openDetails" data-id="${link.id}"
+    title="${escapeHtml(`#${link.id} ${link.state} · ${link.title}`)}">#${link.id}</button>`;
+}
+
+/**
+ * Large card: a Backlog Item shows the bugs it fixes (each with a dot with its state), a Bug the Backlog Item that
+ * fixes it (with its state, the progress of the Bug depends on it). Finished ones are faded
+ */
+function renderFixLinks(item: WorkItemModel): string {
+  if (item.fixesBugs?.length) {
+    const bugs = item.fixesBugs.map(
+      (bug) =>
+        `<span class="fix-item${fixLinkClass(bug)}">${fixLinkButton(bug, 'Bug')}<span class="fix-dot state-${
+          bug.stateCategory
+        }" title="${escapeHtml(bug.state)}" role="img" aria-label="${escapeHtml(bug.state)}"></span></span>`
+    );
+    return `<div class="row fix-row">${icon('bug', 'type-bug')}<span class="fix-text">${fixesBugsText(
+      item.fixesBugs.length
+    )}</span>${bugs.join('')}</div>`;
+  }
+  if (item.fixedBy?.length) {
+    const backlogItems = item.fixedBy.map(
+      (fix) =>
+        `<span class="fix-item${fixLinkClass(fix)}">${fixLinkButton(fix, 'Product Backlog Item')}<span class="pill ${
+          FIX_STATE_TONES[fix.stateCategory]
+        }" title="State of the Backlog Item that fixes this bug">${escapeHtml(fix.state)}</span></span>`
+    );
+    return `<div class="row fix-row">${icon(
+      'book',
+      'type-backlog'
+    )}<span class="fix-text">Fixed by</span>${backlogItems.join('')}</div>`;
+  }
+  return '';
+}
+
 const BRANCH_ACTION_BUTTONS: Record<BranchAction, { label: string; className: string; title: string }> = {
   createBranch: { label: 'Create branch', className: 'primary', title: 'Create the branch of the work item' },
   checkout: { label: 'Checkout', className: '', title: 'Switch to the branch of the work item' },
@@ -753,6 +803,7 @@ function renderCard(item: WorkItemModel, children: TaskRow[], visibleIds: Set<nu
     ${renderPredecessors(item)}
     ${renderBranchList(item)}
     ${item.pullRequests.map((pr) => renderPullRequest(item, pr)).join('')}
+    ${renderFixLinks(item)}
     ${renderActions(item)}
     ${renderTasks(item, children)}
   </article>`;
@@ -771,6 +822,10 @@ function signalMarker(signal: CompactSignal, item: WorkItemModel): string {
       return icon('warning');
     case 'predecessors':
       return icon('link');
+    case 'fixesBugs':
+      return icon('bug');
+    case 'fixedBy':
+      return icon('book');
     case 'ready':
       return icon('check');
     case 'workingOn':
@@ -799,6 +854,8 @@ function renderSignal(signal: CompactSignal, item: WorkItemModel): string {
       return `<span class="signal signal-ci run-${signal.tone}" title="${title}">${signalMarker(signal, item)}</span>`;
     case 'alerts':
     case 'branch':
+    case 'fixedBy':
+    case 'fixesBugs':
     case 'pullRequest':
     case 'ready':
     case 'tasks':

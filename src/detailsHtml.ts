@@ -3,6 +3,7 @@ import { renderBranchList } from './branchRows';
 import { checkoutButton } from './checkoutButtons';
 import { canHaveTasks, escapeHtml, sanitizeHtml, stateButton } from './html';
 import type { FigmaLink } from './figmaLinks';
+import { fixRelationLabel } from './fixLinks';
 import { icon, typeIcon, typeIdClass } from './icons';
 import { DependencyRisk, RISK_DESCRIPTIONS } from './schedule';
 import { stateCategory } from './states';
@@ -179,7 +180,11 @@ function renderSection(title: string, content: string, headerAction = ''): strin
 }
 
 /** Predecessor / successor, with its iteration and a warning when the dependency is at risk */
-function renderDependency(item: RelatedWorkItem, iterationNames: Partial<Record<string, string>>): string {
+function renderDependency(
+  item: RelatedWorkItem,
+  iterationNames: Partial<Record<string, string>>,
+  fixLabel?: { text: string; tone: string }
+): string {
   const iteration = item.iterationPath
     ? `<span class="iteration-name" title="${escapeHtml(item.iterationPath)}">${escapeHtml(
         iterationNames[item.iterationPath] ?? item.iterationPath.split('\\').at(-1) ?? ''
@@ -191,17 +196,26 @@ function renderDependency(item: RelatedWorkItem, iterationNames: Partial<Record<
           RISK_DESCRIPTIONS[item.risk]
         }</span>`
       : '';
+  const fix = fixLabel ? `<span class="pill tone-${fixLabel.tone}">${fixLabel.text}</span>` : '';
   return `<li class="child dependency">${typeIcon(item.type)}
     <button class="link id${typeIdClass(item.type)}" data-action="openDetails" data-id="${
     item.id
   }" title="Show details">${item.id}</button>
     <span class="child-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
-    ${risk}${iteration}${stateButton(item.id, item.state)}</li>`;
+    ${fix}${risk}${iteration}${stateButton(item.id, item.state)}</li>`;
 }
 
-function renderDependencies(title: string, items: RelatedWorkItem[], data: DetailsData, emptyText: string): string {
+function renderDependencies(
+  direction: 'predecessor' | 'successor',
+  title: string,
+  items: RelatedWorkItem[],
+  data: DetailsData,
+  emptyText: string
+): string {
   const list = items.length
-    ? `<ul class="related">${items.map((item) => renderDependency(item, data.iterationNames ?? {})).join('')}</ul>`
+    ? `<ul class="related">${items
+        .map((item) => renderDependency(item, data.iterationNames ?? {}, fixRelationLabel(data, item, direction)))
+        .join('')}</ul>`
     : `<p class="muted">${emptyText}</p>`;
   return renderSection(`${title} (${items.length})`, list);
 }
@@ -227,8 +241,8 @@ export function renderDetailsBody(data: DetailsData): string {
   const hierarchy = [
     data.parent ? renderSection('Parent', `<ul class="related">${renderRelated(data.parent)}</ul>`) : '',
     renderChildren(data),
-    renderDependencies('Predecessors', data.predecessors, data, 'Does not depend on other work items.'),
-    renderDependencies('Successors', data.successors, data, 'No work items depend on this one.'),
+    renderDependencies('predecessor', 'Predecessors', data.predecessors, data, 'Does not depend on other work items.'),
+    renderDependencies('successor', 'Successors', data.successors, data, 'No work items depend on this one.'),
   ];
   return `<header class="details-head state-border-${stateCategory(data.state)}">
       <div class="head-line">${typeIcon(data.type)}<span class="type">${escapeHtml(data.type)}</span>
