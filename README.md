@@ -286,3 +286,7 @@ Only the PRs where you are a reviewer yourself are listed: when a group (e.g. a 
 | `totalflowx.reviews.*`                                 | PRs to review: maximum wait, due soon, reminders, status bar   |
 
 Modules and feature names added with **Add new…** are saved to the workspace settings (`.vscode/settings.json`), so they can be committed and shared.
+
+## Contributing
+
+Start with [AGENTS.md](AGENTS.md) (architecture, conventions, how to verify a change, safety rules), then [docs/DECISIONS.md](docs/DECISIONS.md) (why things are the way they are, including the team rules) and [docs/AZURE_DEVOPS.md](docs/AZURE_DEVOPS.md) (what we learned about the Azure DevOps API). They are written for developers and AI agents alike.
