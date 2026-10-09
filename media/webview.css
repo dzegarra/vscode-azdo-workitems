@@ -2177,8 +2177,10 @@ button.state:focus-visible {
   transform: rotate(90deg);
 }
 
-/* The header of an expanded card folds it back */
-.card-head.foldable {
+/* The header of an expanded card (work item or PR) folds it back */
+.card-head.foldable,
+.review-line.foldable,
+.mypr-head.foldable {
   cursor: pointer;
 }
 

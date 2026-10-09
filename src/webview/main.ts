@@ -995,7 +995,8 @@ function renderTimeline(id: string, timeline: MyPullRequestModel['timeline']): s
 
 /** The age (or time left) of a PR; hovering or focusing it shows what happened */
 function renderTimeText(id: string, text: string, timeline: MyPullRequestModel['timeline'], className = ''): string {
-  return `<span class="mypr-time-wrap"><button class="mypr-time${className}" aria-describedby="${id}">${escapeHtml(
+  // Its own (no-op) action: clicking the time or the history must not fold the card around it
+  return `<span class="mypr-time-wrap" data-action="timeline"><button class="mypr-time${className}" aria-describedby="${id}">${escapeHtml(
     text
   )}</button>${renderTimeline(id, timeline)}</span>`;
 }
@@ -1166,7 +1167,7 @@ function renderReview(request: ReviewRequestModel, foldable = false): string {
   return `<li class="review urgency-${request.urgency} ${
     request.isRequired ? 'role-required' : 'role-optional'
   }" data-review="${request.id}">
-    <div class="review-line${foldable ? ' foldable' : ''}">
+    <div class="review-line${foldable ? ` foldable" data-action="toggleReviewRow" data-id="${request.id}` : ''}">
       ${foldable ? rowChevron('toggleReviewRow', request.id, true, `pull request ${request.id}`) : ''}${time}
       <span class="review-meta" title="${escapeHtml(
         `${request.repository}: ${request.author} → ${request.targetBranch}`
@@ -1369,7 +1370,7 @@ function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean, fo
   return `<li class="mypr tone-${pr.tone}${pr.isCompleted ? ' completed' : ''}${
     pr.readyToMerge ? ' ready-to-merge' : ''
   }">
-    <div class="mypr-head">
+    <div class="mypr-head${foldable ? ` foldable" data-action="toggleMyPullRequestRow" data-id="${pr.id}` : ''}">
       ${foldable ? rowChevron('toggleMyPullRequestRow', pr.id, true, `pull request ${pr.id}`) : ''}
       <button class="link id" data-action="openMyPullRequest" data-url="${escapeHtml(pr.url)}"
         title="Open the PR in Azure DevOps">PR ${pr.id}</button>
