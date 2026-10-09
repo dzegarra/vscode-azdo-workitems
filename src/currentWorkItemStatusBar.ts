@@ -1,3 +1,4 @@
+import { withFeature } from './requestContext';
 import * as vscode from 'vscode';
 import { AzdoClient } from './azdoClient';
 import { resolveContext, SECTION } from './config';
@@ -82,7 +83,11 @@ export class CurrentWorkItemStatusBar implements vscode.Disposable {
     this.debounce = setTimeout(() => void this.update(force), DEBOUNCE_MS);
   }
 
-  private async update(force: boolean): Promise<void> {
+  private update(force: boolean): Promise<void> {
+    return withFeature('statusBar', () => this.runUpdate(force));
+  }
+
+  private async runUpdate(force: boolean): Promise<void> {
     const enabled = vscode.workspace.getConfiguration(SECTION).get<boolean>('statusBar.currentWorkItem', true);
     const branch = this.store.repository()?.state.HEAD?.name;
     const id = branch ? workItemIdFromBranch(branch) : undefined;

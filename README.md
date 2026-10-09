@@ -249,6 +249,11 @@ Once you vote (approve, approve with suggestions, wait for author or reject) or 
 
 Only the PRs where you are a reviewer yourself are listed: when a group (e.g. a team) is the reviewer, the PR shows up once you are added to it, or once you vote for the group.
 
+## Diagnostics
+
+- **Show Azure DevOps Usage** (command palette) opens a report of the requests made to Azure DevOps since the extension started and in the last hour: requests per feature (sidebar, CI runs, My Pull Requests, Waiting for your review, PR notifications, dependency map, Work Item Details panel, status bar, commands), requests per minute (averages, busiest minute, the last 15 minutes), and errors and throttling (by status, the last errors, throttled responses with Azure DevOps' rate-limit headers).
+- **Show Request Log** opens the **Totalflow X** output channel. With `totalflowx.diagnostics.logRequests` on, it logs one line per request: time, method, status, duration, feature and URL (never headers, tokens or bodies). Off by default; the counters of the report cost nothing noticeable either way.
+
 ## Settings
 
 | Setting                                                | Description                                                    |

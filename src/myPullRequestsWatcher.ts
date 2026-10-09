@@ -1,3 +1,4 @@
+import { withFeature } from './requestContext';
 import * as vscode from 'vscode';
 import { access } from 'node:fs/promises';
 import * as path from 'node:path';
@@ -150,7 +151,11 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
     this.changed.dispose();
   }
 
-  async poll(): Promise<void> {
+  poll(): Promise<void> {
+    return withFeature('myPullRequests', () => this.runPoll());
+  }
+
+  private async runPoll(): Promise<void> {
     if (this.polling) {
       return;
     }

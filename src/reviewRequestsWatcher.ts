@@ -1,3 +1,4 @@
+import { withFeature } from './requestContext';
 import * as vscode from 'vscode';
 import { AzdoClient } from './azdoClient';
 import { resolveContext, SECTION, settings as extensionSettings } from './config';
@@ -185,7 +186,11 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
     this.changed.dispose();
   }
 
-  async poll(): Promise<void> {
+  poll(): Promise<void> {
+    return withFeature('reviews', () => this.runPoll());
+  }
+
+  private async runPoll(): Promise<void> {
     if (this.polling) {
       return;
     }
@@ -256,7 +261,11 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
    * Fetches the details of the optional PRs the user has just chosen to show, from the last check: no need to
    * list the PRs again
    */
-  async refreshDetails(): Promise<void> {
+  refreshDetails(): Promise<void> {
+    return withFeature('reviews', () => this.runRefreshDetails());
+  }
+
+  private async runRefreshDetails(): Promise<void> {
     if (this.polling || !this.last) {
       return;
     }

@@ -1,3 +1,4 @@
+import { withFeature } from './requestContext';
 import * as vscode from 'vscode';
 import { AzdoClient, PullRequestDetails } from './azdoClient';
 import { resolveContext, SECTION } from './config';
@@ -90,7 +91,11 @@ export class PullRequestNotifier implements vscode.Disposable {
   }
 
   /** Checks the PRs now. Errors are only reported when the user asked for the check */
-  async poll(reportErrors = false): Promise<void> {
+  poll(reportErrors = false): Promise<void> {
+    return withFeature('notifications', () => this.runPoll(reportErrors));
+  }
+
+  private async runPoll(reportErrors: boolean): Promise<void> {
     if (this.polling) {
       return;
     }

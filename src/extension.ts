@@ -15,6 +15,8 @@ import { getGitApi, pickRepository, Repository } from './git';
 import { resolveWorkItemEntry } from './commands/pickWorkItem';
 import { fillIntegrationBuild } from './commands/integrationBuild';
 import { addTask, changeState } from './commands/workItemEdits';
+import { registerDiagnostics } from './diagnostics';
+import { withFeature } from './requestContext';
 import { DependencyMapPanel } from './dependencyMap';
 import { CurrentWorkItemStatusBar } from './currentWorkItemStatusBar';
 import {
@@ -163,7 +165,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const command = (id: string, handler: (...args: never[]) => unknown) =>
     vscode.commands.registerCommand(id, async (...args: never[]) => {
       try {
-        await handler(...args);
+        await withFeature('commands', () => handler(...args));
       } catch (error) {
         void vscode.window.showErrorMessage((error as Error).message);
       }
@@ -188,6 +190,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
 
   context.subscriptions.push(
+    ...registerDiagnostics(),
     vscode.window.registerWebviewViewProvider(VIEW_ID, view),
     command('totalflowx.useCompactLayout', () => setLayout('compact')),
     command('totalflowx.useLargeLayout', () => setLayout('large')),

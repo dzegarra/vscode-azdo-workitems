@@ -1,4 +1,5 @@
 import { getAccessToken } from './auth';
+import { recordedFetch } from './requestRecorder';
 import { CommitsDiff, hasSkipTag, PullRequestLabel } from './buildNotes';
 import { buildMyWorkItemsQuery, Iteration, mergeTeamIterations, TeamIteration } from './iterations';
 import { PackageVersion } from './integrationBuild';
@@ -122,7 +123,7 @@ export class AzdoClient {
     init: { method?: string; body?: string; contentType?: string } = {}
   ): Promise<T> {
     const token = await getAccessToken();
-    const response = await fetch(url, {
+    const response = await recordedFetch(url, {
       method: init.method,
       body: init.body,
       headers: {
@@ -153,7 +154,7 @@ export class AzdoClient {
       throw new Error(`Not an image of the organization ${this.organization}: ${url}`);
     }
     const token = await getAccessToken();
-    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'image/*' } });
+    const response = await recordedFetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'image/*' } });
     const mime = imageMimeType(response.headers.get('content-type'));
     if (!response.ok || !mime) {
       throw new Error(`Unable to load the image ${url} (${response.status})`);

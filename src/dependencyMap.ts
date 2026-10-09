@@ -1,3 +1,4 @@
+import { withFeature } from './requestContext';
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { AzdoClient, WorkItem } from './azdoClient';
@@ -120,7 +121,11 @@ export class DependencyMapPanel implements vscode.Disposable {
   }
 
   /** My work items (plus the focused one) and their direct predecessors / successors */
-  private async load(): Promise<void> {
+  private load(): Promise<void> {
+    return withFeature('dependencyMap', () => this.runLoad());
+  }
+
+  private async runLoad(): Promise<void> {
     void this.panel?.webview.postMessage({ type: 'loading' } satisfies DependencyMapUpdate);
     try {
       await this.store.ensureLoaded();

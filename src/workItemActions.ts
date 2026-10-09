@@ -1,3 +1,4 @@
+import { withFeature } from './requestContext';
 import * as vscode from 'vscode';
 import { resolveContext } from './config';
 import { testsUrl } from './runDetails';
@@ -13,8 +14,7 @@ const COMMANDS = {
   deleteBranch: 'totalflowx.deleteBranch',
 };
 
-/** Runs a button of the work items view or of the details panel */
-export async function runWorkItemAction(store: WorkItemsStore, message: WorkItemAction): Promise<void> {
+async function runAction(store: WorkItemsStore, message: WorkItemAction): Promise<void> {
   const entry = store.find(message.id);
   switch (message.type) {
     case 'openDetails':
@@ -56,4 +56,9 @@ export async function runWorkItemAction(store: WorkItemsStore, message: WorkItem
         await vscode.commands.executeCommand(COMMANDS[message.type], entry, message.branch);
       }
   }
+}
+
+/** Runs a button of the work items view or of the details panel */
+export function runWorkItemAction(store: WorkItemsStore, message: WorkItemAction): Promise<void> {
+  return withFeature('commands', () => runAction(store, message));
 }

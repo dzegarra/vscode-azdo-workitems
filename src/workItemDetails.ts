@@ -1,3 +1,4 @@
+import { withFeature } from './requestContext';
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { AzdoClient, WorkItem } from './azdoClient';
@@ -124,7 +125,11 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
     }
   }
 
-  private async load(id: number, open: OpenPanel): Promise<void> {
+  private load(id: number, open: OpenPanel): Promise<void> {
+    return withFeature('details', () => this.runLoad(id, open));
+  }
+
+  private async runLoad(id: number, open: OpenPanel): Promise<void> {
     try {
       const { client } = resolveContext(this.store.repository());
       const [details, schedule] = await Promise.all([client.getWorkItemDetails(id), client.getIterationSchedule()]);

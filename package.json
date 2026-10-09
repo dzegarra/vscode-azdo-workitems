@@ -182,6 +182,16 @@
         "command": "totalflowx.collapseTasks",
         "title": "Collapse All Tasks",
         "category": "Totalflow X"
+      },
+      {
+        "command": "totalflowx.showUsage",
+        "title": "Show Azure DevOps Usage",
+        "category": "Totalflow X"
+      },
+      {
+        "command": "totalflowx.showRequestLog",
+        "title": "Show Request Log",
+        "category": "Totalflow X"
       }
     ],
     "menus": {
@@ -903,6 +913,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show the work item of the checked out branch in the status bar. Work items assigned to someone else (e.g. a colleague's branch checked out to review it) are shown differently, with the person who created the branch."
+        },
+        "totalflowx.diagnostics.logRequests": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Log every request to Azure DevOps (time, method, URL, status, duration, feature, throttling) in the **Totalflow X** output channel. Tokens and headers are never logged. Off: nothing is written."
         }
       }
     }

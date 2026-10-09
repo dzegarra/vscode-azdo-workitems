@@ -1,3 +1,4 @@
+import { withFeature } from './requestContext';
 import * as vscode from 'vscode';
 import { AzdoClient, PullRequestDetails, WorkItem } from './azdoClient';
 import { resolveContext, settings, DEFAULT_PULL_REQUEST_TASK_PATTERN } from './config';
@@ -370,7 +371,11 @@ export class WorkItemsStore {
    * Reloads only the CI runs (much cheaper than a full refresh).
    * Returns the runs that finished since the previous check, with their PR; undefined when another reload is in progress
    */
-  async refreshRuns(): Promise<{ pullRequestId: number; run: RunModel }[] | undefined> {
+  refreshRuns(): Promise<{ pullRequestId: number; run: RunModel }[] | undefined> {
+    return withFeature('ci', () => this.runRefreshRuns());
+  }
+
+  private async runRefreshRuns(): Promise<{ pullRequestId: number; run: RunModel }[] | undefined> {
     const client = resolveContext(this.repository()).client;
     const finished = await this.tracker.refresh(this.activePullRequestIds(), (ids) => fetchRuns(client, ids));
     if (finished) {
@@ -457,7 +462,11 @@ export class WorkItemsStore {
 
   private readonly repositoryNameCache = new Map<string, Promise<string>>();
 
-  private async load(): Promise<void> {
+  private load(): Promise<void> {
+    return withFeature('sidebar', () => this.runLoad());
+  }
+
+  private async runLoad(): Promise<void> {
     this.status = 'loading';
     this.changeEmitter.fire();
     try {
