@@ -227,7 +227,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         notifier.start();
       }
       if (event.affectsConfiguration(`${SECTION}.reviews`)) {
-        reviewRequests.start();
+        // The check lists every PR (optional ones included) and reads the rules when it needs them: only the
+        // polling interval needs to fetch again. The status bar listens to the settings by itself
+        if (event.affectsConfiguration(`${SECTION}.reviews.pollIntervalSeconds`)) {
+          reviewRequests.start();
+        }
+        if (event.affectsConfiguration(`${SECTION}.reviews.includeOptional`)) {
+          // The details of the optional PRs were not fetched while they were hidden
+          void reviewRequests.refreshDetails();
+        }
+        view.post();
         return;
       }
       if (event.affectsConfiguration(`${SECTION}.buildNotes`)) {
@@ -235,7 +244,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       if (event.affectsConfiguration(`${SECTION}.myPullRequests`)) {
-        // Only the polling interval needs to fetch again: showing or hiding the drafts is done by the view
+        // Only the polling interval needs to fetch again: showing or hiding the drafts and the completed PRs, and
+        // the layout, are done by the view
         if (event.affectsConfiguration(`${SECTION}.myPullRequests.pollIntervalSeconds`)) {
           myPullRequests.start();
         }

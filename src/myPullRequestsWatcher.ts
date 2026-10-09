@@ -14,6 +14,7 @@ import {
 } from './myPullRequests';
 import { RunModel } from './pipelines';
 import type { PullRequestExtrasLoader } from './pullRequestExtras';
+import type { Layout } from './viewModel';
 import { WorkItemsStore } from './workItemsStore';
 
 const MS_PER_SECOND = 1000;
@@ -42,12 +43,16 @@ async function fileExistsIn(root: string, relativePath: string): Promise<boolean
 
 export function myPullRequestSettings(): {
   showDrafts: boolean;
+  showCompleted: boolean;
+  layout: Layout;
   intervalSeconds: number;
   minimumRequiredReviewers: number;
 } {
   const config = vscode.workspace.getConfiguration(`${SECTION}.myPullRequests`);
   return {
     showDrafts: config.get<boolean>('showDrafts', true),
+    showCompleted: config.get<boolean>('showCompleted', true),
+    layout: config.get<Layout>('layout', 'compact') === 'large' ? 'large' : 'compact',
     minimumRequiredReviewers: Math.max(0, config.get<number>('minimumRequiredReviewers', 2)),
     intervalSeconds: Math.max(MIN_INTERVAL_SECONDS, config.get<number>('pollIntervalSeconds', 120)),
   };
@@ -74,23 +79,25 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
   constructor(private readonly store: WorkItemsStore, private readonly extras: PullRequestExtrasLoader) {}
 
   /** The cards to show, with whether their branch can be checked out, right now */
-  models(): { items: MyPullRequestModel[]; hiddenDrafts: number } {
+  models(): { items: MyPullRequestModel[]; hiddenDrafts: number; hiddenCompleted: number } {
     const local = this.localRepository();
-    const { showDrafts, minimumRequiredReviewers } = myPullRequestSettings();
+    const { showDrafts, showCompleted, minimumRequiredReviewers } = myPullRequestSettings();
     const data = this.data.map(({ pr, extras }) => ({
       pr,
       // The store follows the active PRs of the user and refreshes their runs; the own fetch is the fallback
       extras: { ...extras, runs: this.store.runsOf(pr.pullRequestId) ?? extras.runs },
     }));
-    const { items, hiddenDrafts } = toMyPullRequestModels(data, {
+    const { items, hiddenDrafts, hiddenCompleted } = toMyPullRequestModels(data, {
       now: new Date(),
       baseBranch: settings().baseBranch,
       showDrafts,
+      showCompleted,
       minimumRequiredReviewers,
       buildNotes: buildNotesSettings(),
     });
     return {
       hiddenDrafts,
+      hiddenCompleted,
       items: items.map((item) => {
         const canCheckout = !!local && item.repository.toLowerCase() === local.name.toLowerCase();
         const isCurrentBranch = canCheckout && local.head === item.sourceBranch;

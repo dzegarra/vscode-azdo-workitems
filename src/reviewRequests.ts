@@ -48,22 +48,21 @@ export interface ReviewRequest {
   isRequired: boolean;
 }
 
-function byPublishedDate(a: ReviewRequest, b: ReviewRequest): number {
-  return a.publishedAt.localeCompare(b.publishedAt);
+/** Required reviews first, then optional ones; oldest first within each group, so the most urgent first */
+function byRoleThenPublishedDate(a: ReviewRequest, b: ReviewRequest): number {
+  return Number(b.isRequired) - Number(a.isRequired) || a.publishedAt.localeCompare(b.publishedAt);
 }
 
 /** Vote of a reviewer who has not reviewed yet */
 const NO_VOTE = 0;
 
 /**
- * Active, published PRs of other people where the user is a reviewer and has not voted yet, oldest first.
- * Once the user votes (approve, wait for author, reject…) or declines, the PR is no longer waiting for them
+ * Active, published PRs of other people where the user is a reviewer (required or optional) and has not voted
+ * yet: the required ones first, oldest first within each group. Once the user votes (approve, wait for author,
+ * reject…) or declines, the PR is no longer waiting for them. Whether the optional ones are shown is up to the
+ * view (see splitOptional)
  */
-export function toReviewRequests(
-  pullRequests: ReviewerPullRequest[],
-  myId: string,
-  includeOptional: boolean
-): ReviewRequest[] {
+export function toReviewRequests(pullRequests: ReviewerPullRequest[], myId: string): ReviewRequest[] {
   return pullRequests
     .flatMap((pr) => {
       const me = pr.reviewers.find((reviewer) => reviewer.id === myId);
@@ -73,8 +72,7 @@ export function toReviewRequests(
         pr.createdBy.id !== myId &&
         me &&
         me.vote === NO_VOTE &&
-        !me.hasDeclined &&
-        (includeOptional || me.isRequired);
+        !me.hasDeclined;
       if (!waiting) {
         return [];
       }
@@ -94,7 +92,22 @@ export function toReviewRequests(
         },
       ];
     })
-    .sort(byPublishedDate);
+    .sort(byRoleThenPublishedDate);
+}
+
+/**
+ * The requests to show: all of them, or only the required ones. The optional ones left out are counted, so the
+ * box can offer to show them
+ */
+export function splitOptional<T extends Pick<ReviewRequest, 'isRequired'>>(
+  requests: T[],
+  includeOptional: boolean
+): { shown: T[]; hiddenOptional: number } {
+  if (includeOptional) {
+    return { shown: requests, hiddenOptional: 0 };
+  }
+  const shown = requests.filter((request) => request.isRequired);
+  return { shown, hiddenOptional: requests.length - shown.length };
 }
 
 /** Thread of a PR, as returned by the threads API */
@@ -127,7 +140,7 @@ export function withPublishedDates(
 ): ReviewRequest[] {
   return requests
     .map((request) => ({ ...request, publishedAt: publishedDates.get(request.id) ?? request.publishedAt }))
-    .sort(byPublishedDate);
+    .sort(byRoleThenPublishedDate);
 }
 
 const MS_PER_MINUTE = 60 * 1000;
@@ -239,6 +252,19 @@ export function toReviewModels(
       waitedHours: Math.min(rules.maxWaitHours, Math.floor(waited / MS_PER_HOUR)),
     };
   });
+}
+
+/**
+ * Overdue and due soon requests among the required ones: the team rule about the maximum wait is about required
+ * reviewers, so the optional ones do not count as late
+ */
+export function countLate(requests: Pick<ReviewRequestModel, 'isRequired' | 'urgency'>[]): {
+  overdue: number;
+  dueSoon: number;
+} {
+  const count = (urgency: ReviewUrgency) =>
+    requests.filter((request) => request.isRequired && request.urgency === urgency).length;
+  return { overdue: count('overdue'), dueSoon: count('dueSoon') };
 }
 
 /** "3 pull requests are waiting for your review: 1 overdue, 1 due soon" */

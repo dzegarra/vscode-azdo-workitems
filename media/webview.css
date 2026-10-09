@@ -2243,9 +2243,196 @@ button.state:focus-visible {
   line-height: 14px;
 }
 
-.panel-head > :not(.panel-toggle) {
+.panel-tools {
+  display: flex;
   flex: none;
+  align-items: center;
+  gap: 2px;
   margin-top: 4px;
+}
+
+/* Text buttons (hide drafts, show optional…) under the title, wrapping when the view is narrow */
+.panel-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px 4px;
+  padding: 0 8px 6px;
+}
+
+/* ---------- Required / optional reviews ---------- */
+
+.role-pill {
+  flex: none;
+  align-self: center;
+  font-weight: 600;
+}
+
+.review-caption .role-pill {
+  margin-right: 2px;
+}
+
+/* Solid, like the priority pills */
+.role-pill.required {
+  color: var(--vscode-button-foreground, #ffffff);
+  background: var(--vscode-button-background, #0e639c);
+}
+
+.role-pill.optional {
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: transparent;
+  font-weight: 400;
+}
+
+/* Optional reviews: neutral border and faded, full on hover or focus (the timeline popover shows at full strength) */
+.review.role-optional {
+  border-left-color: var(--border);
+  opacity: 0.75;
+}
+
+.review.role-optional:hover,
+.review.role-optional:focus-within {
+  opacity: 1;
+}
+
+.review-separator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.review-separator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ---------- Compact rows of the PR boxes ---------- */
+
+.review.compact,
+.mypr.compact {
+  gap: 3px;
+  padding: 5px 8px 5px 6px;
+  cursor: pointer;
+}
+
+.review.compact:hover,
+.mypr.compact:hover {
+  background: var(--card-hover);
+}
+
+.review-list.compact,
+.mypr-list.compact {
+  gap: 5px;
+}
+
+.review.compact .compact-head .id,
+.mypr.compact .compact-head .id {
+  flex: none;
+  white-space: nowrap;
+}
+
+.compact-head .pill,
+.compact-time {
+  flex: none;
+}
+
+.compact-time {
+  font-size: 11.5px;
+}
+
+/* The full card of an expanded row has a chevron: its first line may need two rows in a narrow view */
+.review-line.foldable {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+/* The chevron of the full card of an expanded row sits on its first line */
+.review-line .card-chevron,
+.mypr-head .card-chevron {
+  align-self: center;
+}
+
+.pr-signals .role-pill {
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.signal-author {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+}
+
+/* Short enough for the role, the author and the bar to share a line in a narrow view */
+.signal.signal-author span {
+  max-width: 80px;
+}
+
+/* Time waited against the maximum wait, small */
+.mini-bar {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 36px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--review-accent) 20%, transparent);
+}
+
+.mini-bar-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--review-accent);
+}
+
+.signal-warnings.tone-error {
+  color: var(--vscode-errorForeground, var(--red));
+  font-weight: 600;
+}
+
+.signal-warnings.tone-warning {
+  color: var(--vscode-editorWarning-foreground, var(--orange));
+}
+
+.signal-ready {
+  color: var(--vscode-testing-iconPassed, var(--green));
+}
+
+.signal-autocomplete,
+.signal-time {
+  color: var(--muted);
+}
+
+/* The next step may be long: it takes the room left on the line and is cut with an ellipsis */
+.signal-next {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--muted);
+}
+
+.signal .signal-next-text,
+.signal-next span {
+  max-width: 100%;
+}
+
+.signal-next.next-ready {
+  color: var(--vscode-testing-iconPassed, var(--green));
+}
+
+.signal-next.next-danger {
+  color: var(--vscode-errorForeground, var(--red));
 }
 
 /* ---------- Open predecessors ---------- */

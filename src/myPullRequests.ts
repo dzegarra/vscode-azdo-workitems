@@ -460,6 +460,8 @@ export interface ListOptions {
   formatDate?: (isoDate: string) => string;
   baseBranch: string;
   showDrafts: boolean;
+  /** The PRs completed in the last 24 hours are listed (default true when omitted) */
+  showCompleted?: boolean;
   minimumRequiredReviewers: number;
   buildNotes?: BuildNotesOptions;
 }
@@ -547,17 +549,19 @@ function compare(a: AuthoredPullRequestData, b: AuthoredPullRequestData): number
 
 /**
  * The PRs to list: the active ones and those completed in the last 24 hours. Abandoned PRs are never listed.
- * Drafts can be hidden: they are counted, so the box can say so
+ * Drafts and completed PRs can be hidden: they are counted, so the box can say so
  */
 export function toMyPullRequestModels(
   data: AuthoredPullRequestData[],
   options: ListOptions
-): { items: MyPullRequestModel[]; hiddenDrafts: number } {
+): { items: MyPullRequestModel[]; hiddenDrafts: number; hiddenCompleted: number } {
+  const showCompleted = options.showCompleted ?? true;
   const listed = data.filter(({ pr }) => pr.status === 'active' || isCompletedRecently(pr, options.now));
   const hiddenDrafts = options.showDrafts ? 0 : listed.filter(({ pr }) => pr.isDraft).length;
+  const hiddenCompleted = showCompleted ? 0 : listed.filter(({ pr }) => pr.status === 'completed').length;
   const items = listed
-    .filter(({ pr }) => options.showDrafts || !pr.isDraft)
+    .filter(({ pr }) => (options.showDrafts || !pr.isDraft) && (showCompleted || pr.status !== 'completed'))
     .sort(compare)
     .map((entry) => toModel(entry, options));
-  return { items, hiddenDrafts };
+  return { items, hiddenDrafts, hiddenCompleted };
 }

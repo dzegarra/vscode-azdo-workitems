@@ -15,6 +15,7 @@ import {
   ReviewRequest,
   ReviewRequestModel,
   ReviewRules,
+  splitOptional,
   StoredReviewRequests,
   toReviewModels,
   toReviewRequests,
@@ -32,6 +33,7 @@ import {
   ThreadResponse,
   toStoredObservations,
 } from './reviewThreads';
+import type { Layout } from './viewModel';
 import { WorkItemsStore } from './workItemsStore';
 
 /** What is fetched about a PR to review besides the PR itself */
@@ -55,6 +57,7 @@ export type ReviewNotification = ObservationEvent['kind'] | ReviewEvent['kind'] 
 
 export function reviewSettings(): ReviewRules & {
   includeOptional: boolean;
+  layout: Layout;
   notifications: ReviewNotification[];
   intervalSeconds: number;
   showInStatusBar: boolean;
@@ -62,6 +65,7 @@ export function reviewSettings(): ReviewRules & {
   const config = vscode.workspace.getConfiguration(`${SECTION}.reviews`);
   return {
     includeOptional: config.get<boolean>('includeOptional', false),
+    layout: config.get<Layout>('layout', 'compact') === 'large' ? 'large' : 'compact',
     maxWaitHours: config.get<number>('maxWaitHours', 24),
     dueSoonHours: config.get<number>('dueSoonHours', 6),
     remindOverdueEveryHours: config.get<number>('remindOverdueEveryHours', 4),
@@ -92,7 +96,10 @@ function toObserved(pr: ReviewerPullRequest): ObservedPullRequest {
 export class ReviewRequestsWatcher implements vscode.Disposable {
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
-  /** Oldest first, so the most urgent first */
+  /**
+   * Required requests first, then the optional ones, the most urgent first in each group. All of them, shown or
+   * not: whether the optional ones are shown is a setting of the view, applied by shown()
+   */
   requests: ReviewRequest[] = [];
   status: 'error' | 'loading' | 'ready' = 'loading';
   error?: string;
@@ -106,6 +113,8 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
   private details = new Map<number, ReviewCardData>();
   /** Files changed per PR in its latest iteration: a new push is the only thing that changes them */
   private readonly filesChanged = new Map<number, { iteration: number; files: FilesChanged }>();
+  /** The last answer of Azure DevOps, to fetch the details of the optional PRs when the user shows them */
+  private last?: { client: AzdoClient; pullRequests: ReviewerPullRequest[]; threads: Map<number, ThreadResponse[]> };
 
   constructor(
     private readonly state: vscode.Memento,
@@ -113,12 +122,27 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
     private readonly extras: PullRequestExtrasLoader
   ) {}
 
-  /** The requests with their urgency, time left and whether their branch can be checked out, right now */
+  /** Requests that count: the required ones, and the optional ones when `includeOptional` is on */
+  private shown(): { requests: ReviewRequest[]; hiddenOptional: number } {
+    const { shown, hiddenOptional } = splitOptional(this.requests, reviewSettings().includeOptional);
+    return { requests: shown, hiddenOptional };
+  }
+
+  /** Optional requests not listed because of `includeOptional` */
+  hiddenOptional(): number {
+    return this.shown().hiddenOptional;
+  }
+
+  /**
+   * The shown requests with their urgency, time left and whether their branch can be checked out, right now.
+   * Notifications, the digest, the status bar and the badge use these: the optional PRs only count when the user
+   * chose to see them
+   */
   models(): ReviewRequestModel[] {
     const local = this.localRepository();
     const { baseBranch } = extensionSettings();
     const { minimumRequiredReviewers } = myPullRequestSettings();
-    return toReviewModels(this.requests, new Date(), reviewSettings()).map((model) => {
+    return toReviewModels(this.shown().requests, new Date(), reviewSettings()).map((model) => {
       const canCheckout = !!local && model.repository.toLowerCase() === local.name.toLowerCase();
       const isCurrentBranch = canCheckout && local.head === model.sourceBranch;
       const data = this.details.get(model.id);
@@ -184,7 +208,7 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
       const active = pullRequests.map(toObserved);
       const threads = await this.readThreads(client, [...active, ...finished]);
 
-      const requests = toReviewRequests(pullRequests, myId, settings.includeOptional);
+      const requests = toReviewRequests(pullRequests, myId);
       const publishedDates = new Map(requests.map(({ id }) => [id, lastPublishedFromDraft(threads.get(id) ?? [])]));
       this.requests = withPublishedDates(requests, publishedDates);
       this.status = 'ready';
@@ -194,13 +218,19 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
 
       const requestsKey = `reviewRequests.v2:${scope}`;
       // Read just before comparing: another window may have stored a newer state meanwhile
-      const { events, digest, stored } = detectReviewEvents(
+      // The stored state tracks every request, optional ones included: switching "include optional" on later
+      // then finds them known, and the user is not flooded with "new request" notifications. Only the events of
+      // the shown requests are notified, and the digest needs one of them
+      const detected = detectReviewEvents(
         this.state.get<StoredReviewRequests>(requestsKey),
         this.requests,
         new Date(),
         settings
       );
-      await this.state.update(requestsKey, stored);
+      const shownIds = new Set(this.shown().requests.map(({ id }) => id));
+      const events = detected.events.filter((event) => shownIds.has(event.request.id));
+      const digest = detected.digest && shownIds.size > 0;
+      await this.state.update(requestsKey, detected.stored);
       const observationEvents = await this.updateObservations(observationsKey, active, finished, threads, myId);
 
       if (digest && settings.notifications.includes('digest')) {
@@ -210,6 +240,7 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
         this.notify(events.filter((event) => settings.notifications.includes(event.kind)));
       }
       this.notifyObservations(observationEvents.filter((event) => settings.notifications.includes(event.kind)));
+      this.last = { client, pullRequests, threads };
       await this.loadDetails(client, pullRequests, threads);
     } catch (error) {
       this.myId = undefined;
@@ -221,13 +252,33 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
     }
   }
 
-  /** Details of the PRs waiting for review. What cannot be fetched is left out of the card, not of the others */
+  /**
+   * Fetches the details of the optional PRs the user has just chosen to show, from the last check: no need to
+   * list the PRs again
+   */
+  async refreshDetails(): Promise<void> {
+    if (this.polling || !this.last) {
+      return;
+    }
+    const { client, pullRequests, threads } = this.last;
+    try {
+      await this.loadDetails(client, pullRequests, threads);
+    } finally {
+      this.changed.fire();
+    }
+  }
+
+  /**
+   * Details of the PRs shown. What cannot be fetched is left out of the card, not of the others. The hidden
+   * optional PRs are not fetched
+   */
   private async loadDetails(
     client: AzdoClient,
     pullRequests: ReviewerPullRequest[],
     threads: Map<number, ThreadResponse[]>
   ): Promise<void> {
-    const waiting = pullRequests.filter(({ pullRequestId }) => this.requests.some(({ id }) => id === pullRequestId));
+    const shown = this.shown().requests;
+    const waiting = pullRequests.filter(({ pullRequestId }) => shown.some(({ id }) => id === pullRequestId));
     const entries = await Promise.all(
       waiting.map(async (pr): Promise<[number, ReviewCardData]> => {
         const [extras, filesChanged] = await Promise.all([

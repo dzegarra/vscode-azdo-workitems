@@ -5,12 +5,14 @@ import {
   formatWait,
   lastPublishedFromDraft,
   PullRequestThread,
+  countLate,
   describeReviews,
   reviewUrgency,
   ReviewRules,
   toReviewModels,
   ReviewerPullRequest,
   ReviewRequest,
+  splitOptional,
   toReviewRequests,
   withPublishedDates,
 } from './reviewRequests';
@@ -54,7 +56,7 @@ function request(id: number, publishedAt: string): ReviewRequest {
 
 describe('review requests', () => {
   it('lists the active PRs of others where I am a required reviewer without a vote, oldest first', () => {
-    const requests = toReviewRequests([pr(3), pr(1), pr(2)], ME, false);
+    const requests = toReviewRequests([pr(3), pr(1), pr(2)], ME);
     expect(requests.map((r) => r.id)).toEqual([1, 2, 3]);
     expect(requests[0]).toMatchObject({
       author: 'Ana',
@@ -81,8 +83,51 @@ describe('review requests', () => {
       pr(7, { status: 'completed' }),
       pr(8, { reviewers: [{ id: 'team', displayName: 'Team', vote: 0, isRequired: true }] }),
     ];
-    expect(toReviewRequests(pullRequests, ME, false)).toEqual([]);
-    expect(toReviewRequests(pullRequests, ME, true).map((r) => [r.id, r.isRequired])).toEqual([[5, false]]);
+    expect(toReviewRequests(pullRequests, ME).map((r) => [r.id, r.isRequired])).toEqual([[5, false]]);
+  });
+
+  it('lists the required reviews first, then the optional ones, oldest first in each group', () => {
+    const optional = (id: number, creationDate: string) =>
+      pr(id, { creationDate, reviewers: [{ id: ME, displayName: 'Me', vote: 0, isRequired: false }] });
+    const requests = toReviewRequests(
+      [
+        optional(1, '2026-10-01T10:00:00Z'),
+        pr(2, { creationDate: '2026-10-05T10:00:00Z' }),
+        optional(3, '2026-10-02T10:00:00Z'),
+        pr(4, { creationDate: '2026-10-04T10:00:00Z' }),
+      ],
+      ME
+    );
+    expect(requests.map((r) => [r.id, r.isRequired])).toEqual([
+      [4, true],
+      [2, true],
+      [1, false],
+      [3, false],
+    ]);
+    // The publication dates found in the threads keep the same order
+    const resorted = withPublishedDates(requests, new Map([[2, '2026-09-01T10:00:00Z']]));
+    expect(resorted.map((r) => r.id)).toEqual([2, 4, 1, 3]);
+  });
+
+  it('shows the optional reviews only when asked, and counts the hidden ones', () => {
+    const items = [
+      { id: 1, isRequired: true },
+      { id: 2, isRequired: false },
+      { id: 3, isRequired: false },
+    ];
+    expect(splitOptional(items, true)).toEqual({ shown: items, hiddenOptional: 0 });
+    expect(splitOptional(items, false)).toEqual({ shown: [items[0]], hiddenOptional: 2 });
+  });
+
+  it('counts overdue and due soon requests among the required ones only', () => {
+    const late = [
+      { isRequired: true, urgency: 'overdue' as const },
+      { isRequired: false, urgency: 'overdue' as const },
+      { isRequired: true, urgency: 'dueSoon' as const },
+      { isRequired: false, urgency: 'dueSoon' as const },
+      { isRequired: true, urgency: 'fresh' as const },
+    ];
+    expect(countLate(late)).toEqual({ overdue: 1, dueSoon: 1 });
   });
 
   it('formats the waiting time and tells when it is over the maximum', () => {

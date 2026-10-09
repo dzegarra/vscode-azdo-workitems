@@ -1,7 +1,7 @@
 /** What the compact work item rows show under the title. Pure, so no "vscode" import */
 import { isReadyToStart } from './predecessors';
 import { pullRequestTooltip } from './pullRequestModel';
-import { RunState } from './pipelines';
+import type { RunModel, RunState } from './pipelines';
 import { runTooltip } from './runDetails';
 import { severityLevel, severityName } from './priority';
 import { isFinishedState } from './states';
@@ -40,6 +40,11 @@ export interface CompactSignal {
 
 /** Worst state first: the one run that matters most stands for the rest. Canceled runs say nothing useful */
 const CI_PRECEDENCE: RunState[] = ['failed', 'partial', 'running', 'queued', 'succeeded'];
+
+/** The state of the run that matters most; undefined when there is none (or all were canceled) */
+export function worstRunState(runs: Pick<RunModel, 'state'>[]): RunState | undefined {
+  return CI_PRECEDENCE.find((candidate) => runs.some((run) => run.state === candidate));
+}
 
 function urgencySignals(item: WorkItemModel): CompactSignal[] {
   const signals: CompactSignal[] = [];
@@ -127,7 +132,7 @@ function ciSignal(item: WorkItemModel, now: Date): CompactSignal | undefined {
   if (!pr?.isActive || !pr.runs.length) {
     return undefined;
   }
-  const state = CI_PRECEDENCE.find((candidate) => pr.runs.some((run) => run.state === candidate));
+  const state = worstRunState(pr.runs);
   if (!state) {
     return undefined;
   }

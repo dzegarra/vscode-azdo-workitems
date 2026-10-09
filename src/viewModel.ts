@@ -119,6 +119,9 @@ export interface FilterModel {
 /** azdoWorkItems.layout: compact rows (2 lines) or the large cards */
 export type Layout = 'compact' | 'large';
 
+/** The two PR boxes above the work items */
+export type PanelId = 'myPullRequests' | 'reviews';
+
 export interface ViewModel {
   status: 'error' | 'loading' | 'ready';
   error?: string;
@@ -159,6 +162,12 @@ export interface ReviewsModel {
   maxWaitHours: number;
   /** Hours before the maximum wait when a PR is due soon */
   dueSoonHours: number;
+  /** azdoWorkItems.reviews.includeOptional: the optional reviews are in `requests` */
+  includeOptional: boolean;
+  /** Optional reviews not in the list because of includeOptional */
+  hiddenOptional: number;
+  /** azdoWorkItems.reviews.layout */
+  layout: Layout;
 }
 
 export interface MyPullRequestsModel {
@@ -168,6 +177,12 @@ export interface MyPullRequestsModel {
   showDrafts: boolean;
   /** Drafts not in the list because of showDrafts */
   hiddenDrafts: number;
+  /** azdoWorkItems.myPullRequests.showCompleted */
+  showCompleted: boolean;
+  /** Completed PRs not in the list because of showCompleted */
+  hiddenCompleted: number;
+  /** azdoWorkItems.myPullRequests.layout */
+  layout: Layout;
   items: MyPullRequestModel[];
 }
 
@@ -202,7 +217,9 @@ export type WebviewMessage =
   | { type: 'openReviewRequest' | 'openMyPullRequest'; url: string }
   | { type: 'checkMyPullRequests' }
   | { type: 'addBuildNotesSkipTag' | 'checkoutMyPullRequest' | 'publishMyPullRequest'; pullRequestId: number }
-  | { type: 'setShowDrafts'; show: boolean }
+  | { type: 'setShowDrafts' | 'setShowCompleted' | 'setShowOptional'; show: boolean }
+  /** Layout of one of the PR boxes */
+  | { type: 'setPanelLayout'; panel: PanelId; layout: Layout }
   | { type: 'ready' }
   | { type: 'refresh' }
   | { type: 'setFilter'; filter: FilterModel }

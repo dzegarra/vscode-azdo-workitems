@@ -491,6 +491,25 @@ describe('toMyPullRequestModels', () => {
     expect(toMyPullRequestModels(list, options).items).toHaveLength(3);
   });
 
+  it('hides the completed PRs and counts them; only those listed are counted', () => {
+    const list = [
+      data({ pullRequestId: 1 }),
+      data({ pullRequestId: 2, status: 'completed', closedDate: '2026-10-07T01:00:00Z' }),
+      data({ pullRequestId: 3, status: 'completed', closedDate: '2026-10-07T02:00:00Z' }),
+      // Completed long ago: not listed, so not counted either
+      data({ pullRequestId: 4, status: 'completed', closedDate: '2026-09-01T02:00:00Z' }),
+    ];
+    expect(toMyPullRequestModels(list, { ...options, showCompleted: false })).toMatchObject({
+      items: [{ id: 1 }],
+      hiddenCompleted: 2,
+    });
+    const shown = toMyPullRequestModels(list, { ...options, showCompleted: true });
+    expect(shown.items.map((item) => item.id)).toEqual([1, 3, 2]);
+    expect(shown.hiddenCompleted).toBe(0);
+    // Listed by default
+    expect(toMyPullRequestModels(list, options).items).toHaveLength(3);
+  });
+
   it('builds the card of an active PR', () => {
     const { items } = toMyPullRequestModels(
       [

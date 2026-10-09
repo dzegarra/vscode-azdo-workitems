@@ -791,7 +791,20 @@
         "azdoWorkItems.reviews.includeOptional": {
           "type": "boolean",
           "default": false,
-          "description": "Also list the pull requests where you are an optional reviewer. By default only the ones where you are a required reviewer are listed."
+          "description": "Also list the pull requests where you are an optional reviewer. By default only the ones where you are a required reviewer are listed. The \"Waiting for your review\" box has a button to switch it. Notifications, the digest, the status bar and the activity bar badge only count the pull requests listed."
+        },
+        "azdoWorkItems.reviews.layout": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "large"
+          ],
+          "enumDescriptions": [
+            "Two lines per pull request: ID, title and time left, then small signals. Click a row to expand it.",
+            "Full cards with the progress bar, the reviewers and the branch."
+          ],
+          "default": "compact",
+          "description": "How the pull requests of the \"Waiting for your review\" box are shown. The box has a button to switch it."
         },
         "azdoWorkItems.reviews.notifications": {
           "type": "array",
@@ -840,6 +853,24 @@
           "type": "boolean",
           "default": true,
           "description": "List your draft pull requests in the \"My Pull Requests\" box. The box has a button to switch it. When hidden, the box counts the drafts."
+        },
+        "azdoWorkItems.myPullRequests.showCompleted": {
+          "type": "boolean",
+          "default": true,
+          "description": "List your pull requests completed in the last 24 hours in the \"My Pull Requests\" box. The box has a button to switch it. When hidden, the box counts them."
+        },
+        "azdoWorkItems.myPullRequests.layout": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "large"
+          ],
+          "enumDescriptions": [
+            "Two lines per pull request: ID, title and status, then small signals. Click a row to expand it.",
+            "Full cards with the reviewers, the warnings and the actions."
+          ],
+          "default": "compact",
+          "description": "How the pull requests of the \"My Pull Requests\" box are shown. The box has a button to switch it."
         },
         "azdoWorkItems.myPullRequests.pollIntervalSeconds": {
           "type": "number",

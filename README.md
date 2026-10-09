@@ -86,6 +86,10 @@ The **My Pull Requests** box, above your work items, lists the pull requests you
 
 PRs that nothing stops from being merged (published, every blocking policy satisfied, approvals included, no conflicts and no warnings) are highlighted in green (**Ready to merge**). When a PR breaks a rule that only someone else may act on (e.g. auto-complete would complete a Bug), its **Next** line is red with a warning icon, even when it says _Will complete automatically_.
 
+**Hide completed** / **Show completed (N)** in the box hides the PRs completed in the last 24 hours (`azdoWorkItems.myPullRequests.showCompleted`).
+
+Both PR boxes have their own layout button: **compact** rows (2 lines: PR, title and state; then the main signals) by default, or the **large** cards; click a compact row to unfold it (`azdoWorkItems.reviews.layout`, `azdoWorkItems.myPullRequests.layout`).
+
 Buttons: **Open PR**, **Checkout** (PRs of the repository open in VS Code) and **Publish** for drafts (after a confirmation: reviewers are notified). PRs are checked every 2 minutes (`azdoWorkItems.myPullRequests.pollIntervalSeconds`, or the refresh button of the box). The box and the _Waiting for your review_ one can be collapsed.
 
 ## Worktrees
@@ -237,7 +241,7 @@ The section takes the colour of the most urgent PR and counts the overdue and du
 
 Requests received while VS Code was closed are notified when it starts.
 
-Once you vote (approve, approve with suggestions, wait for author or reject) or decline, the PR leaves the list. Drafts and your own PRs are not listed. The waiting time counts from the publication of the PR: its creation or, when it was created as a draft, the moment it was published. PRs are checked every 2 minutes (`azdoWorkItems.reviews.pollIntervalSeconds`, the refresh button of the section, or **Check Pull Requests Waiting for My Review**). Set `azdoWorkItems.reviews.includeOptional` to also list the PRs where you are an optional reviewer.
+Once you vote (approve, approve with suggestions, wait for author or reject) or decline, the PR leaves the list. Drafts and your own PRs are not listed. The waiting time counts from the publication of the PR: its creation or, when it was created as a draft, the moment it was published. PRs are checked every 2 minutes (`azdoWorkItems.reviews.pollIntervalSeconds`, the refresh button of the section, or **Check Pull Requests Waiting for My Review**). **Show optional (N)** in the box (or `azdoWorkItems.reviews.includeOptional`) also lists the PRs where you are an optional reviewer: they come after the required ones, below an "Optional" separator, faded, with an **Optional** badge (required ones have a solid **Required** badge). The overdue / due soon counters only count required reviews.
 
 Only the PRs where you are a reviewer yourself are listed: when a group (e.g. a team) is the reviewer, the PR shows up once you are added to it, or once you vote for the group.
 

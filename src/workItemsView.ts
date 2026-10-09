@@ -87,7 +87,9 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     if (!this.view) {
       return;
     }
-    const { items, hiddenDrafts } = this.myPullRequests.models();
+    const { items, hiddenDrafts, hiddenCompleted } = this.myPullRequests.models();
+    const reviewConfig = reviewSettings();
+    const pullRequestConfig = myPullRequestSettings();
     const model: ViewModel = {
       ...this.store.toViewModel(filterSettings()),
       alwaysShowAlerts: vscode.workspace.getConfiguration(SECTION).get<boolean>('filter.alwaysShowAlerts', false),
@@ -98,14 +100,20 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         status: this.reviews.status,
         error: this.reviews.error,
         requests: this.reviews.models(),
-        maxWaitHours: reviewSettings().maxWaitHours,
-        dueSoonHours: reviewSettings().dueSoonHours,
+        maxWaitHours: reviewConfig.maxWaitHours,
+        dueSoonHours: reviewConfig.dueSoonHours,
+        includeOptional: reviewConfig.includeOptional,
+        hiddenOptional: this.reviews.hiddenOptional(),
+        layout: reviewConfig.layout,
       },
       pullRequests: {
         status: this.myPullRequests.status,
         error: this.myPullRequests.error,
-        showDrafts: myPullRequestSettings().showDrafts,
+        showDrafts: pullRequestConfig.showDrafts,
         hiddenDrafts,
+        showCompleted: pullRequestConfig.showCompleted,
+        hiddenCompleted,
+        layout: pullRequestConfig.layout,
         items,
       },
     };
@@ -209,6 +217,21 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         await vscode.workspace
           .getConfiguration(`${SECTION}.myPullRequests`)
           .update('showDrafts', message.show, vscode.ConfigurationTarget.Global);
+        return;
+      case 'setShowCompleted':
+        await vscode.workspace
+          .getConfiguration(`${SECTION}.myPullRequests`)
+          .update('showCompleted', message.show, vscode.ConfigurationTarget.Global);
+        return;
+      case 'setShowOptional':
+        await vscode.workspace
+          .getConfiguration(`${SECTION}.reviews`)
+          .update('includeOptional', message.show, vscode.ConfigurationTarget.Global);
+        return;
+      case 'setPanelLayout':
+        await vscode.workspace
+          .getConfiguration(`${SECTION}.${message.panel}`)
+          .update('layout', message.layout, vscode.ConfigurationTarget.Global);
         return;
       case 'openFile':
         await this.openFile(message.path);

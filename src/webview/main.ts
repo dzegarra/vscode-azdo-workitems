@@ -22,6 +22,8 @@ import { stateCategory, stateRank } from '../states';
 import { MyPullRequestModel, ReviewerModel, VoteKind } from '../myPullRequests';
 import { describeTeamRules } from '../reviewCard';
 import { dueSoonZoneStart } from '../reviewDue';
+import { myPullRequestCompactSignals, PrSignal, reviewCompactSignals } from '../prCompactSignals';
+import { countLate } from '../reviewRequests';
 import type { ReviewRequestModel, ReviewUrgency } from '../reviewRequests';
 import { hasTaskAlerts, isTaskListOpen, taskProgress } from '../taskProgress';
 import { pullRequestTooltip } from '../pullRequestModel';
@@ -32,6 +34,8 @@ import type {
   ExtensionMessage,
   FilterModel,
   IterationModel,
+  Layout,
+  PanelId,
   PullRequestModel,
   ViewModel,
   WebviewMessage,
@@ -71,6 +75,10 @@ interface SavedState {
   collapsedTasks: number[];
   /** Work items the user expanded into the full card, in the compact layout */
   expandedCards: number[];
+  /** PRs waiting for review the user expanded into the full card, in the compact layout of the box */
+  expandedReviews: number[];
+  /** Same for "My Pull Requests" */
+  expandedPullRequests: number[];
 }
 declare function acquireVsCodeApi(): VsCodeApi;
 
@@ -95,6 +103,8 @@ const collapsedIterations = new Set(savedState?.collapsedIterations ?? []);
 const expandedTasks = new Set(savedState?.expandedTasks ?? []);
 const collapsedTasks = new Set(savedState?.collapsedTasks ?? []);
 const expandedCards = new Set(savedState?.expandedCards ?? []);
+const expandedReviews = new Set(savedState?.expandedReviews ?? []);
+const expandedPullRequests = new Set(savedState?.expandedPullRequests ?? []);
 
 function saveState(): void {
   vscode.setState({
@@ -108,6 +118,8 @@ function saveState(): void {
     expandedTasks: [...expandedTasks],
     collapsedTasks: [...collapsedTasks],
     expandedCards: [...expandedCards],
+    expandedReviews: [...expandedReviews],
+    expandedPullRequests: [...expandedPullRequests],
   });
 }
 
@@ -1067,7 +1079,81 @@ function renderReviewDetails({ details }: ReviewRequestModel): string {
     ${notes.length ? `<ul class="mypr-warnings review-notes">${notes.join('')}</ul>` : ''}`;
 }
 
-function renderReview(request: ReviewRequestModel): string {
+/** Required / optional, with the same look in the large card and the compact row */
+function roleBadge(request: Pick<ReviewRequestModel, 'isRequired'>): string {
+  return request.isRequired
+    ? '<span class="pill role-pill required" title="You are a required reviewer">Required</span>'
+    : '<span class="pill role-pill optional" title="You are an optional reviewer">Optional</span>';
+}
+
+/** Small mark of a compact signal: icons are the ones of the work item rows */
+function renderPrSignal(signal: PrSignal): string {
+  const title = escapeHtml(signal.title);
+  const label = signal.label ? `<span>${escapeHtml(signal.label)}</span>` : '';
+  switch (signal.kind) {
+    case 'role':
+      return `<span class="pill role-pill ${signal.tone}" title="${title}">${escapeHtml(signal.label)}</span>`;
+    case 'bar':
+      return `<span class="mini-bar" role="img" aria-label="${title}" title="${title}"><span class="mini-bar-fill" data-elapsed="${
+        signal.elapsed ?? 0
+      }"></span></span>`;
+    case 'ci':
+      return `<span class="signal signal-ci run-${signal.tone}" title="${title}">${icon(
+        RUN_ICONS[signal.tone as RunState],
+        signal.tone === 'running' ? 'spin' : ''
+      )}</span>`;
+    case 'comments':
+      return `<span class="signal signal-comments" title="${title}">${icon('comment')}${label}</span>`;
+    case 'warnings':
+      return `<span class="signal signal-warnings tone-${signal.tone}" title="${title}">${icon(
+        signal.tone === 'error' ? 'error' : 'warning'
+      )}${label}</span>`;
+    case 'branch':
+      return `<span class="signal signal-branch tone-${signal.tone}" title="${title}">${icon('branch')}${label}</span>`;
+    case 'ready':
+      return `<span class="signal signal-ready" title="${title}">${icon('check')}${label}</span>`;
+    case 'autoComplete':
+      return `<span class="signal signal-autocomplete tone-${signal.tone}" title="${title}">${label}</span>`;
+    case 'next':
+      return `<span class="signal signal-next next-${signal.tone}" title="${title}">${label}</span>`;
+    case 'author':
+    case 'time':
+      return `<span class="signal signal-${signal.kind}" title="${title}">${label}</span>`;
+  }
+}
+
+/** Chevron of the compact rows: expands the row; in the expanded card it folds it back */
+function rowChevron(action: string, id: number, expanded: boolean, what: string): string {
+  return `<button class="card-chevron" data-action="${action}" data-id="${id}" aria-expanded="${expanded}"
+    aria-label="${expanded ? 'Collapse' : 'Expand'} ${what}" title="${expanded ? 'Collapse' : 'Expand'}">${icon(
+    'chevron',
+    'chevron'
+  )}</button>`;
+}
+
+/**
+ * Two lines: ID, title and time left; then the small signals (role, author, time waited, CI, comments, branch).
+ * Clicking the row expands it into the full card: the ID keeps its own action (closest [data-action])
+ */
+function renderCompactReview(request: ReviewRequestModel): string {
+  const signals = reviewCompactSignals(request).map(renderPrSignal).join('');
+  return `<li class="review compact urgency-${request.urgency} ${
+    request.isRequired ? 'role-required' : 'role-optional'
+  }" data-review="${request.id}" data-action="toggleReviewRow" data-id="${request.id}">
+    <div class="compact-head">
+      ${rowChevron('toggleReviewRow', request.id, false, `pull request ${request.id}`)}
+      <button class="link id" data-action="openReviewRequest" data-url="${escapeHtml(
+        request.url
+      )}" title="Open the PR in Azure DevOps">PR ${request.id}</button>
+      <span class="compact-title" title="${escapeHtml(request.title)}">${escapeHtml(request.title)}</span>
+      <span class="review-time compact-time">${escapeHtml(request.timeLeft)}</span>
+    </div>
+    <div class="signals pr-signals">${signals}</div>
+  </li>`;
+}
+
+/** `foldable`: the full card of a row expanded in the compact layout; its chevron folds it back */
+function renderReview(request: ReviewRequestModel, foldable = false): string {
   const time = request.details
     ? `<span class="review-time">${renderTimeText(
         `review-timeline-${request.id}`,
@@ -1077,13 +1163,14 @@ function renderReview(request: ReviewRequestModel): string {
     : `<span class="review-time">${request.timeLeft}</span>`;
   const maxWaitHours = model?.reviews.maxWaitHours ?? 24;
   const zoneStart = dueSoonZoneStart(maxWaitHours, model?.reviews.dueSoonHours ?? 6);
-  return `<li class="review urgency-${request.urgency}" data-review="${request.id}">
-    <div class="review-line">
-      ${time}
+  return `<li class="review urgency-${request.urgency} ${
+    request.isRequired ? 'role-required' : 'role-optional'
+  }" data-review="${request.id}">
+    <div class="review-line${foldable ? ' foldable' : ''}">
+      ${foldable ? rowChevron('toggleReviewRow', request.id, true, `pull request ${request.id}`) : ''}${time}
       <span class="review-meta" title="${escapeHtml(
         `${request.repository}: ${request.author} → ${request.targetBranch}`
-      )}">
-        PR ${request.id} · ${escapeHtml(request.author)}${request.isRequired ? '' : ' · optional'}</span>
+      )}">PR ${request.id} · ${escapeHtml(request.author)}</span>
       ${
         request.details
           ? `<span class="pill tone-${request.details.tone} review-status">${escapeHtml(request.details.status)}</span>`
@@ -1093,7 +1180,9 @@ function renderReview(request: ReviewRequestModel): string {
     <button class="link review-title" data-action="openReviewRequest" data-url="${escapeHtml(request.url)}"
       title="Open the PR in Azure DevOps">${escapeHtml(request.title)}</button>
     <div class="review-bar-text">
-      <span class="review-caption">${icon('clock')}<span>${escapeHtml(request.barCaption)}</span></span>
+      <span class="review-caption">${roleBadge(request)}${icon('clock')}<span>${escapeHtml(
+    request.barCaption
+  )}</span></span>
       <span class="review-due">${escapeHtml(request.dueText)}</span>
     </div>
     <div class="review-bar" role="progressbar" aria-label="Time waiting for review" aria-valuemin="0"
@@ -1119,7 +1208,10 @@ function renderPanel(panel: {
   title: string;
   count: number;
   sub: string;
+  /** Icon buttons next to the title */
   tools: string;
+  /** Buttons in a row under the title (what to list, layout), wrapping when the view is narrow */
+  options: string;
   body: string;
 }): string {
   return `<section class="panel ${panel.className}${panel.collapsed ? ' collapsed' : ''}">
@@ -1129,14 +1221,41 @@ function renderPanel(panel: {
         <span class="panel-count">${panel.count}</span>
         <span class="panel-sub">${panel.sub}</span>
       </button>
-      ${panel.tools}
+      <div class="panel-tools">${panel.tools}</div>
     </div>
+    ${panel.collapsed ? '' : `<div class="panel-options">${panel.options}</div>`}
     ${panel.collapsed ? '' : panel.body}
   </section>`;
 }
 
+/**
+ * Layout button of a PR box: shows the icon of the layout it switches to, so it takes the room of one button.
+ * The box keeps the choice in its own setting
+ */
+function layoutButton(panel: PanelId, layout: Layout, what: string): string {
+  const target: Layout = layout === 'compact' ? 'large' : 'compact';
+  const label = `Switch ${what} to the ${target} layout`;
+  return `<button class="icon-button" data-action="setPanelLayout" data-panel="${panel}" data-layout="${target}"
+    title="${label}" aria-label="${label}">${icon(target === 'large' ? 'cards' : 'rows')}</button>`;
+}
+
+function renderReviewList(requests: ReviewRequestModel[], layout: Layout): string {
+  const firstOptional = requests.findIndex((request) => !request.isRequired);
+  const rows = requests.map((request) => {
+    const row =
+      layout === 'large' || expandedReviews.has(request.id)
+        ? renderReview(request, layout === 'compact')
+        : renderCompactReview(request);
+    // Required reviews come first: a thin line tells where the optional ones start
+    return requests.indexOf(request) === firstOptional && firstOptional > 0
+      ? `<li class="review-separator" role="separator" aria-label="Optional reviews"><span>Optional</span></li>${row}`
+      : row;
+  });
+  return `<ul class="review-list${layout === 'compact' ? ' compact' : ''}">${rows.join('')}</ul>`;
+}
+
 function renderReviews(current: ViewModel): string {
-  const { requests, status, error } = current.reviews;
+  const { requests, status, error, includeOptional, hiddenOptional, layout } = current.reviews;
   if (status === 'error') {
     return `<div class="reviews-error muted">${icon(
       'warning'
@@ -1144,26 +1263,38 @@ function renderReviews(current: ViewModel): string {
       error ?? ''
     )}</span><button class="link" data-action="checkReviewRequests">Retry</button></div>`;
   }
-  if (!requests.length) {
+  if (!requests.length && !hiddenOptional) {
     return '';
   }
-  const overdue = requests.filter((request) => request.urgency === 'overdue').length;
-  const dueSoon = requests.filter((request) => request.urgency === 'dueSoon').length;
+  // The team rule about the maximum wait is about required reviewers: the optional ones are not counted as late
+  const { overdue, dueSoon } = countLate(requests);
+  const required = requests.find((request) => request.isRequired);
+  const hasOptional = hiddenOptional > 0 || requests.some((request) => !request.isRequired);
+  const optionalButton = hasOptional
+    ? `<button class="button small ghost" data-action="toggleOptional" title="${
+        includeOptional ? 'Hide' : 'Show'
+      } the pull requests where you are an optional reviewer (saved in your settings)">${
+        includeOptional ? 'Hide optional' : `Show optional (${hiddenOptional})`
+      }</button>`
+    : '';
   const pills = [
     overdue ? `<span class="pill reviews-pill urgency-overdue">${overdue} overdue</span>` : '',
     dueSoon ? `<span class="pill reviews-pill urgency-dueSoon">${dueSoon} due soon</span>` : '',
   ].join('');
   return renderPanel({
-    className: `reviews urgency-${requests[0].urgency}`,
+    className: `reviews urgency-${required?.urgency ?? 'fresh'}`,
     collapsed: reviewsCollapsed,
     toggle: 'toggleReviews',
     title: 'Waiting for your review',
     count: requests.length,
     sub: pills,
+    options: `${optionalButton}${layoutButton('reviews', layout, 'the pull requests to review')}`,
     tools: `<button class="icon-button" data-action="checkReviewRequests" title="Check now" aria-label="Check the PRs waiting for your review now">${icon(
       'refresh'
     )}</button>`,
-    body: `<ul class="review-list">${requests.map(renderReview).join('')}</ul>`,
+    body: requests.length
+      ? renderReviewList(requests, layout)
+      : '<p class="muted panel-empty">No required reviews are waiting</p>',
   });
 }
 
@@ -1194,7 +1325,26 @@ function renderMyActions(pr: MyPullRequestModel): string {
   return `<footer class="actions">${buttons.join('')}</footer>`;
 }
 
-function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean): string {
+/** Two lines: ID, title and status; then the next step and the small signals. Clicking the row expands it */
+function renderCompactMyPullRequest(pr: MyPullRequestModel): string {
+  const signals = myPullRequestCompactSignals(pr).map(renderPrSignal).join('');
+  return `<li class="mypr compact tone-${pr.tone}${pr.isCompleted ? ' completed' : ''}${
+    pr.readyToMerge ? ' ready-to-merge' : ''
+  }" data-action="toggleMyPullRequestRow" data-id="${pr.id}">
+    <div class="compact-head">
+      ${rowChevron('toggleMyPullRequestRow', pr.id, false, `pull request ${pr.id}`)}
+      <button class="link id" data-action="openMyPullRequest" data-url="${escapeHtml(
+        pr.url
+      )}" title="Open the PR in Azure DevOps">PR ${pr.id}</button>
+      <span class="compact-title" title="${escapeHtml(pr.title)}">${escapeHtml(pr.title)}</span>
+      <span class="pill tone-${pr.tone}">${escapeHtml(pr.status)}</span>
+    </div>
+    ${signals ? `<div class="signals pr-signals">${signals}</div>` : ''}
+  </li>`;
+}
+
+/** `foldable`: the full card of a row expanded in the compact layout; its chevron folds it back */
+function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean, foldable = false): string {
   const meta = [
     pr.target
       ? `<span class="mypr-target" title="Merges into ${escapeHtml(pr.target)}">→ ${escapeHtml(pr.target)}</span>`
@@ -1220,6 +1370,7 @@ function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean): s
     pr.readyToMerge ? ' ready-to-merge' : ''
   }">
     <div class="mypr-head">
+      ${foldable ? rowChevron('toggleMyPullRequestRow', pr.id, true, `pull request ${pr.id}`) : ''}
       <button class="link id" data-action="openMyPullRequest" data-url="${escapeHtml(pr.url)}"
         title="Open the PR in Azure DevOps">PR ${pr.id}</button>
       <span class="mypr-badges">${
@@ -1245,7 +1396,8 @@ function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean): s
 }
 
 function renderMyPullRequests(current: ViewModel): string {
-  const { items, status, error, showDrafts, hiddenDrafts } = current.pullRequests;
+  const { items, status, error, showDrafts, hiddenDrafts, showCompleted, hiddenCompleted, layout } =
+    current.pullRequests;
   const failure =
     status === 'error'
       ? `<div class="reviews-error muted">${icon('warning')}<span>Unable to check your pull requests: ${escapeHtml(
@@ -1253,16 +1405,31 @@ function renderMyPullRequests(current: ViewModel): string {
         )}</span><button class="link" data-action="checkMyPullRequests">Retry</button></div>`
       : '';
   const hasDrafts = hiddenDrafts > 0 || items.some((item) => item.isDraft);
-  if (!items.length && !hiddenDrafts) {
+  if (!items.length && !hiddenDrafts && !hiddenCompleted) {
     return failure;
   }
   const repositories = new Set(items.map((item) => item.repository));
-  const hidden = hiddenDrafts ? `${hiddenDrafts} draft${hiddenDrafts === 1 ? '' : 's'} hidden` : '';
+  const hidden = [
+    hiddenDrafts ? `${hiddenDrafts} draft${hiddenDrafts === 1 ? '' : 's'}` : '',
+    hiddenCompleted ? `${hiddenCompleted} completed` : '',
+  ].filter(Boolean);
   const draftsButton = hasDrafts
     ? `<button class="button small ghost" data-action="toggleDrafts" title="${
         showDrafts ? 'Hide' : 'Show'
       } your draft pull requests (saved in your settings)">${showDrafts ? 'Hide drafts' : 'Show drafts'}</button>`
     : '';
+  const hasCompleted = hiddenCompleted > 0 || items.some((item) => item.isCompleted);
+  const completedButton = hasCompleted
+    ? `<button class="button small ghost" data-action="toggleCompleted" title="${
+        showCompleted ? 'Hide' : 'Show'
+      } your pull requests completed in the last 24 hours (saved in your settings)">${
+        showCompleted ? 'Hide completed' : `Show completed (${hiddenCompleted})`
+      }</button>`
+    : '';
+  const renderRow = (pr: MyPullRequestModel) =>
+    layout === 'large' || expandedPullRequests.has(pr.id)
+      ? renderMyPullRequest(pr, repositories.size > 1, layout === 'compact')
+      : renderCompactMyPullRequest(pr);
   return (
     failure +
     renderPanel({
@@ -1271,15 +1438,34 @@ function renderMyPullRequests(current: ViewModel): string {
       toggle: 'toggleMyPullRequests',
       title: 'My Pull Requests',
       count: items.length,
-      sub: escapeHtml(hidden),
-      tools: `${draftsButton}<button class="icon-button" data-action="checkMyPullRequests" title="Check now" aria-label="Check your pull requests now">${icon(
+      sub: escapeHtml(hidden.length ? `${hidden.join(', ')} hidden` : ''),
+      options: `${draftsButton}${completedButton}${layoutButton('myPullRequests', layout, 'your pull requests')}`,
+      tools: `<button class="icon-button" data-action="checkMyPullRequests" title="Check now" aria-label="Check your pull requests now">${icon(
         'refresh'
       )}</button>`,
       body: items.length
-        ? `<ul class="mypr-list">${items.map((pr) => renderMyPullRequest(pr, repositories.size > 1)).join('')}</ul>`
+        ? `<ul class="mypr-list${layout === 'compact' ? ' compact' : ''}">${items.map(renderRow).join('')}</ul>`
         : '<p class="muted panel-empty">No open pull requests</p>',
     })
   );
+}
+
+/** Expanded rows of PRs that are gone are forgotten, so the saved state does not grow */
+function pruneExpandedPullRequests(current: ViewModel): void {
+  const forget = (expanded: Set<number>, ids: number[]) =>
+    [...expanded].filter((id) => !ids.includes(id)).forEach((id) => expanded.delete(id));
+  if (current.reviews.status === 'ready') {
+    forget(
+      expandedReviews,
+      current.reviews.requests.map((request) => request.id)
+    );
+  }
+  if (current.pullRequests.status === 'ready') {
+    forget(
+      expandedPullRequests,
+      current.pullRequests.items.map((pr) => pr.id)
+    );
+  }
 }
 
 /** The section opens again when a PR it has not shown yet arrives */
@@ -1300,7 +1486,7 @@ function sizeReviewBars(): void {
   document.querySelectorAll<HTMLElement>('.review-bar-zone').forEach((zone) => {
     zone.style.left = `${Math.round(Number(zone.dataset.zoneStart) * 1000) / 10}%`;
   });
-  document.querySelectorAll<HTMLElement>('.review-bar-fill').forEach((fill) => {
+  document.querySelectorAll<HTMLElement>('.review-bar-fill, .mini-bar-fill').forEach((fill) => {
     fill.style.width = `${Math.round(Number(fill.dataset.elapsed) * 100)}%`;
   });
 }
@@ -1559,6 +1745,33 @@ function toggleCard(id: number): void {
   render();
 }
 
+/** Compact layout of the PR boxes: expands a row into the full card, or folds it back */
+function toggleRow(expanded: Set<number>, id: number, chevronAction: string): void {
+  if (!expanded.delete(id)) {
+    expanded.add(id);
+  }
+  saveState();
+  render();
+  // Rendering again drops the focus of the chevron, which keyboard users need to stay on
+  document.querySelector<HTMLElement>(`.card-chevron[data-action="${chevronAction}"][data-id="${id}"]`)?.focus();
+}
+
+/** Layout of a PR box: shown right away; the extension saves it and posts the view again */
+function setPanelLayout(panel: PanelId, layout: Layout): void {
+  if (!model) {
+    return;
+  }
+  if (panel === 'reviews' && model.reviews.layout !== layout) {
+    model = { ...model, reviews: { ...model.reviews, layout } };
+  } else if (panel === 'myPullRequests' && model.pullRequests.layout !== layout) {
+    model = { ...model, pullRequests: { ...model.pullRequests, layout } };
+  } else {
+    return;
+  }
+  render();
+  post({ type: 'setPanelLayout', panel, layout });
+}
+
 /** From the view menu. Closing also closes the lists opened because of task alerts */
 function setTasksExpanded(expanded: boolean): void {
   expandedTasks.clear();
@@ -1612,7 +1825,7 @@ document.addEventListener('click', (event) => {
   if (!target || ((event.target as HTMLElement).closest(popover) && !target.closest(popover))) {
     return;
   }
-  const { action, filter, value, id, pr, run, url, path, tests, kind, layout, branch } = target.dataset;
+  const { action, filter, value, id, pr, run, url, path, tests, kind, layout, branch, panel } = target.dataset;
   if (filter && value !== undefined) {
     toggleFilter(filter as FilterKind, value);
   } else if ((action === 'checkoutMenu' || action === 'openWorktree' || action === 'worktreeMenu') && kind && id) {
@@ -1639,6 +1852,18 @@ document.addEventListener('click', (event) => {
       render();
       post({ type: 'setLayout', layout });
     }
+  } else if (action === 'setPanelLayout' && (panel === 'reviews' || panel === 'myPullRequests')) {
+    if (layout === 'compact' || layout === 'large') {
+      setPanelLayout(panel, layout);
+    }
+  } else if (action === 'toggleReviewRow' && id) {
+    toggleRow(expandedReviews, Number(id), 'toggleReviewRow');
+  } else if (action === 'toggleMyPullRequestRow' && id) {
+    toggleRow(expandedPullRequests, Number(id), 'toggleMyPullRequestRow');
+  } else if (action === 'toggleOptional' && model) {
+    post({ type: 'setShowOptional', show: !model.reviews.includeOptional });
+  } else if (action === 'toggleCompleted' && model) {
+    post({ type: 'setShowCompleted', show: !model.pullRequests.showCompleted });
   } else if (action === 'expandAllTasks' || action === 'collapseAllTasks') {
     setTasksExpanded(action === 'expandAllTasks');
   } else if (action === 'toggleTasks' && id) {
@@ -1709,6 +1934,7 @@ window.addEventListener('message', ({ data }: MessageEvent<ExtensionMessage>) =>
     ({ model } = data);
   }
   trackNewReviews(model);
+  pruneExpandedPullRequests(model);
   render();
 });
 
