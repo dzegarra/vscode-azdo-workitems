@@ -7,10 +7,10 @@ import { WorkItemsStore } from './workItemsStore';
 export type WorkItemAction = WorkItemActionMessage;
 
 const COMMANDS = {
-  checkout: 'azdoWorkItems.checkout',
-  createBranch: 'azdoWorkItems.createBranch',
-  createPullRequest: 'azdoWorkItems.createPullRequest',
-  deleteBranch: 'azdoWorkItems.deleteBranch',
+  checkout: 'totalflowx.checkout',
+  createBranch: 'totalflowx.createBranch',
+  createPullRequest: 'totalflowx.createPullRequest',
+  deleteBranch: 'totalflowx.deleteBranch',
 };
 
 /** Runs a button of the work items view or of the details panel */
@@ -23,7 +23,7 @@ export async function runWorkItemAction(store: WorkItemsStore, message: WorkItem
     case 'addTask':
     case 'fillIntegrationBuild':
       // These work with any work item, including parents / children not assigned to the user
-      await vscode.commands.executeCommand(`azdoWorkItems.${message.type}`, message.id);
+      await vscode.commands.executeCommand(`totalflowx.${message.type}`, message.id);
       return;
     case 'openWorkItem': {
       // Parents and children shown in the details may not be assigned to the user

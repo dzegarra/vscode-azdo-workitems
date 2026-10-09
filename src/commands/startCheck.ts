@@ -44,7 +44,7 @@ export async function confirmStart(store: WorkItemsStore, workItem: WorkItem): P
     OPEN_MAP
   );
   if (choice === OPEN_MAP) {
-    await vscode.commands.executeCommand('azdoWorkItems.openDependencyMap', workItem.id);
+    await vscode.commands.executeCommand('totalflowx.openDependencyMap', workItem.id);
   }
   return choice === START_ANYWAY;
 }

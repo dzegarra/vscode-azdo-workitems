@@ -6,6 +6,7 @@ export interface RecordsStorage {
   update(key: string, value: unknown): Thenable<void>;
 }
 
+// Legacy name, kept on purpose: the stored records live under it (renaming the settings must not lose them)
 const KEY_PREFIX = 'azdoWorkItems.coverageRecords:';
 
 /** Personal records of the coverage of the user's PRs, kept per organization / project in the global state */

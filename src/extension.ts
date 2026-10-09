@@ -140,7 +140,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
 
   // Visible even when the sidebar is closed
-  const alertsStatus = vscode.window.createStatusBarItem('azdoWorkItems.alerts', vscode.StatusBarAlignment.Left);
+  const alertsStatus = vscode.window.createStatusBarItem('totalflowx.alerts', vscode.StatusBarAlignment.Left);
   alertsStatus.name = 'Work items needing attention';
   alertsStatus.command = `${VIEW_ID}.focus`;
   alertsStatus.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
@@ -189,11 +189,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(VIEW_ID, view),
-    command('azdoWorkItems.useCompactLayout', () => setLayout('compact')),
-    command('azdoWorkItems.useLargeLayout', () => setLayout('large')),
+    command('totalflowx.useCompactLayout', () => setLayout('compact')),
+    command('totalflowx.useLargeLayout', () => setLayout('large')),
     command(REVEAL_WORK_ITEM_COMMAND, (id: number) => view.reveal(id)),
-    command('azdoWorkItems.expandTasks', () => view.setTasksExpanded(true)),
-    command('azdoWorkItems.collapseTasks', () => view.setTasksExpanded(false)),
+    command('totalflowx.expandTasks', () => view.setTasksExpanded(true)),
+    command('totalflowx.collapseTasks', () => view.setTasksExpanded(false)),
     details,
     notifier,
     dependencyMap,
@@ -265,11 +265,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         void store.refresh();
       }
     }),
-    command('azdoWorkItems.refresh', () => store.refresh()),
-    command('azdoWorkItems.createBranch', (entry?: WorkItemEntry) => createBranch(git, store, entry)),
-    command('azdoWorkItems.createPullRequest', (entry?: WorkItemEntry) => createPullRequest(git, store, entry)),
-    command('azdoWorkItems.deleteBranch', (entry?: WorkItemEntry) => deleteBranch(git, store, entry)),
-    command('azdoWorkItems.checkout', async (entry: WorkItemEntry, branch?: string) => {
+    command('totalflowx.refresh', () => store.refresh()),
+    command('totalflowx.createBranch', (entry?: WorkItemEntry) => createBranch(git, store, entry)),
+    command('totalflowx.createPullRequest', (entry?: WorkItemEntry) => createPullRequest(git, store, entry)),
+    command('totalflowx.deleteBranch', (entry?: WorkItemEntry) => deleteBranch(git, store, entry)),
+    command('totalflowx.checkout', async (entry: WorkItemEntry, branch?: string) => {
       // The main branch of the card, or the branch of one of its rows. For a branch that only exists in the
       // remote, git creates the local tracking branch
       const target = branch
@@ -279,44 +279,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await checkoutBranch(git, store, target);
       }
     }),
-    command('azdoWorkItems.checkoutMenu', async (kind: CheckoutKind, id: number, branch?: string) =>
+    command('totalflowx.checkoutMenu', async (kind: CheckoutKind, id: number, branch?: string) =>
       showCheckoutMenu(git, store, branchTarget(kind, id, branch))
     ),
-    command('azdoWorkItems.openWorktree', async (kind: CheckoutKind, id: number, branch?: string) =>
+    command('totalflowx.openWorktree', async (kind: CheckoutKind, id: number, branch?: string) =>
       openWorktree(store, branchTarget(kind, id, branch).branch)
     ),
-    command('azdoWorkItems.worktreeMenu', async (kind: CheckoutKind, id: number, branch?: string) =>
+    command('totalflowx.worktreeMenu', async (kind: CheckoutKind, id: number, branch?: string) =>
       showWorktreeMenu(store, git, branchTarget(kind, id, branch).branch)
     ),
-    command('azdoWorkItems.removeWorktrees', () => removeWorktreesCommand(git, store)),
-    command('azdoWorkItems.openDetails', async (id?: number) => {
+    command('totalflowx.removeWorktrees', () => removeWorktreesCommand(git, store)),
+    command('totalflowx.openDetails', async (id?: number) => {
       // From the command palette: pick one of the work items
       const workItemId = id ?? (await resolveWorkItemEntry(store, undefined))?.workItem.id;
       if (workItemId) {
         await details.open(workItemId);
       }
     }),
-    command('azdoWorkItems.changeState', async (id?: number) => {
+    command('totalflowx.changeState', async (id?: number) => {
       const workItemId = id ?? (await resolveWorkItemEntry(store, undefined))?.workItem.id;
       if (workItemId) {
         await changeState(store, workItemId);
       }
     }),
-    command('azdoWorkItems.addTask', async (id?: number) => {
+    command('totalflowx.addTask', async (id?: number) => {
       const parentId = id ?? (await resolveWorkItemEntry(store, undefined))?.workItem.id;
       if (parentId) {
         await addTask(store, parentId);
       }
     }),
-    command('azdoWorkItems.fillIntegrationBuild', async (id?: number) => {
+    command('totalflowx.fillIntegrationBuild', async (id?: number) => {
       const workItemId = id ?? (await resolveWorkItemEntry(store, undefined))?.workItem.id;
       if (workItemId) {
         await fillIntegrationBuild(store, workItemId);
       }
     }),
-    command('azdoWorkItems.openDependencyMap', (id?: number) => dependencyMap.open(id)),
-    command('azdoWorkItems.checkPullRequests', () => notifier.poll(true)),
-    command('azdoWorkItems.checkReviewRequests', () => reviewRequests.poll()),
+    command('totalflowx.openDependencyMap', (id?: number) => dependencyMap.open(id)),
+    command('totalflowx.checkPullRequests', () => notifier.poll(true)),
+    command('totalflowx.checkReviewRequests', () => reviewRequests.poll()),
     command(CHECKOUT_REVIEW_COMMAND, async (pullRequestId?: number) => {
       const requests = reviewRequests.models();
       // From the command palette: pick one of the PRs waiting for review
@@ -343,7 +343,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await checkoutPullRequest(git, store, request);
       }
     }),
-    command('azdoWorkItems.checkMyPullRequests', () => myPullRequests.poll()),
+    command('totalflowx.checkMyPullRequests', () => myPullRequests.poll()),
     command(CHECKOUT_MY_PULL_REQUEST_COMMAND, async (pullRequestId?: number) => {
       const { items } = myPullRequests.models();
       // From the command palette: pick one of the PRs whose branch is in the open repository
@@ -383,8 +383,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       await addBuildNotesSkipTag(resolveContext(currentRepository()).client, pullRequest, () => myPullRequests.poll());
     }),
-    command('azdoWorkItems.openIterationBoard', () => openIterationBoard(currentRepository(), store)),
-    command('azdoWorkItems.selectTeams', () => selectTeams(currentRepository()))
+    command('totalflowx.openIterationBoard', () => openIterationBoard(currentRepository(), store)),
+    command('totalflowx.selectTeams', () => selectTeams(currentRepository()))
   );
   // When the repository is not open yet, it starts from onDidOpenRepository
   if (git.repositories.length) {

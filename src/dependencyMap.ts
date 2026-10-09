@@ -60,7 +60,7 @@ export class DependencyMapPanel implements vscode.Disposable {
       this.panel.reveal();
     } else {
       this.panel = vscode.window.createWebviewPanel(
-        'azdoWorkItems.dependencyMap',
+        'totalflowx.dependencyMap',
         'Dependency Map',
         vscode.ViewColumn.Active,
         {
@@ -95,7 +95,7 @@ export class DependencyMapPanel implements vscode.Disposable {
           await this.expand(message.id);
           return;
         case 'openDetails':
-          await vscode.commands.executeCommand('azdoWorkItems.openDetails', message.id);
+          await vscode.commands.executeCommand('totalflowx.openDetails', message.id);
       }
     } catch (error) {
       void vscode.window.showErrorMessage((error as Error).message);

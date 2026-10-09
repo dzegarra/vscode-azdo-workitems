@@ -14,12 +14,12 @@ const URGENCY_ICONS: Record<ReviewUrgency, string> = {
  * time left of the most urgent one and turns yellow when one is due soon, red when one is overdue
  */
 export class ReviewStatusBar implements vscode.Disposable {
-  private readonly item = vscode.window.createStatusBarItem('azdoWorkItems.reviews', vscode.StatusBarAlignment.Left);
+  private readonly item = vscode.window.createStatusBarItem('totalflowx.reviews', vscode.StatusBarAlignment.Left);
   private readonly subscriptions: vscode.Disposable[];
 
   constructor(private readonly watcher: ReviewRequestsWatcher) {
     this.item.name = 'Pull requests waiting for my review';
-    this.item.command = 'azdoWorkItems.myItems.focus';
+    this.item.command = 'totalflowx.myItems.focus';
     this.subscriptions = [
       watcher.onDidChange(() => this.update()),
       vscode.workspace.onDidChangeConfiguration((event) => {

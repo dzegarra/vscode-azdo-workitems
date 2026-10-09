@@ -25,8 +25,8 @@ import {
 import { runWorkItemAction } from './workItemActions';
 import { WorkItemsStore } from './workItemsStore';
 
-export const VIEW_ID = 'azdoWorkItems.myItems';
-export const REVEAL_WORK_ITEM_COMMAND = 'azdoWorkItems.revealWorkItem';
+export const VIEW_ID = 'totalflowx.myItems';
+export const REVEAL_WORK_ITEM_COMMAND = 'totalflowx.revealWorkItem';
 
 export function filterSettings(): FilterModel {
   const config = vscode.workspace.getConfiguration(SECTION);
@@ -44,7 +44,7 @@ export function workingOnSettings(): ViewModel['workingOn'] {
   return { ignoreFilters, section };
 }
 
-export const LAYOUT_CONTEXT = 'azdoWorkItems.layout';
+export const LAYOUT_CONTEXT = 'totalflowx.layout';
 
 export function layoutSetting(): Layout {
   return vscode.workspace.getConfiguration(SECTION).get<Layout>('layout', 'compact') === 'large' ? 'large' : 'compact';
@@ -239,7 +239,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       case 'checkoutMenu':
       case 'openWorktree':
       case 'worktreeMenu':
-        await vscode.commands.executeCommand(`azdoWorkItems.${message.type}`, message.kind, message.id, message.branch);
+        await vscode.commands.executeCommand(`totalflowx.${message.type}`, message.kind, message.id, message.branch);
         return;
       case 'openMyPullRequest':
       case 'openReviewRequest':

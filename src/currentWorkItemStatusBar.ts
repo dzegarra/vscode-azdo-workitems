@@ -15,7 +15,7 @@ import { WorkItemsStore } from './workItemsStore';
 import { REVEAL_WORK_ITEM_COMMAND } from './workItemsView';
 
 const DEBOUNCE_MS = 300;
-const SHOW_DETAILS_COMMAND = 'azdoWorkItems.openDetails';
+const SHOW_DETAILS_COMMAND = 'totalflowx.openDetails';
 
 interface Resolved {
   branch: string;
@@ -37,7 +37,7 @@ function toPerson(value: unknown): Person | undefined {
  */
 export class CurrentWorkItemStatusBar implements vscode.Disposable {
   private readonly item = vscode.window.createStatusBarItem(
-    'azdoWorkItems.currentWorkItem',
+    'totalflowx.currentWorkItem',
     vscode.StatusBarAlignment.Left
   );
   private readonly subscriptions: vscode.Disposable[] = [];

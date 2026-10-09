@@ -128,7 +128,7 @@ export function hasUncommittedChanges(counts: ChangeCounts): boolean {
   return counts.workingTree + counts.index + (counts.untracked ?? 0) + (counts.merge ?? 0) > 0;
 }
 
-/** azdoWorkItems.checkout.mode */
+/** totalflowx.checkout.mode */
 export type CheckoutMode = 'ask' | 'branch' | 'worktree';
 export type CheckoutChoice = 'here' | 'worktree';
 
@@ -158,7 +158,7 @@ export function decideCheckout(options: {
   }
 }
 
-/** Actions offered after creating a branch, in the order of the buttons: the one of azdoWorkItems.checkout.mode first */
+/** Actions offered after creating a branch, in the order of the buttons: the one of totalflowx.checkout.mode first */
 export function branchActionOrder(mode: CheckoutMode): CheckoutChoice[] {
   return mode === 'worktree' ? ['worktree', 'here'] : ['here', 'worktree'];
 }

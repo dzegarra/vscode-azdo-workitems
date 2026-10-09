@@ -50,8 +50,8 @@ const MIN_INTERVAL_SECONDS = 30;
 /** Above this, a single summary notification is shown instead of one per event */
 const MAX_NOTIFICATIONS = 3;
 /** The sidebar shows the PRs waiting for review above the work items */
-const SHOW_LIST_COMMAND = 'azdoWorkItems.myItems.focus';
-export const CHECKOUT_REVIEW_COMMAND = 'azdoWorkItems.checkoutPullRequest';
+const SHOW_LIST_COMMAND = 'totalflowx.myItems.focus';
+export const CHECKOUT_REVIEW_COMMAND = 'totalflowx.checkoutPullRequest';
 
 export type ReviewNotification = ObservationEvent['kind'] | ReviewEvent['kind'] | 'digest';
 

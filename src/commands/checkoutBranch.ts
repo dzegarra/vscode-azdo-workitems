@@ -183,7 +183,7 @@ async function askWhatToDo(current: string | undefined): Promise<CheckoutChoice 
 }
 
 /**
- * Checks out a branch of a work item or PR. By default (azdoWorkItems.checkout.mode "ask") a clean repository switches
+ * Checks out a branch of a work item or PR. By default (totalflowx.checkout.mode "ask") a clean repository switches
  * branch and a repository with uncommitted changes asks what to do. `choice` (the ▾ menu) skips the question
  */
 export async function checkoutBranch(
@@ -191,7 +191,7 @@ export async function checkoutBranch(
   store: WorkItemsStore,
   target: BranchTarget,
   choice?: CheckoutChoice,
-  /** Overrides azdoWorkItems.checkout.mode, e.g. "ask" for a button that explicitly says "Checkout" */
+  /** Overrides totalflowx.checkout.mode, e.g. "ask" for a button that explicitly says "Checkout" */
   modeOverride?: CheckoutMode
 ): Promise<void> {
   const repository = pickRepository(git);
@@ -252,7 +252,7 @@ export async function showCheckoutMenu(git: GitAPI, store: WorkItemsStore, targe
   }
 }
 
-/** Buttons that offer "Checkout" and "Open in a worktree", ordered by azdoWorkItems.checkout.mode */
+/** Buttons that offer "Checkout" and "Open in a worktree", ordered by totalflowx.checkout.mode */
 function branchActionButtons(): string[] {
   return branchActionOrder(settings().checkoutMode).map((choice) =>
     choice === 'worktree' ? OPEN_IN_WORKTREE : CHECKOUT

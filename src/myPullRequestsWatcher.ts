@@ -21,9 +21,9 @@ const MS_PER_SECOND = 1000;
 /** Ages are refreshed this often in the view, without checking Azure DevOps */
 const TICK_MS = 60 * MS_PER_SECOND;
 const MIN_INTERVAL_SECONDS = 30;
-export const CHECKOUT_MY_PULL_REQUEST_COMMAND = 'azdoWorkItems.checkoutMyPullRequest';
-export const PUBLISH_PULL_REQUEST_COMMAND = 'azdoWorkItems.publishPullRequest';
-export const ADD_BUILD_NOTES_SKIP_TAG_COMMAND = 'azdoWorkItems.addBuildNotesSkipTag';
+export const CHECKOUT_MY_PULL_REQUEST_COMMAND = 'totalflowx.checkoutMyPullRequest';
+export const PUBLISH_PULL_REQUEST_COMMAND = 'totalflowx.publishPullRequest';
+export const ADD_BUILD_NOTES_SKIP_TAG_COMMAND = 'totalflowx.addBuildNotesSkipTag';
 
 interface NotesContext {
   options: ReturnType<typeof buildNotesSettings>;

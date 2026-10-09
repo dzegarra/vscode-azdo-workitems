@@ -14,14 +14,14 @@ const STATE_ICONS: Record<RunState, string> = {
   succeeded: '$(check)',
 };
 
-export const SHOW_RUNS_COMMAND = 'azdoWorkItems.showPipelineRuns';
+export const SHOW_RUNS_COMMAND = 'totalflowx.showPipelineRuns';
 
 /**
  * CI runs of the user's pull requests in the status bar, visible even when the sidebar is closed.
  * Updated with the store: every few seconds while a run is queued or running
  */
 export class PipelineStatusBar implements vscode.Disposable {
-  private readonly item = vscode.window.createStatusBarItem('azdoWorkItems.pipelines', vscode.StatusBarAlignment.Left);
+  private readonly item = vscode.window.createStatusBarItem('totalflowx.pipelines', vscode.StatusBarAlignment.Left);
   private readonly subscriptions: vscode.Disposable[];
 
   constructor(private readonly store: WorkItemsStore) {

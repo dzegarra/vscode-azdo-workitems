@@ -116,7 +116,7 @@ export interface FilterModel {
   hiddenPredecessorStates: string[];
 }
 
-/** azdoWorkItems.layout: compact rows (2 lines) or the large cards */
+/** totalflowx.layout: compact rows (2 lines) or the large cards */
 export type Layout = 'compact' | 'large';
 
 /** The two PR boxes above the work items */
@@ -134,14 +134,14 @@ export interface ViewModel {
   reviews: ReviewsModel;
   /** PRs created by the user, with what is missing to merge them */
   pullRequests: MyPullRequestsModel;
-  /** Work items with alerts skip the state / PR / priority filters (azdoWorkItems.filter.alwaysShowAlerts) */
+  /** Work items with alerts skip the state / PR / priority filters (totalflowx.filter.alwaysShowAlerts) */
   alwaysShowAlerts: boolean;
   layout: Layout;
   coverage: CoverageViewModel;
   workingOn: WorkingOnViewModel;
 }
 
-/** azdoWorkItems.workingOn.* */
+/** totalflowx.workingOn.* */
 export interface WorkingOnViewModel {
   /** The work items being worked on skip the State / PR / Priority filters and the "Show only these" toggle */
   ignoreFilters: boolean;
@@ -162,26 +162,26 @@ export interface ReviewsModel {
   maxWaitHours: number;
   /** Hours before the maximum wait when a PR is due soon */
   dueSoonHours: number;
-  /** azdoWorkItems.reviews.includeOptional: the optional reviews are in `requests` */
+  /** totalflowx.reviews.includeOptional: the optional reviews are in `requests` */
   includeOptional: boolean;
   /** Optional reviews not in the list because of includeOptional */
   hiddenOptional: number;
-  /** azdoWorkItems.reviews.layout */
+  /** totalflowx.reviews.layout */
   layout: Layout;
 }
 
 export interface MyPullRequestsModel {
   status: 'error' | 'loading' | 'ready';
   error?: string;
-  /** azdoWorkItems.myPullRequests.showDrafts */
+  /** totalflowx.myPullRequests.showDrafts */
   showDrafts: boolean;
   /** Drafts not in the list because of showDrafts */
   hiddenDrafts: number;
-  /** azdoWorkItems.myPullRequests.showCompleted */
+  /** totalflowx.myPullRequests.showCompleted */
   showCompleted: boolean;
   /** Completed PRs not in the list because of showCompleted */
   hiddenCompleted: number;
-  /** azdoWorkItems.myPullRequests.layout */
+  /** totalflowx.myPullRequests.layout */
   layout: Layout;
   items: MyPullRequestModel[];
 }

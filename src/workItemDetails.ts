@@ -90,7 +90,7 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
       existing.panel.reveal();
       return;
     }
-    const panel = vscode.window.createWebviewPanel('azdoWorkItems.details', String(id), vscode.ViewColumn.Active, {
+    const panel = vscode.window.createWebviewPanel('totalflowx.details', String(id), vscode.ViewColumn.Active, {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media')],
     });
@@ -115,7 +115,7 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
   private async onAction(message: WebviewMessage): Promise<void> {
     try {
       if ('kind' in message) {
-        await vscode.commands.executeCommand(`azdoWorkItems.${message.type}`, message.kind, message.id, message.branch);
+        await vscode.commands.executeCommand(`totalflowx.${message.type}`, message.kind, message.id, message.branch);
       } else if ('id' in message) {
         await runWorkItemAction(this.store, message);
       }

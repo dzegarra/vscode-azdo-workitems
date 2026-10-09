@@ -8,7 +8,7 @@ import { parseCheckoutMode } from './worktrees';
 import { DEFAULT_COMPLETED_STATES } from './predecessors';
 import { DEFAULT_STATE_ORDER } from './states';
 
-export const SECTION = 'azdoWorkItems';
+export const SECTION = 'totalflowx';
 
 /** Recognizes the PR task by its title: "PR", "Create PR", "Pull Request review"… */
 export const DEFAULT_PULL_REQUEST_TASK_PATTERN = /\b(PR|pull request)\b/i;
