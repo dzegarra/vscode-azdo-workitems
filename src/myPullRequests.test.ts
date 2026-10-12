@@ -11,6 +11,7 @@ import {
   nextTone,
   plainDescription,
   nextStep,
+  phaseTotals,
   PolicyEvaluation,
   PullRequestExtras,
   PullRequestWarning,
@@ -478,9 +479,32 @@ describe('toMyPullRequestModels', () => {
     expect(items[0]).toMatchObject({
       isCompleted: true,
       status: 'Completed',
-      time: 'completed 23 h ago',
+      time: 'completed 23 h ago · took 2 h',
     });
     expect(items[0].next).toBeUndefined();
+  });
+
+  it('gives the completed PRs the time they took, their phases and a summary of the listed ones', () => {
+    const { items, completedSummary } = toMyPullRequestModels(
+      [
+        data({ pullRequestId: 1, status: 'completed', closedDate: '2026-10-06T12:30:00Z' }),
+        data({ pullRequestId: 2, status: 'completed', closedDate: '2026-10-06T13:30:00Z' }),
+      ],
+      { ...options, formatDate: (iso) => `<${iso}>` }
+    );
+    expect(items[0]).toMatchObject({ id: 2, took: '3 h', time: 'completed 22 h ago · took 3 h' });
+    expect(items[1].phases?.map((phase) => [phase.kind, phase.label, phase.duration])).toEqual([
+      ['review', 'In review', '2 h'],
+      ['merge', 'Ready to merge', '0 min'],
+    ]);
+    expect(items[1].phases?.[0]).toMatchObject({ startText: '<2026-10-06T10:00:00.000Z>', share: 1 });
+    expect(completedSummary).toBe('Completed PRs: median 3 h, mostly waiting for review');
+    expect(
+      toMyPullRequestModels(
+        [data({ pullRequestId: 1, status: 'completed', closedDate: '2026-10-06T12:30:00Z' })],
+        options
+      ).completedSummary
+    ).toBeUndefined();
   });
 
   it('hides the drafts and counts them', () => {
@@ -747,5 +771,32 @@ describe('retargetWarnings', () => {
     const card = items.find((item) => item.id === 13765);
     expect(card?.warnings.map((w) => w.action)).toEqual(['retarget']);
     expect(card?.readyToMerge).toBe(false);
+  });
+});
+
+describe('phaseTotals', () => {
+  it('sums the segments of each phase, in order of first appearance', () => {
+    const hour = 3600 * 1000;
+    const segment = (kind: 'author' | 'draft' | 'merge' | 'review', hours: number) => ({
+      kind,
+      start: '2026-10-08T09:00:00.000Z',
+      end: '2026-10-08T10:00:00.000Z',
+      ms: hours * hour,
+      share: 0,
+    });
+    expect(
+      phaseTotals([
+        segment('draft', 2),
+        segment('review', 3),
+        segment('author', 19),
+        segment('review', 2),
+        segment('merge', 18),
+      ])
+    ).toEqual([
+      { kind: 'draft', label: 'Draft', duration: '2 h' },
+      { kind: 'review', label: 'In review', duration: '5 h' },
+      { kind: 'author', label: 'Waiting for author', duration: '19 h' },
+      { kind: 'merge', label: 'Ready to merge', duration: '18 h' },
+    ]);
   });
 });

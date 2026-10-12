@@ -11,7 +11,15 @@ import {
 } from './buildNotes';
 import { isValidPullRequestTitle } from './naming';
 import type { RunModel } from './pipelines';
-import { buildTimeline, publishedAt, Timeline } from './pullRequestTimeline';
+import {
+  PHASE_LABELS,
+  PhaseEventKind,
+  PhaseKind,
+  PullRequestPhases,
+  pullRequestPhases,
+  summarizeCompleted,
+} from './pullRequestPhases';
+import { buildTimeline, formatTimelineDate, publishedAt, Timeline } from './pullRequestTimeline';
 import type { ThreadResponse } from './reviewThreads';
 import { PullRequestReviewer, pullRequestStatus, PullRequestTone } from './workItemLinks';
 import { DEFAULT_WORKING_DAYS, workingMsBetween } from './workingTime';
@@ -471,6 +479,25 @@ export function reviewerModels(
     );
 }
 
+export interface PhaseModel {
+  kind: PhaseKind;
+  label: string;
+  /** Working time, e.g. "9 h" */
+  duration: string;
+  startText: string;
+  endText: string;
+  /** Of the total working time (0 to 1) */
+  share: number;
+}
+
+export interface PhaseEventModel {
+  kind: PhaseEventKind;
+  /** Where it falls along the working time of the PR (0 to 1) */
+  share: number;
+  text: string;
+  when: string;
+}
+
 export interface MyPullRequestModel {
   id: number;
   title: string;
@@ -492,6 +519,14 @@ export interface MyPullRequestModel {
   isDraft: boolean;
   /** Completed in the last 24 hours: shown faded, without details */
   isCompleted: boolean;
+  /** Completed PRs: working time from creation to completion, e.g. "1 d 6 h" */
+  took?: string;
+  /** Completed PRs: the phases in order; the shares add up to 1 */
+  phases?: PhaseModel[];
+  /** Completed PRs: the events to mark along the phases */
+  phaseEvents?: PhaseEventModel[];
+  /** Completed PRs: total time per phase, in order of first appearance (a phase can happen several times) */
+  phaseTotals?: { kind: PhaseModel['kind']; label: string; duration: string }[];
   reviewers: ReviewerModel[];
   /** Undefined when the comments could not be fetched */
   unresolved?: number;
@@ -558,6 +593,43 @@ function waitingTime(data: AuthoredPullRequestData, now: Date, workingDays: read
   return formatAge(data.pr.isDraft ? now.getTime() - since.getTime() : workingMsBetween(since, now, workingDays));
 }
 
+/** Working time per phase kind, summed over its segments, in order of first appearance */
+export function phaseTotals(
+  segments: PullRequestPhases['segments']
+): { kind: PullRequestPhases['segments'][number]['kind']; label: string; duration: string }[] {
+  const totals = new Map<PullRequestPhases['segments'][number]['kind'], number>();
+  segments.forEach((segment) => totals.set(segment.kind, (totals.get(segment.kind) ?? 0) + segment.ms));
+  return [...totals].map(([kind, ms]) => ({ kind, label: PHASE_LABELS[kind], duration: formatAge(ms) }));
+}
+
+/** Completed PRs: how long they took and the time spent in each phase */
+function phaseFields(
+  phases: PullRequestPhases | undefined,
+  format: (isoDate: string) => string
+): Pick<MyPullRequestModel, 'took' | 'phases' | 'phaseEvents' | 'phaseTotals'> {
+  if (!phases) {
+    return {};
+  }
+  return {
+    took: formatAge(phases.totalMs),
+    phases: phases.segments.map((segment) => ({
+      kind: segment.kind,
+      label: PHASE_LABELS[segment.kind],
+      duration: formatAge(segment.ms),
+      startText: format(segment.start),
+      endText: format(segment.end),
+      share: segment.share,
+    })),
+    phaseTotals: phaseTotals(phases.segments),
+    phaseEvents: phases.events.map((event) => ({
+      kind: event.kind,
+      share: event.share,
+      text: event.text,
+      when: format(event.at),
+    })),
+  };
+}
+
 function toModel(
   { pr, extras }: AuthoredPullRequestData,
   options: ListOptions,
@@ -591,9 +663,11 @@ function toModel(
   };
   if (isCompleted) {
     const ago = formatAge(now.getTime() - Date.parse(pr.closedDate ?? ''));
+    const fields = phaseFields(pullRequestPhases(pr, extras.threads, workingDays), formatDate ?? formatTimelineDate);
     return {
       ...base,
-      time: `completed ${ago} ago`,
+      ...fields,
+      time: `completed ${ago} ago${fields.took ? ` · took ${fields.took}` : ''}`,
       reviewers: [],
       conflicts: false,
       runs: [],
@@ -644,24 +718,37 @@ function compare(a: AuthoredPullRequestData, b: AuthoredPullRequestData): number
   return waitingSince(a).localeCompare(waitingSince(b));
 }
 
+export interface MyPullRequestList {
+  items: MyPullRequestModel[];
+  hiddenDrafts: number;
+  hiddenCompleted: number;
+  /** E.g. "Completed PRs: median 1 d 2 h, mostly waiting for review"; undefined with fewer than 2 completed PRs */
+  completedSummary?: string;
+}
+
 /**
  * The PRs to list: the active ones and those completed within the period. Abandoned PRs are never listed.
  * Drafts can be hidden, and so can the completed PRs (period "hidden"): they are counted (the completed ones
  * of the last 24 hours), so the box can say so
  */
-export function toMyPullRequestModels(
-  data: AuthoredPullRequestData[],
-  options: ListOptions
-): { items: MyPullRequestModel[]; hiddenDrafts: number; hiddenCompleted: number } {
+export function toMyPullRequestModels(data: AuthoredPullRequestData[], options: ListOptions): MyPullRequestList {
   const period = options.completedPeriod ?? 'day';
   const windowMs = completedWindowMs(period);
   const listed = data.filter(({ pr }) => pr.status === 'active' || isCompletedWithin(pr, options.now, windowMs));
   const hiddenDrafts = options.showDrafts ? 0 : listed.filter(({ pr }) => pr.isDraft).length;
   const hiddenCompleted =
     period === 'hidden' ? data.filter(({ pr }) => isCompletedWithin(pr, options.now, COMPLETED_WINDOW_MS)).length : 0;
-  const items = listed
-    .filter(({ pr }) => options.showDrafts || !pr.isDraft)
-    .sort(compare)
-    .map((entry) => toModel(entry, options, data));
-  return { items, hiddenDrafts, hiddenCompleted };
+  const shown = listed.filter(({ pr }) => options.showDrafts || !pr.isDraft).sort(compare);
+  const completedSummary = summarizeCompleted(
+    shown
+      .filter(({ pr }) => pr.status === 'completed')
+      .map(({ pr, extras }) => pullRequestPhases(pr, extras.threads, options.workingDays)),
+    formatAge
+  );
+  return {
+    items: shown.map((entry) => toModel(entry, options, data)),
+    hiddenDrafts,
+    hiddenCompleted,
+    completedSummary,
+  };
 }

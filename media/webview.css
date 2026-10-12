@@ -1282,6 +1282,126 @@ button.state:focus-visible {
   font-weight: 400;
 }
 
+/* Mini timeline of a completed PR: the bands and dots are placed by the webview (data attributes, CSSOM) */
+.pr-phases {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  margin: 2px 0;
+  font-size: 11px;
+}
+
+.phase-track {
+  position: relative;
+  height: 16px;
+}
+
+.phase-band {
+  position: absolute;
+  top: 4px;
+  height: 8px;
+  background: var(--phase-color);
+}
+
+/* Explicit classes: the event dots are spans too, so :first/last-of-type would not find the bands */
+.phase-band.first {
+  border-radius: 4px 0 0 4px;
+}
+
+.phase-band.last {
+  border-radius: 0 4px 4px 0;
+}
+
+.phase-band.first.last {
+  border-radius: 4px;
+}
+
+.phase-draft {
+  --phase-color: var(--grey);
+}
+
+.phase-review {
+  --phase-color: var(--blue);
+}
+
+.phase-author {
+  --phase-color: var(--orange);
+}
+
+.phase-merge {
+  --phase-color: var(--green);
+}
+
+.phase-dot {
+  position: absolute;
+  top: 3px;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 2px solid var(--card-bg);
+  border-radius: 50%;
+  background: var(--dot-color, var(--vscode-foreground));
+  transform: translateX(-50%);
+}
+
+.phase-dot-approve {
+  --dot-color: var(--green);
+}
+
+.phase-dot-wait {
+  --dot-color: var(--orange);
+}
+
+.phase-dot-reject {
+  --dot-color: var(--red);
+}
+
+.phase-dot-published {
+  --dot-color: var(--purple);
+}
+
+.phase-dot-autoComplete {
+  --dot-color: var(--yellow);
+}
+
+/* Pushes are the most frequent and the least important: smaller, in the colour of the text */
+.phase-dot-push {
+  top: 5px;
+  width: 6px;
+  height: 6px;
+  border-width: 1px;
+  --dot-color: var(--vscode-foreground);
+}
+
+.phase-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.phase-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px 10px;
+  color: var(--vscode-foreground);
+}
+
+.phase-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.phase-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--phase-color);
+}
+
 /* The card with an open timeline goes over the following ones */
 .review:hover,
 .review:focus-within {
@@ -1486,7 +1606,7 @@ button.state:focus-visible {
   border-left-color: color-mix(in srgb, var(--pill-color, var(--grey)) 55%, transparent);
 }
 
-.mypr.completed > *:not(.mypr-meta),
+.mypr.completed > *:not(.mypr-meta):not(.pr-phases),
 .mypr.completed .mypr-meta > *:not(.mypr-time-wrap),
 .mypr.completed .mypr-time {
   opacity: 0.55;

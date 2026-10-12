@@ -20,7 +20,8 @@ import { isReadyToStart, NONE_OPEN, OPEN_PREDECESSORS, predecessorFilterValue } 
 import { RISK_DESCRIPTIONS } from '../schedule';
 import { NO_PRIORITY, priorityFilterValue, severityLevel, severityName, sortWorkItems } from '../priority';
 import { stateCategory, stateRank, type StateCategory } from '../states';
-import { MyPullRequestModel, ReviewerModel, VoteKind } from '../myPullRequests';
+import { eventPosition, layoutBands } from '../phaseLayout';
+import { MyPullRequestModel, PhaseEventModel, ReviewerModel, VoteKind } from '../myPullRequests';
 import { describeTeamRules } from '../reviewCard';
 import { dueSoonZoneStart } from '../reviewDue';
 import { myPullRequestCompactSignals, PrSignal, reviewCompactSignals } from '../prCompactSignals';
@@ -1233,6 +1234,58 @@ function renderCompactReview(request: ReviewRequestModel): string {
   </li>`;
 }
 
+const EVENT_LABELS: Record<PhaseEventModel['kind'], string> = {
+  published: 'Published',
+  approve: 'Approval',
+  wait: 'Waiting for the author',
+  reject: 'Rejection',
+  push: 'Push',
+  autoComplete: 'Auto-complete',
+};
+
+/**
+ * Mini timeline of a completed PR: a track with a coloured band per phase, a dot per event, the dates of the
+ * ends and a legend with the durations. Widths and positions come from data attributes (see sizePhaseTimelines)
+ */
+function renderPhaseTimeline(pr: MyPullRequestModel): string {
+  const { phases, phaseEvents = [] } = pr;
+  if (!phases?.length || !pr.took) {
+    return '';
+  }
+  const summary = `Time spent: ${(pr.phaseTotals ?? phases)
+    .map((phase) => `${phase.label} ${phase.duration}`)
+    .join(', ')}. Took ${pr.took}`;
+  const bands = phases.map(
+    (phase, index) =>
+      `<span class="phase-band phase-${phase.kind}${index === 0 ? ' first' : ''}${
+        index === phases.length - 1 ? ' last' : ''
+      }" data-band="${index}" title="${escapeHtml(
+        `${phase.label}: ${phase.duration} (${phase.startText} to ${phase.endText})`
+      )}"></span>`
+  );
+  const dots = phaseEvents.map(
+    (event) =>
+      `<span class="phase-dot phase-dot-${event.kind}" data-share="${event.share}" title="${escapeHtml(
+        `${EVENT_LABELS[event.kind]}: ${event.text} (${event.when})`
+      )}"></span>`
+  );
+  const legend = (pr.phaseTotals ?? phases).map(
+    (phase) =>
+      `<span class="phase-key"><span class="phase-swatch phase-${phase.kind}" aria-hidden="true"></span>${escapeHtml(
+        phase.label
+      )} ${escapeHtml(phase.duration)}</span>`
+  );
+  return `<div class="pr-phases" role="img" aria-label="${escapeHtml(summary)}" data-shares="${phases
+    .map((phase) => phase.share)
+    .join(',')}">
+    <div class="phase-track">${bands.join('')}${dots.join('')}</div>
+    <div class="phase-ends"><time>${escapeHtml(phases[0].startText)}</time><time>${escapeHtml(
+    phases[phases.length - 1].endText
+  )}</time></div>
+    <div class="phase-legend">${legend.join('')}</div>
+  </div>`;
+}
+
 /** `foldable`: the full card of a row expanded in the compact layout; its chevron folds it back */
 function renderReview(request: ReviewRequestModel, foldable = false): string {
   const time = request.details
@@ -1467,6 +1520,7 @@ function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean, fo
     </div>
     <div class="mypr-title" title="${escapeHtml(pr.title)}">${escapeHtml(pr.title)}</div>
     <div class="mypr-meta">${meta.join('<span aria-hidden="true">·</span>')}</div>
+    ${pr.isCompleted ? renderPhaseTimeline(pr) : ''}
     ${pr.reviewers.length ? `<div class="reviewers">${pr.reviewers.map(renderReviewer).join('')}</div>` : ''}
     ${pr.isCompleted ? '' : renderSignals(pr)}
     ${warnings.length ? `<ul class="mypr-warnings">${warnings.join('')}</ul>` : ''}
@@ -1497,7 +1551,7 @@ function renderCompletedPeriod(period: CompletedPeriod): string {
 }
 
 function renderMyPullRequests(current: ViewModel): string {
-  const { items, status, error, showDrafts, hiddenDrafts, completedPeriod, hiddenCompleted, layout } =
+  const { items, status, error, showDrafts, hiddenDrafts, completedPeriod, hiddenCompleted, layout, completedSummary } =
     current.pullRequests;
   const failure =
     status === 'error'
@@ -1532,7 +1586,9 @@ function renderMyPullRequests(current: ViewModel): string {
       toggle: 'toggleMyPullRequests',
       title: 'My Pull Requests',
       count: items.length,
-      sub: escapeHtml(hidden.length ? `${hidden.join(', ')} hidden` : ''),
+      sub: escapeHtml(
+        [hidden.length ? `${hidden.join(', ')} hidden` : '', completedSummary ?? ''].filter(Boolean).join(' · ')
+      ),
       options: `${draftsButton}${completedSelect}${layoutButton('myPullRequests', layout, 'your pull requests')}`,
       tools: `<button class="icon-button" data-action="checkMyPullRequests" title="Check now" aria-label="Check your pull requests now">${icon(
         'refresh'
@@ -1605,6 +1661,22 @@ function pulseChangedReviews(current: ViewModel): void {
   });
   reviewUrgencies.clear();
   current.reviews.requests.forEach((request) => reviewUrgencies.set(request.id, request.urgency));
+}
+
+/** Bands and dots of the phase timelines: widths and positions through CSSOM (the CSP blocks inline styles) */
+function sizePhaseTimelines(): void {
+  document.querySelectorAll<HTMLElement>('.pr-phases').forEach((timeline) => {
+    const shares = (timeline.dataset.shares ?? '').split(',').map(Number);
+    const bands = layoutBands(shares);
+    timeline.querySelectorAll<HTMLElement>('.phase-band').forEach((band) => {
+      const layout = bands[Number(band.dataset.band)];
+      band.style.left = `${layout.from * 100}%`;
+      band.style.width = `${layout.width * 100}%`;
+    });
+    timeline.querySelectorAll<HTMLElement>('.phase-dot').forEach((dot) => {
+      dot.style.left = `${eventPosition(Number(dot.dataset.share), shares, bands) * 100}%`;
+    });
+  });
 }
 
 /** Same for the progress of the tasks */
@@ -1778,6 +1850,7 @@ function render(): void {
   (document.getElementById('reviews') as HTMLElement).innerHTML = renderReviews(model);
   (document.getElementById('my-prs') as HTMLElement).innerHTML = renderMyPullRequests(model);
   sizeReviewBars();
+  sizePhaseTimelines();
   pulseChangedReviews(model);
   sizeTaskBars();
   if (revealPending()) {

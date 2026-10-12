@@ -11,7 +11,7 @@ import {
   CompletedPeriod,
   completedWindowMs,
   isCompletedWithin,
-  MyPullRequestModel,
+  MyPullRequestList,
   PullRequestExtras,
   toMyPullRequestModels,
 } from './myPullRequests';
@@ -92,7 +92,7 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
   constructor(private readonly store: WorkItemsStore, private readonly extras: PullRequestExtrasLoader) {}
 
   /** The cards to show, with whether their branch can be checked out, right now */
-  models(): { items: MyPullRequestModel[]; hiddenDrafts: number; hiddenCompleted: number } {
+  models(): MyPullRequestList {
     const local = this.localRepository();
     const { showDrafts, completedPeriod, minimumRequiredReviewers } = myPullRequestSettings();
     const data = this.data.map(({ pr, extras }) => ({
@@ -100,7 +100,7 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
       // The store follows the active PRs of the user and refreshes their runs; the own fetch is the fallback
       extras: { ...extras, runs: this.store.runsOf(pr.pullRequestId) ?? extras.runs },
     }));
-    const { items, hiddenDrafts, hiddenCompleted } = toMyPullRequestModels(data, {
+    const { items, hiddenDrafts, hiddenCompleted, completedSummary } = toMyPullRequestModels(data, {
       now: new Date(),
       remoteBranches: this.knownRemoteBranches(),
       baseBranch: settings().baseBranch,
@@ -113,6 +113,7 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
     return {
       hiddenDrafts,
       hiddenCompleted,
+      completedSummary,
       items: items.map((item) => {
         const canCheckout = !!local && item.repository.toLowerCase() === local.name.toLowerCase();
         const isCurrentBranch = canCheckout && local.head === item.sourceBranch;

@@ -194,6 +194,8 @@ export interface MyPullRequestsModel {
   completedPeriod: CompletedPeriod;
   /** Completed PRs (last 24 hours) not in the list because the period is "hidden" */
   hiddenCompleted: number;
+  /** Median time and main phase of the completed PRs listed; undefined with fewer than 2 */
+  completedSummary?: string;
   /** totalflowx.myPullRequests.layout */
   layout: Layout;
   items: MyPullRequestModel[];

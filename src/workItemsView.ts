@@ -88,7 +88,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     if (!this.view) {
       return;
     }
-    const { items, hiddenDrafts, hiddenCompleted } = this.myPullRequests.models();
+    const { items, hiddenDrafts, hiddenCompleted, completedSummary } = this.myPullRequests.models();
     const reviewConfig = reviewSettings();
     const pullRequestConfig = myPullRequestSettings();
     const model: ViewModel = {
@@ -114,6 +114,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         hiddenDrafts,
         completedPeriod: pullRequestConfig.completedPeriod,
         hiddenCompleted,
+        completedSummary,
         layout: pullRequestConfig.layout,
         items,
       },
