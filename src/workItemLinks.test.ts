@@ -270,13 +270,30 @@ describe('branch actions', () => {
     repository: 'Repo',
     otherRepository: false,
   });
-  const item = { state: 'Committed', branch: 'feature/x/1-a', isCurrentBranch: false, pullRequests: [] };
+  const branchModel = (name: string) => ({
+    name,
+    location: 'remote' as const,
+    isCurrent: false,
+    otherRepository: false,
+  });
+  const item = {
+    state: 'Committed',
+    branch: 'feature/x/1-a',
+    branches: [branchModel('feature/x/1-a')],
+    isCurrentBranch: false,
+    pullRequests: [],
+  };
   const leftoverBranch = { name: 'feature/x/1-a', local: true, remote: true };
 
   it('offers to create the branch, check it out and create the PR of work items in progress', () => {
     expect(branchActions({ ...item, branch: undefined })).toEqual(['createBranch']);
     expect(branchActions(item)).toEqual(['checkout', 'createPullRequest']);
     expect(branchActions({ ...item, isCurrentBranch: true, pullRequests: [pr(true)] })).toEqual([]);
+  });
+
+  it('leaves Checkout to the branch rows when the work item has several branches', () => {
+    const branches = [branchModel('feature/x/1-a'), branchModel('feature/x/1-b')];
+    expect(branchActions({ ...item, branches })).toEqual(['createPullRequest']);
   });
 
   it('only offers to delete the branch of finished work items, when it still exists', () => {

@@ -273,7 +273,7 @@ export type BranchAction = 'checkout' | 'createBranch' | 'createPullRequest' | '
  * or PR: their branch only needs to be deleted, when it still exists and no PR is still active on it
  */
 export function branchActions(
-  item: Pick<WorkItemModel, 'branch' | 'isCurrentBranch' | 'leftoverBranch' | 'pullRequests' | 'state'>
+  item: Pick<WorkItemModel, 'branch' | 'branches' | 'isCurrentBranch' | 'leftoverBranch' | 'pullRequests' | 'state'>
 ): BranchAction[] {
   // Only the PRs of this repository count: an active PR in another one does not cover this branch
   const hasActivePullRequest = item.pullRequests.some((pr) => pr.isActive && !pr.otherRepository);
@@ -284,7 +284,8 @@ export function branchActions(
     return ['createBranch'];
   }
   return [
-    ...(item.isCurrentBranch ? [] : ['checkout' as const]),
+    // With several branches each branch row has its own Checkout (src/branchRows.ts): a card button would be ambiguous
+    ...(item.isCurrentBranch || item.branches.length > 1 ? [] : ['checkout' as const]),
     ...(hasActivePullRequest ? [] : ['createPullRequest' as const]),
   ];
 }

@@ -49,10 +49,14 @@ describe('branchActions with PRs of other repositories', () => {
   const item = (otherRepository: boolean) =>
     ({
       branch: 'feature/1',
+      branches: [],
       isCurrentBranch: true,
       state: 'In Progress',
       pullRequests: [{ isActive: true, otherRepository }],
-    } as unknown as Pick<WorkItemModel, 'branch' | 'isCurrentBranch' | 'leftoverBranch' | 'pullRequests' | 'state'>);
+    } as unknown as Pick<
+      WorkItemModel,
+      'branch' | 'branches' | 'isCurrentBranch' | 'leftoverBranch' | 'pullRequests' | 'state'
+    >);
   it('offers Create PR when the active PR is in another repository', () => {
     expect(branchActions(item(true))).toContain('createPullRequest');
   });
