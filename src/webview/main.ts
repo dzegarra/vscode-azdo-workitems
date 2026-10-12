@@ -19,7 +19,7 @@ import { fixesBugsText, type FixLink } from '../fixLinks';
 import { isReadyToStart, NONE_OPEN, OPEN_PREDECESSORS, predecessorFilterValue } from '../predecessors';
 import { RISK_DESCRIPTIONS } from '../schedule';
 import { NO_PRIORITY, priorityFilterValue, severityLevel, severityName, sortWorkItems } from '../priority';
-import { stateCategory, stateRank, type StateCategory } from '../states';
+import { stateCategory, stateRank } from '../states';
 import { eventPosition, layoutBands } from '../phaseLayout';
 import { MyPullRequestModel, PhaseEventModel, ReviewerModel, VoteKind } from '../myPullRequests';
 import { describeTeamRules } from '../reviewCard';
@@ -437,47 +437,34 @@ function renderPredecessors(item: WorkItemModel): string {
     : '';
 }
 
-/** Pill colour of the state of the Backlog Item that fixes a Bug */
-const FIX_STATE_TONES: Record<StateCategory, string> = {
-  done: 'tone-approved',
-  'in-progress': 'tone-local',
-  proposed: 'tone-neutral',
-  removed: 'tone-rejected',
-};
-
 function fixLinkClass(link: FixLink): string {
   return link.stateCategory === 'done' || link.stateCategory === 'removed' ? ' fix-done' : '';
 }
 
-/** ID link of a fix link, opening its details */
-function fixLinkButton(link: FixLink, type: 'Bug' | 'Product Backlog Item'): string {
-  return `<button class="link id${typeIdClass(type)}" data-action="openDetails" data-id="${link.id}"
-    title="${escapeHtml(`#${link.id} ${link.state} · ${link.title}`)}">#${link.id}</button>`;
+/** A fix link: its ID (opening its details) and a dot with its state */
+function fixLinkItem(link: FixLink, type: 'Bug' | 'Product Backlog Item'): string {
+  return `<span class="fix-item${fixLinkClass(link)}"><button class="link id${typeIdClass(
+    type
+  )}" data-action="openDetails" data-id="${link.id}" title="${escapeHtml(
+    `#${link.id} ${link.state} · ${link.title}`
+  )}">#${link.id}</button><span class="fix-dot state-${link.stateCategory}" title="${escapeHtml(
+    link.state
+  )}" role="img" aria-label="${escapeHtml(link.state)}"></span></span>`;
 }
 
 /**
- * Large card: a Backlog Item shows the bugs it fixes (each with a dot with its state), a Bug the Backlog Item that
- * fixes it (with its state, the progress of the Bug depends on it). Finished ones are faded
+ * Large card: a Backlog Item shows the bugs it fixes, a Bug the Backlog Item that fixes it, each with a dot with its
+ * state. Finished ones are faded
  */
 function renderFixLinks(item: WorkItemModel): string {
   if (item.fixesBugs?.length) {
-    const bugs = item.fixesBugs.map(
-      (bug) =>
-        `<span class="fix-item${fixLinkClass(bug)}">${fixLinkButton(bug, 'Bug')}<span class="fix-dot state-${
-          bug.stateCategory
-        }" title="${escapeHtml(bug.state)}" role="img" aria-label="${escapeHtml(bug.state)}"></span></span>`
-    );
+    const bugs = item.fixesBugs.map((bug) => fixLinkItem(bug, 'Bug'));
     return `<div class="row fix-row">${icon('bug', 'type-bug')}<span class="fix-text">${fixesBugsText(
       item.fixesBugs.length
     )}</span>${bugs.join('')}</div>`;
   }
   if (item.fixedBy?.length) {
-    const backlogItems = item.fixedBy.map(
-      (fix) =>
-        `<span class="fix-item${fixLinkClass(fix)}">${fixLinkButton(fix, 'Product Backlog Item')}<span class="pill ${
-          FIX_STATE_TONES[fix.stateCategory]
-        }" title="State of the Backlog Item that fixes this bug">${escapeHtml(fix.state)}</span></span>`
-    );
+    const backlogItems = item.fixedBy.map((fix) => fixLinkItem(fix, 'Product Backlog Item'));
     return `<div class="row fix-row">${icon(
       'book',
       'type-backlog'
