@@ -7,7 +7,7 @@ const act = (action: ActionMenuAction['action']): ActionMenuAction => ({ action,
 describe('actionMenuIcon', () => {
   it('gives every action its own icon and colour', () => {
     expect(actionMenuIcon({ act: act('checkoutHere') })).toEqual({ icon: 'checkout', tone: 'blue' });
-    expect(actionMenuIcon({ act: act('openWorktree') })).toEqual({ icon: 'worktree', tone: 'purple' });
+    expect(actionMenuIcon({ act: act('openWorktree') })).toEqual({ icon: 'worktree', tone: 'blue' });
     expect(actionMenuIcon({ act: act('removeWorktree') })).toEqual({ icon: 'worktreeRemove', tone: 'orange' });
     expect(actionMenuIcon({ act: act('deleteBranch') })).toEqual({ icon: 'trash', tone: 'red' });
     expect(actionMenuIcon({ act: act('openPullRequest') })).toEqual({ icon: 'pullRequest', tone: 'green' });

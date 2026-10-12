@@ -86,6 +86,6 @@ export function checkoutButton(options: CheckoutButtonOptions): string {
 /** Pill of a branch that is checked out in another worktree (the tooltip tells where) */
 export function worktreePill(worktree: string | undefined): string {
   return worktree
-    ? `<span class="pill tone-worktree" title="${escapeHtml(`Worktree: ${worktree}`)}">worktree</span>`
+    ? `<span class="pill tone-worktree" title="${escapeHtml(`Worktree: ${worktree}`)}">⧉ worktree</span>`
     : '';
 }

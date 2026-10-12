@@ -35,12 +35,12 @@ export interface ActionMenuSection {
 }
 
 /** Colour of an item's icon: one per kind of action, so the user recognises an item before reading it */
-export type ActionMenuTone = 'blue' | 'yellow' | 'purple' | 'orange' | 'red' | 'green' | 'grey';
+export type ActionMenuTone = 'blue' | 'yellow' | 'orange' | 'red' | 'green' | 'grey';
 
 const ACTION_ICONS: Record<ActionMenuAction['action'], { icon: IconName; tone: ActionMenuTone }> = {
   checkoutHere: { icon: 'checkout', tone: 'blue' },
   createBranch: { icon: 'branchAdd', tone: 'yellow' },
-  openWorktree: { icon: 'worktree', tone: 'purple' },
+  openWorktree: { icon: 'worktree', tone: 'blue' },
   removeWorktree: { icon: 'worktreeRemove', tone: 'orange' },
   deleteBranch: { icon: 'trash', tone: 'red' },
   openPullRequest: { icon: 'pullRequest', tone: 'green' },
