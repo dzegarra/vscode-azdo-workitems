@@ -72,6 +72,7 @@ The extension enforces or supports these team rules; many features exist because
 - Boxes (Waiting for your review, My Pull Requests) look like framed panels, deliberately different from the iteration group headers.
 - **The activity bar badge lives on the native "Summary" tree view, not on the webview view.** VS Code creates (resolves) a webview view only when it is first shown, so on a cold start there is no `WebviewView` to set `badge` on until the user opens the sidebar. A `TreeView` made with `createTreeView` at activation exists immediately, so `src/summaryView.ts` sets its badge (work items with alerts + PRs waiting for review, `src/summaryRows.ts`) at startup and on every change of the store and the watchers. The webview view must not set a badge too: the container would show a double count. Whether the badge of a _collapsed_ tree view reaches the container icon must be confirmed in a real VS Code.
 - The PR history popover lists the latest events first.
+- **The ID in the header of a card (and of a compact row) opens the Work Item Details panel, not Azure DevOps**, and cards have no Details button: every other work item ID in the sidebar already opened the panel, and the button took room in the action footer. Azure DevOps is one click further, through the panel's **Open in Azure DevOps** button.
 - Figma links open in the Figma VS Code extension when installed, but it does not select the linked frame (limitation of that extension, v0.4.7); the browser button opens the exact frame.
 
 ## Naming and identity

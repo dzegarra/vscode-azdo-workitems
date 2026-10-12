@@ -508,9 +508,6 @@ function renderActions(item: WorkItemModel): string {
       `<button class="button ghost" data-action="addTask" data-id="${item.id}" title="Create a task under this work item">Add task</button>`
     );
   }
-  actions.push(
-    `<button class="button ghost" data-action="openDetails" data-id="${item.id}" title="Open the Work Item Details panel">Details</button>`
-  );
   return `<footer class="actions">${actions.join('')}</footer>`;
 }
 
@@ -843,9 +840,9 @@ function renderCard(item: WorkItemModel, children: TaskRow[], visibleIds: Set<nu
     foldable ? ` data-action="toggleCard" data-id="${item.id}"` : ''
   }>
       ${fold}${typeIcon(item.type)}
-      <button class="link id${typeIdClass(item.type)}" data-action="openWorkItem" data-id="${
+      <button class="link id${typeIdClass(item.type)}" data-action="openDetails" data-id="${
     item.id
-  }" title="Open in Azure DevOps">${item.id}</button>
+  }" title="Open the Work Item Details panel">${item.id}</button>
       ${renderWorkingOn(item)}
       ${renderUrgency(item)}
       ${stateButton(item.id, item.state)}
@@ -936,9 +933,9 @@ function renderCompactCard(item: WorkItemModel, children: TaskRow[]): string {
       <button class="card-chevron" data-action="toggleCard" data-id="${item.id}" aria-expanded="false"
         aria-label="Expand work item ${item.id}" title="Expand">${icon('chevron', 'chevron')}</button>
       ${item.workingOn ? '<span class="working-dot" aria-hidden="true"></span>' : ''}${typeIcon(item.type)}
-      <button class="link id${typeIdClass(item.type)}" data-action="openWorkItem" data-id="${
+      <button class="link id${typeIdClass(item.type)}" data-action="openDetails" data-id="${
     item.id
-  }" title="Open in Azure DevOps">${item.id}</button>
+  }" title="Open the Work Item Details panel">${item.id}</button>
       <span class="compact-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
       ${stateButton(item.id, item.state)}
     </div>
