@@ -86,8 +86,8 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
   private myId?: Promise<string>;
   /** Whether each PR changes the build notes file, by head commit: asked again only after a push */
   private readonly buildNotesCache = new BuildNotesDiffCache();
-  /** Threads of the completed PRs by id: they barely change, so they are fetched once */
-  private readonly completedThreads = new Map<number, PullRequestExtras['threads']>();
+  /** Threads and linked work items of the completed PRs by id: they barely change, so they are fetched once */
+  private readonly completedExtras = new Map<number, Pick<PullRequestExtras, 'threads' | 'workItems'>>();
 
   constructor(private readonly store: WorkItemsStore, private readonly extras: PullRequestExtrasLoader) {}
 
@@ -184,9 +184,9 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
       const notes = this.buildNotesContext();
       this.buildNotesCache.keepOnly(pullRequests.map((pr) => pr.pullRequestId));
       const listedIds = new Set(pullRequests.map((pr) => pr.pullRequestId));
-      [...this.completedThreads.keys()]
+      [...this.completedExtras.keys()]
         .filter((id) => !listedIds.has(id))
-        .forEach((id) => this.completedThreads.delete(id));
+        .forEach((id) => this.completedExtras.delete(id));
       this.data = await Promise.all(
         pullRequests.map(async (pr) => ({
           pr,
@@ -228,15 +228,14 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
     if (!isCompletedWithin(pr, now, completedWindowMs(completedPeriod))) {
       return { runs: [] };
     }
-    const cached = this.completedThreads.get(pr.pullRequestId);
-    if (cached) {
-      return { threads: cached, runs: [] };
-    }
-    const threads = await client.getPullRequestThreads(pr.repository.id, pr.pullRequestId).catch(() => undefined);
-    if (threads) {
-      this.completedThreads.set(pr.pullRequestId, threads);
-    }
-    return { threads, runs: [] };
+    // Only the parts not fetched yet (or that failed) are asked
+    const cached = this.completedExtras.get(pr.pullRequestId) ?? {};
+    const [threads, workItems] = await Promise.all([
+      cached.threads ?? client.getPullRequestThreads(pr.repository.id, pr.pullRequestId).catch(() => undefined),
+      cached.workItems ?? this.extras.fetchWorkItems(client, pr.repository.id, pr.pullRequestId),
+    ]);
+    this.completedExtras.set(pr.pullRequestId, { threads, workItems });
+    return { threads, workItems, runs: [] };
   }
 
   /** Where the PR stands about the build notes rule: the tag costs nothing, the diff one request per push */
