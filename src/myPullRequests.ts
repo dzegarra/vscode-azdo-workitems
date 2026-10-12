@@ -14,6 +14,7 @@ import type { RunModel } from './pipelines';
 import { buildTimeline, publishedAt, Timeline } from './pullRequestTimeline';
 import type { ThreadResponse } from './reviewThreads';
 import { PullRequestReviewer, pullRequestStatus, PullRequestTone } from './workItemLinks';
+import { DEFAULT_WORKING_DAYS, workingMsBetween } from './workingTime';
 
 const MS_PER_MINUTE = 60 * 1000;
 const MS_PER_HOUR = 60 * MS_PER_MINUTE;
@@ -483,6 +484,8 @@ export interface ListOptions {
   completedPeriod?: CompletedPeriod;
   minimumRequiredReviewers: number;
   buildNotes?: BuildNotesOptions;
+  /** Weekdays that count as waiting time of the published PRs (0 is Sunday); Monday to Friday by default */
+  workingDays?: readonly number[];
 }
 
 /** Completed no longer than windowMs ago (a window of 0 matches nothing) */
@@ -500,9 +503,15 @@ function waitingSince({ pr, extras }: AuthoredPullRequestData): string {
   return pr.isDraft ? pr.creationDate : publishedAt(pr, extras.threads);
 }
 
+/** How long the PR has been waiting: working time once published (as the reviewers see it), calendar time for a draft */
+function waitingTime(data: AuthoredPullRequestData, now: Date, workingDays: readonly number[]): string {
+  const since = new Date(waitingSince(data));
+  return formatAge(data.pr.isDraft ? now.getTime() - since.getTime() : workingMsBetween(since, now, workingDays));
+}
+
 function toModel(
   { pr, extras }: AuthoredPullRequestData,
-  { now, baseBranch, minimumRequiredReviewers, buildNotes, formatDate }: ListOptions
+  { now, baseBranch, minimumRequiredReviewers, buildNotes, formatDate, workingDays = DEFAULT_WORKING_DAYS }: ListOptions
 ): MyPullRequestModel {
   const { label, tone } = pullRequestStatus(pr);
   const isCompleted = pr.status === 'completed';
@@ -540,7 +549,7 @@ function toModel(
   const next = nextStep(pr, extras);
   return {
     ...base,
-    time: formatAge(now.getTime() - Date.parse(waitingSince({ pr, extras }))),
+    time: waitingTime({ pr, extras }, now, workingDays),
     reviewers: reviewerModels(pr),
     unresolved: extras.unresolvedThreads,
     conflicts: pr.mergeStatus === 'conflicts',

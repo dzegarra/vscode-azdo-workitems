@@ -18,6 +18,7 @@ import {
 } from './reviewRequests';
 
 const ME = 'me';
+const WEEK = [1, 2, 3, 4, 5];
 
 function pr(id: number, overrides: Partial<ReviewerPullRequest> = {}, myVote = 0): ReviewerPullRequest {
   return {
@@ -141,7 +142,7 @@ describe('review requests', () => {
 
   it('tells how urgent each PR is and how much time is left', () => {
     const now = new Date('2026-10-06T10:00:00Z');
-    const rules = { maxWaitHours: 24, dueSoonHours: 6, remindOverdueEveryHours: 4 };
+    const rules = { maxWaitHours: 24, workingDays: WEEK, dueSoonHours: 6, remindOverdueEveryHours: 4 };
     expect(reviewUrgency(request(1, '2026-10-05T10:00:00Z'), now, rules)).toBe('overdue');
     expect(reviewUrgency(request(1, '2026-10-05T16:00:00Z'), now, rules)).toBe('dueSoon');
     expect(reviewUrgency(request(1, '2026-10-05T16:00:01Z'), now, rules)).toBe('fresh');
@@ -163,6 +164,47 @@ describe('review requests', () => {
     ]);
     expect(describeReviews(models)).toBe('3 pull requests are waiting for your review: 1 overdue, 1 due soon');
     expect(describeReviews(models.slice(2))).toBe('1 pull request is waiting for your review');
+  });
+});
+
+describe('waiting time over a weekend', () => {
+  const rules: ReviewRules = { maxWaitHours: 24, workingDays: WEEK, dueSoonHours: 6, remindOverdueEveryHours: 4 };
+  // Local dates: Friday 9 October 2026, 15:00
+  const published = new Date(2026, 9, 9, 15).toISOString();
+
+  it('does not count the weekend: published Friday 15:00, on Monday 12:00 it has waited 21 h', () => {
+    const [model] = toReviewModels([request(1, published)], new Date(2026, 9, 12, 12), rules);
+    expect(model).toMatchObject({
+      urgency: 'dueSoon',
+      timeLeft: '3 h left',
+      waited: '21 h',
+      barCaption: '21 h of 24 h',
+      waitedHours: 21,
+    });
+    expect(model.dueText).toContain('15:00');
+  });
+
+  it('is overdue from Monday 15:00', () => {
+    expect(reviewUrgency(request(1, published), new Date(2026, 9, 12, 15), rules)).toBe('overdue');
+    expect(reviewUrgency(request(1, published), new Date(2026, 9, 12, 14, 59), rules)).toBe('dueSoon');
+  });
+
+  it('is the calendar time when every day is a working day', () => {
+    const allDays = { ...rules, workingDays: [0, 1, 2, 3, 4, 5, 6] };
+    expect(reviewUrgency(request(1, published), new Date(2026, 9, 12, 12), allDays)).toBe('overdue');
+  });
+
+  it('does not remind about an overdue PR over the weekend', () => {
+    const overdue = request(1, new Date(2026, 9, 8, 10).toISOString());
+    const friday = new Date(2026, 9, 9, 22);
+    const { stored } = detectReviewEvents(undefined, [overdue], friday, rules);
+    const sunday = new Date(2026, 9, 11, 20);
+    expect(detectReviewEvents(stored, [overdue], sunday, rules).events).toEqual([]);
+    // 2 h of Friday evening count, then 2 more on Monday morning make the 4 h
+    expect(detectReviewEvents(stored, [overdue], new Date(2026, 9, 12, 1, 59), rules).events).toEqual([]);
+    expect(detectReviewEvents(stored, [overdue], new Date(2026, 9, 12, 2), rules).events).toEqual([
+      { kind: 'overdue', request: overdue },
+    ]);
   });
 });
 
@@ -207,7 +249,7 @@ describe('publication from draft', () => {
 });
 
 describe('review events', () => {
-  const rules: ReviewRules = { maxWaitHours: 24, dueSoonHours: 6, remindOverdueEveryHours: 4 };
+  const rules: ReviewRules = { maxWaitHours: 24, workingDays: WEEK, dueSoonHours: 6, remindOverdueEveryHours: 4 };
   const now = new Date('2026-10-06T10:00:00Z');
   const fresh = request(1, '2026-10-06T09:00:00Z');
   const dueSoon = request(2, '2026-10-05T15:00:00Z');
@@ -275,14 +317,14 @@ describe('review events', () => {
   });
 
   it('describes the events', () => {
-    expect(describeReviewEvent({ kind: 'requested', request: fresh }, now, 24)).toBe(
-      'You are a required reviewer of PR 1 by Ana: PR title 1'
-    );
-    expect(describeReviewEvent({ kind: 'dueSoon', request: dueSoon }, now, 24)).toBe(
-      '5 h left to review PR 2 by Ana: PR title 2'
-    );
-    expect(describeReviewEvent({ kind: 'overdue', request: overdue }, now, 24)).toBe(
-      'PR 3 by Ana is overdue by 2 h (waiting for your review for 1 d 2 h): PR title 3'
-    );
+    expect(
+      describeReviewEvent({ kind: 'requested', request: fresh }, now, { maxWaitHours: 24, workingDays: WEEK })
+    ).toBe('You are a required reviewer of PR 1 by Ana: PR title 1');
+    expect(
+      describeReviewEvent({ kind: 'dueSoon', request: dueSoon }, now, { maxWaitHours: 24, workingDays: WEEK })
+    ).toBe('5 h left to review PR 2 by Ana: PR title 2');
+    expect(
+      describeReviewEvent({ kind: 'overdue', request: overdue }, now, { maxWaitHours: 24, workingDays: WEEK })
+    ).toBe('PR 3 by Ana is overdue by 2 h (waiting for your review for 1 d 2 h): PR title 3');
   });
 });

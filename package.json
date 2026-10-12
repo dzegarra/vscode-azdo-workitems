@@ -789,7 +789,31 @@
           "type": "number",
           "default": 24,
           "minimum": 1,
-          "description": "Hours a pull request may wait for reviewers (team rule), counted from its publication. Overdue PRs are shown in red."
+          "description": "Hours a pull request may wait for reviewers (team rule), counted from its publication, on working days only (see Working Days). Overdue PRs are shown in red."
+        },
+        "totalflowx.reviews.workingDays": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "mon",
+              "tue",
+              "wed",
+              "thu",
+              "fri",
+              "sat",
+              "sun"
+            ]
+          },
+          "uniqueItems": true,
+          "default": [
+            "mon",
+            "tue",
+            "wed",
+            "thu",
+            "fri"
+          ],
+          "description": "Days on which the waiting time of pull requests counts (team rule: 24 h of working time). Weekends are not counted by default. All 24 hours of a working day count; days off and public holidays are not handled."
         },
         "totalflowx.reviews.dueSoonHours": {
           "type": "number",

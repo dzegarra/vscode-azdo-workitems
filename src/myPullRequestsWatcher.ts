@@ -4,7 +4,7 @@ import { access } from 'node:fs/promises';
 import * as path from 'node:path';
 import { AzdoClient } from './azdoClient';
 import { BuildNotesDiffCache, BuildNotesStatus, checkPullRequestNotes } from './buildNotes';
-import { buildNotesSettings, resolveContext, SECTION, settings } from './config';
+import { buildNotesSettings, resolveContext, SECTION, settings, workingDaysSetting } from './config';
 import {
   AuthoredPullRequest,
   AuthoredPullRequestData,
@@ -104,6 +104,7 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
       showDrafts,
       completedPeriod,
       minimumRequiredReviewers,
+      workingDays: workingDaysSetting(),
       buildNotes: buildNotesSettings(),
     });
     return {

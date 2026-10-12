@@ -7,6 +7,7 @@ import { parseAzdoRemote } from './repoContext';
 import { parseCheckoutMode } from './worktrees';
 import { DEFAULT_COMPLETED_STATES } from './predecessors';
 import { DEFAULT_STATE_ORDER } from './states';
+import { parseWorkingDays } from './workingTime';
 
 export const SECTION = 'totalflowx';
 
@@ -73,6 +74,11 @@ export function buildNotesSettings(): BuildNotesOptions {
     path: normalizeRepoPath(config.get<string>('path', '')) || DEFAULT_BUILD_NOTES_OPTIONS.path,
     skipTag: config.get<string>('skipTag', '').trim() || DEFAULT_BUILD_NOTES_OPTIONS.skipTag,
   };
+}
+
+/** Weekdays whose time counts as waiting time of pull requests (setting totalflowx.reviews.workingDays) */
+export function workingDaysSetting(): number[] {
+  return parseWorkingDays(vscode.workspace.getConfiguration(`${SECTION}.reviews`).get<string[]>('workingDays'));
 }
 
 /** Coverage levels: below `minimum` is low, from `target` is good, from `excellent` is excellent */

@@ -1,6 +1,7 @@
 /** Pull requests waiting for the user's review, and the notifications about them. Pure, so no "vscode" import */
 import type { ReviewDetails } from './reviewCard';
 import { describeBarCaption, describeBarValue, describeDue } from './reviewDue';
+import { addWorkingMs, workingMsBetween } from './workingTime';
 
 export interface ReviewerPullRequest {
   pullRequestId: number;
@@ -149,7 +150,10 @@ const HOURS_PER_DAY = 24;
 
 /** Team rule on how long PRs may wait for reviewers, and when to remind the user */
 export interface ReviewRules {
+  /** Hours of working time a PR may wait (see workingDays) */
   maxWaitHours: number;
+  /** Weekdays whose time counts as waiting time (0 is Sunday… 6 is Saturday); all 24 hours of such a day count */
+  workingDays: number[];
   /** Hours before the maximum wait when a PR is due soon */
   dueSoonHours: number;
   /** While a PR is overdue, how often it is notified again; 0: only once */
@@ -159,21 +163,30 @@ export interface ReviewRules {
 /** "fresh": time left; "dueSoon": close to the maximum wait; "overdue": over it */
 export type ReviewUrgency = 'dueSoon' | 'fresh' | 'overdue';
 
-export function waitingMs(request: Pick<ReviewRequest, 'publishedAt'>, now: Date): number {
-  return Math.max(0, now.getTime() - new Date(request.publishedAt).getTime());
+/** Working time since the PR was published: the weekend does not count (by default) */
+export function waitingMs(
+  request: Pick<ReviewRequest, 'publishedAt'>,
+  now: Date,
+  workingDays: readonly number[]
+): number {
+  return workingMsBetween(new Date(request.publishedAt), now, workingDays);
 }
 
 /** Negative when the PR is overdue */
-export function timeLeftMs(request: Pick<ReviewRequest, 'publishedAt'>, now: Date, maxWaitHours: number): number {
-  return maxWaitHours * MS_PER_HOUR - waitingMs(request, now);
+export function timeLeftMs(
+  request: Pick<ReviewRequest, 'publishedAt'>,
+  now: Date,
+  rules: Pick<ReviewRules, 'maxWaitHours' | 'workingDays'>
+): number {
+  return rules.maxWaitHours * MS_PER_HOUR - waitingMs(request, now, rules.workingDays);
 }
 
 export function reviewUrgency(
   request: Pick<ReviewRequest, 'publishedAt'>,
   now: Date,
-  rules: Pick<ReviewRules, 'dueSoonHours' | 'maxWaitHours'>
+  rules: Pick<ReviewRules, 'dueSoonHours' | 'maxWaitHours' | 'workingDays'>
 ): ReviewUrgency {
-  const left = timeLeftMs(request, now, rules.maxWaitHours);
+  const left = timeLeftMs(request, now, rules);
   if (left <= 0) {
     return 'overdue';
   }
@@ -195,8 +208,12 @@ export function formatWait(ms: number): string {
 }
 
 /** "5 h left" or "overdue by 3 h" */
-export function describeTimeLeft(request: Pick<ReviewRequest, 'publishedAt'>, now: Date, maxWaitHours: number): string {
-  const left = timeLeftMs(request, now, maxWaitHours);
+export function describeTimeLeft(
+  request: Pick<ReviewRequest, 'publishedAt'>,
+  now: Date,
+  rules: Pick<ReviewRules, 'maxWaitHours' | 'workingDays'>
+): string {
+  const left = timeLeftMs(request, now, rules);
   return left > 0 ? `${formatWait(left)} left` : `overdue by ${formatWait(-left)}`;
 }
 
@@ -235,10 +252,10 @@ export function toReviewModels(
   timeZone?: string
 ): ReviewRequestModel[] {
   return requests.map((request) => {
-    const waited = waitingMs(request, now);
-    const left = timeLeftMs(request, now, rules.maxWaitHours);
-    const timeLeft = describeTimeLeft(request, now, rules.maxWaitHours);
-    const due = new Date(new Date(request.publishedAt).getTime() + rules.maxWaitHours * MS_PER_HOUR);
+    const waited = waitingMs(request, now, rules.workingDays);
+    const left = timeLeftMs(request, now, rules);
+    const timeLeft = describeTimeLeft(request, now, rules);
+    const due = addWorkingMs(new Date(request.publishedAt), rules.maxWaitHours * MS_PER_HOUR, rules.workingDays);
     const dueText = describeDue(due, now, timeZone);
     return {
       ...request,
@@ -321,8 +338,10 @@ export function detectReviewEvents(
       // Already overdue or due soon when added (e.g. a reviewer added late): only notified as new
       events.push({ kind: 'requested', request });
     } else if (previous && urgency === 'overdue') {
+      // Working time too: no reminders pile up over the weekend
       const remindAfter = rules.remindOverdueEveryHours * MS_PER_HOUR;
-      const remind = !!lastOverdue && remindAfter > 0 && now.getTime() - new Date(lastOverdue).getTime() >= remindAfter;
+      const sinceLast = lastOverdue ? workingMsBetween(new Date(lastOverdue), now, rules.workingDays) : 0;
+      const remind = !!lastOverdue && remindAfter > 0 && sinceLast >= remindAfter;
       if (!lastOverdue || remind) {
         events.push({ kind: 'overdue', request });
       }
@@ -341,7 +360,11 @@ export function detectReviewEvents(
   return { events, digest, stored };
 }
 
-export function describeReviewEvent(event: ReviewEvent, now: Date, maxWaitHours: number): string {
+export function describeReviewEvent(
+  event: ReviewEvent,
+  now: Date,
+  rules: Pick<ReviewRules, 'maxWaitHours' | 'workingDays'>
+): string {
   const { request } = event;
   const pr = `PR ${request.id} by ${request.author}`;
   switch (event.kind) {
@@ -351,10 +374,10 @@ export function describeReviewEvent(event: ReviewEvent, now: Date, maxWaitHours:
       return `You are ${role} of ${pr}: ${request.title}`;
     }
     case 'dueSoon':
-      return `${describeTimeLeft(request, now, maxWaitHours)} to review ${pr}: ${request.title}`;
+      return `${describeTimeLeft(request, now, rules)} to review ${pr}: ${request.title}`;
     case 'overdue':
-      return `${pr} is ${describeTimeLeft(request, now, maxWaitHours)} (waiting for your review for ${formatWait(
-        waitingMs(request, now)
+      return `${pr} is ${describeTimeLeft(request, now, rules)} (waiting for your review for ${formatWait(
+        waitingMs(request, now, rules.workingDays)
       )}): ${request.title}`;
   }
 }

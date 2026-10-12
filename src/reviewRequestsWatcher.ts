@@ -1,7 +1,7 @@
 import { withFeature } from './requestContext';
 import * as vscode from 'vscode';
 import { AzdoClient } from './azdoClient';
-import { resolveContext, SECTION, settings as extensionSettings } from './config';
+import { resolveContext, SECTION, settings as extensionSettings, workingDaysSetting } from './config';
 import { myPullRequestSettings } from './myPullRequestsWatcher';
 import type { PullRequestExtras } from './myPullRequests';
 import type { PullRequestExtrasLoader } from './pullRequestExtras';
@@ -68,6 +68,7 @@ export function reviewSettings(): ReviewRules & {
     includeOptional: config.get<boolean>('includeOptional', false),
     layout: config.get<Layout>('layout', 'compact') === 'large' ? 'large' : 'compact',
     maxWaitHours: config.get<number>('maxWaitHours', 24),
+    workingDays: workingDaysSetting(),
     dueSoonHours: config.get<number>('dueSoonHours', 6),
     remindOverdueEveryHours: config.get<number>('remindOverdueEveryHours', 4),
     notifications: config.get<ReviewNotification[]>('notifications', [
@@ -391,7 +392,7 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
 
   /** "Open PR", and "Checkout" when the PR belongs to the repository open in VS Code */
   private async show(event: ReviewEvent): Promise<void> {
-    const message = describeReviewEvent(event, new Date(), reviewSettings().maxWaitHours);
+    const message = describeReviewEvent(event, new Date(), reviewSettings());
     const model = this.models().find((request) => request.id === event.request.id);
     const actions = ['Open PR', ...(model?.canCheckout && !model.isCurrentBranch ? ['Checkout'] : [])];
     const picked =

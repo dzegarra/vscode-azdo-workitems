@@ -76,7 +76,7 @@ By default the view lists your work items in the current iteration of **every te
 The **My Pull Requests** box, above your work items, lists the pull requests you created, in all the repositories of the project: the active ones (drafts included; **Hide drafts** in its header, or `totalflowx.myPullRequests.showDrafts`) and, faded, the ones completed in the chosen period (last 24 hours by default). Each card shows:
 
 - the PR, its status, the target branch when it is not `develop`, and its linked work items (click one to open its Work Item Details panel);
-- how long it has been published (since its creation for drafts). Hover it, or focus it with the keyboard, to see the history of the PR: creation, publication, pushes, reviewers added, votes, comments, auto-complete, completion;
+- how long it has been published, counting working days only like the reviewers' time (since its creation, in calendar time, for drafts). Hover it, or focus it with the keyboard, to see the history of the PR: creation, publication, pushes, reviewers added, votes, comments, auto-complete, completion;
 - the reviewers with their votes (required ones marked);
 - unresolved comments, conflicts, CI runs (only when the PR has some) and an **Auto-complete** pill;
 - warnings when auto-complete will **not delete the branch** (team rule: branches are deleted after merging), and, in red, when it will **complete a linked Bug**: "Auto-complete shouldn't complete the linked Bug: Only testers have that prerogative.";
@@ -224,7 +224,7 @@ Your own comments, votes and reviewer changes, system messages and vote resets a
 
 ## Pull requests waiting for my review
 
-No PR should wait for its reviewers more than 24 hours. The extension makes sure you do not miss the PRs where you are a **required reviewer** and have not voted yet.
+No PR should wait for its reviewers more than 24 hours **of working time**: only working days count (Monday to Friday by default, `totalflowx.reviews.workingDays`; all 24 hours of a working day count), so a PR published on Friday at 15:00 is due on Monday at 15:00. Days off and public holidays are not taken into account. The extension makes sure you do not miss the PRs where you are a **required reviewer** and have not voted yet.
 
 **In the sidebar**, a section at the top of _Assigned to Me_ lists them, most urgent first. Each card shows the time left before the 24 hours run out ("18 h left", "5 h left", "overdue by 3 h"), the PR, its author, and a labelled bar of the time waited out of the limit with the due time (`⏱ 19 h of 24 h · due today 14:30`). The last 6 hours are marked on the bar, which turns orange when the PR is due soon and red with stripes once it is overdue; a card pulses once when it changes level. Each card also shows what you need to review it: the PR status, the target branch when it is not `develop`, the linked work items (click one to open its Work Item Details panel), the reviewers and their votes (you first), unresolved comments, conflicts, CI runs (failed tests, coverage), auto-complete and how many files changed. Hover the time left to see the history of the PR. It also tells you:
 
@@ -235,11 +235,11 @@ No PR should wait for its reviewers more than 24 hours. The extension makes sure
 
 Click the title to open the PR in Azure DevOps, or **Checkout** to review it locally: the branch of the PR is fetched and checked out (and pulled when your local copy of it is behind). **Checkout** is also offered by the notifications, and by **Check Out a Pull Request Waiting for My Review** in the command palette. It is only available for the PRs of the repository open in VS Code.
 
-| Colour | When                                                                    |
-| ------ | ----------------------------------------------------------------------- |
-| Blue   | Time left                                                               |
-| Orange | Due soon: less than 6 hours left (`totalflowx.reviews.dueSoonHours`)    |
-| Red    | Overdue: waiting more than 24 hours (`totalflowx.reviews.maxWaitHours`) |
+| Colour | When                                                                                                                      |
+| ------ | ------------------------------------------------------------------------------------------------------------------------- |
+| Blue   | Time left                                                                                                                 |
+| Orange | Due soon: less than 6 hours left (`totalflowx.reviews.dueSoonHours`)                                                      |
+| Red    | Overdue: waiting more than 24 hours of working time (`totalflowx.reviews.maxWaitHours`, `totalflowx.reviews.workingDays`) |
 
 The section takes the colour of the most urgent PR and counts the overdue and due soon ones. It can be collapsed; it opens again when a new PR arrives. The badge of the activity bar icon (carried by the [Summary view](#summary-view)) counts these PRs, together with the work items that need attention.
 

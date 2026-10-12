@@ -438,8 +438,10 @@ describe('toMyPullRequestModels', () => {
       toMyPullRequestModels([data({ creationDate: '2026-10-01T12:00:00Z', ...pr }, { threads })], options).items[0]
         .time;
     expect(time({}, [published])).toBe('3 h');
-    expect(time({})).toBe('6 d 0 h');
-    expect(time({}, [])).toBe('6 d 0 h');
+    // Published PRs count working days only: the weekend of 3-4 October is left out
+    expect(time({})).toBe('4 d 0 h');
+    expect(time({}, [])).toBe('4 d 0 h');
+    // Drafts: calendar time
     expect(time({ isDraft: true }, [])).toBe('6 d 0 h');
     // Back to draft after being published: still the creation
     expect(time({ isDraft: true }, [published])).toBe('6 d 0 h');
