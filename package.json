@@ -419,6 +419,30 @@
           "default": true,
           "description": "List the work items you are working on in a \"Working on\" section at the top of the list, instead of in their iteration group (they keep their highlight)."
         },
+        "totalflowx.workingOn.animation": {
+          "type": "string",
+          "enum": [
+            "none",
+            "borderLight",
+            "runningBorder",
+            "glow",
+            "stripes"
+          ],
+          "enumDescriptions": [
+            "No card animation.",
+            "A soft bright band travels down the thick blue left border every ~3 s, like the progress bar of VS Code.",
+            "A short bright segment runs around the whole card border every ~4 s.",
+            "A soft blue halo behind the card breathes in and out over ~3 s.",
+            "Diagonal stripes slide inside the \"Working on\" badge, like a busy progress bar."
+          ],
+          "default": "none",
+          "markdownDescription": "Animation of the card of the work item you are working on (checked out in this window; \"In worktree\" cards never animate). Off by default: the sidebar is always visible and motion distracts. Nothing animates when the system asks for reduced motion."
+        },
+        "totalflowx.workingOn.pulseBadge": {
+          "type": "boolean",
+          "default": true,
+          "description": "A halo expands from the \"Working on\" badge (and from the dot of the compact row) and fades out every ~2 s, like a recording light. Independent from the card animation. Nothing animates when the system asks for reduced motion."
+        },
         "totalflowx.stateOrder": {
           "type": "array",
           "items": {

@@ -416,6 +416,21 @@ button {
   background: var(--card-hover);
 }
 
+/* Hover on the work item and PR tiles: eased in and out instead of switching at once */
+.card,
+.review,
+.mypr {
+  transition: background-color 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .review,
+  .mypr {
+    transition: none;
+  }
+}
+
 /*
  * Work items being worked on. "here" (checked out in this window) is the strongest: blue accent (the focus colour,
  * which is not the red of the alerts nor the green of "ready to merge"), thick border, tint and a solid badge.
@@ -500,6 +515,158 @@ button {
 
 .signal.tone-working-worktree {
   --pill-color: var(--working-worktree);
+}
+
+/*
+ * Animations of the card "here" (totalflowx.workingOn.animation) and the pulse of its ● (totalflowx.workingOn.pulseBadge).
+ * The classes sit on the list (.anim-*, .pulse-badge); only .working-here is animated, never the worktree ones. They
+ * use pseudo-elements that ignore the pointer and take no space, and animate opacity / transform / background-position.
+ * All inside "no-preference": with reduced motion nothing is even created, the look is the static one
+ */
+
+@media (prefers-reduced-motion: no-preference) {
+  .list[class*='anim-'] .card.working-here {
+    position: relative;
+  }
+
+  /* A: a soft bright band travels down the thick left border */
+  .list.anim-borderLight .card.working-here::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    bottom: -1px;
+    left: -5px;
+    width: 5px;
+    border-radius: var(--radius) 0 0 var(--radius);
+    background: linear-gradient(
+        to bottom,
+        transparent 33%,
+        color-mix(in srgb, #ffffff 60%, var(--working-here)) 50%,
+        transparent 67%
+      )
+      0 100% / 100% 300% no-repeat;
+    opacity: 0.8;
+    pointer-events: none;
+    animation: working-border-light 3s ease-in-out infinite;
+  }
+
+  @keyframes working-border-light {
+    from {
+      background-position: 0 100%;
+    }
+
+    to {
+      background-position: 0 0;
+    }
+  }
+
+  /*
+   * C: a light runs around the border at a constant speed: a short comet (.run-track > span, added by the webview with
+   * its duration from the card's perimeter) moves along the border (offset-path) inside a ring that covers the card's
+   * border exactly (mask), so it is as thick as the 5px left border when it runs down that side
+   */
+  .list.anim-runningBorder .card.working-here > .run-track {
+    position: absolute;
+    inset: -1px;
+    left: -5px;
+    box-sizing: border-box;
+    padding: 2px;
+    padding-left: 5px;
+    border-radius: var(--radius);
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    pointer-events: none;
+  }
+
+  .list.anim-runningBorder .card.working-here > .run-track > span {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 70px;
+    height: 14px;
+    border-radius: 7px;
+    background: linear-gradient(
+      to right,
+      transparent,
+      color-mix(in srgb, #ffffff 55%, var(--working-here)) 85%,
+      transparent
+    );
+    opacity: 0.85;
+    offset-path: inset(0 round var(--radius));
+    offset-rotate: auto;
+    animation: working-running-light var(--run-duration, 4s) linear var(--run-delay, 0s) infinite;
+  }
+
+  @keyframes working-running-light {
+    from {
+      offset-distance: 0%;
+    }
+
+    to {
+      offset-distance: 100%;
+    }
+  }
+
+  /* D: a blue halo around the card breathes (the shadow is static, only its opacity changes) */
+  .list.anim-glow .card.working-here::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius);
+    box-shadow: 0 0 12px 2px color-mix(in srgb, var(--working-here) 75%, transparent);
+    opacity: 0.15;
+    pointer-events: none;
+    animation: working-glow 3s ease-in-out infinite;
+  }
+
+  @keyframes working-glow {
+    50% {
+      opacity: 0.85;
+    }
+  }
+
+  /* E: diagonal stripes slide inside the badge */
+  .list.anim-stripes .pill.working-pill.working-here {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .list.anim-stripes .pill.working-pill.working-here::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.16) 25%,
+        transparent 25% 50%,
+        rgba(255, 255, 255, 0.16) 50% 75%,
+        transparent 75%
+      )
+      0 0 / 16px 16px;
+    pointer-events: none;
+    animation: working-stripes 1.2s linear infinite;
+  }
+
+  @keyframes working-stripes {
+    to {
+      background-position: 16px 0;
+    }
+  }
+
+  /* B: a halo expands from the whole badge and fades out (the dot of the compact row, which has no badge, likewise) */
+  .list.pulse-badge .pill.working-pill.working-here,
+  .list.pulse-badge .card.working-here .working-dot {
+    animation: working-pulse 2s ease-out infinite;
+  }
+
+  @keyframes working-pulse {
+    from {
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--working-here) 70%, transparent);
+    }
+
+    to {
+      box-shadow: 0 0 0 7px color-mix(in srgb, var(--working-here) 0%, transparent);
+    }
+  }
 }
 
 /* "Working on" section: a tinted band with a bold heading, unlike the framed panels and the plain iteration headers */
@@ -3113,4 +3280,36 @@ button.action-menu-item:focus-visible .action-menu-detail {
 
 .reviewer-more {
   color: var(--muted);
+}
+
+/*
+ * Switch between compact and large (and a compact row unfolded / folded back): the cards and PR rows morph from their
+ * old form to the new one (View Transitions, names set by the webview only during the switch). Short, and clipped to
+ * the card so the old and new contents do not spill out while the size changes. Nothing moves with reduced motion
+ */
+::view-transition-group(*) {
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+::view-transition-group(root) {
+  animation-duration: 180ms;
+}
+
+::view-transition-image-pair(*) {
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: 160ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none;
+  }
 }

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { linkCandidates, splitWorkingOn, WorkingOnEntry, workingOnBadge, workingOnLevels } from './workingOn';
+import {
+  linkCandidates,
+  normalizeWorkingOnAnimation,
+  splitWorkingOn,
+  WorkingOnEntry,
+  workingOnAnimationClasses,
+  workingOnBadge,
+  workingOnLevels,
+} from './workingOn';
 import { otherWorktreeBranches, Worktree } from './worktrees';
 
 function entry(
@@ -209,5 +217,21 @@ describe('linkCandidates', () => {
     expect(linkCandidates([titled(entry(1)), titled(entry(2))], 1, BRANCH)).toEqual([
       { id: 2, title: 'Item 2', type: 'Product Backlog Item', likely: false },
     ]);
+  });
+});
+
+describe('working on animation', () => {
+  it('maps the settings to CSS classes', () => {
+    expect(workingOnAnimationClasses('none', false)).toEqual([]);
+    expect(workingOnAnimationClasses('none', true)).toEqual(['pulse-badge']);
+    expect(workingOnAnimationClasses('borderLight', false)).toEqual(['anim-borderLight']);
+    expect(workingOnAnimationClasses('stripes', true)).toEqual(['anim-stripes', 'pulse-badge']);
+  });
+
+  it('falls back to no animation for unknown values', () => {
+    expect(normalizeWorkingOnAnimation('glow')).toBe('glow');
+    expect(normalizeWorkingOnAnimation('runningBorder')).toBe('runningBorder');
+    expect(normalizeWorkingOnAnimation('disco')).toBe('none');
+    expect(normalizeWorkingOnAnimation(undefined)).toBe('none');
   });
 });

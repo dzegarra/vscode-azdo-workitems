@@ -14,7 +14,7 @@ import type { TaskBranchModel } from './taskBranches';
 import type { TaskPullRequestModel } from './taskPullRequests';
 import { isFinishedState } from './states';
 import type { PullRequestTone } from './workItemLinks';
-import type { WorkingOnLevel } from './workingOn';
+import type { WorkingOnAnimation, WorkingOnLevel } from './workingOn';
 
 export interface PullRequestModel {
   id: number;
@@ -165,6 +165,10 @@ export interface WorkingOnViewModel {
   ignoreFilters: boolean;
   /** They are moved to a "Working on" section at the top of the list */
   section: boolean;
+  /** Animation of the "here" cards (totalflowx.workingOn.animation) */
+  animation: WorkingOnAnimation;
+  /** The ● of the "here" badge and dot pulses (totalflowx.workingOn.pulseBadge) */
+  pulseBadge: boolean;
 }
 
 export interface CoverageViewModel {

@@ -41,8 +41,8 @@ export function filterSettings(): FilterModel {
 }
 
 export function workingOnSettings(): ViewModel['workingOn'] {
-  const { ignoreFilters, section } = settings().workingOn;
-  return { ignoreFilters, section };
+  const { ignoreFilters, section, animation, pulseBadge } = settings().workingOn;
+  return { ignoreFilters, section, animation, pulseBadge };
 }
 
 export const LAYOUT_CONTEXT = 'totalflowx.layout';

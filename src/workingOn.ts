@@ -6,6 +6,20 @@ import { branchBelongsToWorkItem } from './naming';
 
 export type WorkingOnLevel = 'here' | 'worktree';
 
+export const WORKING_ON_ANIMATIONS = ['none', 'borderLight', 'runningBorder', 'glow', 'stripes'] as const;
+/** totalflowx.workingOn.animation: what the card of a work item being worked on "here" does */
+export type WorkingOnAnimation = (typeof WORKING_ON_ANIMATIONS)[number];
+
+/** Unknown values (a typo in settings.json) mean no animation */
+export function normalizeWorkingOnAnimation(value: string | undefined): WorkingOnAnimation {
+  return WORKING_ON_ANIMATIONS.find((animation) => animation === value) ?? 'none';
+}
+
+/** CSS classes (on the list) that switch the animations on; the stylesheet only animates the "here" cards */
+export function workingOnAnimationClasses(animation: WorkingOnAnimation, pulseBadge: boolean): string[] {
+  return [animation === 'none' ? '' : `anim-${animation}`, pulseBadge ? 'pulse-badge' : ''].filter(Boolean);
+}
+
 /** The part of a work item entry the levels are computed from */
 export interface WorkingOnEntry {
   workItem: { id: number; links: { branches: { name: string }[] } };

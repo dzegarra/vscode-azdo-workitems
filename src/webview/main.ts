@@ -33,7 +33,7 @@ import { describeTaskBranch, TaskBranchModel } from '../taskBranches';
 import { TaskPullRequestModel } from '../taskPullRequests';
 import { actionMenuId, renderActionMenu } from '../actionMenuHtml';
 import { taskMenuSections, taskPill, TaskPill } from '../taskMenu';
-import { splitWorkingOn, workingOnBadge } from '../workingOn';
+import { splitWorkingOn, workingOnAnimationClasses, workingOnBadge } from '../workingOn';
 import type { CompletedPeriod } from '../myPullRequests';
 import type {
   CheckoutKind,
@@ -1506,7 +1506,7 @@ function renderCompactMyPullRequest(pr: MyPullRequestModel): string {
   const signals = myPullRequestCompactSignals(pr).map(renderPrSignal).join('');
   return `<li class="mypr compact tone-${pr.tone}${pr.isCompleted ? ' completed' : ''}${
     pr.readyToMerge ? ' ready-to-merge' : ''
-  }" data-action="toggleMyPullRequestRow" data-id="${pr.id}">
+  }" data-mypr="${pr.id}" data-action="toggleMyPullRequestRow" data-id="${pr.id}">
     <div class="compact-head">
       ${rowChevron('toggleMyPullRequestRow', pr.id, false, `pull request ${pr.id}`)}
       <button class="link id" data-action="openMyPullRequest" data-url="${escapeHtml(
@@ -1549,7 +1549,7 @@ function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean, fo
   );
   return `<li class="mypr tone-${pr.tone}${pr.isCompleted ? ' completed' : ''}${
     pr.readyToMerge ? ' ready-to-merge' : ''
-  }">
+  }" data-mypr="${pr.id}">
     <div class="mypr-head${foldable ? ` foldable" data-action="toggleMyPullRequestRow" data-id="${pr.id}` : ''}">
       ${foldable ? rowChevron('toggleMyPullRequestRow', pr.id, true, `pull request ${pr.id}`) : ''}
       <button class="link id" data-action="openMyPullRequest" data-url="${escapeHtml(pr.url)}"
@@ -1718,6 +1718,35 @@ function sizePhaseTimelines(): void {
     timeline.querySelectorAll<HTMLElement>('.phase-dot').forEach((dot) => {
       dot.style.left = `${eventPosition(Number(dot.dataset.share), shares, bands) * 100}%`;
     });
+  });
+}
+
+/** Speed of the light of the "runningBorder" animation, the same on every card whatever its size */
+const RUNNING_LIGHT_PX_PER_S = 220;
+
+/**
+ * "runningBorder": a light that follows the border of the "here" cards at a constant speed. It moves along the border
+ * (offset-path), so its duration depends on the card's perimeter (CSSOM: the CSP blocks inline styles); the delay keeps
+ * its position across re-renders instead of restarting it
+ */
+function placeRunningLights(): void {
+  const list = document.getElementById('list');
+  if (!list?.classList.contains('anim-runningBorder')) {
+    return;
+  }
+  list.querySelectorAll<HTMLElement>('.card.working-here').forEach((card) => {
+    let track = card.querySelector<HTMLElement>(':scope > .run-track');
+    if (!track) {
+      track = document.createElement('span');
+      track.className = 'run-track';
+      track.setAttribute('aria-hidden', 'true');
+      track.append(document.createElement('span'));
+      card.append(track);
+    }
+    const perimeter = 2 * (card.offsetWidth + card.offsetHeight);
+    const seconds = Math.max(1.5, perimeter / RUNNING_LIGHT_PX_PER_S);
+    track.style.setProperty('--run-duration', `${seconds}s`);
+    track.style.setProperty('--run-delay', `${-((performance.now() / 1000) % seconds)}s`);
   });
 }
 
@@ -1931,7 +1960,12 @@ function render(): void {
   (document.getElementById('filters') as HTMLElement).innerHTML =
     filtersExpanded && cardItems(model).length ? renderFilters(model) : '';
   renderFiltersToggle(model);
-  (document.getElementById('list') as HTMLElement).innerHTML = renderList(model);
+  const list = document.getElementById('list') as HTMLElement;
+  // Animations of the "here" cards and the pulse of their ● are switched by classes (strict CSP: no inline styles)
+  list.className = ['list', ...workingOnAnimationClasses(model.workingOn.animation, model.workingOn.pulseBadge)].join(
+    ' '
+  );
+  list.innerHTML = renderList(model);
   (document.getElementById('list-tools') as HTMLElement).innerHTML = renderListTools(model);
   (document.getElementById('reviews') as HTMLElement).innerHTML = renderReviews(model);
   (document.getElementById('my-prs') as HTMLElement).innerHTML = renderMyPullRequests(model);
@@ -1939,6 +1973,7 @@ function render(): void {
   sizePhaseTimelines();
   pulseChangedReviews(model);
   sizeTaskBars();
+  placeRunningLights();
   // The row of an open menu may be gone (folded list, filtered out, nothing left to do): no orphan state
   if (openMenu !== undefined && !document.querySelector('.action-menu')) {
     openMenu = undefined;
@@ -2033,6 +2068,67 @@ function toggleFilter(kind: FilterKind, value: string): void {
   saveFilterTimer = setTimeout(() => post({ type: 'setFilter', filter }), SAVE_FILTER_DELAY_MS);
 }
 
+/** Elements that morph between their compact and large forms, with the name of their view transition */
+const MORPHING = [
+  ['card', 'wi'],
+  ['review', 'review'],
+  ['mypr', 'mypr'],
+] as const;
+
+/** View Transitions API (Chromium 111+), not yet in the TypeScript DOM types of this project */
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (update: () => void) => { finished: Promise<void> };
+};
+
+/** Gives every card / PR row a view-transition-name (CSSOM: the CSP blocks inline styles), once each */
+function nameMorphingItems(names: boolean, items = true): void {
+  // The blocks around them slide to their new place too, instead of cross-fading (their text would show twice)
+  [
+    ['reviews', '#reviews'],
+    ['my-prs', '#my-prs'],
+    ['toolbar', '.toolbar'],
+    ['scope', '#scope'],
+    ['filters', '#filters'],
+    ['list', '#list'],
+  ].forEach(([name, selector]) =>
+    document
+      .querySelector<HTMLElement>(selector)
+      ?.style.setProperty('view-transition-name', names ? `block-${name}` : '')
+  );
+  const seen = new Set<string>();
+  MORPHING.forEach(([data, prefix]) => {
+    document.querySelectorAll<HTMLElement>(`[data-${data}]`).forEach((element) => {
+      const name = `${prefix}-${element.dataset[data]}`;
+      // A duplicated name aborts the whole transition: the second one is left out
+      element.style.setProperty('view-transition-name', names && items && !seen.has(name) ? name : '');
+      seen.add(name);
+    });
+  });
+}
+
+/**
+ * Renders again, morphing the cards and PR rows from their old form to the new one (switch between compact and large,
+ * a compact row unfolded or folded back). Uses the View Transitions API; without it, or with reduced motion, the view
+ * is simply rendered. `after` runs once the new view is in the page (e.g. to put the focus back)
+ */
+function renderMorphing(after?: () => void, { items = true }: { items?: boolean } = {}): void {
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const { startViewTransition } = document as ViewTransitionDocument;
+  if (reduced || !startViewTransition) {
+    render();
+    after?.();
+    return;
+  }
+  nameMorphingItems(true, items);
+  const transition = startViewTransition.call(document, () => {
+    render();
+    nameMorphingItems(true, items);
+    after?.();
+  });
+  // The names are only needed during the transition
+  void transition.finished.finally(() => nameMorphingItems(false));
+}
+
 /** The choice of the user wins over the automatic opening caused by task alerts */
 function toggleTasks(id: number): void {
   const item = model?.workItems.find((candidate) => candidate.id === id);
@@ -2047,16 +2143,17 @@ function toggleTasks(id: number): void {
     expandedTasks.add(id);
   }
   saveState();
-  render();
+  // The card grows or shrinks with its tasks; the focus stays on the toggle for keyboard users
+  renderMorphing(() => document.querySelector<HTMLElement>(`.tasks-toggle[data-id="${id}"]`)?.focus());
 }
 
 /** Compact layout: expands a row into the full card, or folds it back */
-function toggleCard(id: number): void {
+function toggleCard(id: number, after?: () => void): void {
   if (!expandedCards.delete(id)) {
     expandedCards.add(id);
   }
   saveState();
-  render();
+  renderMorphing(after);
 }
 
 /** Compact layout of the PR boxes: expands a row into the full card, or folds it back */
@@ -2065,9 +2162,10 @@ function toggleRow(expanded: Set<number>, id: number, chevronAction: string): vo
     expanded.add(id);
   }
   saveState();
-  render();
   // Rendering again drops the focus of the chevron, which keyboard users need to stay on
-  document.querySelector<HTMLElement>(`.card-chevron[data-action="${chevronAction}"][data-id="${id}"]`)?.focus();
+  renderMorphing(() =>
+    document.querySelector<HTMLElement>(`.card-chevron[data-action="${chevronAction}"][data-id="${id}"]`)?.focus()
+  );
 }
 
 /** Layout of a PR box: shown right away; the extension saves it and posts the view again */
@@ -2082,7 +2180,7 @@ function setPanelLayout(panel: PanelId, layout: Layout): void {
   } else {
     return;
   }
-  render();
+  renderMorphing();
   post({ type: 'setPanelLayout', panel, layout });
 }
 
@@ -2096,7 +2194,7 @@ function setTasksExpanded(expanded: boolean): void {
     }
   }
   saveState();
-  render();
+  renderMorphing();
 }
 
 /** Width of the coverage popover, as in the CSS */
@@ -2205,15 +2303,15 @@ document.addEventListener('click', (event) => {
   } else if (action === 'toggleCard' && id) {
     // Rendering again drops the focus of the chevron, which keyboard users need to stay on
     const fromChevron = target.classList.contains('card-chevron');
-    toggleCard(Number(id));
-    if (fromChevron) {
-      document.querySelector<HTMLElement>(`.card-chevron[data-id="${id}"]`)?.focus();
-    }
+    toggleCard(
+      Number(id),
+      fromChevron ? () => document.querySelector<HTMLElement>(`.card-chevron[data-id="${id}"]`)?.focus() : undefined
+    );
   } else if (action === 'setLayout' && (layout === 'compact' || layout === 'large')) {
     // Shown right away; the extension saves it and posts the view again
     if (model && model.layout !== layout) {
       model = { ...model, layout };
-      render();
+      renderMorphing();
       post({ type: 'setLayout', layout });
     }
   } else if (action === 'setPanelLayout' && (panel === 'reviews' || panel === 'myPullRequests')) {
@@ -2237,11 +2335,12 @@ document.addEventListener('click', (event) => {
   } else if (action === 'toggleReviews') {
     reviewsCollapsed = !reviewsCollapsed;
     saveState();
-    render();
+    // The box itself grows or shrinks, its rows are part of it (named on their own they would spill out of it)
+    renderMorphing(undefined, { items: false });
   } else if (action === 'toggleMyPullRequests') {
     myPullRequestsCollapsed = !myPullRequestsCollapsed;
     saveState();
-    render();
+    renderMorphing(undefined, { items: false });
   } else if (action === 'checkMyPullRequests') {
     post({ type: 'checkMyPullRequests' });
   } else if (action === 'toggleDrafts' && model) {
@@ -2278,6 +2377,9 @@ document.addEventListener('click', (event) => {
     });
   }
 });
+
+// The width of the sidebar changes the perimeter of the cards, hence the duration of their running light
+window.addEventListener('resize', placeRunningLights);
 
 window.addEventListener('message', ({ data }: MessageEvent<ExtensionMessage>) => {
   if (data.type === 'setTasksExpanded') {

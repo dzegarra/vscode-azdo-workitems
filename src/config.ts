@@ -8,6 +8,7 @@ import { parseCheckoutMode } from './worktrees';
 import { DEFAULT_COMPLETED_STATES } from './predecessors';
 import { DEFAULT_STATE_ORDER } from './states';
 import { parseWorkingDays } from './workingTime';
+import { normalizeWorkingOnAnimation } from './workingOn';
 
 export const SECTION = 'totalflowx';
 
@@ -49,6 +50,8 @@ export function settings() {
       includeLinkedWorkItems: config.get<boolean>('workingOn.includeLinkedWorkItems', true),
       ignoreFilters: config.get<boolean>('workingOn.ignoreFilters', true),
       section: config.get<boolean>('workingOn.section', true),
+      animation: normalizeWorkingOnAnimation(config.get<string>('workingOn.animation', 'none')),
+      pulseBadge: config.get<boolean>('workingOn.pulseBadge', true),
     },
     alerts: {
       enabled: config.get<boolean>('alerts.enabled', true),
