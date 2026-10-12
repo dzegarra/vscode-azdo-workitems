@@ -30,6 +30,7 @@ import { PipelineStatusBar } from './pipelineStatusBar';
 import { PipelineWatcher } from './pipelineWatcher';
 import { PullRequestNotifier } from './pullRequestNotifier';
 import { ReviewStatusBar } from './reviewStatusBar';
+import { SummaryView } from './summaryView';
 import { PullRequestExtrasLoader } from './pullRequestExtras';
 import { CHECKOUT_REVIEW_COMMAND, ReviewRequestsWatcher } from './reviewRequestsWatcher';
 import { WorkItemDetailsPanels } from './workItemDetails';
@@ -105,6 +106,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const coverageRecords = new CoverageRecordsStore(context.globalState);
   const pipelineWatcher = new PipelineWatcher(store, myPullRequests, coverageRecords);
   const view = new WorkItemsViewProvider(context.extensionUri, store, reviewRequests, myPullRequests, coverageRecords);
+  // Native tree view: it exists from the activation, so its badge shows on the activity bar icon from a cold start
+  const summary = new SummaryView({ store, reviews: reviewRequests, myPullRequests });
   const currentRepository = () => (git.repositories.length ? pickRepository(git) : undefined);
 
   /** Branch (and PR) behind the Checkout button of a card */
@@ -207,6 +210,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     currentWorkItemStatusBar,
     reviewRequests,
     reviewStatusBar,
+    summary,
     reviewRequests.onDidChange(() => view.post()),
     myPullRequests,
     myPullRequests.onDidChange(() => view.post()),
@@ -228,6 +232,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!event.affectsConfiguration(SECTION)) {
         return;
       }
+      // Settings such as reviews.includeOptional change what the Summary counts
+      summary.update();
       // Organization / project / repository set in the settings make the git remote unnecessary
       store.recheckRepository();
       if (event.affectsConfiguration(`${SECTION}.notifications`)) {

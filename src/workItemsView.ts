@@ -117,14 +117,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         items,
       },
     };
-    const withAlerts = model.workItems.filter((item) => item.alerts.length).length;
-    const toReview = model.reviews.requests.length;
-    // Number on the activity bar icon, visible while the view is closed
-    const reasons = [
-      withAlerts && `${withAlerts} work item${withAlerts === 1 ? ' needs' : 's need'} attention`,
-      toReview && `${toReview} pull request${toReview === 1 ? ' is' : 's are'} waiting for your review`,
-    ].filter(Boolean);
-    this.view.badge = withAlerts + toReview ? { value: withAlerts + toReview, tooltip: reasons.join(', ') } : undefined;
+    // The activity bar badge lives on the Summary tree view: a webview view only exists once it is shown
     // Next to the view name ("Assigned to Me"): the sprint(s) the list comes from
     this.view.description = model.iterations.map((iteration) => iteration.name).join(', ') || undefined;
     const message: ExtensionMessage = { type: 'state', model };

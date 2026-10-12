@@ -14,7 +14,7 @@ Brings the Azure DevOps work of the current sprint into VS Code: your Backlog It
 - **[My pull requests](#my-pull-requests)** in the sidebar: reviewers and votes, unresolved comments, conflicts, CI, auto-complete, and the next step before the merge, from the branch policies.
 - **[Two layouts](#layouts)**: compact rows (default) or large cards.
 - **[Work item editing](#usage)**: change states, add tasks, and see the full details (description, acceptance criteria, effort, tags, parent, children) in an editor tab.
-- **[Alerts](#alerts)** for the work items that break the team rules (Done with open tasks, missing PR task, blocking tags, empty required fields…), in the cards, the view badge and the status bar. **[Integrated in Build](#integrated-in-build)** can be filled in one click from the last release of the deploy image.
+- **[Alerts](#alerts)** for the work items that break the team rules (Done with open tasks, missing PR task, blocking tags, empty required fields…), in the cards, the activity bar badge and the status bar. **[Integrated in Build](#integrated-in-build)** can be filled in one click from the last release of the deploy image.
 - **[Dependencies](#dependencies)**: predecessors and successors in the Work Item Details panel, and an interactive map by iteration that highlights the risky ones.
 - **[CI pipelines](#ci-pipelines)**: live state of the runs validating your pull requests, in the cards and the status bar, with a notification when they finish.
 - **[Pull request notifications](#pull-request-notifications)** when your PRs get comments or votes, or are merged.
@@ -125,9 +125,15 @@ When the work item is **not assigned to you**, e.g. you checked out a colleague'
 
 It can be turned off with `totalflowx.statusBar.currentWorkItem`.
 
+## Summary view
+
+Below **Assigned to Me** (collapsed by default) the **Summary** view lists what needs your attention, one row per kind and only when there is something: work items that need attention, pull requests waiting for your review (with how many are overdue / due soon), your pull requests with warnings, your pull requests ready to merge, and failed CI runs. Click a row to show the main list. When nothing needs attention it says so.
+
+The Summary view also carries the **badge of the Totalflow X icon** in the activity bar (work items that need attention + pull requests waiting for your review), so the number shows from the moment VS Code starts, without opening the sidebar.
+
 ## Alerts
 
-Backlog Items and Bugs with problems the team agreed to avoid are flagged in red, with the list of problems in their card. A banner at the top of the view counts them (**Show only these** hides the rest), the view icon shows a badge and the status bar shows them even when the view is closed.
+Backlog Items and Bugs with problems the team agreed to avoid are flagged in red, with the list of problems in their card. A banner at the top of the view counts them (**Show only these** hides the rest), the activity bar icon shows a badge (see the [Summary view](#summary-view)) and the status bar shows them even when the view is closed.
 
 The filters apply to work items with alerts too: when they hide some, the banner tells how many ("2 work items need attention (1 hidden by filters)"), and **Show only these** shows every work item with alerts, whatever the State, PR and Priority filters. To always show them instead, turn on `totalflowx.filter.alwaysShowAlerts`.
 
@@ -231,7 +237,7 @@ Click the title to open the PR in Azure DevOps, or **Checkout** to review it loc
 | Orange | Due soon: less than 6 hours left (`totalflowx.reviews.dueSoonHours`)    |
 | Red    | Overdue: waiting more than 24 hours (`totalflowx.reviews.maxWaitHours`) |
 
-The section takes the colour of the most urgent PR and counts the overdue and due soon ones. It can be collapsed; it opens again when a new PR arrives. The badge of the activity bar icon counts these PRs, together with the work items that need attention.
+The section takes the colour of the most urgent PR and counts the overdue and due soon ones. It can be collapsed; it opens again when a new PR arrives. The badge of the activity bar icon (carried by the [Summary view](#summary-view)) counts these PRs, together with the work items that need attention.
 
 **In the status bar**, e.g. `2 to review · 4 h left` (the time left of the most urgent PR), in yellow when one is due soon and in red when one is overdue. Hover it to see each PR; click it to show the list (`totalflowx.reviews.showInStatusBar`).
 

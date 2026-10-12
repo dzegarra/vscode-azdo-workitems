@@ -39,6 +39,11 @@
           "type": "webview",
           "id": "totalflowx.myItems",
           "name": "Assigned to Me"
+        },
+        {
+          "id": "totalflowx.summary",
+          "name": "Summary",
+          "visibility": "collapsed"
         }
       ]
     },
