@@ -129,6 +129,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
         return { branch: entry.branch };
       }
+      case 'task': {
+        if (!branch || !store.taskBranchNames(id).includes(branch)) {
+          throw new Error(`${branch ?? 'The branch'} is not a branch of task ${id} in this repository.`);
+        }
+        return { branch };
+      }
       case 'review': {
         const request = reviewRequests.models().find((r) => r.id === id);
         if (!request) {

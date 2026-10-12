@@ -11,12 +11,13 @@ import { isFinishedState, stateCategory } from './states';
 import { fixLinks } from './fixLinks';
 import { openPredecessors } from './predecessors';
 import { ScheduledIteration } from './schedule';
+import { branchesToVerify, TaskBranchModel, toTaskBranchModels } from './taskBranches';
 import { sortTaskPullRequests, TaskPullRequestModel, toTaskPullRequestModel } from './taskPullRequests';
 import { FilterModel, ViewModel, WorkItemModel } from './viewModel';
 import { runDetailsLoader } from './runDetailsLoader';
 import { isActive, latestRuns, RunModel } from './pipelines';
 import { followedPullRequestIds, RunsTracker } from './runsPolling';
-import { toPullRequestModel } from './pullRequestModel';
+import { isOtherRepository, toPullRequestModel } from './pullRequestModel';
 import { listWorktrees } from './worktreeGit';
 import { findWorktree, otherWorktreeBranches, Worktree } from './worktrees';
 import { WorkingOnLevel, workingOnLevels } from './workingOn';
@@ -63,6 +64,8 @@ interface BranchCandidates {
 }
 
 const REMOTE_REF_TYPE = 1;
+/** How long a branch found (or not found) in Azure DevOps is trusted before asking again */
+const BRANCH_EXISTENCE_TTL_MS = 10 * 60 * 1000;
 
 async function listBranches(repository: Repository | undefined, remoteName: string): Promise<BranchCandidates> {
   if (!repository) {
@@ -498,6 +501,12 @@ export class WorkItemsStore {
   }
 
   private readonly repositoryNameCache = new Map<string, Promise<string>>();
+  /** Whether Azure DevOps has a branch of the repository (lower case repository id + name), and when it was asked */
+  private readonly branchExistenceCache = new Map<string, { exists: boolean; at: number }>();
+  /** Names of the local branches, as read by the last load */
+  private localBranches: string[] = [];
+  /** Repositories (lower case id) and names already repositoryNames() found, for the task branches */
+  private repositoryNameById: ReadonlyMap<string, string> = new Map();
 
   private load(): Promise<void> {
     return withFeature('sidebar', () => this.runLoad());
@@ -559,6 +568,15 @@ export class WorkItemsStore {
       workItems,
       [...pullRequests.values()],
       azdoRepository.id
+    );
+    this.repositoryNameById = repositoryNames;
+    this.localBranches = branches.local;
+    await this.verifyTaskBranches(
+      client,
+      azdoRepository.id,
+      [...workItems, ...workItems.flatMap((workItem) => otherTasksOf(workItem, related, listed))]
+        .filter((item) => item.type === 'Task')
+        .flatMap((task) => task.links.branches)
     );
     const pullRequestsOf = (item: WorkItem) =>
       item.links.pullRequests.map((link) => pullRequests.get(link.id)).filter((pr): pr is PullRequestDetails => !!pr);
@@ -624,6 +642,63 @@ export class WorkItemsStore {
       })
     );
     return names;
+  }
+
+  private branchKey(repositoryId: string, name: string): string {
+    return `${repositoryId.toLowerCase()}\n${name}`;
+  }
+
+  /**
+   * Asks Azure DevOps whether the branches linked to tasks exist: the Development links outlive deleted branches.
+   * Only the ones not asked in the last BRANCH_EXISTENCE_TTL_MS; the ones that fail stay unknown and are asked again
+   */
+  private async verifyTaskBranches(
+    client: AzdoClient,
+    repositoryId: string,
+    links: { repositoryId: string; name: string }[]
+  ): Promise<void> {
+    const now = Date.now();
+    const names = branchesToVerify(links, repositoryId, (name) => {
+      const known = this.branchExistenceCache.get(this.branchKey(repositoryId, name));
+      return !!known && now - known.at < BRANCH_EXISTENCE_TTL_MS;
+    });
+    await Promise.all(
+      names.map(async (name) => {
+        try {
+          const objectId = await client.getBranchObjectId(repositoryId, name);
+          this.branchExistenceCache.set(this.branchKey(repositoryId, name), { exists: !!objectId, at: now });
+        } catch {
+          // Unknown: shown as not verified
+        }
+      })
+    );
+  }
+
+  /** Branches linked to a task as the icons of its row show them */
+  private taskBranches(
+    task: WorkItem,
+    pullRequests: PullRequestDetails[],
+    currentBranch: string | undefined
+  ): TaskBranchModel[] {
+    const repositoryId = this.repositoryId;
+    return toTaskBranchModels(task.links.branches, pullRequests, {
+      repositoryId,
+      repositoryNames: this.repositoryNameById,
+      currentBranch,
+      local: this.localBranches,
+      remoteExists: (name) =>
+        repositoryId ? this.branchExistenceCache.get(this.branchKey(repositoryId, name))?.exists : undefined,
+    });
+  }
+
+  /** Branches linked to a task of the list or of another developer, of the open repository: the ones that can be checked out from its row */
+  taskBranchNames(taskId: number): string[] {
+    const task =
+      this.find(taskId)?.workItem ??
+      this.entries.flatMap((entry) => entry.otherTasks).find((other) => other.workItem.id === taskId)?.workItem;
+    return (task?.links.branches ?? [])
+      .filter((link) => !isOtherRepository(link.repositoryId, this.repositoryId))
+      .map((link) => link.name);
   }
 
   /** State of the parent work item when it is in the list (the task rows are shown in its card) */
@@ -692,6 +767,7 @@ export class WorkItemsStore {
       openPredecessors: predecessors && openPredecessors(workItem, predecessors, completedStates, this.schedule),
       ...fixLinks(workItem, predecessors, successors),
       taskPullRequests: workItem.type === 'Task' ? this.taskPullRequests(pullRequests) : [],
+      taskBranches: workItem.type === 'Task' ? this.taskBranches(workItem, pullRequests, currentBranch) : [],
       canCreateBranch:
         workItem.type === 'Task' &&
         canCreateBranchForTask({
@@ -713,6 +789,7 @@ export class WorkItemsStore {
         state: task.state,
         assignedTo: task.assignedTo,
         taskPullRequests: this.taskPullRequests(taskPullRequests),
+        taskBranches: this.taskBranches(task, taskPullRequests, currentBranch),
         canCreateBranch: canCreateBranchForTask({
           taskState: task.state,
           parentState: workItem.state,

@@ -2840,6 +2840,39 @@ button.task-pr-more {
   color: var(--muted);
 }
 
+/* Branches that are gone or in another repository: dimmed, back to normal when the user reaches for them */
+button.task-branch.state-deleted,
+button.task-branch.state-other {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.task-branch.state-other {
+  font-style: italic;
+}
+
+button.task-branch.state-deleted:hover,
+button.task-branch.state-deleted:focus-visible,
+button.task-branch.state-other:hover,
+button.task-branch.state-other:focus-visible {
+  opacity: 0.8;
+}
+
+button.task-branch.state-current {
+  background: color-mix(in srgb, var(--vscode-focusBorder) 18%, transparent);
+}
+
+.task-branch-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.task-branch-dim {
+  opacity: 0.6;
+  overflow-wrap: anywhere;
+}
+
 /* The padding keeps the hover while the pointer moves from the icon to the popover */
 .task-pr-pop {
   position: absolute;

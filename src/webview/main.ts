@@ -29,6 +29,7 @@ import { countLate } from '../reviewRequests';
 import type { ReviewRequestModel, ReviewUrgency } from '../reviewRequests';
 import { hasTaskAlerts, isTaskListOpen, taskProgress } from '../taskProgress';
 import { pullRequestTooltip } from '../pullRequestModel';
+import { describeTaskBranch, splitTaskBranches, taskBranchTooltip, TaskBranchModel } from '../taskBranches';
 import { describeTaskPullRequest, splitTaskPullRequests, TaskPullRequestModel } from '../taskPullRequests';
 import { splitWorkingOn, workingOnBadge } from '../workingOn';
 import type { CompletedPeriod } from '../myPullRequests';
@@ -569,13 +570,19 @@ function renderReviewer(reviewer: ReviewerModel): string {
 type TaskRow = Pick<WorkItemModel, 'id' | 'title' | 'type' | 'state' | 'priority' | 'severity'> & {
   assignedTo?: string;
   taskPullRequests: TaskPullRequestModel[];
+  taskBranches: TaskBranchModel[];
   canCreateBranch?: boolean;
   canCreatePullRequest?: boolean;
 };
 
 function taskRowsOf(children: WorkItemModel[], item: WorkItemModel, stateOrder: string[]): TaskRow[] {
-  const own: TaskRow[] = children.map((child) => ({ ...child, taskPullRequests: child.taskPullRequests ?? [] }));
-  const rows: TaskRow[] = [...own, ...(item.otherTasks ?? [])];
+  const own: TaskRow[] = children.map((child) => ({
+    ...child,
+    taskPullRequests: child.taskPullRequests ?? [],
+    taskBranches: child.taskBranches ?? [],
+  }));
+  const others: TaskRow[] = (item.otherTasks ?? []).map((task) => ({ ...task, taskBranches: task.taskBranches ?? [] }));
+  const rows: TaskRow[] = [...own, ...others];
   return sortWorkItems(rows, stateOrder);
 }
 
@@ -648,9 +655,92 @@ function renderTaskPullRequests(task: TaskRow): string {
     return '';
   }
   const { shown, hidden } = splitTaskPullRequests(task.taskPullRequests);
-  return `<span class="task-prs">${shown.map((pr) => renderTaskPullRequestIcon(task, pr)).join('')}${
-    hidden.length ? renderTaskPullRequestMore(task, hidden) : ''
-  }</span>`;
+  return (
+    shown.map((pr) => renderTaskPullRequestIcon(task, pr)).join('') +
+    (hidden.length ? renderTaskPullRequestMore(task, hidden) : '')
+  );
+}
+
+/** Colour of a branch icon: highlighted when checked out, blue when local, grey when only in Azure DevOps */
+function taskBranchTone(branch: TaskBranchModel): string {
+  if (branch.state === 'current') {
+    return 'tone-current';
+  }
+  return branch.where?.startsWith('local') ? 'tone-local' : 'tone-remote';
+}
+
+function renderTaskBranchCard(branch: TaskBranchModel): string {
+  const meta = [
+    branch.state === 'other' || branch.repository
+      ? `<span class="task-pr-repo" title="Repository">${escapeHtml(
+          branch.repository ?? 'another repository'
+        )}</span><span class="pill tone-neutral" title="Not the repository open in VS Code">other repository</span>`
+      : '',
+    branch.canCheckout ? '<span>Click to check out</span>' : '',
+  ].filter(Boolean);
+  const pr = branch.pullRequest
+    ? `<div class="task-pr-meta"><span>PR ${branch.pullRequest.id}</span><span class="pill tone-${
+        branch.pullRequest.tone
+      }">${escapeHtml(branch.pullRequest.status)}</span></div>`
+    : '';
+  return `<div class="task-pr-head"><code class="task-branch-name">${escapeHtml(branch.name)}</code>
+      <span class="pill ${branch.state === 'current' ? 'tone-current' : 'tone-neutral'}">${escapeHtml(
+    describeTaskBranch(branch)
+  )}</span></div>
+    ${meta.length ? `<div class="task-pr-meta">${meta.join('<span aria-hidden="true">·</span>')}</div>` : ''}${pr}`;
+}
+
+/**
+ * One branch icon, coloured by where the branch is. Clicking one of this repository that exists offers Checkout / a
+ * worktree; the deleted ones and the ones of other repositories are dimmed and do nothing
+ */
+function renderTaskBranchIcon(task: TaskRow, branch: TaskBranchModel, index: number): string {
+  const id = `task-branch-${task.id}-${index}`;
+  const action = branch.canCheckout
+    ? `data-action="checkoutMenu" data-kind="task" data-id="${task.id}" data-branch="${escapeHtml(branch.name)}"`
+    : '';
+  const label = escapeHtml(`Branch ${taskBranchTooltip(branch)}`);
+  return `<span class="task-pr-wrap"><button class="task-pr task-branch state-${branch.state} ${taskBranchTone(
+    branch
+  )}" ${action} aria-describedby="${id}" aria-label="${label}"${
+    branch.canCheckout ? '' : ' aria-disabled="true"'
+  }>${icon('branch')}</button>
+    <div class="task-pr-pop" id="${id}" role="tooltip"><div class="task-pr-card">${renderTaskBranchCard(
+    branch
+  )}</div></div></span>`;
+}
+
+/** "+N": the branches without icon, listed in a popover where the ones that can be checked out open the menu */
+function renderTaskBranchMore(task: TaskRow, hidden: TaskBranchModel[]): string {
+  const id = `task-branch-more-${task.id}`;
+  const rows = hidden.map((branch) => {
+    const name = escapeHtml(branch.name);
+    const label = branch.canCheckout
+      ? `<button class="link" data-action="checkoutMenu" data-kind="task" data-id="${
+          task.id
+        }" data-branch="${name}" title="${escapeHtml(taskBranchTooltip(branch))}">${name}</button>`
+      : `<span class="task-branch-dim" title="${escapeHtml(taskBranchTooltip(branch))}">${name}</span>`;
+    return `<li>${label}<span class="pill tone-neutral">${escapeHtml(describeTaskBranch(branch))}</span></li>`;
+  });
+  return `<span class="task-pr-wrap"><button class="task-pr task-pr-more" aria-describedby="${id}"
+      aria-label="${escapeHtml(`${hidden.length} more branches: ${hidden.map(taskBranchTooltip).join('; ')}`)}"
+      title="${escapeHtml(hidden.map(taskBranchTooltip).join('\n'))}">+${hidden.length}</button>
+    <div class="task-pr-pop" id="${id}" role="tooltip"><div class="task-pr-card">
+      <ul class="task-pr-more-list">${rows.join('')}</ul></div></div></span>`;
+}
+
+function renderTaskBranches(task: TaskRow): string {
+  const { shown, hidden } = splitTaskBranches(task.taskBranches);
+  return (
+    shown.map((branch, index) => renderTaskBranchIcon(task, branch, index)).join('') +
+    (hidden.length ? renderTaskBranchMore(task, hidden) : '')
+  );
+}
+
+/** Branches, then PRs, of a task row; overflow of each is a "+N" popover */
+function renderTaskArtifacts(task: TaskRow): string {
+  const content = renderTaskBranches(task) + renderTaskPullRequests(task);
+  return content ? `<span class="task-prs">${content}</span>` : '';
 }
 
 /** "Szymon Kwasek EXT" -> "SK" */
@@ -696,7 +786,7 @@ function renderChild(item: TaskRow, parentId: number): string {
           )}</span>`
         : ''
     }
-    ${renderTaskPullRequests(item)}
+    ${renderTaskArtifacts(item)}
     ${renderCreateBranch(item, parentId)}
     ${renderCreatePullRequest(item, parentId)}
     ${stateButton(item.id, item.state)}

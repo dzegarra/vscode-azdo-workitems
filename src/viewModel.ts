@@ -10,6 +10,7 @@ import type { CoverageThresholds } from './coverage';
 import type { CompletedPeriod, MyPullRequestModel } from './myPullRequests';
 import type { RunModel } from './pipelines';
 import type { ReviewRequestModel } from './reviewRequests';
+import type { TaskBranchModel } from './taskBranches';
 import type { TaskPullRequestModel } from './taskPullRequests';
 import { isFinishedState } from './states';
 import type { PullRequestTone } from './workItemLinks';
@@ -37,6 +38,7 @@ export interface OtherTaskModel {
   state: string;
   assignedTo?: string;
   taskPullRequests: TaskPullRequestModel[];
+  taskBranches?: TaskBranchModel[];
   /** The "Create branch" button of the task row is offered (see canCreateBranchForTask) */
   canCreateBranch?: boolean;
   /** The "Create PR" button of the task row is offered (see canCreatePullRequestForTask) */
@@ -88,6 +90,8 @@ export interface WorkItemModel {
   pullRequests: PullRequestModel[];
   /** Tasks only: their PRs for the icons of the task rows, active ones first */
   taskPullRequests?: TaskPullRequestModel[];
+  /** Tasks only: their linked branches for the icons of the task rows */
+  taskBranches?: TaskBranchModel[];
   /** Tasks only: the "Create branch" button of the task row is offered (see canCreateBranchForTask) */
   canCreateBranch?: boolean;
   /** Tasks only: the "Create PR" button of the task row is offered (see canCreatePullRequestForTask) */
@@ -108,7 +112,8 @@ export interface WorkItemModel {
   fixedBy?: FixLink[];
 }
 
-export type CheckoutKind = 'myPullRequest' | 'review' | 'workItem';
+/** "task": a branch linked to a task, from the icons of its row (`id` is the task) */
+export type CheckoutKind = 'myPullRequest' | 'review' | 'task' | 'workItem';
 
 export interface IterationModel {
   name: string;
