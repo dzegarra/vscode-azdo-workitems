@@ -2,6 +2,7 @@ import { withFeature } from './requestContext';
 import * as vscode from 'vscode';
 import { AzdoClient, PullRequestDetails, WorkItem } from './azdoClient';
 import { resolveContext, settings, DEFAULT_PULL_REQUEST_TASK_PATTERN } from './config';
+import { RepositoryGate } from './repositoryGate';
 import { GitAPI, pickRepository, Ref, REF_TYPE_HEAD, Repository } from './git';
 import { TeamIteration } from './iterations';
 import { branchBelongsToWorkItem } from './naming';
@@ -314,7 +315,31 @@ export class WorkItemsStore {
   /** Worktrees of the repository, to offer "Open worktree" instead of Checkout */
   worktrees: Worktree[] = [];
 
-  constructor(private readonly git: GitAPI) {}
+  private readonly gate: RepositoryGate;
+
+  constructor(private readonly git: GitAPI) {
+    this.gate = new RepositoryGate({
+      git,
+      pick: () => this.repository(),
+      overridesSet: () => {
+        const { organization, project, repository } = settings();
+        return !!organization && !!project && !!repository;
+      },
+    });
+  }
+
+  /**
+   * Resolves when the Azure DevOps context can be resolved: at startup the git extension announces the repository
+   * before its remotes are loaded. Await it before `resolveContext`; resolved once, it costs nothing afterwards
+   */
+  whenRepositoryReady(): Promise<void> {
+    return this.gate.whenReady();
+  }
+
+  /** The settings that give the context may have changed */
+  recheckRepository(): void {
+    this.gate.recheck();
+  }
 
   get workItems(): WorkItemEntry[] {
     return this.entries;
@@ -376,6 +401,7 @@ export class WorkItemsStore {
   }
 
   private async runRefreshRuns(): Promise<{ pullRequestId: number; run: RunModel }[] | undefined> {
+    await this.whenRepositoryReady();
     const client = resolveContext(this.repository()).client;
     const finished = await this.tracker.refresh(this.activePullRequestIds(), (ids) => fetchRuns(client, ids));
     if (finished) {
@@ -410,6 +436,11 @@ export class WorkItemsStore {
   }
 
   async refresh(): Promise<void> {
+    // A load waiting for the git extension already reads everything once it is ready
+    if (this.loading && !this.gate.isReady) {
+      await this.loading;
+      return;
+    }
     this.loading = this.load();
     await this.loading;
   }
@@ -470,6 +501,7 @@ export class WorkItemsStore {
     this.status = 'loading';
     this.changeEmitter.fire();
     try {
+      await this.whenRepositoryReady();
       await this.refreshWorktrees();
       this.entries = await this.fetch();
       this.tracker.runs = await fetchRuns(resolveContext(this.repository()).client, this.activePullRequestIds());

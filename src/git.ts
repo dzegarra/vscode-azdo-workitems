@@ -66,6 +66,9 @@ export interface Repository {
 }
 
 export interface GitAPI {
+  /** 'uninitialized' while the git extension is still discovering the repositories of the workspace */
+  readonly state?: 'uninitialized' | 'initialized';
+  readonly onDidChangeState?: vscode.Event<'uninitialized' | 'initialized'>;
   readonly repositories: Repository[];
   readonly onDidOpenRepository: vscode.Event<Repository>;
   getRepository(uri: vscode.Uri): Repository | null;

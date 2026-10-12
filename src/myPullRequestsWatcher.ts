@@ -161,6 +161,7 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
     }
     this.polling = true;
     try {
+      await this.store.whenRepositoryReady();
       const { client } = resolveContext(this.store.repository());
       this.myId ??= client.getMyId();
       const pullRequests = await client.getMyPullRequests(await this.myId);

@@ -131,6 +131,7 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
 
   private async runLoad(id: number, open: OpenPanel): Promise<void> {
     try {
+      await this.store.whenRepositoryReady();
       const { client } = resolveContext(this.store.repository());
       const [details, schedule] = await Promise.all([client.getWorkItemDetails(id), client.getIterationSchedule()]);
       const { parentId, childIds, predecessorIds, successorIds } = details.links;

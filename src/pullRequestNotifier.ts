@@ -101,6 +101,7 @@ export class PullRequestNotifier implements vscode.Disposable {
     }
     this.polling = true;
     try {
+      await this.store.whenRepositoryReady();
       const { client } = resolveContext(this.store.repository());
       this.myId ??= client.getMyId();
       const myId = await this.myId;

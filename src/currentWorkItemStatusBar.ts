@@ -120,6 +120,7 @@ export class CurrentWorkItemStatusBar implements vscode.Disposable {
   }
 
   private async resolve(branch: string, id: number): Promise<Resolved> {
+    await this.store.whenRepositoryReady();
     const { client, repositoryName } = resolveContext(this.store.repository());
     this.myId ??= client.getMyId();
     const me: Person = { id: await this.myId, displayName: 'you' };

@@ -165,6 +165,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const command = (id: string, handler: (...args: never[]) => unknown) =>
     vscode.commands.registerCommand(id, async (...args: never[]) => {
       try {
+        // Right after a cold start the git extension may not know the "origin" remote yet (resolved instantly later)
+        await store.whenRepositoryReady();
         await withFeature('commands', () => handler(...args));
       } catch (error) {
         void vscode.window.showErrorMessage((error as Error).message);
@@ -226,6 +228,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!event.affectsConfiguration(SECTION)) {
         return;
       }
+      // Organization / project / repository set in the settings make the git remote unnecessary
+      store.recheckRepository();
       if (event.affectsConfiguration(`${SECTION}.notifications`)) {
         notifier.start();
       }

@@ -108,14 +108,15 @@ export class DependencyMapPanel implements vscode.Disposable {
     }
   }
 
-  private client(): AzdoClient {
+  private async client(): Promise<AzdoClient> {
+    await this.store.whenRepositoryReady();
     return resolveContext(this.store.repository()).client;
   }
 
   /** Adds the given work items to the map, skipping the ones already loaded */
   private async add(ids: number[]): Promise<void> {
     const missing = [...new Set(ids)].filter((id) => !this.items.has(id));
-    for (const workItem of await this.client().getWorkItems(missing)) {
+    for (const workItem of await (await this.client()).getWorkItems(missing)) {
       this.items.set(workItem.id, workItem);
     }
   }
@@ -160,7 +161,7 @@ export class DependencyMapPanel implements vscode.Disposable {
     if (!this.panel) {
       return;
     }
-    const schedule = await this.client().getIterationSchedule();
+    const schedule = await (await this.client()).getIterationSchedule();
     const mineIds = new Set(this.store.workItems.map((entry) => entry.workItem.id));
     const graph = buildGraph([...this.items.values()].map(toGraphItem), mineIds, schedule, new Date(), this.focusId);
     await this.panel.webview.postMessage({

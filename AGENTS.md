@@ -31,6 +31,7 @@ npx prettier --write tools/vscode-azdo-workitems/src tools/vscode-azdo-workitems
 
 ```
 src/extension.ts          activation: creates the store, watchers, views, status bar items; registers commands
+src/repositoryGate.ts     startup gate (whenRepositoryReady on the store): await it before resolveContext in anything that can run at startup
 src/azdoClient.ts         REST client (fetch + bearer token from the VS Code Microsoft sign-in, src/auth.ts)
 src/requestRecorder.ts    the ONLY place that calls fetch: records every request (src/requestStats.ts, src/diagnostics.ts)
 src/requestContext.ts     AsyncLocalStorage "feature" attribution of requests (withFeature)
