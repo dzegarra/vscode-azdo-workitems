@@ -31,7 +31,8 @@ import { hasTaskAlerts, isTaskListOpen, taskProgress } from '../taskProgress';
 import { pullRequestTooltip } from '../pullRequestModel';
 import { describeTaskBranch, TaskBranchModel } from '../taskBranches';
 import { TaskPullRequestModel } from '../taskPullRequests';
-import { taskMenuSections, TaskMenuItem, taskPill, TaskPill } from '../taskMenu';
+import { actionMenuId, renderActionMenu } from '../actionMenuHtml';
+import { taskMenuSections, taskPill, TaskPill } from '../taskMenu';
 import { splitWorkingOn, workingOnBadge } from '../workingOn';
 import type { CompletedPeriod } from '../myPullRequests';
 import type {
@@ -111,7 +112,8 @@ const expandedCards = new Set(savedState?.expandedCards ?? []);
 const expandedReviews = new Set(savedState?.expandedReviews ?? []);
 const expandedPullRequests = new Set(savedState?.expandedPullRequests ?? []);
 /** Task whose action menu is open (UI only, not saved). Only one menu at a time; the page is rendered again on every update */
-let openTaskMenu: number | undefined;
+/** Key of the open actions menu (task pill or branch row); only one is open at a time */
+let openMenu: string | undefined;
 /** Scrolling closes the menu, but not the scroll that brings it into view */
 let ignoreScrollUntil = 0;
 const MENU_SCROLL_GRACE_MS = 300;
@@ -667,6 +669,11 @@ function renderPillPullRequests(pill: TaskPill): string {
 }
 
 /** The detail card of the pill (hover or focus): every branch, then every PR */
+/** Key of the menu of a task pill */
+function taskMenuKey(id: number): string {
+  return `task-${id}`;
+}
+
 function renderTaskPillDetails(task: TaskRow, id: string): string {
   const entries = [
     ...task.taskBranches.map(renderTaskBranchCard),
@@ -679,37 +686,9 @@ function renderTaskPillDetails(task: TaskRow, id: string): string {
     : '';
 }
 
-function renderTaskMenuItem(item: TaskMenuItem): string {
-  const detail = item.detail ? `<span class="task-menu-detail">${escapeHtml(item.detail)}</span>` : '';
-  const text = `<span class="task-menu-label">${escapeHtml(item.label)}</span>${detail}`;
-  if (!item.act) {
-    return `<div class="task-menu-item info" role="menuitem" aria-disabled="true">${text}</div>`;
-  }
-  const { action, id, kind, branch, pr, task } = item.act;
-  const attributes = [
-    `data-action="${action}"`,
-    `data-id="${id}"`,
-    kind ? `data-kind="${kind}"` : '',
-    branch ? `data-branch="${escapeHtml(branch)}"` : '',
-    pr ? `data-pr="${pr}"` : '',
-    task ? `data-task="${task}"` : '',
-  ].filter(Boolean);
-  const danger = item.danger ? ' danger' : '';
-  return `<button class="task-menu-item${danger}" role="menuitem" tabindex="-1" ${attributes.join(
-    ' '
-  )}>${text}</button>`;
-}
-
-/** The actions of a task, open under its pill (only the menu of `openTaskMenu` is in the page) */
-function renderTaskMenu(task: TaskRow, parentId: number, id: string): string {
-  const sections = taskMenuSections(task, parentId).map(
-    (section) => `<div class="task-menu-section" role="group" aria-label="${section.title}">
-      <div class="task-menu-title" aria-hidden="true">${section.title}</div>
-      ${section.items.map(renderTaskMenuItem).join('')}</div>`
-  );
-  return `<div class="task-menu" id="${id}" role="menu" aria-label="${escapeHtml(`Task ${task.id}`)}">${sections.join(
-    ''
-  )}</div>`;
+/** The actions of a task, open under its pill */
+function renderTaskMenu(task: TaskRow, parentId: number): string {
+  return renderActionMenu(taskMenuSections(task, parentId), taskMenuKey(task.id), `Task ${task.id}`);
 }
 
 /**
@@ -722,15 +701,17 @@ function renderTaskPill(task: TaskRow, parentId: number): string {
     return '';
   }
   const detailsId = `task-pill-pop-${task.id}`;
-  const menuId = `task-menu-${task.id}`;
-  const open = openTaskMenu === task.id;
+  const menuId = actionMenuId(taskMenuKey(task.id));
+  const open = openMenu === taskMenuKey(task.id);
   const content = pill.empty ? '+' : `${renderPillBranches(pill)}${renderPillPullRequests(pill)}`;
   return `<span class="task-pr-wrap"><button class="task-pill${pill.empty ? ' empty' : ''}"
-      data-action="toggleTaskMenu" data-id="${task.id}" aria-haspopup="menu" aria-expanded="${open}"
+      data-action="toggleMenu" data-menu="${taskMenuKey(task.id)}" data-id="${
+    task.id
+  }" aria-haspopup="menu" aria-expanded="${open}"
       ${open ? `aria-controls="${menuId}"` : ''} ${pill.empty ? '' : `aria-describedby="${detailsId}"`}
       ${pill.empty ? 'title="Create a branch or a pull request for this task"' : ''}
       aria-label="${escapeHtml(pill.label)}">${content}</button>${renderTaskPillDetails(task, detailsId)}${
-    open ? renderTaskMenu(task, parentId, menuId) : ''
+    open ? renderTaskMenu(task, parentId) : ''
   }</span>`;
 }
 
@@ -886,7 +867,7 @@ function renderCard(item: WorkItemModel, children: TaskRow[], visibleIds: Set<nu
     ${renderParent(item, visibleIds)}
     ${renderAlerts(item)}
     ${renderPredecessors(item)}
-    ${renderBranchList(item)}
+    ${renderBranchList(item, { openMenu })}
     ${item.pullRequests.map((pr) => renderPullRequest(item, pr)).join('')}
     ${renderFixLinks(item)}
     ${renderActions(item)}
@@ -1872,27 +1853,32 @@ function renderFiltersToggle(current: ViewModel): void {
   }`;
 }
 
-const TASK_MENU_ITEMS = '.task-menu button.task-menu-item';
+const MENU_ITEMS = '.action-menu button.action-menu-item';
 
-function taskPillOf(id: number): HTMLElement | null {
-  return document.querySelector<HTMLElement>(`.task-pill[data-id="${id}"]`);
+/** The button that opens a menu (task pill or the ▾ of a branch row) */
+function menuTriggerOf(key: string): HTMLElement | null {
+  return (
+    Array.from(document.querySelectorAll<HTMLElement>('[data-action="toggleMenu"]')).find(
+      (trigger) => trigger.dataset.menu === key
+    ) ?? null
+  );
 }
 
-/** Where the focus is in the task menu, to put it back after the page is rendered again */
-function captureTaskMenuFocus(): () => void {
+/** Where the focus is in the open menu, to put it back after the page is rendered again */
+function captureMenuFocus(): () => void {
   const active = document.activeElement;
-  if (openTaskMenu === undefined || !(active instanceof HTMLElement)) {
+  if (openMenu === undefined || !(active instanceof HTMLElement)) {
     return () => undefined;
   }
-  const items = Array.from(document.querySelectorAll<HTMLElement>(TASK_MENU_ITEMS));
+  const items = Array.from(document.querySelectorAll<HTMLElement>(MENU_ITEMS));
   const index = items.indexOf(active);
-  const onPill = active.classList.contains('task-pill');
-  const task = openTaskMenu;
+  const onTrigger = active.dataset.action === 'toggleMenu';
+  const key = openMenu;
   return () => {
     if (index >= 0) {
-      document.querySelectorAll<HTMLElement>(TASK_MENU_ITEMS)[index]?.focus({ preventScroll: true });
-    } else if (onPill) {
-      taskPillOf(task)?.focus({ preventScroll: true });
+      document.querySelectorAll<HTMLElement>(MENU_ITEMS)[index]?.focus({ preventScroll: true });
+    } else if (onTrigger) {
+      menuTriggerOf(key)?.focus({ preventScroll: true });
     }
   };
 }
@@ -1928,7 +1914,7 @@ function render(): void {
   scopeElement.textContent = scope.text;
   scopeElement.title = scope.tooltip;
   (app.querySelector('.progress') as HTMLElement).hidden = model.status !== 'loading';
-  const restoreMenuFocus = captureTaskMenuFocus();
+  const restoreMenuFocus = captureMenuFocus();
   (document.getElementById('filters') as HTMLElement).innerHTML =
     filtersExpanded && cardItems(model).length ? renderFilters(model) : '';
   renderFiltersToggle(model);
@@ -1940,9 +1926,9 @@ function render(): void {
   sizePhaseTimelines();
   pulseChangedReviews(model);
   sizeTaskBars();
-  // The task of an open menu may be gone (folded list, filtered out, nothing left to do): no orphan state
-  if (openTaskMenu !== undefined && !document.querySelector('.task-menu')) {
-    openTaskMenu = undefined;
+  // The row of an open menu may be gone (folded list, filtered out, nothing left to do): no orphan state
+  if (openMenu !== undefined && !document.querySelector('.action-menu')) {
+    openMenu = undefined;
   }
   restoreMenuFocus();
   if (revealPending()) {
@@ -1950,48 +1936,48 @@ function render(): void {
   }
 }
 
-function closeTaskMenu(focusPill: boolean): void {
-  const task = openTaskMenu;
-  if (task === undefined) {
+function closeMenu(focusTrigger: boolean): void {
+  const key = openMenu;
+  if (key === undefined) {
     return;
   }
-  openTaskMenu = undefined;
+  openMenu = undefined;
   render();
-  if (focusPill) {
+  if (focusTrigger) {
     // The detail card would show again because the pill has the focus: it waits for the pointer to move
     document.body.classList.add('no-popovers');
-    taskPillOf(task)?.focus({ preventScroll: true });
+    menuTriggerOf(key)?.focus({ preventScroll: true });
   }
 }
 
-function toggleTaskMenu(id: number): void {
-  const wasOpen = openTaskMenu === id;
-  openTaskMenu = wasOpen ? undefined : id;
+function toggleMenu(key: string): void {
+  const wasOpen = openMenu === key;
+  openMenu = wasOpen ? undefined : key;
   ignoreScrollUntil = Date.now() + MENU_SCROLL_GRACE_MS;
   render();
   if (wasOpen) {
-    taskPillOf(id)?.focus({ preventScroll: true });
+    menuTriggerOf(key)?.focus({ preventScroll: true });
   } else {
-    document.querySelector<HTMLElement>(TASK_MENU_ITEMS)?.focus({ preventScroll: true });
-    document.querySelector<HTMLElement>('.task-menu')?.scrollIntoView({ block: 'nearest' });
+    document.querySelector<HTMLElement>(MENU_ITEMS)?.focus({ preventScroll: true });
+    document.querySelector<HTMLElement>('.action-menu')?.scrollIntoView({ block: 'nearest' });
   }
 }
 
 /** Arrow keys, Home and End move between the items of the open menu; Escape closes it and Tab leaves it */
-function onTaskMenuKey(event: KeyboardEvent): void {
-  if (openTaskMenu === undefined) {
+function onMenuKey(event: KeyboardEvent): void {
+  if (openMenu === undefined) {
     return;
   }
   if (event.key === 'Escape') {
     event.preventDefault();
-    closeTaskMenu(true);
+    closeMenu(true);
     return;
   }
   if (event.key === 'Tab') {
-    closeTaskMenu(false);
+    closeMenu(false);
     return;
   }
-  const items = Array.from(document.querySelectorAll<HTMLElement>(TASK_MENU_ITEMS));
+  const items = Array.from(document.querySelectorAll<HTMLElement>(MENU_ITEMS));
   const current = items.indexOf(document.activeElement as HTMLElement);
   const moves: Record<string, number> = {
     ArrowDown: (current + 1) % items.length,
@@ -2136,15 +2122,15 @@ document.addEventListener('keydown', (event) => {
   }
 });
 document.addEventListener('pointermove', () => document.body.classList.remove('no-popovers'));
-document.addEventListener('keydown', onTaskMenuKey);
+document.addEventListener('keydown', onMenuKey);
 // Scrolling the list moves the row away from the menu (capture: scroll does not bubble)
 document.addEventListener(
   'scroll',
   (event) => {
     const target = event.target as Node;
-    const inMenu = target instanceof Element && target.closest('.task-menu');
-    if (openTaskMenu !== undefined && !inMenu && Date.now() > ignoreScrollUntil) {
-      closeTaskMenu(false);
+    const inMenu = target instanceof Element && target.closest('.action-menu');
+    if (openMenu !== undefined && !inMenu && Date.now() > ignoreScrollUntil) {
+      closeMenu(false);
     }
   },
   true
@@ -2157,28 +2143,29 @@ document.addEventListener('click', (event) => {
     return;
   }
   const target = (event.target as HTMLElement).closest<HTMLElement>('[data-action], [data-filter]');
-  if (openTaskMenu !== undefined && !(event.target as HTMLElement).closest('.task-menu, .task-pill')) {
+  if (openMenu !== undefined && !(event.target as HTMLElement).closest('.action-menu, [data-action="toggleMenu"]')) {
     // Outside click: closes the menu, and the click still does what it was for
-    closeTaskMenu(false);
+    closeMenu(false);
   }
   // The text of a popover is not the row behind it: clicking it must not fold the row
   const popover = '.pred-pop, .task-pr-pop';
   if (!target || ((event.target as HTMLElement).closest(popover) && !target.closest(popover))) {
     return;
   }
-  const { action, filter, value, id, pr, run, url, path, tests, kind, layout, branch, panel, task } = target.dataset;
-  if (action === 'toggleTaskMenu' && id) {
-    toggleTaskMenu(Number(id));
+  const { action, filter, value, id, pr, run, url, path, tests, kind, layout, branch, panel, task, menu } =
+    target.dataset;
+  if (action === 'toggleMenu' && menu) {
+    toggleMenu(menu);
     return;
   }
-  if (target.classList.contains('task-menu-item')) {
-    // An item was chosen: the menu closes, the focus goes back to the pill, and the item does its action below
-    const pillTask = openTaskMenu;
-    openTaskMenu = undefined;
+  if (target.classList.contains('action-menu-item')) {
+    // An item was chosen: the menu closes, the focus goes back to its trigger, and the item does its action below
+    const key = openMenu;
+    openMenu = undefined;
     render();
     document.body.classList.add('no-popovers');
-    if (pillTask !== undefined) {
-      taskPillOf(pillTask)?.focus({ preventScroll: true });
+    if (key !== undefined) {
+      menuTriggerOf(key)?.focus({ preventScroll: true });
     }
   }
   if (filter && value !== undefined) {
@@ -2187,6 +2174,7 @@ document.addEventListener('click', (event) => {
     (action === 'checkoutMenu' ||
       action === 'checkoutHere' ||
       action === 'openWorktree' ||
+      action === 'removeWorktree' ||
       action === 'worktreeMenu') &&
     kind &&
     id

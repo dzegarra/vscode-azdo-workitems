@@ -995,6 +995,24 @@ button.state:focus-visible {
   font-size: 11px;
 }
 
+/* Branch rows: Checkout / Open worktree / Delete as icons, so the name keeps the width */
+.button.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  width: 22px;
+}
+
+.button.icon-button .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.button.danger.icon-button .icon {
+  color: var(--vscode-errorForeground, var(--red));
+}
+
 /* ---------- Parent ---------- */
 
 .parent-link {
@@ -1980,22 +1998,20 @@ button.state:focus-visible {
   row-gap: 3px;
 }
 
-/* Branches: the name takes what is left of the line; the pills and the Checkout go below it when they do not fit */
+/* The actions menu opens under the row */
 .row.branch {
-  flex-wrap: wrap;
-  row-gap: 3px;
+  position: relative;
 }
 
+/* Branches: one line; the name takes what is left of it (ellipsis, full name in the tooltip), the badge and the icon buttons are compact and never wrap under it */
 .row.branch code {
-  flex: 1 1 12ch;
+  flex: 1 1 0;
+  min-width: 4ch;
 }
 
 .branch-meta {
   display: inline-flex;
   flex: none;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  max-width: 100%;
   align-items: center;
   gap: 6px;
   margin-left: auto;
@@ -2931,7 +2947,7 @@ button.task-pill[aria-expanded='true'] ~ .task-pr-pop {
 }
 
 /* Actions of a task: under the row, as wide as it is */
-.task-menu {
+.action-menu {
   position: absolute;
   z-index: 40;
   top: 100%;
@@ -2950,18 +2966,18 @@ button.task-pill[aria-expanded='true'] ~ .task-pr-pop {
   white-space: normal;
 }
 
-.task-menu-section {
+.action-menu-section {
   display: grid;
   gap: 1px;
 }
 
-.task-menu-section + .task-menu-section {
+.action-menu-section + .action-menu-section {
   margin-top: 2px;
   padding-top: 2px;
   border-top: 1px solid var(--vscode-menu-separatorBackground, var(--border));
 }
 
-.task-menu-title {
+.action-menu-title {
   padding: 2px 6px;
   color: var(--muted);
   font-size: 10px;
@@ -2969,7 +2985,7 @@ button.task-pill[aria-expanded='true'] ~ .task-pr-pop {
   text-transform: uppercase;
 }
 
-.task-menu-item {
+.action-menu-item {
   display: grid;
   gap: 0;
   min-width: 0;
@@ -2982,44 +2998,44 @@ button.task-pill[aria-expanded='true'] ~ .task-pr-pop {
   text-align: left;
 }
 
-button.task-menu-item {
+button.action-menu-item {
   cursor: pointer;
 }
 
-button.task-menu-item:hover,
-button.task-menu-item:focus-visible {
+button.action-menu-item:hover,
+button.action-menu-item:focus-visible {
   outline: none;
   background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
   color: var(--vscode-menu-selectionForeground, inherit);
 }
 
-.task-menu-item.info {
+.action-menu-item.info {
   opacity: 0.65;
 }
 
 /* Destructive item (Delete branch): the label in the error colour, the usual selection colours on hover */
-button.task-menu-item.danger .task-menu-label {
+button.action-menu-item.danger .action-menu-label {
   color: var(--vscode-errorForeground, var(--red));
 }
 
-button.task-menu-item.danger:hover .task-menu-label,
-button.task-menu-item.danger:focus-visible .task-menu-label {
+button.action-menu-item.danger:hover .action-menu-label,
+button.action-menu-item.danger:focus-visible .action-menu-label {
   color: inherit;
 }
 
-.task-menu-label,
-.task-menu-detail {
+.action-menu-label,
+.action-menu-detail {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.task-menu-detail {
+.action-menu-detail {
   color: var(--muted);
   font-size: 10.5px;
 }
 
-button.task-menu-item:hover .task-menu-detail,
-button.task-menu-item:focus-visible .task-menu-detail {
+button.action-menu-item:hover .action-menu-detail,
+button.action-menu-item:focus-visible .action-menu-detail {
   color: inherit;
   opacity: 0.8;
 }

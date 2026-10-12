@@ -156,6 +156,15 @@ export async function removeWorktreesCommand(git: GitAPI, store: WorkItemsStore)
   }
 }
 
+/** Removes the worktree that has the branch (the branch stays), after the usual confirmation */
+export async function removeWorktreeOf(store: WorkItemsStore, git: GitAPI, branch: string): Promise<void> {
+  const worktree = store.worktreeFor(branch);
+  if (!worktree) {
+    throw new Error(`${branch} has no worktree.`);
+  }
+  await removeWorktrees(store, pickRepository(git).rootUri.fsPath, [worktree]);
+}
+
 /** The ▾ of "Open worktree": open it or remove it */
 export async function showWorktreeMenu(store: WorkItemsStore, git: GitAPI, branch: string): Promise<void> {
   const worktree = store.worktreeFor(branch);
@@ -172,6 +181,6 @@ export async function showWorktreeMenu(store: WorkItemsStore, git: GitAPI, branc
   if (picked?.action === 'open') {
     await openWorktree(store, branch);
   } else if (picked?.action === 'remove') {
-    await removeWorktrees(store, pickRepository(git).rootUri.fsPath, [worktree]);
+    await removeWorktreeOf(store, git, branch);
   }
 }

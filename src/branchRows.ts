@@ -1,5 +1,8 @@
 /** Rows of the branch list of a work item, shared by the sidebar and the details panel. No "vscode" import */
-import { checkoutButton, worktreePill } from './checkoutButtons';
+import { renderActionMenu, actionMenuId } from './actionMenuHtml';
+import { branchBadge } from './branchBadge';
+import { branchMenuSections } from './branchMenu';
+import { checkoutButton } from './checkoutButtons';
 import { escapeHtml } from './html';
 import { icon } from './icons';
 import { isFinishedState } from './states';
@@ -14,17 +17,31 @@ export interface BranchRowOptions {
   showCheckout: boolean;
   /** The PR is merged and the branch still exists: "not deleted" instead of where it is, and a Delete branch button */
   deletable?: boolean;
+  /**
+   * Sidebar: the ▾ of the Checkout button opens the in-card actions menu (the same as the task pill's) instead of a
+   * QuickPick. `openMenu` is the key of the menu that is open (see branchMenuKey)
+   */
+  popover?: { openMenu?: string };
+}
+
+/** Key of the menu of a branch row: the trigger and the open state find each other by it */
+export function branchMenuKey(id: number, branch: string): string {
+  return `branch-${id}-${branch}`;
 }
 
 /**
  * One branch: icon, name, where it is (current / local / remote / linked) and the worktree that has it. The ones of
  * other repositories are dimmed like the PRs of other repositories and cannot be checked out
  */
-export function renderBranchRow(branch: BranchModel, { id, showCheckout, deletable }: BranchRowOptions): string {
+export function renderBranchRow(branch: BranchModel, options: BranchRowOptions): string {
+  const { id, showCheckout, deletable, popover } = options;
   const tooltip = branchTooltip(branch);
-  const pill = deletable
-    ? `<span class="pill tone-leftover" title="${mergedBranchHint()}">not deleted</span>`
-    : `<span class="pill tone-${branch.location}">${branch.location}</span>`;
+  const badge = branchBadge(branch, !!deletable, mergedBranchHint());
+  const pill = `<span class="pill tone-${badge.tone}" title="${escapeHtml(badge.title)}">${escapeHtml(
+    badge.text
+  )}</span>`;
+  const key = branchMenuKey(id, branch.name);
+  const open = !!popover && popover.openMenu === key;
   const checkout =
     showCheckout && !branch.otherRepository && !branch.isCurrent
       ? checkoutButton({
@@ -35,18 +52,30 @@ export function renderBranchRow(branch: BranchModel, { id, showCheckout, deletab
           worktree: branch.worktree,
           small: true,
           branch: branch.name,
+          iconOnly: true,
+          menu: popover && { key, open, controls: actionMenuId(key) },
         })
       : '';
   const remove = deletable
-    ? `<button class="button small danger" data-action="deleteBranch" data-id="${id}" data-branch="${escapeHtml(
+    ? `<button class="button small danger icon-button" data-action="deleteBranch" data-id="${id}" data-branch="${escapeHtml(
         branch.name
-      )}" title="Delete ${escapeHtml(branch.name)}: ${mergedBranchHint()}">Delete</button>`
+      )}" title="Delete the branch ${escapeHtml(
+        branch.name
+      )}: ${mergedBranchHint()}" aria-label="Delete the branch ${escapeHtml(branch.name)}">${icon('trash')}</button>`
     : '';
   return `<div class="row branch${branch.otherRepository ? ' other-repo' : ''}"${
     branch.otherRepository ? ` title="${escapeHtml(tooltip)}"` : ''
   }>${icon('branch')}<code title="${escapeHtml(branch.otherRepository ? tooltip : branch.name)}">${escapeHtml(
     branch.name
-  )}</code><span class="branch-meta">${pill}${worktreePill(branch.worktree)}${checkout}${remove}</span></div>`;
+  )}</code><span class="branch-meta">${pill}${checkout}${remove}${
+    open && checkout
+      ? renderActionMenu(
+          branchMenuSections(branch, { id, deletable: !!deletable, checkout: showCheckout }),
+          key,
+          `Actions for branch ${branch.name}`
+        )
+      : ''
+  }</span></div>`;
 }
 
 /** Finished work items list the branches to delete and the other local branches: remote refs and links remain after deletion */
@@ -60,7 +89,8 @@ function isListedWhenFinished(branch: BranchModel, card: Pick<WorkItemModel, 'de
  * when there is none; a finished work item without a branch to show says so
  */
 export function renderBranchList(
-  card: Pick<WorkItemModel, 'branch' | 'branches' | 'id' | 'deletableBranches' | 'state'>
+  card: Pick<WorkItemModel, 'branch' | 'branches' | 'id' | 'deletableBranches' | 'state'>,
+  popover?: BranchRowOptions['popover']
 ): string {
   const finished = isFinishedState(card.state);
   const muted = (text: string) => `<div class="row muted">${icon('branch')}<span>${text}</span></div>`;
@@ -70,6 +100,7 @@ export function renderBranchList(
       id: card.id,
       showCheckout: !finished && card.branches.length > 1,
       deletable: !branch.otherRepository && !!card.deletableBranches?.includes(branch.name),
+      popover,
     })
   );
   if (finished && card.branch && !rows.length) {

@@ -234,7 +234,7 @@ export type WebviewMessage =
   | { type: 'openFile'; path: string }
   /** The ▾ of a Checkout button (menu) and "Open worktree": the id is the work item or the PR; `branch`: a branch of the row of a work item */
   | {
-      type: 'checkoutMenu' | 'checkoutHere' | 'openWorktree' | 'worktreeMenu';
+      type: 'checkoutMenu' | 'checkoutHere' | 'openWorktree' | 'removeWorktree' | 'worktreeMenu';
       kind: CheckoutKind;
       id: number;
       branch?: string;
@@ -259,7 +259,7 @@ export type WebviewMessage =
 /** Buttons of a work item: run by id */
 export type WorkItemActionMessage = Exclude<
   Extract<WebviewMessage, { id: number }>,
-  { type: 'checkoutMenu' | 'checkoutHere' | 'openWorktree' | 'worktreeMenu' }
+  { type: 'checkoutMenu' | 'checkoutHere' | 'openWorktree' | 'removeWorktree' | 'worktreeMenu' }
 >;
 
 export type ExtensionMessage =

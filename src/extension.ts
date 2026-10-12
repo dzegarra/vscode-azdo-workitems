@@ -3,7 +3,7 @@ import { createBranch } from './commands/createBranch';
 import { checkoutPullRequest } from './commands/checkoutPullRequest';
 import { isCheckoutBranch } from './workItemBranches';
 import { BranchTarget, checkoutBranch, openWorktree, showCheckoutMenu } from './commands/checkoutBranch';
-import { removeWorktreesCommand, showWorktreeMenu } from './commands/removeWorktree';
+import { removeWorktreeOf, removeWorktreesCommand, showWorktreeMenu } from './commands/removeWorktree';
 import { runPendingWorktreeSetup } from './worktreeSetup';
 import { CheckoutKind } from './viewModel';
 import { publishPullRequest } from './commands/publishPullRequest';
@@ -321,6 +321,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
     command('totalflowx.worktreeMenu', async (kind: CheckoutKind, id: number, branch?: string) =>
       showWorktreeMenu(store, git, branchTarget(kind, id, branch).branch)
+    ),
+    command('totalflowx.removeWorktree', async (kind: CheckoutKind, id: number, branch?: string) =>
+      removeWorktreeOf(store, git, branchTarget(kind, id, branch).branch)
     ),
     command('totalflowx.removeWorktrees', () => removeWorktreesCommand(git, store)),
     command('totalflowx.openDetails', async (id?: number) => {

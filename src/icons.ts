@@ -34,6 +34,11 @@ export const ICONS = {
   trophy: '<path d="M5 2.5h6v4a3 3 0 0 1-6 0zM5 4H2.5a2 2 0 0 0 2.5 3M11 4h2.5A2 2 0 0 1 11 7M8 9.5v2.5M5.5 13.5h5"/>',
   link: '<path d="M6.8 9.2a2.4 2.4 0 0 0 3.4 0l2.3-2.3a2.4 2.4 0 0 0-3.4-3.4L8 4.6M9.2 6.8a2.4 2.4 0 0 0-3.4 0L3.5 9.1a2.4 2.4 0 0 0 3.4 3.4L8 11.4"/>',
   filter: '<path d="M2 3h12L9.5 8.5V13l-3 1.5V8.5z"/>',
+  checkout: '<path d="M2 8h7M6.5 5 9.5 8l-3 3M9.5 2.5h3.5a.5.5 0 0 1 .5.5v10a.5.5 0 0 1-.5.5H9.5"/>',
+  worktree:
+    '<rect x="2.5" y="5.5" width="8" height="8" rx="1"/><path d="M5.5 5.5v-2a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-2"/>',
+  trash: '<path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.8 6.5v5M9.2 6.5v5"/>',
+  more: '<circle cx="3.5" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="12.5" cy="8" r="1"/>',
   refresh: '<path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5v3h-3"/>',
 };
 

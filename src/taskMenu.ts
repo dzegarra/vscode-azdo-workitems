@@ -2,6 +2,7 @@
  * The "artifacts" pill of a task row (its branches and PRs in one control) and the actions menu behind it.
  * Pure, so no "vscode" import: the webview bundles it
  */
+import type { ActionMenuAction, ActionMenuItem, ActionMenuSection } from './actionMenu';
 import { describeTaskBranch, TaskBranchModel } from './taskBranches';
 import type { TaskPullRequestModel } from './taskPullRequests';
 
@@ -14,31 +15,9 @@ export interface TaskMenuTask {
   canCreatePullRequest?: boolean;
 }
 
-/** The message an item of the menu posts: the data attributes of its button */
-export interface TaskMenuAction {
-  action: 'checkoutHere' | 'openWorktree' | 'deleteBranch' | 'openPullRequest' | 'createBranch' | 'createPullRequest';
-  /** Id sent as `id`: the task, or the parent work item for the create actions */
-  id: number;
-  kind?: 'task';
-  branch?: string;
-  pr?: number;
-  task?: number;
-}
-
-export interface TaskMenuItem {
-  label: string;
-  /** Second line, e.g. the state of the PR */
-  detail?: string;
-  /** Without action: the item only informs (dimmed) */
-  act?: TaskMenuAction;
-  /** Destructive: shown in the danger colour */
-  danger?: boolean;
-}
-
-export interface TaskMenuSection {
-  title: string;
-  items: TaskMenuItem[];
-}
+export type TaskMenuAction = ActionMenuAction;
+export type TaskMenuItem = ActionMenuItem;
+export type TaskMenuSection = ActionMenuSection;
 
 export function taskMenuSections(task: TaskMenuTask, parentId: number): TaskMenuSection[] {
   const branchItems = task.taskBranches.flatMap((branch): TaskMenuItem[] => {
