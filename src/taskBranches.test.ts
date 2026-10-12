@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   branchesToVerify,
   describeTaskBranch,
-  splitTaskBranches,
-  taskBranchTooltip,
   TaskBranchContext,
   TaskBranchPullRequest,
   toTaskBranchModels,
@@ -82,7 +80,6 @@ describe('toTaskBranchModels', () => {
       context()
     );
     expect(branch.pullRequest).toMatchObject({ id: 5, status: 'In review' });
-    expect(taskBranchTooltip(branch)).toContain('PR 5');
   });
 
   it('does not attach a PR of another repository with the same branch name', () => {
@@ -97,12 +94,6 @@ describe('toTaskBranchModels', () => {
       context({ currentBranch: 'cur', remoteExists: (name) => name !== 'gone' })
     ).map((branch) => branch.name);
     expect(names).toEqual(['cur', 'b', 'gone', 'o']);
-  });
-});
-
-describe('splitTaskBranches', () => {
-  it('shows the first three', () => {
-    expect(splitTaskBranches([1, 2, 3, 4])).toEqual({ shown: [1, 2, 3], hidden: [4] });
   });
 });
 

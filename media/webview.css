@@ -2777,100 +2777,9 @@ button.signal-predecessors:focus-visible {
   line-height: 14px;
 }
 
-/* Like a PR icon, but muted and dashed: the PR does not exist yet */
-button.task-create-pr {
-  flex: none;
-  gap: 1px;
-  border: 1px dashed var(--border);
-  color: var(--muted);
-}
-
-button.task-create-pr:hover,
-button.task-create-pr:focus-visible {
-  border-color: var(--vscode-focusBorder);
-  color: var(--vscode-foreground);
-}
-
-.task-prs {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 2px;
-}
-
-/* The icon is a flex item of the row, so the popover is positioned by the row */
+/* The pill is a flex item of the row, so the popovers are positioned by the row */
 .task-pr-wrap {
   display: contents;
-}
-
-button.task-pr {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 2px;
-  border: 0;
-  border-radius: 3px;
-  background: none;
-  color: var(--pill-color, var(--muted));
-  font: inherit;
-  font-size: 10.5px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-button.task-pr:hover {
-  background: var(--card-hover);
-}
-
-button.task-pr:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
-}
-
-button.task-pr .icon {
-  width: 13px;
-  height: 13px;
-}
-
-/* Abandoned PRs are faded: they are history, not work to follow */
-button.task-pr.tone-abandoned {
-  opacity: 0.55;
-}
-
-button.task-pr-more {
-  color: var(--muted);
-}
-
-/* Branches that are gone or in another repository: dimmed, back to normal when the user reaches for them */
-button.task-branch.state-deleted,
-button.task-branch.state-other {
-  opacity: 0.5;
-  cursor: default;
-}
-
-button.task-branch.state-other {
-  font-style: italic;
-}
-
-button.task-branch.state-deleted:hover,
-button.task-branch.state-deleted:focus-visible,
-button.task-branch.state-other:hover,
-button.task-branch.state-other:focus-visible {
-  opacity: 0.8;
-}
-
-button.task-branch.state-current {
-  background: color-mix(in srgb, var(--vscode-focusBorder) 18%, transparent);
-}
-
-.task-branch-name {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-family: var(--vscode-editor-font-family, monospace);
-}
-
-.task-branch-dim {
-  opacity: 0.6;
-  overflow-wrap: anywhere;
 }
 
 /* The padding keeps the hover while the pointer moves from the icon to the popover */
@@ -2931,26 +2840,180 @@ button.task-branch.state-current {
   overflow-wrap: anywhere;
 }
 
-.reviewer-more {
-  color: var(--muted);
-}
-
-.task-pr-more-list {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.task-pr-more-list li {
-  display: flex;
-  flex-wrap: wrap;
+/* One pill per task: its branches and PRs (icon coloured by state, count when several), or a dim "+" */
+button.task-pill {
+  display: inline-flex;
+  flex: none;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 14px;
+  cursor: pointer;
 }
 
-.task-pr-more-title {
+button.task-pill:hover,
+button.task-pill[aria-expanded='true'] {
+  background: var(--card-hover);
+}
+
+button.task-pill:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+button.task-pill.empty {
+  border-style: dashed;
+  opacity: 0.8;
+}
+
+button.task-pill.empty:hover,
+button.task-pill.empty:focus-visible {
+  border-color: var(--vscode-focusBorder);
+  color: var(--vscode-foreground);
+  opacity: 1;
+}
+
+.task-pill-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  color: var(--pill-color, var(--muted));
+}
+
+.task-pill-part .icon {
+  width: 11px;
+  height: 11px;
+}
+
+.pill-branch-current {
+  --pill-color: var(--vscode-focusBorder);
+}
+
+.pill-branch-local {
+  --pill-color: var(--blue);
+}
+
+.pill-branch-remote {
+  --pill-color: var(--grey);
+}
+
+.pill-branch-dim {
+  --pill-color: var(--muted);
+  opacity: 0.55;
+}
+
+/* Abandoned PRs are faded: they are history, not work to follow */
+.task-pill-part.tone-abandoned {
+  opacity: 0.55;
+}
+
+/* The hover card gives way to the menu */
+button.task-pill[aria-expanded='true'] ~ .task-pr-pop {
+  display: none !important;
+}
+
+.task-branch-name {
   min-width: 0;
   overflow-wrap: anywhere;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.task-pr-entry + .task-pr-entry {
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+/* Actions of a task: under the row, as wide as it is */
+.task-menu {
+  position: absolute;
+  z-index: 40;
+  top: 100%;
+  right: 0;
+  left: 0;
+  display: grid;
+  gap: 2px;
+  margin-top: 2px;
+  padding: 4px;
+  border: 1px solid var(--vscode-menu-border, var(--vscode-editorHoverWidget-border, var(--border)));
+  border-radius: 4px;
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background, var(--card-bg)));
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgb(0 0 0 / 35%));
+  color: var(--vscode-menu-foreground, var(--vscode-foreground));
+  font-size: 11.5px;
+  white-space: normal;
+}
+
+.task-menu-section {
+  display: grid;
+  gap: 1px;
+}
+
+.task-menu-section + .task-menu-section {
+  margin-top: 2px;
+  padding-top: 2px;
+  border-top: 1px solid var(--vscode-menu-separatorBackground, var(--border));
+}
+
+.task-menu-title {
+  padding: 2px 6px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.task-menu-item {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+button.task-menu-item {
+  cursor: pointer;
+}
+
+button.task-menu-item:hover,
+button.task-menu-item:focus-visible {
+  outline: none;
+  background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
+  color: var(--vscode-menu-selectionForeground, inherit);
+}
+
+.task-menu-item.info {
+  opacity: 0.65;
+}
+
+.task-menu-label,
+.task-menu-detail {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-menu-detail {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+button.task-menu-item:hover .task-menu-detail,
+button.task-menu-item:focus-visible .task-menu-detail {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.reviewer-more {
+  color: var(--muted);
 }

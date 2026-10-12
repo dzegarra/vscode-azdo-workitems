@@ -311,6 +311,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     command('totalflowx.checkoutMenu', async (kind: CheckoutKind, id: number, branch?: string) =>
       showCheckoutMenu(git, store, branchTarget(kind, id, branch))
     ),
+    command('totalflowx.checkoutHere', async (kind: CheckoutKind, id: number, branch?: string) =>
+      checkoutBranch(git, store, branchTarget(kind, id, branch), 'here')
+    ),
     command('totalflowx.openWorktree', async (kind: CheckoutKind, id: number, branch?: string) =>
       openWorktree(store, branchTarget(kind, id, branch).branch)
     ),

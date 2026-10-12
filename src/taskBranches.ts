@@ -1,12 +1,9 @@
 /**
- * Branches linked to the tasks nested in a work item card: an icon per branch and a popover with what it is.
+ * Branches linked to the tasks nested in a work item card: summarised by the pill of the task row.
  * Pure, so no "vscode" import: the webview bundles it
  */
 import { isOtherRepository } from './pullRequestModel';
 import { pullRequestStatus, PullRequestState, PullRequestTone } from './workItemLinks';
-
-/** Branch icons shown in a task row; the rest are listed in the popover of "+N" */
-export const MAX_TASK_BRANCH_ICONS = 3;
 
 /** checked out here / exists / gone (the Development link remains) / in another repository */
 export type TaskBranchState = 'current' | 'exists' | 'deleted' | 'other';
@@ -129,11 +126,6 @@ export function toTaskBranchModels(
   return unique.map((link) => toTaskBranch(link, pullRequests, context)).sort((a, b) => RANK[a.state] - RANK[b.state]);
 }
 
-/** The branches that get an icon and the ones that only appear in the popover of "+N" */
-export function splitTaskBranches<T>(branches: T[], max = MAX_TASK_BRANCH_ICONS): { shown: T[]; hidden: T[] } {
-  return { shown: branches.slice(0, max), hidden: branches.slice(max) };
-}
-
 /** Names of the linked branches of this repository whose existence in Azure DevOps is needed (not yet known) */
 export function branchesToVerify(
   links: TaskBranchLink[],
@@ -159,10 +151,4 @@ export function describeTaskBranch(branch: Pick<TaskBranchModel, 'state' | 'wher
     case 'other':
       return `in another repository${branch.repository ? ` (${branch.repository})` : ''}`;
   }
-}
-
-/** One line of a tooltip: name, state and PR */
-export function taskBranchTooltip(branch: TaskBranchModel): string {
-  const pr = branch.pullRequest ? ` · PR ${branch.pullRequest.id} (${branch.pullRequest.status})` : '';
-  return `${branch.name} · ${describeTaskBranch(branch)}${pr}`;
 }

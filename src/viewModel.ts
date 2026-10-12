@@ -233,7 +233,12 @@ export type WebviewMessage =
     }
   | { type: 'openFile'; path: string }
   /** The ▾ of a Checkout button (menu) and "Open worktree": the id is the work item or the PR; `branch`: a branch of the row of a work item */
-  | { type: 'checkoutMenu' | 'openWorktree' | 'worktreeMenu'; kind: CheckoutKind; id: number; branch?: string }
+  | {
+      type: 'checkoutMenu' | 'checkoutHere' | 'openWorktree' | 'worktreeMenu';
+      kind: CheckoutKind;
+      id: number;
+      branch?: string;
+    }
   | { type: 'checkReviewRequests' }
   | { type: 'checkoutReviewRequest'; pullRequestId: number }
   | { type: 'openReviewRequest' | 'openMyPullRequest'; url: string }
@@ -254,7 +259,7 @@ export type WebviewMessage =
 /** Buttons of a work item: run by id */
 export type WorkItemActionMessage = Exclude<
   Extract<WebviewMessage, { id: number }>,
-  { type: 'checkoutMenu' | 'openWorktree' | 'worktreeMenu' }
+  { type: 'checkoutMenu' | 'checkoutHere' | 'openWorktree' | 'worktreeMenu' }
 >;
 
 export type ExtensionMessage =

@@ -235,6 +235,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         await this.openFile(message.path);
         return;
       case 'checkoutMenu':
+      case 'checkoutHere':
       case 'openWorktree':
       case 'worktreeMenu':
         await vscode.commands.executeCommand(`totalflowx.${message.type}`, message.kind, message.id, message.branch);

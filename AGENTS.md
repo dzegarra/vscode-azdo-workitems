@@ -36,6 +36,7 @@ src/azdoClient.ts         REST client (fetch + bearer token from the VS Code Mic
 src/requestRecorder.ts    the ONLY place that calls fetch: records every request (src/requestStats.ts, src/diagnostics.ts)
 src/requestContext.ts     AsyncLocalStorage "feature" attribution of requests (withFeature)
 src/pullRequestTasks.ts    pure rules of the PR tasks (reusable tasks, which move on publish / completion, branch of a task row)
+src/taskMenu.ts            pure: the pill of a task row (branches + PRs) and the actions menu behind it
 src/workItemsStore.ts     work items of the current sprints + branches, PRs, CI runs, alerts, dependencies, worktrees
 src/*Watcher.ts           pollers: reviewRequestsWatcher (PRs to review), myPullRequestsWatcher (my PRs),
                           pipelineWatcher (CI runs, via src/runsPolling.ts), pullRequestNotifier (events on my PRs)

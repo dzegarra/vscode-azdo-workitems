@@ -7,8 +7,6 @@ import { reviewerModels, ReviewerModel } from './myPullRequests';
 import type { RunModel } from './pipelines';
 import { pullRequestStatus, PullRequestState, PullRequestTone } from './workItemLinks';
 
-/** PR icons shown in a task row; the rest are listed in the tooltip of "+N" */
-export const MAX_TASK_PULL_REQUEST_ICONS = 3;
 /** Reviewers listed in the popover; the rest are counted */
 export const MAX_TASK_REVIEWERS = 5;
 
@@ -82,14 +80,4 @@ export function toTaskPullRequestModel(
 export function sortTaskPullRequests<T extends { id: number; tone: PullRequestTone }>(prs: T[]): T[] {
   const rank = (pr: T) => (pr.tone === 'completed' || pr.tone === 'abandoned' ? 1 : 0);
   return [...prs].sort((a, b) => rank(a) - rank(b) || b.id - a.id);
-}
-
-/** The PRs that get an icon and the ones that only appear in the tooltip of "+N" */
-export function splitTaskPullRequests<T>(prs: T[], max = MAX_TASK_PULL_REQUEST_ICONS): { shown: T[]; hidden: T[] } {
-  return { shown: prs.slice(0, max), hidden: prs.slice(max) };
-}
-
-/** One line of the tooltip of "+N" */
-export function describeTaskPullRequest(pr: Pick<TaskPullRequestModel, 'id' | 'status' | 'title'>): string {
-  return `PR ${pr.id} · ${pr.status} · ${pr.title}`;
 }

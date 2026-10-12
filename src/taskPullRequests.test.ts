@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  describeTaskPullRequest,
   MAX_TASK_REVIEWERS,
   sortTaskPullRequests,
-  splitTaskPullRequests,
   TaskPullRequestSource,
   toTaskPullRequestModel,
 } from './taskPullRequests';
@@ -111,19 +109,5 @@ describe('sortTaskPullRequests', () => {
       { id: 4, tone: 'draft' as const },
     ]);
     expect(sorted.map((pr) => pr.id)).toEqual([4, 3, 9, 5]);
-  });
-});
-
-describe('splitTaskPullRequests', () => {
-  it('shows up to 3 icons and leaves the rest for "+N"', () => {
-    expect(splitTaskPullRequests([1, 2, 3, 4, 5])).toEqual({ shown: [1, 2, 3], hidden: [4, 5] });
-    expect(splitTaskPullRequests([1, 2, 3])).toEqual({ shown: [1, 2, 3], hidden: [] });
-    expect(splitTaskPullRequests([])).toEqual({ shown: [], hidden: [] });
-  });
-});
-
-describe('describeTaskPullRequest', () => {
-  it('is one line with the id, the status and the title', () => {
-    expect(describeTaskPullRequest({ id: 7, status: 'Draft', title: 'Fix' })).toBe('PR 7 · Draft · Fix');
   });
 });

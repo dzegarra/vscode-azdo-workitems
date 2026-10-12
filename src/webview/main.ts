@@ -29,8 +29,9 @@ import { countLate } from '../reviewRequests';
 import type { ReviewRequestModel, ReviewUrgency } from '../reviewRequests';
 import { hasTaskAlerts, isTaskListOpen, taskProgress } from '../taskProgress';
 import { pullRequestTooltip } from '../pullRequestModel';
-import { describeTaskBranch, splitTaskBranches, taskBranchTooltip, TaskBranchModel } from '../taskBranches';
-import { describeTaskPullRequest, splitTaskPullRequests, TaskPullRequestModel } from '../taskPullRequests';
+import { describeTaskBranch, TaskBranchModel } from '../taskBranches';
+import { TaskPullRequestModel } from '../taskPullRequests';
+import { taskMenuSections, TaskMenuItem, taskPill, TaskPill } from '../taskMenu';
 import { splitWorkingOn, workingOnBadge } from '../workingOn';
 import type { CompletedPeriod } from '../myPullRequests';
 import type {
@@ -109,6 +110,11 @@ const collapsedTasks = new Set(savedState?.collapsedTasks ?? []);
 const expandedCards = new Set(savedState?.expandedCards ?? []);
 const expandedReviews = new Set(savedState?.expandedReviews ?? []);
 const expandedPullRequests = new Set(savedState?.expandedPullRequests ?? []);
+/** Task whose action menu is open (UI only, not saved). Only one menu at a time; the page is rendered again on every update */
+let openTaskMenu: number | undefined;
+/** Scrolling closes the menu, but not the scroll that brings it into view */
+let ignoreScrollUntil = 0;
+const MENU_SCROLL_GRACE_MS = 300;
 
 function saveState(): void {
   vscode.setState({
@@ -620,55 +626,6 @@ function renderTaskPullRequestCard(task: TaskRow, pr: TaskPullRequestModel): str
     ${reviewers}${renderTaskPullRequestRuns(task, pr)}`;
 }
 
-/** One PR icon, coloured by the state of the PR. Clicking it opens the PR; hovering or focusing it shows its popover */
-function renderTaskPullRequestIcon(task: TaskRow, pr: TaskPullRequestModel): string {
-  const id = `task-pr-${task.id}-${pr.id}`;
-  return `<span class="task-pr-wrap"><button class="task-pr tone-${pr.tone}" data-action="openPullRequest"
-      data-id="${task.id}" data-pr="${pr.id}" aria-describedby="${id}"
-      aria-label="${escapeHtml(`PR ${pr.id}, ${pr.status}: ${pr.title}`)}">${icon('pullRequest')}</button>
-    <div class="task-pr-pop" id="${id}" role="tooltip"><div class="task-pr-card">${renderTaskPullRequestCard(
-    task,
-    pr
-  )}</div></div></span>`;
-}
-
-/** "+N": the PRs without icon, listed in a popover where each one opens */
-function renderTaskPullRequestMore(task: TaskRow, hidden: TaskPullRequestModel[]): string {
-  const id = `task-pr-more-${task.id}`;
-  const rows = hidden.map(
-    (pr) => `<li><button class="link" data-action="openPullRequest" data-id="${task.id}" data-pr="${pr.id}"
-        title="${escapeHtml(describeTaskPullRequest(pr))}">PR ${pr.id}</button>
-      <span class="pill tone-${pr.tone}">${escapeHtml(pr.status)}</span>
-      <span class="task-pr-more-title">${escapeHtml(pr.title)}</span></li>`
-  );
-  return `<span class="task-pr-wrap"><button class="task-pr task-pr-more" aria-describedby="${id}"
-      aria-label="${escapeHtml(
-        `${hidden.length} more pull requests: ${hidden.map(describeTaskPullRequest).join('; ')}`
-      )}"
-      title="${escapeHtml(hidden.map(describeTaskPullRequest).join('\n'))}">+${hidden.length}</button>
-    <div class="task-pr-pop" id="${id}" role="tooltip"><div class="task-pr-card">
-      <ul class="task-pr-more-list">${rows.join('')}</ul></div></div></span>`;
-}
-
-function renderTaskPullRequests(task: TaskRow): string {
-  if (!task.taskPullRequests.length) {
-    return '';
-  }
-  const { shown, hidden } = splitTaskPullRequests(task.taskPullRequests);
-  return (
-    shown.map((pr) => renderTaskPullRequestIcon(task, pr)).join('') +
-    (hidden.length ? renderTaskPullRequestMore(task, hidden) : '')
-  );
-}
-
-/** Colour of a branch icon: highlighted when checked out, blue when local, grey when only in Azure DevOps */
-function taskBranchTone(branch: TaskBranchModel): string {
-  if (branch.state === 'current') {
-    return 'tone-current';
-  }
-  return branch.where?.startsWith('local') ? 'tone-local' : 'tone-remote';
-}
-
 function renderTaskBranchCard(branch: TaskBranchModel): string {
   const meta = [
     branch.state === 'other' || branch.repository
@@ -676,7 +633,6 @@ function renderTaskBranchCard(branch: TaskBranchModel): string {
           branch.repository ?? 'another repository'
         )}</span><span class="pill tone-neutral" title="Not the repository open in VS Code">other repository</span>`
       : '',
-    branch.canCheckout ? '<span>Click to check out</span>' : '',
   ].filter(Boolean);
   const pr = branch.pullRequest
     ? `<div class="task-pr-meta"><span>PR ${branch.pullRequest.id}</span><span class="pill tone-${
@@ -690,57 +646,86 @@ function renderTaskBranchCard(branch: TaskBranchModel): string {
     ${meta.length ? `<div class="task-pr-meta">${meta.join('<span aria-hidden="true">·</span>')}</div>` : ''}${pr}`;
 }
 
-/**
- * One branch icon, coloured by where the branch is. Clicking one of this repository that exists offers Checkout / a
- * worktree; the deleted ones and the ones of other repositories are dimmed and do nothing
- */
-function renderTaskBranchIcon(task: TaskRow, branch: TaskBranchModel, index: number): string {
-  const id = `task-branch-${task.id}-${index}`;
-  const action = branch.canCheckout
-    ? `data-action="checkoutMenu" data-kind="task" data-id="${task.id}" data-branch="${escapeHtml(branch.name)}"`
+/** Branch to the right of the pill: its icon coloured by the best state of the branches, with their number */
+function renderPillBranches(pill: TaskPill): string {
+  return pill.branchTone
+    ? `<span class="task-pill-part pill-branch-${pill.branchTone}">${icon('branch')}${
+        pill.branches > 1 ? pill.branches : ''
+      }</span>`
     : '';
-  const label = escapeHtml(`Branch ${taskBranchTooltip(branch)}`);
-  return `<span class="task-pr-wrap"><button class="task-pr task-branch state-${branch.state} ${taskBranchTone(
-    branch
-  )}" ${action} aria-describedby="${id}" aria-label="${label}"${
-    branch.canCheckout ? '' : ' aria-disabled="true"'
-  }>${icon('branch')}</button>
-    <div class="task-pr-pop" id="${id}" role="tooltip"><div class="task-pr-card">${renderTaskBranchCard(
-    branch
-  )}</div></div></span>`;
 }
 
-/** "+N": the branches without icon, listed in a popover where the ones that can be checked out open the menu */
-function renderTaskBranchMore(task: TaskRow, hidden: TaskBranchModel[]): string {
-  const id = `task-branch-more-${task.id}`;
-  const rows = hidden.map((branch) => {
-    const name = escapeHtml(branch.name);
-    const label = branch.canCheckout
-      ? `<button class="link" data-action="checkoutMenu" data-kind="task" data-id="${
-          task.id
-        }" data-branch="${name}" title="${escapeHtml(taskBranchTooltip(branch))}">${name}</button>`
-      : `<span class="task-branch-dim" title="${escapeHtml(taskBranchTooltip(branch))}">${name}</span>`;
-    return `<li>${label}<span class="pill tone-neutral">${escapeHtml(describeTaskBranch(branch))}</span></li>`;
-  });
-  return `<span class="task-pr-wrap"><button class="task-pr task-pr-more" aria-describedby="${id}"
-      aria-label="${escapeHtml(`${hidden.length} more branches: ${hidden.map(taskBranchTooltip).join('; ')}`)}"
-      title="${escapeHtml(hidden.map(taskBranchTooltip).join('\n'))}">+${hidden.length}</button>
-    <div class="task-pr-pop" id="${id}" role="tooltip"><div class="task-pr-card">
-      <ul class="task-pr-more-list">${rows.join('')}</ul></div></div></span>`;
+function renderPillPullRequests(pill: TaskPill): string {
+  return pill.pullRequest
+    ? `<span class="task-pill-part tone-${pill.pullRequest.tone}">${icon('pullRequest')}${
+        pill.pullRequests > 1 ? pill.pullRequests : ''
+      }</span>`
+    : '';
 }
 
-function renderTaskBranches(task: TaskRow): string {
-  const { shown, hidden } = splitTaskBranches(task.taskBranches);
-  return (
-    shown.map((branch, index) => renderTaskBranchIcon(task, branch, index)).join('') +
-    (hidden.length ? renderTaskBranchMore(task, hidden) : '')
+/** The detail card of the pill (hover or focus): every branch, then every PR */
+function renderTaskPillDetails(task: TaskRow, id: string): string {
+  const entries = [
+    ...task.taskBranches.map(renderTaskBranchCard),
+    ...task.taskPullRequests.map((pr) => renderTaskPullRequestCard(task, pr)),
+  ];
+  return entries.length
+    ? `<div class="task-pr-pop" id="${id}" role="tooltip"><div class="task-pr-card">${entries
+        .map((entry) => `<div class="task-pr-entry">${entry}</div>`)
+        .join('')}</div></div>`
+    : '';
+}
+
+function renderTaskMenuItem(item: TaskMenuItem): string {
+  const detail = item.detail ? `<span class="task-menu-detail">${escapeHtml(item.detail)}</span>` : '';
+  const text = `<span class="task-menu-label">${escapeHtml(item.label)}</span>${detail}`;
+  if (!item.act) {
+    return `<div class="task-menu-item info" role="menuitem" aria-disabled="true">${text}</div>`;
+  }
+  const { action, id, kind, branch, pr, task } = item.act;
+  const attributes = [
+    `data-action="${action}"`,
+    `data-id="${id}"`,
+    kind ? `data-kind="${kind}"` : '',
+    branch ? `data-branch="${escapeHtml(branch)}"` : '',
+    pr ? `data-pr="${pr}"` : '',
+    task ? `data-task="${task}"` : '',
+  ].filter(Boolean);
+  return `<button class="task-menu-item" role="menuitem" tabindex="-1" ${attributes.join(' ')}>${text}</button>`;
+}
+
+/** The actions of a task, open under its pill (only the menu of `openTaskMenu` is in the page) */
+function renderTaskMenu(task: TaskRow, parentId: number, id: string): string {
+  const sections = taskMenuSections(task, parentId).map(
+    (section) => `<div class="task-menu-section" role="group" aria-label="${section.title}">
+      <div class="task-menu-title" aria-hidden="true">${section.title}</div>
+      ${section.items.map(renderTaskMenuItem).join('')}</div>`
   );
+  return `<div class="task-menu" id="${id}" role="menu" aria-label="${escapeHtml(`Task ${task.id}`)}">${sections.join(
+    ''
+  )}</div>`;
 }
 
-/** Branches, then PRs, of a task row; overflow of each is a "+N" popover */
-function renderTaskArtifacts(task: TaskRow): string {
-  const content = renderTaskBranches(task) + renderTaskPullRequests(task);
-  return content ? `<span class="task-prs">${content}</span>` : '';
+/**
+ * One pill per task with its branches and PRs (icons and counts); a dim "+" when there are none but something can be
+ * created. Hover shows the details, click the menu with the actions
+ */
+function renderTaskPill(task: TaskRow, parentId: number): string {
+  const pill = taskPill(task);
+  if (!pill) {
+    return '';
+  }
+  const detailsId = `task-pill-pop-${task.id}`;
+  const menuId = `task-menu-${task.id}`;
+  const open = openTaskMenu === task.id;
+  const content = pill.empty ? '+' : `${renderPillBranches(pill)}${renderPillPullRequests(pill)}`;
+  return `<span class="task-pr-wrap"><button class="task-pill${pill.empty ? ' empty' : ''}"
+      data-action="toggleTaskMenu" data-id="${task.id}" aria-haspopup="menu" aria-expanded="${open}"
+      ${open ? `aria-controls="${menuId}"` : ''} ${pill.empty ? '' : `aria-describedby="${detailsId}"`}
+      ${pill.empty ? 'title="Create a branch or a pull request for this task"' : ''}
+      aria-label="${escapeHtml(pill.label)}">${content}</button>${renderTaskPillDetails(task, detailsId)}${
+    open ? renderTaskMenu(task, parentId, menuId) : ''
+  }</span>`;
 }
 
 /** "Szymon Kwasek EXT" -> "SK" */
@@ -751,24 +736,6 @@ function initials(name: string): string {
     .slice(0, 2)
     .map((word) => word[0].toUpperCase())
     .join('');
-}
-
-/** "Create branch" of a task row: the branch of the parent work item, named after the task. Icon only: rows are narrow */
-function renderCreateBranch(task: TaskRow, parentId: number): string {
-  return task.canCreateBranch
-    ? `<button class="task-pr task-create-pr" data-action="createBranch" data-id="${parentId}"
-      data-task="${task.id}" title="Create a branch for this task"
-      aria-label="Create a branch for task ${task.id}">${icon('branch')}+</button>`
-    : '';
-}
-
-/** "Create PR" of a task row: the PR of the parent work item, with this task as its PR task. Icon only: rows are narrow */
-function renderCreatePullRequest(task: TaskRow, parentId: number): string {
-  return task.canCreatePullRequest
-    ? `<button class="task-pr task-create-pr" data-action="createPullRequest" data-id="${parentId}"
-      data-task="${task.id}" title="Create a pull request with this task as its PR task"
-      aria-label="Create a pull request for task ${task.id}">${icon('pullRequest')}+</button>`
-    : '';
 }
 
 function renderChild(item: TaskRow, parentId: number): string {
@@ -786,9 +753,7 @@ function renderChild(item: TaskRow, parentId: number): string {
           )}</span>`
         : ''
     }
-    ${renderTaskArtifacts(item)}
-    ${renderCreateBranch(item, parentId)}
-    ${renderCreatePullRequest(item, parentId)}
+    ${renderTaskPill(item, parentId)}
     ${stateButton(item.id, item.state)}
   </li>`;
 }
@@ -1901,6 +1866,31 @@ function renderFiltersToggle(current: ViewModel): void {
   }`;
 }
 
+const TASK_MENU_ITEMS = '.task-menu button.task-menu-item';
+
+function taskPillOf(id: number): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`.task-pill[data-id="${id}"]`);
+}
+
+/** Where the focus is in the task menu, to put it back after the page is rendered again */
+function captureTaskMenuFocus(): () => void {
+  const active = document.activeElement;
+  if (openTaskMenu === undefined || !(active instanceof HTMLElement)) {
+    return () => undefined;
+  }
+  const items = Array.from(document.querySelectorAll<HTMLElement>(TASK_MENU_ITEMS));
+  const index = items.indexOf(active);
+  const onPill = active.classList.contains('task-pill');
+  const task = openTaskMenu;
+  return () => {
+    if (index >= 0) {
+      document.querySelectorAll<HTMLElement>(TASK_MENU_ITEMS)[index]?.focus({ preventScroll: true });
+    } else if (onPill) {
+      taskPillOf(task)?.focus({ preventScroll: true });
+    }
+  };
+}
+
 function render(): void {
   const app = document.getElementById('app');
   if (!app || !model) {
@@ -1932,6 +1922,7 @@ function render(): void {
   scopeElement.textContent = scope.text;
   scopeElement.title = scope.tooltip;
   (app.querySelector('.progress') as HTMLElement).hidden = model.status !== 'loading';
+  const restoreMenuFocus = captureTaskMenuFocus();
   (document.getElementById('filters') as HTMLElement).innerHTML =
     filtersExpanded && cardItems(model).length ? renderFilters(model) : '';
   renderFiltersToggle(model);
@@ -1943,8 +1934,68 @@ function render(): void {
   sizePhaseTimelines();
   pulseChangedReviews(model);
   sizeTaskBars();
+  // The task of an open menu may be gone (folded list, filtered out, nothing left to do): no orphan state
+  if (openTaskMenu !== undefined && !document.querySelector('.task-menu')) {
+    openTaskMenu = undefined;
+  }
+  restoreMenuFocus();
   if (revealPending()) {
     render();
+  }
+}
+
+function closeTaskMenu(focusPill: boolean): void {
+  const task = openTaskMenu;
+  if (task === undefined) {
+    return;
+  }
+  openTaskMenu = undefined;
+  render();
+  if (focusPill) {
+    // The detail card would show again because the pill has the focus: it waits for the pointer to move
+    document.body.classList.add('no-popovers');
+    taskPillOf(task)?.focus({ preventScroll: true });
+  }
+}
+
+function toggleTaskMenu(id: number): void {
+  const wasOpen = openTaskMenu === id;
+  openTaskMenu = wasOpen ? undefined : id;
+  ignoreScrollUntil = Date.now() + MENU_SCROLL_GRACE_MS;
+  render();
+  if (wasOpen) {
+    taskPillOf(id)?.focus({ preventScroll: true });
+  } else {
+    document.querySelector<HTMLElement>(TASK_MENU_ITEMS)?.focus({ preventScroll: true });
+    document.querySelector<HTMLElement>('.task-menu')?.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+/** Arrow keys, Home and End move between the items of the open menu; Escape closes it and Tab leaves it */
+function onTaskMenuKey(event: KeyboardEvent): void {
+  if (openTaskMenu === undefined) {
+    return;
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeTaskMenu(true);
+    return;
+  }
+  if (event.key === 'Tab') {
+    closeTaskMenu(false);
+    return;
+  }
+  const items = Array.from(document.querySelectorAll<HTMLElement>(TASK_MENU_ITEMS));
+  const current = items.indexOf(document.activeElement as HTMLElement);
+  const moves: Record<string, number> = {
+    ArrowDown: (current + 1) % items.length,
+    ArrowUp: (current - 1 + items.length) % items.length,
+    Home: 0,
+    End: items.length - 1,
+  };
+  if (event.key in moves && items.length) {
+    event.preventDefault();
+    items[moves[event.key]].focus();
   }
 }
 
@@ -2079,6 +2130,19 @@ document.addEventListener('keydown', (event) => {
   }
 });
 document.addEventListener('pointermove', () => document.body.classList.remove('no-popovers'));
+document.addEventListener('keydown', onTaskMenuKey);
+// Scrolling the list moves the row away from the menu (capture: scroll does not bubble)
+document.addEventListener(
+  'scroll',
+  (event) => {
+    const target = event.target as Node;
+    const inMenu = target instanceof Element && target.closest('.task-menu');
+    if (openTaskMenu !== undefined && !inMenu && Date.now() > ignoreScrollUntil) {
+      closeTaskMenu(false);
+    }
+  },
+  true
+);
 
 document.addEventListener('click', (event) => {
   const file = (event.target as HTMLElement).closest<HTMLElement>('[data-action="openFile"]');
@@ -2087,15 +2151,40 @@ document.addEventListener('click', (event) => {
     return;
   }
   const target = (event.target as HTMLElement).closest<HTMLElement>('[data-action], [data-filter]');
+  if (openTaskMenu !== undefined && !(event.target as HTMLElement).closest('.task-menu, .task-pill')) {
+    // Outside click: closes the menu, and the click still does what it was for
+    closeTaskMenu(false);
+  }
   // The text of a popover is not the row behind it: clicking it must not fold the row
   const popover = '.pred-pop, .task-pr-pop';
   if (!target || ((event.target as HTMLElement).closest(popover) && !target.closest(popover))) {
     return;
   }
   const { action, filter, value, id, pr, run, url, path, tests, kind, layout, branch, panel, task } = target.dataset;
+  if (action === 'toggleTaskMenu' && id) {
+    toggleTaskMenu(Number(id));
+    return;
+  }
+  if (target.classList.contains('task-menu-item')) {
+    // An item was chosen: the menu closes, the focus goes back to the pill, and the item does its action below
+    const pillTask = openTaskMenu;
+    openTaskMenu = undefined;
+    render();
+    document.body.classList.add('no-popovers');
+    if (pillTask !== undefined) {
+      taskPillOf(pillTask)?.focus({ preventScroll: true });
+    }
+  }
   if (filter && value !== undefined) {
     toggleFilter(filter as FilterKind, value);
-  } else if ((action === 'checkoutMenu' || action === 'openWorktree' || action === 'worktreeMenu') && kind && id) {
+  } else if (
+    (action === 'checkoutMenu' ||
+      action === 'checkoutHere' ||
+      action === 'openWorktree' ||
+      action === 'worktreeMenu') &&
+    kind &&
+    id
+  ) {
     post({ type: action, kind: kind as CheckoutKind, id: Number(id), branch });
   } else if (action === 'refresh') {
     post({ type: 'refresh' });
