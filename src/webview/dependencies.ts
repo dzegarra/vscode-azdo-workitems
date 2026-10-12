@@ -1,6 +1,6 @@
 import type { DependencyMapMessage, DependencyMapUpdate } from '../dependencyMap';
 import type { DependencyGraph, GraphEdge, GraphLayout, GraphNode } from '../dependencyGraph';
-import { dependencyChain, isolatedIds, layoutGraph, visibleColumns } from '../dependencyGraph';
+import { dependencyChain, filterGraph, layoutGraph } from '../dependencyGraph';
 import { escapeHtml } from '../html';
 import { typeIcon } from '../icons';
 import { DependencyRisk, RISK_DESCRIPTIONS } from '../schedule';
@@ -14,9 +14,12 @@ interface VsCodeApi {
 declare function acquireVsCodeApi(): VsCodeApi;
 
 interface ViewState {
-  hideDone: boolean;
   /** Also my work items without dependencies */
   showIsolated: boolean;
+  /** Group the work items of a lane by state, active work first */
+  sortByState: boolean;
+  /** Hide the Bugs (the focused work item stays) */
+  hideBugs: boolean;
   zoom: number;
 }
 
@@ -40,12 +43,21 @@ const RISK_ORDER: DependencyRisk[] = ['done', 'ok', 'unscheduled', 'tight', 'lat
 /** How far the curves go out of the nodes */
 const CURVE = 60;
 
-const viewState: ViewState = { hideDone: false, showIsolated: false, zoom: 1, ...vscode.getState() };
+// A "hideDone" saved by a previous version is just an extra property: ignored
+const viewState: ViewState = {
+  showIsolated: false,
+  sortByState: false,
+  hideBugs: false,
+  zoom: 1,
+  ...vscode.getState(),
+};
 let graph: DependencyGraph | undefined;
 let selected: number | undefined;
 let focusPending = false;
 /** Work item to scroll to as soon as it is rendered and the map is visible (a hidden tab has no size) */
 let pendingReveal: number | undefined;
+/** Centre the current sprint as soon as the map is rendered and visible (opened without a work item) */
+let pendingCurrent = false;
 
 function post(message: DependencyMapMessage): void {
   vscode.postMessage(message);
@@ -57,36 +69,9 @@ function saveState(): void {
 
 /* ---------- Model ---------- */
 
-function isDone(node: GraphNode): boolean {
-  return ['done', 'removed'].includes(stateCategory(node.state));
-}
-
-/** Work items without dependencies (mostly mine), hidden unless "Show work items without dependencies" (the focused one is shown) */
-function hiddenIsolated(current: DependencyGraph): Set<number> {
-  if (viewState.showIsolated) {
-    return new Set();
-  }
-  const isolated = isolatedIds(current);
-  isolated.delete(current.focusId ?? Number.NaN);
-  return isolated;
-}
-
-/**
- * Graph after the toggles: "Hide done" (my work items and the focused one are always shown) and the work items without
- * dependencies
- */
+/** Graph after the toggles (Hide bugs, work items without dependencies) and the number of work items hidden for having no dependencies */
 function visibleGraph(current: DependencyGraph): DependencyGraph {
-  const isolated = hiddenIsolated(current);
-  if (!viewState.hideDone && !isolated.size) {
-    return current;
-  }
-  const nodes = current.nodes.filter(
-    (node) =>
-      !isolated.has(node.id) && (!viewState.hideDone || !isDone(node) || node.isMine || node.id === current.focusId)
-  );
-  const ids = new Set(nodes.map((node) => node.id));
-  const columns = visibleColumns(current.columns, nodes);
-  return { ...current, nodes, columns, edges: current.edges.filter((e) => ids.has(e.from) && ids.has(e.to)) };
+  return filterGraph(current, viewState).graph;
 }
 
 /* ---------- Highlighting ---------- */
@@ -118,9 +103,29 @@ function revealNode(id: number): boolean {
   return true;
 }
 
+/** Scrolls the column of the current sprint to the horizontal centre, at the top. False when it cannot be done yet */
+function revealCurrentSprint(): boolean {
+  const viewport = document.getElementById('viewport');
+  if (!viewport || !viewport.clientWidth) {
+    return false;
+  }
+  const column = viewport.querySelector('.column.current');
+  if (column) {
+    const box = column.getBoundingClientRect();
+    const view = viewport.getBoundingClientRect();
+    viewport.scrollLeft += box.left + box.width / 2 - (view.left + view.width / 2);
+    viewport.scrollTop = 0;
+  }
+  // Without a current sprint in the map there is nothing to centre
+  return true;
+}
+
 function revealPending(): void {
   if (pendingReveal !== undefined && revealNode(pendingReveal)) {
     pendingReveal = undefined;
+  }
+  if (pendingCurrent && revealCurrentSprint()) {
+    pendingCurrent = false;
   }
 }
 
@@ -267,6 +272,15 @@ function renderEdges(current: DependencyGraph, layout: GraphLayout): string {
     .join('')}</svg>`;
 }
 
+/** Same solid pill as the cards of the sidebar (colours in webview.css) */
+function renderPriority(node: GraphNode): string {
+  return node.priority
+    ? `<span class="urgency"><span class="pill urgency-${node.priority}" title="Priority ${node.priority}${
+        node.priority === 1 ? ' (critical)' : ''
+      }">P${node.priority}</span></span>`
+    : '';
+}
+
 function renderNode(node: GraphNode, layout: GraphLayout, focusId?: number): string {
   const position = layout.positions.get(node.id);
   if (!position) {
@@ -276,6 +290,8 @@ function renderNode(node: GraphNode, layout: GraphLayout, focusId?: number): str
     'node',
     `state-border-${stateCategory(node.state)}`,
     node.isMine ? 'mine' : '',
+    // Critical work still to do stands out; a finished P1 keeps only its pill
+    node.priority === 1 && !['done', 'removed'].includes(stateCategory(node.state)) ? 'critical' : '',
     node.id === focusId ? 'focus' : '',
   ].join(' ');
   const expand = node.hiddenLinks
@@ -285,7 +301,7 @@ function renderNode(node: GraphNode, layout: GraphLayout, focusId?: number): str
   return `<div class="${classes}" data-id="${node.id}" tabindex="0"
       ${box({ left: position.x, top: position.y, width: LAYOUT.columnWidth, height: LAYOUT.nodeHeight })}>
     <div class="node-head">
-      ${typeIcon(node.type)}<span class="node-id">${node.id}</span>
+      ${typeIcon(node.type)}<span class="node-id">${node.id}</span>${renderPriority(node)}
       <span class="state state-${stateCategory(node.state)}">${escapeHtml(node.state)}</span>
     </div>
     <div class="node-title" title="${escapeHtml(node.title)}">${escapeHtml(node.title)}</div>
@@ -308,7 +324,7 @@ function renderLegend(): string {
         `<span class="legend-item"><span class="legend-line risk-${risk}"></span>${RISK_DESCRIPTIONS[risk]}</span>`
     )
     .join('');
-  return `<div class="legend">${risks}<span class="legend-item"><span class="legend-mine"></span>Mine</span></div>`;
+  return `<div class="legend">${risks}<span class="legend-item"><span class="legend-mine"></span>Mine</span><span class="legend-item"><span class="legend-critical"></span>P1 critical</span></div>`;
 }
 
 function renderToolbar(): string {
@@ -318,9 +334,12 @@ function renderToolbar(): string {
       } not planned in a release ${graph.limbo === 1 ? 'is' : 'are'} hidden</span>`
     : '';
   return `<div class="map-toolbar">
-    <label class="toggle"><input type="checkbox" id="hide-done" ${
-      viewState.hideDone ? 'checked' : ''
-    }> Hide done</label>
+    <label class="toggle"><input type="checkbox" id="sort-by-state" ${
+      viewState.sortByState ? 'checked' : ''
+    }> Sort by state</label>
+    <label class="toggle"><input type="checkbox" id="hide-bugs" ${
+      viewState.hideBugs ? 'checked' : ''
+    }> Hide bugs</label>
     <label class="toggle"><input type="checkbox" id="show-isolated" ${
       viewState.showIsolated ? 'checked' : ''
     }> Show work items without dependencies</label>
@@ -341,15 +360,14 @@ function render(): void {
   if (!app || !graph) {
     return;
   }
-  const current = visibleGraph(graph);
-  const hidden = hiddenIsolated(graph).size;
+  const { graph: current, hiddenIsolated: hidden } = filterGraph(graph, viewState);
   const withoutText = `${hidden} work ${hidden === 1 ? 'item has' : 'items have'} no dependencies`;
   if (!current.nodes.length) {
     app.innerHTML = `${renderToolbar()}<p class="message muted">None of your work items in the current iterations has
       predecessors or successors${hidden ? ` (${withoutText}: tick "Show work items without dependencies")` : ''}.</p>`;
     return;
   }
-  const layout = layoutGraph(current, LAYOUT);
+  const layout = layoutGraph(current, { ...LAYOUT, sortByState: viewState.sortByState });
   const note = hidden ? `<p class="muted note">${withoutText} and ${hidden === 1 ? 'is' : 'are'} not shown.</p>` : '';
   // Redrawing replaces the viewport: keep where the user was looking
   const previous = document.getElementById('viewport');
@@ -417,8 +435,10 @@ document.addEventListener('dblclick', (event) => {
 
 document.addEventListener('change', (event) => {
   const { id, checked } = event.target as HTMLInputElement;
-  if (id === 'hide-done') {
-    viewState.hideDone = checked;
+  if (id === 'sort-by-state') {
+    viewState.sortByState = checked;
+  } else if (id === 'hide-bugs') {
+    viewState.hideBugs = checked;
   } else if (id === 'show-isolated') {
     viewState.showIsolated = checked;
   } else {
@@ -472,7 +492,11 @@ window.addEventListener('message', ({ data }: MessageEvent<DependencyMapUpdate>)
     focusPending = data.graph.focusId !== undefined && data.graph.focusId !== graph?.focusId;
     ({ graph } = data);
     render();
+  } else if (data.type === 'showCurrent') {
+    pendingCurrent = true;
+    requestAnimationFrame(revealPending);
   } else if (data.type === 'focus') {
+    pendingCurrent = false;
     selected = data.id;
     applySelection();
     pendingReveal = data.id;

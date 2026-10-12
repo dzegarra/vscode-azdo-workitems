@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { AzdoClient, WorkItem } from './azdoClient';
 import { resolveContext } from './config';
 import { buildGraph, DependencyGraph, GraphItem } from './dependencyGraph';
+import { parsePriority, PRIORITY_FIELD } from './priority';
 import { WorkItemsStore } from './workItemsStore';
 
 export type DependencyMapMessage =
@@ -17,7 +18,9 @@ export type DependencyMapUpdate =
   | { type: 'graph'; graph: DependencyGraph }
   | { type: 'loading' }
   /** Select the work item and scroll to it (each time the map is opened for it) */
-  | { type: 'focus'; id: number };
+  | { type: 'focus'; id: number }
+  /** Opened without a work item: centre the current sprint, most likely what the user wants to see */
+  | { type: 'showCurrent' };
 
 function dependencyIds(workItem: WorkItem): number[] {
   return [...workItem.links.predecessorIds, ...workItem.links.successorIds];
@@ -31,6 +34,7 @@ function toGraphItem(workItem: WorkItem): GraphItem {
     state: workItem.state,
     iterationPath: workItem.iterationPath,
     assignedTo: workItem.assignedTo,
+    priority: parsePriority(workItem.fields[PRIORITY_FIELD]),
     predecessorIds: workItem.links.predecessorIds,
     successorIds: workItem.links.successorIds,
   };
@@ -85,6 +89,8 @@ export class DependencyMapPanel implements vscode.Disposable {
     if (focusId !== undefined) {
       // Also when the map was already open on it: the user expects to see it
       void this.panel?.webview.postMessage({ type: 'focus', id: focusId } satisfies DependencyMapUpdate);
+    } else {
+      void this.panel?.webview.postMessage({ type: 'showCurrent' } satisfies DependencyMapUpdate);
     }
   }
 

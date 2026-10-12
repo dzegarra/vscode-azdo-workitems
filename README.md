@@ -178,8 +178,12 @@ The details of a work item list its **Predecessors** (work items it depends on) 
 - Work items still in the release (e.g. `…\MVP R3`) are in the release's own column, **not scheduled in a sprint yet**, after its sprints. Work items directly in the project (not planned in any release) are not shown; the toolbar tells how many. Tasks are never shown: they are part of their Backlog Item / Bug.
 - Arrows go from the predecessor to the successor, coloured by risk: red when the predecessor is planned in a later sprint period than its successor, orange when both are in the same sprint period (even in different teams) or the predecessor is not scheduled in a sprint yet, blue when it is planned before, grey (dashed) when it is done.
 - Your work items have a blue border. Hover a work item to highlight its direct dependencies; click it to highlight its whole chain (everything it depends on and everything that depends on it); double-click or **Details** to open its Work Item Details panel.
-- Your work items without dependencies are hidden: tick **Show work items without dependencies** to place them in their sprint too.
-- **+N** loads the dependencies of a work item not shown yet. **Hide done** hides finished work items; Ctrl + wheel or the buttons zoom; drag the background to move around.
+- Every card shows its **priority** (P1 critical … P4 very low) with the same pills as the sidebar. **P1 cards still to do glow in red** from behind: a soft red halo around an otherwise normal card (finished ones keep only their pill); a P1 work item of yours keeps its blue border. When two work items are otherwise equally placed, the higher priority goes first.
+- Done work items are always shown.
+- Toolbar options (remembered): **Sort by state** groups the work items of each sprint by state, active work first (In Progress / Committed / Active, then not started, then Ready to Test / Done / Closed, then Removed); **Hide bugs** hides the Bugs and their arrows (the work item the map was opened for always stays; a work item left without any other dependency follows the next option); **Show work items without dependencies** places them in their sprint too (hidden otherwise).
+- Inside each sprint the work items are ordered to keep the arrows as straight as possible: each card goes to the average height of what it is linked to, sweeping the map back and forth.
+- Opened from the view toolbar, the map scrolls to the current sprint; opened from a Work Item Details panel, it selects that work item and scrolls to it.
+- **+N** loads the dependencies of a work item not shown yet. Ctrl + wheel or the buttons zoom; drag the background to move around.
 
 ## CI pipelines
 

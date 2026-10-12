@@ -90,6 +90,14 @@ body {
   border-radius: 3px;
 }
 
+.legend-critical {
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  box-shadow: 0 0 5px 2px color-mix(in srgb, #e5484d 50%, transparent);
+}
+
 .note {
   margin: 6px 16px 0;
 }
@@ -231,6 +239,26 @@ body {
 
 .node.focus {
   box-shadow: 0 0 0 2px var(--vscode-focusBorder);
+}
+
+/*
+ * P1 still to do: a red glow behind the card, as if lit from behind. The card itself is unchanged (no tint, its own
+ * border, blue when it is mine): only the halo around it is red
+ */
+.node.critical {
+  --critical: #e5484d;
+  --critical-glow: 0 0 4px 1px color-mix(in srgb, var(--critical) 55%, transparent),
+    0 0 16px 4px color-mix(in srgb, var(--critical) 40%, transparent);
+  box-shadow: var(--critical-glow);
+}
+
+.node.critical:hover,
+.node.critical:focus-visible {
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder), var(--critical-glow);
+}
+
+.node.critical.focus {
+  box-shadow: 0 0 0 2px var(--vscode-focusBorder), var(--critical-glow);
 }
 
 .node-head {

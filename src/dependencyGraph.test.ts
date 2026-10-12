@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildGraph, dependencyChain, GraphItem, isolatedIds, layoutGraph, visibleColumns } from './dependencyGraph';
+import {
+  buildGraph,
+  dependencyChain,
+  filterGraph,
+  GraphItem,
+  isolatedIds,
+  layoutGraph,
+  visibleColumns,
+} from './dependencyGraph';
 import { flattenIterations, IterationNode } from './schedule';
 
 const sprint = (release: string, name: string, startDate: string, finishDate: string): IterationNode => ({
@@ -247,5 +255,201 @@ describe('isolatedIds', () => {
     ];
     const graph = buildGraph(items, new Set([1, 3, 4]), schedule, new Date('2026-10-06T12:00:00Z'));
     expect([...isolatedIds(graph)]).toEqual([3]);
+  });
+});
+
+const today = new Date('2026-10-06T12:00:00Z');
+const orderOf = (graph: ReturnType<typeof buildGraph>, sortByState = false) => {
+  const { positions } = layoutGraph(graph, { ...options, sortByState });
+  return [...positions.entries()]
+    .sort(([, a], [, b]) => a.column - b.column || a.lane - b.lane || a.y - b.y)
+    .map(([id]) => id);
+};
+
+describe('priority', () => {
+  it('copies the priority to the nodes', () => {
+    const graph = buildGraph([item(1, P41, { priority: 1 }), item(2, P41)], new Set(), schedule, today);
+    expect(graph.nodes.map((n) => n.priority)).toEqual([1, undefined]);
+  });
+
+  it('breaks ties by priority (P1 first, none last), then by ID', () => {
+    const graph = buildGraph(
+      [
+        item(1, P41),
+        item(2, P41, { priority: 4 }),
+        item(3, P41, { priority: 2 }),
+        item(4, P41, { priority: 1 }),
+        item(5, P41, { priority: 2 }),
+      ],
+      new Set(),
+      schedule,
+      today
+    );
+    expect(orderOf(graph)).toEqual([4, 3, 5, 2, 1]);
+  });
+
+  it('does not let the priority beat the position of the neighbours', () => {
+    // 10 (P4) is linked to the first work item of the next sprint, 11 (P1) to the second: weights differ
+    const graph = buildGraph(
+      [
+        item(10, P41, { priority: 4, successorIds: [20] }),
+        item(11, P41, { priority: 1, successorIds: [21] }),
+        item(20, P42, { predecessorIds: [10] }),
+        item(21, P42, { predecessorIds: [11] }),
+      ],
+      new Set(),
+      schedule,
+      today
+    );
+    const order = orderOf(graph);
+    expect(order.indexOf(10)).toBeLessThan(order.indexOf(11));
+  });
+});
+
+describe('sort by state', () => {
+  const states = [
+    item(1, P41, { state: 'Done' }),
+    item(2, P41, { state: 'New' }),
+    item(3, P41, { state: 'Removed' }),
+    item(4, P41, { state: 'In Progress' }),
+    item(5, P41, { state: 'Ready to Test' }),
+    item(6, P41, { state: 'Approved' }),
+    item(7, P41, { state: 'Committed', priority: 3 }),
+    item(8, P41, { state: 'Committed', priority: 1 }),
+  ];
+  const graph = buildGraph(states, new Set(), schedule, today);
+
+  it('puts active work first: in progress, not started, finished, removed', () => {
+    // In progress: 8 (P1), 7 (P3), 4. Not started: 2, 6. Finished: 1, 5. Removed: 3
+    expect(orderOf(graph, true)).toEqual([8, 7, 4, 2, 6, 1, 5, 3]);
+  });
+
+  it('keeps the order by ID and priority when it is off', () => {
+    expect(orderOf(graph, false)).toEqual([8, 7, 1, 2, 3, 4, 5, 6]);
+  });
+
+  it('keeps the line-straightening order inside a state group', () => {
+    // Both in progress: the arrows 20 → 31 and 21 → 30 do not cross
+    const linked = buildGraph(
+      [
+        item(20, P41, { successorIds: [31] }),
+        item(21, P41, { successorIds: [30] }),
+        item(30, P42, { predecessorIds: [21] }),
+        item(31, P42, { predecessorIds: [20] }),
+      ],
+      new Set(),
+      schedule,
+      today
+    );
+    const { positions } = layoutGraph(linked, { ...options, sortByState: true });
+    const y = (id: number) => positions.get(id)?.y ?? 0;
+    expect(y(20) < y(21)).toBe(y(31) < y(30));
+    expect(y(21) < y(20)).toBe(y(30) < y(31));
+  });
+});
+
+describe('line straightening', () => {
+  // 1 → 4 and 2 → 3 cross when each column is ordered by ID
+  const crossing = buildGraph(
+    [
+      item(1, P41, { successorIds: [4] }),
+      item(2, P41, { successorIds: [3] }),
+      item(3, P42, { predecessorIds: [2] }),
+      item(4, P42, { predecessorIds: [1] }),
+    ],
+    new Set(),
+    schedule,
+    today
+  );
+
+  it('untangles a simple crossing', () => {
+    const { positions } = layoutGraph(crossing, options);
+    const y = (id: number) => positions.get(id)?.y ?? 0;
+    expect(y(1) < y(2)).toBe(y(4) < y(3));
+  });
+
+  it('is stable: same result for the same graph, whatever the order of the work items', () => {
+    const shuffled = { ...crossing, nodes: [...crossing.nodes].reverse(), edges: [...crossing.edges].reverse() };
+    expect(orderOf(shuffled)).toEqual(orderOf(crossing));
+    expect(orderOf(crossing)).toEqual(orderOf(crossing));
+  });
+
+  it('uses the height, not the row, when lanes have different sizes', () => {
+    // Column 0 has two lanes (the second one with a header); 50 sits low in column 0 but is the only row of column 1
+    const graph = buildGraph(
+      [
+        item(40, P41, { successorIds: [60] }),
+        item(41, UX41, { successorIds: [61] }),
+        item(60, P42, { predecessorIds: [40] }),
+        item(61, P42, { predecessorIds: [41] }),
+      ],
+      new Set(),
+      schedule,
+      today
+    );
+    const { positions } = layoutGraph(graph, options);
+    const y = (id: number) => positions.get(id)?.y ?? 0;
+    expect(y(60)).toBeLessThan(y(61));
+  });
+});
+
+describe('filterGraph', () => {
+  const graph = buildGraph(
+    [
+      item(1, P41, { successorIds: [2] }),
+      item(2, P42, { predecessorIds: [1], successorIds: [3] }),
+      item(3, P43, { type: 'Bug', predecessorIds: [2], successorIds: [4] }),
+      item(4, P43, { predecessorIds: [3] }),
+      item(5, P42),
+      item(6, UX41, { type: 'Bug', successorIds: [7] }),
+      item(7, UX41, { predecessorIds: [6] }),
+    ],
+    new Set(),
+    schedule,
+    today,
+    2
+  );
+  const ids = (g: { nodes: { id: number }[] }) => g.nodes.map((n) => n.id).sort((a, b) => a - b);
+
+  it('shows everything except the isolated work items by default', () => {
+    const result = filterGraph(graph, { hideBugs: false, showIsolated: false });
+    expect(ids(result.graph)).toEqual([1, 2, 3, 4, 6, 7]);
+    expect(result.hiddenIsolated).toBe(1);
+  });
+
+  it('hides the bugs and their arrows', () => {
+    const { graph: result } = filterGraph(graph, { hideBugs: true, showIsolated: true });
+    expect(ids(result)).toEqual([1, 2, 4, 5, 7]);
+    expect(result.edges).toEqual([{ from: 1, to: 2, risk: expect.any(String) }]);
+  });
+
+  it('hides a work item that only had links to hidden bugs, unless the isolated ones are shown', () => {
+    const hidden = filterGraph(graph, { hideBugs: true, showIsolated: false });
+    expect(ids(hidden.graph)).toEqual([1, 2]);
+    expect(hidden.hiddenIsolated).toBe(3);
+    const shown = filterGraph(graph, { hideBugs: true, showIsolated: true });
+    expect(ids(shown.graph)).toEqual([1, 2, 4, 5, 7]);
+  });
+
+  it('always keeps the focused work item, even a bug', () => {
+    const focusedBug = { ...graph, focusId: 3 };
+    const { graph: result } = filterGraph(focusedBug, { hideBugs: true, showIsolated: false });
+    expect(ids(result)).toContain(3);
+    expect(result.edges.map((e) => `${e.from}>${e.to}`)).toContain('2>3');
+  });
+
+  it('drops the columns left empty', () => {
+    const { graph: result } = filterGraph(graph, { hideBugs: true, showIsolated: false });
+    expect(result.columns.map((c) => c.name)).toEqual(['Sprint 41', 'Sprint 42']);
+  });
+
+  it('returns the same graph when nothing is hidden', () => {
+    const plain = buildGraph(
+      [item(1, P41, { successorIds: [2] }), item(2, P42, { predecessorIds: [1] })],
+      new Set(),
+      schedule,
+      today
+    );
+    expect(filterGraph(plain, { hideBugs: true, showIsolated: false }).graph).toBe(plain);
   });
 });

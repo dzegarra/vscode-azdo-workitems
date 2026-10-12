@@ -9,6 +9,7 @@ import {
   ScheduledIteration,
   sprintDates,
 } from './schedule';
+import { stateCategory, StateCategory } from './states';
 
 export interface GraphItem {
   id: number;
@@ -17,6 +18,8 @@ export interface GraphItem {
   state: string;
   iterationPath: string;
   assignedTo?: string;
+  /** 1 (critical) … 4 (very low) */
+  priority?: number;
   predecessorIds: number[];
   successorIds: number[];
 }
@@ -28,6 +31,8 @@ export interface GraphNode {
   state: string;
   iterationPath: string;
   assignedTo?: string;
+  /** 1 (critical) … 4 (very low) */
+  priority?: number;
   /** Assigned to the user in the current iterations */
   isMine: boolean;
   /** Dependencies of the node not loaded in the map yet */
@@ -215,6 +220,47 @@ export function isolatedIds(graph: Pick<DependencyGraph, 'edges' | 'nodes'>): Se
   return new Set(graph.nodes.filter((node) => !linked.has(node.id) && !node.hiddenLinks).map((node) => node.id));
 }
 
+/** What "Hide bugs" and "Show work items without dependencies" do to the graph */
+export interface GraphFilter {
+  hideBugs: boolean;
+  showIsolated: boolean;
+}
+
+const BUG_TYPE = 'Bug';
+
+/**
+ * Graph after the toggles. The focused work item (the one the map was opened for) is never hidden.
+ * - Hide bugs: bugs and their arrows go away.
+ * - Without dependencies: unless shown on demand, the work items with no arrow and nothing left to load are hidden.
+ *   This is evaluated AFTER hiding the bugs: a work item whose only links were to hidden bugs has no dependency left
+ *   to show, so it follows the same rule (hide bugs is meant to declutter; "Show work items without dependencies"
+ *   brings it back)
+ * `hiddenIsolated` is the number of work items hidden for having no dependencies
+ */
+export function filterGraph(
+  graph: DependencyGraph,
+  filter: GraphFilter
+): { graph: DependencyGraph; hiddenIsolated: number } {
+  const keepFocus = (node: GraphNode) => node.id === graph.focusId;
+  const withoutBugs = (nodes: GraphNode[]) =>
+    filter.hideBugs ? nodes.filter((node) => node.type !== BUG_TYPE || keepFocus(node)) : nodes;
+  const link = (nodes: GraphNode[]) => {
+    const ids = new Set(nodes.map((node) => node.id));
+    return { nodes, edges: graph.edges.filter((edge) => ids.has(edge.from) && ids.has(edge.to)) };
+  };
+  const stage = link(withoutBugs(graph.nodes));
+  const isolated = filter.showIsolated ? new Set<number>() : isolatedIds(stage);
+  isolated.delete(graph.focusId ?? Number.NaN);
+  if (stage.nodes.length === graph.nodes.length && !isolated.size) {
+    return { graph, hiddenIsolated: 0 };
+  }
+  const shown = link(stage.nodes.filter((node) => !isolated.has(node.id)));
+  return {
+    graph: { ...graph, ...shown, columns: visibleColumns(graph.columns, shown.nodes) },
+    hiddenIsolated: isolated.size,
+  };
+}
+
 /** IDs reachable following the edges in one direction */
 function reachable(start: number, edges: GraphEdge[], direction: 'down' | 'up'): Set<number> {
   const result = new Set<number>();
@@ -247,6 +293,8 @@ export interface LayoutOptions {
   laneHeaderHeight: number;
   laneGap: number;
   padding: number;
+  /** Group the work items of a lane by state, active work first (see STATE_GROUPS) */
+  sortByState?: boolean;
 }
 
 export interface NodePosition {
@@ -273,75 +321,129 @@ export interface GraphLayout {
   height: number;
 }
 
-const ORDERING_PASSES = 4;
-
 /**
- * One column per time slot (or release), with a lane per sprint stacked vertically. Inside a lane, nodes are
- * ordered by the average row of their neighbours (barycenter heuristic), which keeps related work items at the same
- * height and reduces the crossings of the arrows
+ * Order of the states inside a lane with "Sort by state": active work first. Work in progress is what the team
+ * looks at, then what is waiting to start; finished work (Ready to Test, Done…) is context and goes after, removed last
  */
-export function layoutGraph(
-  graph: Pick<DependencyGraph, 'columns' | 'edges' | 'nodes'>,
-  options: LayoutOptions
-): GraphLayout {
+const STATE_GROUPS: StateCategory[] = ['in-progress', 'proposed', 'done', 'removed'];
+const SWEEPS = 8;
+/** Work items without priority go after P4 */
+const NO_PRIORITY_RANK = 5;
+
+type Cells = number[][][];
+
+/** Vertical stacking of the lanes of a column. Shared by the ordering (needs the heights) and the final layout */
+function stackColumn(column: GraphColumn, laneCells: number[][], options: LayoutOptions) {
+  const nodeY = new Map<number, number>();
+  const lanes: { laneTop: number; height: number }[] = [];
+  let y = options.padding + options.headerHeight;
+  laneCells.forEach((ids) => {
+    const laneTop = y;
+    y += column.kind === 'slot' ? options.laneHeaderHeight : 0;
+    ids.forEach((id, row) => nodeY.set(id, y + row * (options.nodeHeight + options.rowGap)));
+    y += Math.max(1, ids.length) * (options.nodeHeight + options.rowGap);
+    lanes.push({ laneTop, height: y - laneTop });
+    y += options.laneGap;
+  });
+  return { nodeY, lanes, bottom: y };
+}
+
+function neighbourMap(edges: GraphEdge[]): Map<number, number[]> {
+  const neighbours = new Map<number, number[]>();
+  for (const { from, to } of edges) {
+    neighbours.set(from, [...(neighbours.get(from) ?? []), to]);
+    neighbours.set(to, [...(neighbours.get(to) ?? []), from]);
+  }
+  return neighbours;
+}
+
+function initialCells(graph: Pick<DependencyGraph, 'columns' | 'nodes'>): Cells {
   const laneIndex = new Map<string, [number, number]>();
   graph.columns.forEach((column, c) => column.lanes.forEach((lane, l) => laneIndex.set(lane.path, [c, l])));
-  const cells: number[][][] = graph.columns.map((column) => column.lanes.map(() => []));
+  const cells: Cells = graph.columns.map((column) => column.lanes.map(() => []));
   for (const node of graph.nodes) {
     const [c, l] = laneIndex.get(node.iterationPath) ?? [];
     if (c !== undefined && l !== undefined) {
       cells[c][l].push(node.id);
     }
   }
-  cells.forEach((lanes) => lanes.forEach((ids) => ids.sort((a, b) => a - b)));
+  return cells;
+}
 
-  const neighbours = new Map<number, number[]>();
-  for (const { from, to } of graph.edges) {
-    neighbours.set(from, [...(neighbours.get(from) ?? []), to]);
-    neighbours.set(to, [...(neighbours.get(to) ?? []), from]);
-  }
-  // Row of a node counting from the top of its column, through all its lanes
-  const rowOf = new Map<number, number>();
-  const updateRows = () => cells.forEach((lanes) => lanes.flat().forEach((id, row) => rowOf.set(id, row)));
-  updateRows();
-  for (let pass = 0; pass < ORDERING_PASSES; pass++) {
-    for (const lanes of cells) {
-      for (const ids of lanes) {
-        const weight = (id: number) => {
-          const rows = (neighbours.get(id) ?? []).map((n) => rowOf.get(n) ?? 0);
-          return rows.length ? rows.reduce((sum, row) => sum + row, 0) / rows.length : rowOf.get(id) ?? 0;
-        };
-        const weights = new Map(ids.map((id) => [id, weight(id)]));
-        ids.sort((a, b) => (weights.get(a) ?? 0) - (weights.get(b) ?? 0) || a - b);
-        updateRows();
-      }
-    }
-  }
+/**
+ * Comparison of two work items of a lane: state group (only "Sort by state"), then the average height of their
+ * neighbours (lower first), then priority (P1 first, none last) and finally the ID, so the result is deterministic
+ */
+function laneComparator(
+  nodes: Map<number, GraphNode>,
+  weights: Map<number, number>,
+  sortByState: boolean
+): (a: number, b: number) => number {
+  const group = (id: number) => (sortByState ? STATE_GROUPS.indexOf(stateCategory(nodes.get(id)?.state ?? '')) : 0);
+  const priority = (id: number) => nodes.get(id)?.priority ?? NO_PRIORITY_RANK;
+  // Rounded: sums of the same numbers in a different order must not break a tie
+  const weight = (id: number) => Math.round((weights.get(id) ?? 0) * 100);
+  return (a, b) => group(a) - group(b) || weight(a) - weight(b) || priority(a) - priority(b) || a - b;
+}
 
-  const positions = new Map<number, NodePosition>();
-  const lanes: LanePosition[] = [];
-  const top = options.padding + options.headerHeight;
-  let bottom = top;
-  cells.forEach((laneCells, column) => {
-    let y = top;
-    laneCells.forEach((ids, lane) => {
-      const { path, name } = graph.columns[column].lanes[lane];
-      const hasHeader = graph.columns[column].kind === 'slot';
-      const laneTop = y;
-      y += hasHeader ? options.laneHeaderHeight : 0;
-      ids.forEach((id, row) =>
-        positions.set(id, {
-          column,
-          lane,
-          x: options.padding + column * (options.columnWidth + options.columnGap),
-          y: y + row * (options.nodeHeight + options.rowGap),
+/**
+ * Orders every lane: the first order is by state group (if enabled), priority and ID; then sweeps alternate left to
+ * right and right to left (SWEEPS) placing each work item at the average vertical position (centre of the card, in
+ * pixels, with lane headers and gaps) of its neighbours. Pixels instead of row numbers, so lanes of different sizes
+ * in different columns do not skew the result
+ */
+function orderCells(graph: Pick<DependencyGraph, 'columns' | 'edges' | 'nodes'>, options: LayoutOptions): Cells {
+  const cells = initialCells(graph);
+  const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
+  const neighbours = neighbourMap(graph.edges);
+  const centre = new Map<number, number>();
+  const stack = (c: number) => {
+    const { nodeY } = stackColumn(graph.columns[c], cells[c], options);
+    nodeY.forEach((y, id) => centre.set(id, y + options.nodeHeight / 2));
+  };
+  const sortLanes = (c: number) => {
+    for (const ids of cells[c]) {
+      const weights = new Map(
+        ids.map((id) => {
+          const ys = (neighbours.get(id) ?? []).map((n) => centre.get(n) ?? 0);
+          return [id, ys.length ? ys.reduce((sum, y) => sum + y, 0) / ys.length : centre.get(id) ?? 0];
         })
       );
-      y += Math.max(1, ids.length) * (options.nodeHeight + options.rowGap);
-      lanes.push({ column, path, name, hasHeader, y: laneTop, height: y - laneTop });
-      y += options.laneGap;
+      ids.sort(laneComparator(nodes, weights, !!options.sortByState));
+    }
+    stack(c);
+  };
+  cells.forEach((lanes) => lanes.forEach((ids) => ids.sort(laneComparator(nodes, new Map(), !!options.sortByState))));
+  cells.forEach((_, c) => stack(c));
+  const columns = cells.map((_, c) => c);
+  for (let pass = 0; pass < SWEEPS; pass++) {
+    (pass % 2 ? [...columns].reverse() : columns).forEach(sortLanes);
+  }
+  return cells;
+}
+
+/**
+ * One column per time slot (or release), with a lane per sprint stacked vertically. Inside a lane, nodes are
+ * ordered to keep related work items at the same height and reduce the crossings of the arrows (see orderCells)
+ */
+export function layoutGraph(
+  graph: Pick<DependencyGraph, 'columns' | 'edges' | 'nodes'>,
+  options: LayoutOptions
+): GraphLayout {
+  const cells = orderCells(graph, options);
+  const positions = new Map<number, NodePosition>();
+  const lanes: LanePosition[] = [];
+  let bottom = options.padding + options.headerHeight;
+  cells.forEach((laneCells, column) => {
+    const stacked = stackColumn(graph.columns[column], laneCells, options);
+    const x = options.padding + column * (options.columnWidth + options.columnGap);
+    laneCells.forEach((ids, lane) => {
+      const { path, name } = graph.columns[column].lanes[lane];
+      const { laneTop, height } = stacked.lanes[lane];
+      ids.forEach((id) => positions.set(id, { column, lane, x, y: stacked.nodeY.get(id) ?? 0 }));
+      lanes.push({ column, path, name, hasHeader: graph.columns[column].kind === 'slot', y: laneTop, height });
     });
-    bottom = Math.max(bottom, y);
+    bottom = Math.max(bottom, stacked.bottom);
   });
   const count = graph.columns.length;
   return {
