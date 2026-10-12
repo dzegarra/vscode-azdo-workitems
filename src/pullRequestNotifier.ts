@@ -12,6 +12,7 @@ import {
   StoredSnapshot,
   toStored,
 } from './pullRequestEvents';
+import { offerCompletedPullRequestTasks } from './commands/pullRequestTask';
 import { snapshotThreads } from './pullRequestThreadSnapshots';
 import { threadUrl } from './reviewThreads';
 import { WorkItemsStore } from './workItemsStore';
@@ -21,10 +22,20 @@ const MIN_INTERVAL_SECONDS = 30;
 /** Above this, a single summary notification is shown instead of one per event */
 const MAX_NOTIFICATIONS = 3;
 
+/** The events of the PRs, plus the offer to set the task of a completed PR to Done */
+type NotificationKind = PullRequestEventKind | 'taskDone';
+
 function notificationSettings() {
   const config = vscode.workspace.getConfiguration(`${SECTION}.notifications`);
   return {
-    events: config.get<PullRequestEventKind[]>('events', ['comments', 'vote', 'merged', 'reviewers', 'reopened']),
+    events: config.get<NotificationKind[]>('events', [
+      'comments',
+      'vote',
+      'merged',
+      'reviewers',
+      'reopened',
+      'taskDone',
+    ]),
     intervalSeconds: Math.max(MIN_INTERVAL_SECONDS, config.get<number>('pollIntervalSeconds', 120)),
   };
 }
@@ -127,6 +138,10 @@ export class PullRequestNotifier implements vscode.Disposable {
   private notify(allEvents: PullRequestEvent[]): void {
     const enabled = notificationSettings().events;
     const events = allEvents.filter((event) => enabled.includes(event.kind));
+    if (enabled.includes('taskDone')) {
+      // The baseline of detectEvents means PRs completed before the first poll are not offered
+      allEvents.filter((event) => event.kind === 'merged').forEach((event) => void this.offerTaskDone(event));
+    }
     if (!events.length) {
       return;
     }
@@ -138,6 +153,17 @@ export class PullRequestNotifier implements vscode.Disposable {
     }
     for (const event of events) {
       void this.show(event);
+    }
+  }
+
+  private async offerTaskDone(event: PullRequestEvent): Promise<void> {
+    try {
+      const { client } = resolveContext(this.store.repository());
+      const pr =
+        this.store.findPullRequest(event.pullRequest.id) ?? (await client.getPullRequest(event.pullRequest.id));
+      await offerCompletedPullRequestTasks(client, pr, (url) => vscode.env.openExternal(vscode.Uri.parse(url)));
+    } catch {
+      // Only an offer: the task can be changed from the card
     }
   }
 

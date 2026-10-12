@@ -14,6 +14,8 @@ export interface WorkItemAlert {
   message: string;
   /** Work item the alert is about, when it is not the work item itself (e.g. its PR task) */
   relatedId?: number;
+  /** PR the alert is about, for the PR task rules */
+  pullRequestId?: number;
   /** Reference name of the empty field, for "missingField" alerts */
   field?: string;
   /** Quick fix offered next to the alert */
@@ -24,6 +26,14 @@ export interface AlertTask {
   id: number;
   title: string;
   state: string;
+  /** PRs the task is linked to */
+  pullRequestIds: number[];
+}
+
+export interface AlertPullRequest {
+  id: number;
+  status: string;
+  isDraft: boolean;
 }
 
 export interface AlertInput {
@@ -33,7 +43,7 @@ export interface AlertInput {
   /** Fields by reference name, e.g. "Microsoft.VSTS.Scheduling.Effort" */
   fields: Record<string, unknown>;
   tasks: AlertTask[];
-  pullRequests: { status: string; isDraft: boolean }[];
+  pullRequests: AlertPullRequest[];
 }
 
 export interface RequiredFieldsRule {
@@ -88,39 +98,65 @@ function taskAlerts(input: AlertInput): WorkItemAlert[] {
   return [];
 }
 
+interface PullRequestWithTasks {
+  pullRequest: AlertPullRequest;
+  tasks: AlertTask[];
+}
+
+/**
+ * The PR task of each PR: the child tasks linked to it (any title). PRs without a linked task get, once, an unlinked
+ * task whose title says it is the PR task (work items from before the tasks were linked). Active PRs go first
+ */
+function tasksOfPullRequests(input: AlertInput, rules: AlertRules): PullRequestWithTasks[] {
+  const pullRequests = input.pullRequests
+    .filter((pr) => pr.status !== 'abandoned')
+    .sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active'));
+  const entries = pullRequests.map((pullRequest) => ({
+    pullRequest,
+    tasks: input.tasks.filter((task) => task.pullRequestIds.includes(pullRequest.id)),
+  }));
+  const legacy = input.tasks.filter(
+    (task) => !task.pullRequestIds.length && rules.pullRequestTaskPattern.test(task.title)
+  );
+  const bare = entries.find((entry) => !entry.tasks.length);
+  if (bare && legacy.length) {
+    bare.tasks = legacy;
+  }
+  return entries;
+}
+
+function pullRequestAlert({ pullRequest, tasks }: PullRequestWithTasks): WorkItemAlert | undefined {
+  const label = `PR ${pullRequest.id}`;
+  if (pullRequest.status === 'active' && !pullRequest.isDraft) {
+    if (!tasks.length) {
+      return { rule: 'noPullRequestTask', message: `${label} has no PR task`, pullRequestId: pullRequest.id };
+    }
+    const [task] = tasks;
+    return tasks.some((candidate) => isOneOf(candidate.state, ['In Progress']))
+      ? undefined
+      : {
+          rule: 'pullRequestTaskNotInProgress',
+          message: `${label} is published but its task ${task.id} is ${task.state} (should be In Progress)`,
+          relatedId: task.id,
+          pullRequestId: pullRequest.id,
+        };
+  }
+  if (pullRequest.status === 'completed' && tasks.length && !tasks.some((task) => isClosed(task.state))) {
+    const [task] = tasks;
+    return {
+      rule: 'pullRequestTaskNotDone',
+      message: `${label} is completed but its task ${task.id} is ${task.state} (should be Done)`,
+      relatedId: task.id,
+      pullRequestId: pullRequest.id,
+    };
+  }
+  return undefined;
+}
+
 function pullRequestAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {
-  const pullRequests = input.pullRequests.filter((pr) => pr.status !== 'abandoned');
-  if (!pullRequests.length) {
-    return [];
-  }
-  const prTasks = input.tasks.filter((task) => rules.pullRequestTaskPattern.test(task.title));
-  if (!prTasks.length) {
-    return [{ rule: 'noPullRequestTask', message: 'Has a pull request but no PR task' }];
-  }
-  const published = pullRequests.some((pr) => pr.status === 'active' && !pr.isDraft);
-  const completed =
-    !pullRequests.some((pr) => pr.status === 'active') && pullRequests.some((pr) => pr.status === 'completed');
-  if (published && !prTasks.some((task) => isOneOf(task.state, ['In Progress']))) {
-    const [task] = prTasks;
-    return [
-      {
-        rule: 'pullRequestTaskNotInProgress',
-        message: `The PR is published but the PR task ${task.id} is ${task.state} (should be In Progress)`,
-        relatedId: task.id,
-      },
-    ];
-  }
-  if (completed && !prTasks.some((task) => isClosed(task.state))) {
-    const [task] = prTasks;
-    return [
-      {
-        rule: 'pullRequestTaskNotDone',
-        message: `The PR is completed but the PR task ${task.id} is ${task.state} (should be Done)`,
-        relatedId: task.id,
-      },
-    ];
-  }
-  return [];
+  return tasksOfPullRequests(input, rules)
+    .map(pullRequestAlert)
+    .filter((alert): alert is WorkItemAlert => !!alert);
 }
 
 function tagAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {

@@ -2657,6 +2657,20 @@ button.signal-predecessors:focus-visible {
   line-height: 14px;
 }
 
+/* Like a PR icon, but muted and dashed: the PR does not exist yet */
+button.task-create-pr {
+  flex: none;
+  gap: 1px;
+  border: 1px dashed var(--border);
+  color: var(--muted);
+}
+
+button.task-create-pr:hover,
+button.task-create-pr:focus-visible {
+  border-color: var(--vscode-focusBorder);
+  color: var(--vscode-foreground);
+}
+
 .task-prs {
   display: inline-flex;
   flex: none;

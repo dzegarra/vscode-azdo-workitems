@@ -37,6 +37,10 @@ export interface OtherTaskModel {
   state: string;
   assignedTo?: string;
   taskPullRequests: TaskPullRequestModel[];
+  /** The "Create branch" button of the task row is offered (see canCreateBranchForTask) */
+  canCreateBranch?: boolean;
+  /** The "Create PR" button of the task row is offered (see canCreatePullRequestForTask) */
+  canCreatePullRequest?: boolean;
 }
 
 /** A git branch of a work item (see workItemBranches.ts) */
@@ -84,6 +88,10 @@ export interface WorkItemModel {
   pullRequests: PullRequestModel[];
   /** Tasks only: their PRs for the icons of the task rows, active ones first */
   taskPullRequests?: TaskPullRequestModel[];
+  /** Tasks only: the "Create branch" button of the task row is offered (see canCreateBranchForTask) */
+  canCreateBranch?: boolean;
+  /** Tasks only: the "Create PR" button of the task row is offered (see canCreatePullRequestForTask) */
+  canCreatePullRequest?: boolean;
   /**
    * Tasks under the work item that are not in the list (assigned to other developers or in other iterations),
    * shown with the tasks of the list
@@ -213,6 +221,8 @@ export type WebviewMessage =
       tests?: boolean;
       /** checkout: a branch of the work item other than its main one */
       branch?: string;
+      /** createBranch / createPullRequest from a task row: `id` is the parent work item, this the task */
+      taskId?: number;
     }
   | { type: 'openFile'; path: string }
   /** The ▾ of a Checkout button (menu) and "Open worktree": the id is the work item or the PR; `branch`: a branch of the row of a work item */

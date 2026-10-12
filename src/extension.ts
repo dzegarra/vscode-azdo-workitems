@@ -283,8 +283,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }),
     command('totalflowx.refresh', () => store.refresh()),
-    command('totalflowx.createBranch', (entry?: WorkItemEntry) => createBranch(git, store, entry)),
-    command('totalflowx.createPullRequest', (entry?: WorkItemEntry) => createPullRequest(git, store, entry)),
+    command('totalflowx.createBranch', (entry?: WorkItemEntry, options?: { taskId?: number }) =>
+      createBranch(git, store, entry, options)
+    ),
+    command('totalflowx.createPullRequest', (entry?: WorkItemEntry, options?: { taskId?: number }) =>
+      createPullRequest(git, store, entry, options)
+    ),
     command('totalflowx.deleteBranch', (entry?: WorkItemEntry) => deleteBranch(git, store, entry)),
     command('totalflowx.checkout', async (entry: WorkItemEntry, branch?: string) => {
       // The main branch of the card, or the branch of one of its rows. For a branch that only exists in the
@@ -392,6 +396,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         throw new Error(`PR ${pullRequestId} is no longer in your list of pull requests.`);
       }
       await publishPullRequest(resolveContext(currentRepository()).client, pullRequest, () => myPullRequests.poll());
+      // The PR task may have moved: alerts and task rows
+      void store.refresh();
     }),
     command(ADD_BUILD_NOTES_SKIP_TAG_COMMAND, async (pullRequestId: number) => {
       const pullRequest = myPullRequests.find(pullRequestId);

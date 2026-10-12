@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { AzdoClient } from '../azdoClient';
 import { AuthoredPullRequest } from '../myPullRequests';
 import { publishDraft } from '../publishFlow';
+import { startPublishedPullRequestTasks } from './pullRequestTask';
 
 const PUBLISH = 'Publish';
 
@@ -18,5 +19,6 @@ export async function publishPullRequest(
   });
   if (published) {
     void vscode.window.showInformationMessage(`PR ${pr.pullRequestId} published: the reviewers were notified.`);
+    await startPublishedPullRequestTasks(client, pr);
   }
 }

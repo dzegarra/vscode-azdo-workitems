@@ -703,7 +703,10 @@ export class AzdoClient {
       title: string;
       description: string;
       isDraft: boolean;
+      /** Work items of the PR title */
       workItemIds: number[];
+      /** PR tasks: linked to the PR, but not part of its title */
+      taskIds?: number[];
       /** Tags to put on the PR */
       labels?: string[];
     }
@@ -718,7 +721,7 @@ export class AzdoClient {
           title: pr.title,
           description: pr.description,
           isDraft: pr.isDraft,
-          workItemRefs: pr.workItemIds.map((id) => ({ id: String(id) })),
+          workItemRefs: [...pr.workItemIds, ...(pr.taskIds ?? [])].map((id) => ({ id: String(id) })),
           ...(pr.labels?.length ? { labels: pr.labels.map((name) => ({ name })) } : {}),
         }),
       }

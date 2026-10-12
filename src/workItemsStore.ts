@@ -21,6 +21,7 @@ import { listWorktrees } from './worktreeGit';
 import { findWorktree, otherWorktreeBranches, Worktree } from './worktrees';
 import { WorkingOnLevel, workingOnLevels } from './workingOn';
 import { realpathSync } from 'node:fs';
+import { canCreateBranchForTask, canCreatePullRequestForTask } from './pullRequestTasks';
 import { parsePriority, PRIORITY_FIELD, SEVERITY_FIELD } from './priority';
 import { AlertRules, findAlerts, parseTags, resolveFieldName, resolveRequiredFields, WorkItemAlert } from './alerts';
 
@@ -239,7 +240,12 @@ function alertsOf(
   const tasks = workItem.links.childIds
     .map((id) => related.get(id))
     .filter((child): child is WorkItem => child?.type === 'Task')
-    .map(({ id, title, state }) => ({ id, title, state }));
+    .map(({ id, title, state, links }) => ({
+      id,
+      title,
+      state,
+      pullRequestIds: links.pullRequests.map((link) => link.id),
+    }));
   return withQuickFixes(
     findAlerts(
       {
@@ -248,7 +254,7 @@ function alertsOf(
         tags: parseTags(workItem.fields['System.Tags']),
         fields: workItem.fields,
         tasks,
-        pullRequests: pullRequests.map((pr) => ({ status: pr.status, isDraft: pr.isDraft })),
+        pullRequests: pullRequests.map((pr) => ({ id: pr.pullRequestId, status: pr.status, isDraft: pr.isDraft })),
       },
       rules
     ),
@@ -620,6 +626,12 @@ export class WorkItemsStore {
     return names;
   }
 
+  /** State of the parent work item when it is in the list (the task rows are shown in its card) */
+  private parentState(workItem: WorkItem): string | undefined {
+    const { parentId } = workItem.links;
+    return parentId === undefined ? undefined : this.find(parentId)?.workItem.state;
+  }
+
   /** PRs of a task as the popovers of their icons show them */
   private taskPullRequests(pullRequests: PullRequestDetails[]): TaskPullRequestModel[] {
     const context = { repositoryId: this.repositoryId, baseBranch: settings().baseBranch };
@@ -680,6 +692,20 @@ export class WorkItemsStore {
       openPredecessors: predecessors && openPredecessors(workItem, predecessors, completedStates, this.schedule),
       ...fixLinks(workItem, predecessors, successors),
       taskPullRequests: workItem.type === 'Task' ? this.taskPullRequests(pullRequests) : [],
+      canCreateBranch:
+        workItem.type === 'Task' &&
+        canCreateBranchForTask({
+          taskState: workItem.state,
+          parentState: this.parentState(workItem),
+          branches: workItem.links.branches,
+        }),
+      canCreatePullRequest:
+        workItem.type === 'Task' &&
+        canCreatePullRequestForTask({
+          taskState: workItem.state,
+          parentState: this.parentState(workItem),
+          pullRequests,
+        }),
       otherTasks: otherTasks.map(({ workItem: task, pullRequests: taskPullRequests }) => ({
         id: task.id,
         title: task.title,
@@ -687,6 +713,16 @@ export class WorkItemsStore {
         state: task.state,
         assignedTo: task.assignedTo,
         taskPullRequests: this.taskPullRequests(taskPullRequests),
+        canCreateBranch: canCreateBranchForTask({
+          taskState: task.state,
+          parentState: workItem.state,
+          branches: task.links.branches,
+        }),
+        canCreatePullRequest: canCreatePullRequestForTask({
+          taskState: task.state,
+          parentState: workItem.state,
+          pullRequests: taskPullRequests,
+        }),
       })),
     };
   }

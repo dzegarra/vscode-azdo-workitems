@@ -65,7 +65,10 @@ Card actions:
 - **Details**: opens the **Work Item Details panel** (an editor tab, one per work item): description, acceptance criteria / repro steps (with their images), assignee, effort, tags, parent, children, branch and PRs, with the same actions. When the description links to Figma, **Figma design** opens it in the [Figma extension for VS Code](https://marketplace.visualstudio.com/items?itemName=figma.figma-vscode-extension) if it is installed, or in the browser; the button next to it always opens the browser. The Figma extension opens the file but not the linked frame; the browser opens the exact frame. Prototypes, FigJam and Figma Make links open in the browser.
 - **Checkout**: switches to the work item branch (creating the local branch when it only exists in the remote). See [Worktrees](#worktrees) for checking it out without touching your current changes.
 - **Delete branch** (Done, Ready to Test and other finished work items): the team deletes the branches once their PR is merged, so finished work items get no **Create branch**, **Checkout** or **Create PR**. When their branch still exists, it is shown as _not deleted_ and **Delete branch** deletes it in Azure DevOps and locally, after a confirmation telling what is deleted (and warning about commits that were not pushed). When the branch is checked out, VS Code switches to `develop` first. It is not offered while a PR is still active on the branch. Whether the branch exists is asked to Azure DevOps: the links of the work item and the local `origin/…` refs remain after a branch is deleted. Also in the command palette: **Delete Branch of a Finished Work Item**.
-- **Create PR** (when the branch has no active PR; also available from the command palette for the current branch): pick extra work items to link (the ones already using the same branch are pre-selected), the feature name and the description. The branch is pushed and the PR targets `develop`, optionally as draft.
+- **Create PR** (when the branch has no active PR; also available from the command palette for the current branch): pick extra work items to link (the ones already using the same branch are pre-selected), the feature name and the description. The branch is pushed and the PR targets `develop`, optionally as draft. Then **PR task** asks what stands for "this PR is in review" (Backlog Items and Bugs have no such state): **Create task "PR: <description>"** under the work item (default), reuse an open task of the work item that has no active PR (e.g. "PID update"), or **No PR task**. The task is linked to the PR (not part of its title) and moves to **In Progress** when the PR is created published; a draft leaves it as it is. If the task cannot be created or moved, a warning says so and the PR is created anyway.
+- **Create PR from a task**: the task rows of the cards have a dashed PR icon with a **+** when the task is open and has no active PR (not offered for finished work items). It creates the PR of the parent work item with that task as its PR task (the "PR task" question is skipped). Source branch: the branches linked to the task come first; among them (or among the branches of the work item when the task has none) the current one if it is one, else the only one in this repository, else you pick one; with none, it asks you to create a branch first.
+- **Create branch from a task**: the task rows also have a dashed branch icon with a **+** when the task is open, has no linked branch and its work item is not finished. It runs **Create branch** for the parent work item (same predecessors check and module picker) but the branch is named `<feature|bugfix>/<module>/<parent id>-<task name>` (the short name is proposed from the task title), several branches per work item being expected. The branch is linked to the task as well as to the parent, so the task knows its branch, and the task moves to **In Progress** when it was not started (the parent moves as usual).
+- **Publish** (a draft PR of My Pull Requests) also moves the PR's open tasks to **In Progress**; PRs published elsewhere are covered by the alert and its **Fix** button.
 
 Organization, project and repository are detected from the `origin` remote.
 
@@ -140,14 +143,14 @@ The filters apply to work items with alerts too: when they hide some, the banner
 | Problem                                                                                                                      | Applies to             |
 | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
 | Done / Ready to Test with tasks not done                                                                                     | Backlog Items and Bugs |
-| Has a PR (not abandoned) but no PR task                                                                                      | Backlog Items and Bugs |
+| A published PR (not abandoned) has no PR task (each PR has its own, linked to it)                                            | Backlog Items and Bugs |
 | The PR is published (active, not draft) but the PR task is not In Progress                                                   | Backlog Items and Bugs |
 | The PR is completed but the PR task is not Done                                                                              | Backlog Items and Bugs |
 | Started while tagged Needs refinement, Requirements, UX feedback required, Missing REST API, Blocked or PT Feedback Required | Backlog Items and Bugs |
 | Effort or Effort in days is empty                                                                                            | Backlog Items          |
 | Integrated in Build is empty while Ready to Test                                                                             | Bugs                   |
 
-The PR task is the task whose title contains "PR" or "Pull Request". **Fix** next to an alert about a single task opens its state picker. Tags, required fields, the work item types and the PR task pattern can be changed in the `totalflowx.alerts.*` settings.
+The PR task of a PR is the child task linked to that PR, whatever its title (completed PRs without a task are not reported: they are history; drafts are not checked). Only for PRs without any linked task, an unlinked task whose title contains "PR" or "Pull Request" is used, once (work items from before the tasks were linked). **Fix** next to an alert about a single task opens its state picker. Tags, required fields, the work item types and the PR task pattern can be changed in the `totalflowx.alerts.*` settings.
 
 ### Integrated in Build
 
@@ -216,9 +219,9 @@ The extension checks the pull requests you created (every 2 minutes by default) 
 - a comment is **reopened** (it was resolved, won't fix, closed or by design, and is active again);
 - a person **joins or leaves the required reviewers** (added, removed, declined, made required or optional), saying who did it, e.g. "Szymon Kwasek EXT added themselves as a required reviewer of PR 13571";
 - a reviewer **votes** (approved, approved with suggestions, waiting for the author, rejected);
-- it is **merged**.
+- it is **merged**: a second notification offers to set its open PR tasks to **Done** (**Set Done** / **Open task**; `taskDone` in the events setting). Not automatic: you may have more to do in the task.
 
-Notifications about comments have **Open Comment**, which opens the PR at that thread. Choose the events with `totalflowx.notifications.events` (`comments`, `reopened`, `reviewers`, `vote`, `merged`).
+Notifications about comments have **Open Comment**, which opens the PR at that thread. Choose the events with `totalflowx.notifications.events` (`comments`, `reopened`, `reviewers`, `vote`, `merged`, `taskDone`).
 
 Your own comments, votes and reviewer changes, system messages and vote resets are ignored. When more than 3 updates arrive at once, a single summary notification lists them. Updates that happened while VS Code was closed are notified when it starts. Run **Check My Pull Requests Now** from the command palette to check immediately.
 
@@ -266,34 +269,34 @@ Only the PRs where you are a reviewer yourself are listed: when a group (e.g. a 
 
 ## Settings
 
-| Setting                                                | Description                                                    |
-| ------------------------------------------------------ | -------------------------------------------------------------- |
-| `totalflowx.branchModules`                             | Catalog of branch modules                                      |
-| `totalflowx.prFeatureNames`                            | Catalog of PR feature names                                    |
-| `totalflowx.moduleToFeature`                           | Feature name suggested for each branch module                  |
-| `totalflowx.branchTypeByWorkItemType`                  | Branch prefix per work item type (`Bug` → `bugfix`)            |
-| `totalflowx.baseBranch`                                | Base branch and PR target (`develop`)                          |
-| `totalflowx.filter.types`                              | Work item types shown (Type chips)                             |
-| `totalflowx.filter.hiddenPriorities`                   | Priorities hidden (Priority chips)                             |
-| `totalflowx.filter.alwaysShowAlerts`                   | Show work items with alerts whatever the filters (off)         |
-| `totalflowx.filter.hiddenPullRequestStates`            | PR states hidden (PR chips)                                    |
-| `totalflowx.stateOrder`                                | Order of the cards by state                                    |
-| `totalflowx.stateOnBranchCreated`                      | State set when a branch is created, per type                   |
-| `totalflowx.notifications.events`                      | PR events notified (`comments`, `vote`, `merged`); empty: none |
-| `totalflowx.notifications.pollIntervalSeconds`         | How often your PRs are checked (seconds, min. 30)              |
-| `totalflowx.filter.hiddenStates`                       | States hidden (State chips)                                    |
-| `totalflowx.teams`                                     | Teams whose current iteration is listed (empty: all my teams)  |
-| `totalflowx.linkBranchToWorkItem`                      | Publish and link new branches to the work item                 |
-| `totalflowx.organization` / `.project` / `.repository` | Override what is detected from the remote                      |
-| `totalflowx.alerts.*`                                  | Alert rules: tags, required fields, types, PR task pattern     |
-| `totalflowx.integrationBuild.*`                        | Feed, package and suffix used to fill Integrated in Build      |
-| `totalflowx.layout`                                    | Layout of the cards: `compact` (default) or `large`            |
-| `totalflowx.myPullRequests.*`                          | My pull requests: show drafts, refresh interval                |
-| `totalflowx.statusBar.currentWorkItem`                 | Show the work item of the current branch in the status bar     |
-| `totalflowx.dependencies.*`                            | Completed states of predecessors, confirmation before starting |
-| `totalflowx.coverage.*`                                | Coverage levels: minimum (60), target (80), excellent (95)     |
-| `totalflowx.pipelines.*`                               | CI runs: refresh interval, notifications, status bar           |
-| `totalflowx.reviews.*`                                 | PRs to review: maximum wait, due soon, reminders, status bar   |
+| Setting                                                | Description                                                                 |
+| ------------------------------------------------------ | --------------------------------------------------------------------------- |
+| `totalflowx.branchModules`                             | Catalog of branch modules                                                   |
+| `totalflowx.prFeatureNames`                            | Catalog of PR feature names                                                 |
+| `totalflowx.moduleToFeature`                           | Feature name suggested for each branch module                               |
+| `totalflowx.branchTypeByWorkItemType`                  | Branch prefix per work item type (`Bug` → `bugfix`)                         |
+| `totalflowx.baseBranch`                                | Base branch and PR target (`develop`)                                       |
+| `totalflowx.filter.types`                              | Work item types shown (Type chips)                                          |
+| `totalflowx.filter.hiddenPriorities`                   | Priorities hidden (Priority chips)                                          |
+| `totalflowx.filter.alwaysShowAlerts`                   | Show work items with alerts whatever the filters (off)                      |
+| `totalflowx.filter.hiddenPullRequestStates`            | PR states hidden (PR chips)                                                 |
+| `totalflowx.stateOrder`                                | Order of the cards by state                                                 |
+| `totalflowx.stateOnBranchCreated`                      | State set when a branch is created, per type                                |
+| `totalflowx.notifications.events`                      | PR events notified (`comments`, `vote`, `merged`, `taskDone`…); empty: none |
+| `totalflowx.notifications.pollIntervalSeconds`         | How often your PRs are checked (seconds, min. 30)                           |
+| `totalflowx.filter.hiddenStates`                       | States hidden (State chips)                                                 |
+| `totalflowx.teams`                                     | Teams whose current iteration is listed (empty: all my teams)               |
+| `totalflowx.linkBranchToWorkItem`                      | Publish and link new branches to the work item                              |
+| `totalflowx.organization` / `.project` / `.repository` | Override what is detected from the remote                                   |
+| `totalflowx.alerts.*`                                  | Alert rules: tags, required fields, types, PR task pattern                  |
+| `totalflowx.integrationBuild.*`                        | Feed, package and suffix used to fill Integrated in Build                   |
+| `totalflowx.layout`                                    | Layout of the cards: `compact` (default) or `large`                         |
+| `totalflowx.myPullRequests.*`                          | My pull requests: show drafts, refresh interval                             |
+| `totalflowx.statusBar.currentWorkItem`                 | Show the work item of the current branch in the status bar                  |
+| `totalflowx.dependencies.*`                            | Completed states of predecessors, confirmation before starting              |
+| `totalflowx.coverage.*`                                | Coverage levels: minimum (60), target (80), excellent (95)                  |
+| `totalflowx.pipelines.*`                               | CI runs: refresh interval, notifications, status bar                        |
+| `totalflowx.reviews.*`                                 | PRs to review: maximum wait, due soon, reminders, status bar                |
 
 Modules and feature names added with **Add new…** are saved to the workspace settings (`.vscode/settings.json`), so they can be committed and shared.
 

@@ -48,9 +48,17 @@ async function runAction(store: WorkItemsStore, message: WorkItemAction): Promis
       }
       return;
     }
-    case 'checkout':
-    case 'createBranch':
     case 'createPullRequest':
+      if (entry) {
+        await vscode.commands.executeCommand(COMMANDS.createPullRequest, entry, { taskId: message.taskId });
+      }
+      return;
+    case 'createBranch':
+      if (entry) {
+        await vscode.commands.executeCommand(COMMANDS.createBranch, entry, { taskId: message.taskId });
+      }
+      return;
+    case 'checkout':
     case 'deleteBranch':
       if (entry) {
         await vscode.commands.executeCommand(COMMANDS[message.type], entry, message.branch);

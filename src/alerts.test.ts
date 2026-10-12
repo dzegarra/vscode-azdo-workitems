@@ -38,7 +38,12 @@ const pbi = (overrides: Partial<AlertInput> = {}): AlertInput => ({
   pullRequests: [],
   ...overrides,
 });
-const task = (id: number, title: string, state: string) => ({ id, title, state });
+const task = (id: number, title: string, state: string, pullRequestIds: number[] = []) => ({
+  id,
+  title,
+  state,
+  pullRequestIds,
+});
 const rulesOf = (input: AlertInput) => findAlerts(input, rules).map((alert) => alert.rule);
 
 describe('findAlerts', () => {
@@ -62,30 +67,76 @@ describe('findAlerts', () => {
     expect(rulesOf(pbi({ state: 'Committed', tasks }))).toEqual([]);
   });
 
-  it('requires a PR task when there is a pull request', () => {
-    const pullRequests = [{ status: 'active', isDraft: true }];
-    expect(rulesOf(pbi({ pullRequests }))).toEqual(['noPullRequestTask']);
-    expect(rulesOf(pbi({ pullRequests: [{ status: 'abandoned', isDraft: false }] }))).toEqual([]);
-    expect(rulesOf(pbi({ pullRequests, tasks: [task(9, 'PR', 'To Do')] }))).toEqual([]);
+  it('requires a PR task for each published PR', () => {
+    const published = { id: 5, status: 'active', isDraft: false };
+    const [alert] = findAlerts(pbi({ pullRequests: [published] }), rules);
+    expect(alert).toMatchObject({
+      rule: 'noPullRequestTask',
+      message: 'PR 5 has no PR task',
+      pullRequestId: 5,
+    });
+    expect(rulesOf(pbi({ pullRequests: [{ id: 5, status: 'abandoned', isDraft: false }] }))).toEqual([]);
+    expect(rulesOf(pbi({ pullRequests: [published], tasks: [task(9, 'PID update', 'In Progress', [5])] }))).toEqual([]);
   });
 
-  it('expects the PR task in progress while the PR is published', () => {
-    const pullRequests = [{ status: 'active', isDraft: false }];
-    const [alert] = findAlerts(pbi({ pullRequests, tasks: [task(9, 'Create PR', 'To Do')] }), rules);
+  it('does not alert about drafts or completed PRs without a task', () => {
+    expect(rulesOf(pbi({ pullRequests: [{ id: 5, status: 'active', isDraft: true }] }))).toEqual([]);
+    expect(rulesOf(pbi({ pullRequests: [{ id: 5, status: 'completed', isDraft: false }] }))).toEqual([]);
+    const draft = { id: 5, status: 'active', isDraft: true };
+    expect(rulesOf(pbi({ pullRequests: [draft], tasks: [task(9, 'PR', 'To Do', [5])] }))).toEqual([]);
+  });
+
+  it('expects the task of a published PR in progress', () => {
+    const pullRequests = [{ id: 5, status: 'active', isDraft: false }];
+    const [alert] = findAlerts(pbi({ pullRequests, tasks: [task(9, 'Anything', 'To Do', [5])] }), rules);
+    expect(alert).toMatchObject({ rule: 'pullRequestTaskNotInProgress', relatedId: 9, pullRequestId: 5 });
+    expect(alert.message).toBe('PR 5 is published but its task 9 is To Do (should be In Progress)');
+  });
+
+  it('expects the task of a completed PR done', () => {
+    const pullRequests = [{ id: 5, status: 'completed', isDraft: false }];
+    const [alert] = findAlerts(pbi({ pullRequests, tasks: [task(9, 'PR', 'In Progress', [5])] }), rules);
+    expect(alert).toMatchObject({ rule: 'pullRequestTaskNotDone', relatedId: 9, pullRequestId: 5 });
+    expect(alert.message).toBe('PR 5 is completed but its task 9 is In Progress (should be Done)');
+    expect(rulesOf(pbi({ pullRequests, tasks: [task(9, 'PR', 'Done', [5])] }))).toEqual([]);
+  });
+
+  it('matches each PR with its own task (work item 66068)', () => {
+    const pullRequests = [
+      { id: 13770, status: 'completed', isDraft: false },
+      { id: 13765, status: 'active', isDraft: false },
+    ];
+    const tasks = [
+      task(60985, 'PR for generic solution', 'Done', [13770]),
+      task(60984, 'PID update', 'In Progress', [13765]),
+    ];
+    expect(findAlerts(pbi({ pullRequests, tasks }), rules)).toEqual([]);
+  });
+
+  it('reports the PR that lacks a task when there are several', () => {
+    const pullRequests = [
+      { id: 1, status: 'active', isDraft: false },
+      { id: 2, status: 'active', isDraft: false },
+    ];
+    const alerts = findAlerts(pbi({ pullRequests, tasks: [task(9, 'Widget', 'In Progress', [1])] }), rules);
+    expect(alerts.map((alert) => [alert.rule, alert.pullRequestId])).toEqual([['noPullRequestTask', 2]]);
+  });
+
+  it('falls back to an unlinked task titled as the PR task, once', () => {
+    const published = (id: number) => ({ id, status: 'active', isDraft: false });
+    const tasks = [task(9, 'Create PR', 'To Do', []), task(10, 'Improve prompts', 'In Progress', [])];
+    const [alert] = findAlerts(pbi({ pullRequests: [published(1)], tasks }), rules);
     expect(alert).toMatchObject({ rule: 'pullRequestTaskNotInProgress', relatedId: 9 });
-    expect(alert.message).toBe('The PR is published but the PR task 9 is To Do (should be In Progress)');
-    expect(rulesOf(pbi({ pullRequests, tasks: [task(9, 'Pull Request', 'In Progress')] }))).toEqual([]);
-  });
-
-  it('expects the PR task done once the PR is completed', () => {
-    const pullRequests = [{ status: 'completed', isDraft: false }];
-    expect(rulesOf(pbi({ pullRequests, tasks: [task(9, 'PR', 'In Progress')] }))).toEqual(['pullRequestTaskNotDone']);
-    expect(rulesOf(pbi({ pullRequests, tasks: [task(9, 'PR', 'Done')] }))).toEqual([]);
+    const alerts = findAlerts(pbi({ pullRequests: [published(1), published(2)], tasks }), rules);
+    expect(alerts.map((a) => [a.rule, a.pullRequestId])).toEqual([
+      ['pullRequestTaskNotInProgress', 1],
+      ['noPullRequestTask', 2],
+    ]);
   });
 
   it('does not mistake other tasks for the PR task', () => {
-    const pullRequests = [{ status: 'active', isDraft: false }];
-    expect(rulesOf(pbi({ pullRequests, tasks: [task(9, 'Improve prompts', 'In Progress')] }))).toEqual([
+    const pullRequests = [{ id: 5, status: 'active', isDraft: false }];
+    expect(rulesOf(pbi({ pullRequests, tasks: [task(9, 'Improve prompts', 'In Progress', [])] }))).toEqual([
       'noPullRequestTask',
     ]);
   });

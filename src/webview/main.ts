@@ -568,6 +568,8 @@ function renderReviewer(reviewer: ReviewerModel): string {
 type TaskRow = Pick<WorkItemModel, 'id' | 'title' | 'type' | 'state' | 'priority' | 'severity'> & {
   assignedTo?: string;
   taskPullRequests: TaskPullRequestModel[];
+  canCreateBranch?: boolean;
+  canCreatePullRequest?: boolean;
 };
 
 function taskRowsOf(children: WorkItemModel[], item: WorkItemModel, stateOrder: string[]): TaskRow[] {
@@ -660,7 +662,25 @@ function initials(name: string): string {
     .join('');
 }
 
-function renderChild(item: TaskRow): string {
+/** "Create branch" of a task row: the branch of the parent work item, named after the task. Icon only: rows are narrow */
+function renderCreateBranch(task: TaskRow, parentId: number): string {
+  return task.canCreateBranch
+    ? `<button class="task-pr task-create-pr" data-action="createBranch" data-id="${parentId}"
+      data-task="${task.id}" title="Create a branch for this task"
+      aria-label="Create a branch for task ${task.id}">${icon('branch')}+</button>`
+    : '';
+}
+
+/** "Create PR" of a task row: the PR of the parent work item, with this task as its PR task. Icon only: rows are narrow */
+function renderCreatePullRequest(task: TaskRow, parentId: number): string {
+  return task.canCreatePullRequest
+    ? `<button class="task-pr task-create-pr" data-action="createPullRequest" data-id="${parentId}"
+      data-task="${task.id}" title="Create a pull request with this task as its PR task"
+      aria-label="Create a pull request for task ${task.id}">${icon('pullRequest')}+</button>`
+    : '';
+}
+
+function renderChild(item: TaskRow, parentId: number): string {
   const title = item.assignedTo ? `${item.title} (${item.assignedTo})` : item.title;
   return `<li class="child">
     ${typeIcon(item.type)}
@@ -676,6 +696,8 @@ function renderChild(item: TaskRow): string {
         : ''
     }
     ${renderTaskPullRequests(item)}
+    ${renderCreateBranch(item, parentId)}
+    ${renderCreatePullRequest(item, parentId)}
     ${stateButton(item.id, item.state)}
   </li>`;
 }
@@ -751,7 +773,7 @@ function renderTasks(item: WorkItemModel, children: TaskRow[]): string {
       ${icon('chevron', 'chevron')}<span class="tasks-title">Tasks</span><span class="count">${done}/${total}</span>
       <span class="tasks-bar" aria-hidden="true"><span class="tasks-bar-fill" data-progress="${ratio}"></span></span>
     </button>
-    ${open ? `<ul class="children">${children.map(renderChild).join('')}</ul>` : ''}
+    ${open ? `<ul class="children">${children.map((child) => renderChild(child, item.id)).join('')}</ul>` : ''}
   </section>`;
 }
 
@@ -1902,7 +1924,7 @@ document.addEventListener('click', (event) => {
   if (!target || ((event.target as HTMLElement).closest(popover) && !target.closest(popover))) {
     return;
   }
-  const { action, filter, value, id, pr, run, url, path, tests, kind, layout, branch, panel } = target.dataset;
+  const { action, filter, value, id, pr, run, url, path, tests, kind, layout, branch, panel, task } = target.dataset;
   if (filter && value !== undefined) {
     toggleFilter(filter as FilterKind, value);
   } else if ((action === 'checkoutMenu' || action === 'openWorktree' || action === 'worktreeMenu') && kind && id) {
@@ -1985,6 +2007,7 @@ document.addEventListener('click', (event) => {
       runId: run ? Number(run) : undefined,
       tests: tests === 'true' ? true : undefined,
       branch,
+      taskId: task ? Number(task) : undefined,
     });
   }
 });

@@ -579,14 +579,16 @@
               "vote",
               "merged",
               "reviewers",
-              "reopened"
+              "reopened",
+              "taskDone"
             ],
             "enumDescriptions": [
               "New comments from other people, and replies to your comments",
               "Votes of the reviewers (approved, waiting for author, rejected…)",
               "The PR is merged",
               "A person becomes a required reviewer, stops being a reviewer, declines to review, or switches between required and optional (changes made by you are not notified)",
-              "A resolved comment is reopened"
+              "A resolved comment is reopened",
+              "A PR is completed: offers to set its open PR task to Done"
             ]
           },
           "uniqueItems": true,
@@ -595,7 +597,8 @@
             "vote",
             "merged",
             "reviewers",
-            "reopened"
+            "reopened",
+            "taskDone"
           ],
           "description": "Events of the pull requests you created that show a notification. Empty: no notifications."
         },
