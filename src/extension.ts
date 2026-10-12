@@ -8,6 +8,7 @@ import { runPendingWorktreeSetup } from './worktreeSetup';
 import { CheckoutKind } from './viewModel';
 import { publishPullRequest } from './commands/publishPullRequest';
 import { addBuildNotesSkipTag } from './commands/addBuildNotesSkipTag';
+import { retargetPullRequest } from './commands/retargetPullRequest';
 import { createPullRequest } from './commands/createPullRequest';
 import { deleteBranch } from './commands/deleteBranch';
 import { resolveContext, SECTION, settings } from './config';
@@ -21,6 +22,7 @@ import { DependencyMapPanel } from './dependencyMap';
 import { CurrentWorkItemStatusBar } from './currentWorkItemStatusBar';
 import {
   ADD_BUILD_NOTES_SKIP_TAG_COMMAND,
+  RETARGET_PULL_REQUEST_COMMAND,
   CHECKOUT_MY_PULL_REQUEST_COMMAND,
   MyPullRequestsWatcher,
   PUBLISH_PULL_REQUEST_COMMAND,
@@ -405,6 +407,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         throw new Error(`PR ${pullRequestId} is no longer in your list of pull requests.`);
       }
       await addBuildNotesSkipTag(resolveContext(currentRepository()).client, pullRequest, () => myPullRequests.poll());
+    }),
+    command(RETARGET_PULL_REQUEST_COMMAND, async (pullRequestId: number) => {
+      const pullRequest = myPullRequests.find(pullRequestId);
+      if (!pullRequest) {
+        throw new Error(`PR ${pullRequestId} is no longer in your list of pull requests.`);
+      }
+      await retargetPullRequest(resolveContext(currentRepository()).client, pullRequest, settings().baseBranch, () =>
+        myPullRequests.poll()
+      );
     }),
     command('totalflowx.openIterationBoard', () => openIterationBoard(currentRepository(), store)),
     command('totalflowx.selectTeams', () => selectTeams(currentRepository()))

@@ -46,6 +46,8 @@ export interface RepositoryState {
   readonly untrackedChanges?: Change[];
   readonly mergeChanges?: Change[];
   readonly onDidChange: vscode.Event<void>;
+  /** Branches, tags and remote branches known to the extension (remote branches have type REF_TYPE_REMOTE_HEAD) */
+  readonly refs?: Ref[];
 }
 
 export interface Repository {
@@ -62,6 +64,9 @@ export interface Repository {
   push(remoteName?: string, branchName?: string, setUpstream?: boolean): Promise<void>;
   pull(): Promise<void>;
   deleteBranch(name: string, force?: boolean): Promise<void>;
+  /** Value of a variable of the repository's git config; rejects when it is not set */
+  getConfig(key: string): Promise<string>;
+  setConfig(key: string, value: string): Promise<string>;
   log(options?: { maxEntries?: number; range?: string }): Promise<Commit[]>;
 }
 
@@ -79,6 +84,7 @@ interface GitExtension {
 }
 
 export const REF_TYPE_HEAD = 0;
+export const REF_TYPE_REMOTE_HEAD = 1;
 
 export async function getGitApi(): Promise<GitAPI> {
   const extension = vscode.extensions.getExtension<GitExtension>('vscode.git');

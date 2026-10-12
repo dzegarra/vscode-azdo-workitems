@@ -231,7 +231,7 @@ export interface PullRequestWarning {
   text: string;
   severity: 'error' | 'warning';
   /** A fix the card offers as a button */
-  action?: 'addSkipTag';
+  action?: 'addSkipTag' | 'retarget';
   actionLabel?: string;
 }
 
@@ -251,6 +251,55 @@ export function plainDescription(markdown: string | undefined): string {
     .replace(/\]\([^)]*\)/g, '')
     .replace(/[#*_`>\-[\]()!~|]/g, '')
     .replace(/\s+/g, '');
+}
+
+const stripHeads = (ref: string) => ref.replace(/^refs\/heads\//, '');
+
+/** What the retarget check knows of the branches: the user's PRs, and the remote branches when known */
+export interface RetargetContext {
+  /** Team default base, e.g. "develop" */
+  baseBranch: string;
+  /** The user's PRs (active and completed): a completed one whose source is the target is a merged base */
+  pullRequests: Pick<
+    AuthoredPullRequest,
+    'pullRequestId' | 'status' | 'sourceRefName' | 'targetRefName' | 'repository'
+  >[];
+  /** Remote branches of the PR's repository, when already known (nothing is requested for it) */
+  remoteBranches?: ReadonlySet<string>;
+}
+
+/**
+ * An active PR that targets a branch other than the base, whose own base is gone: its PR was completed (the changes
+ * were squash-merged into the base) or the branch no longer exists. Offers to retarget it to the base branch
+ */
+export function retargetWarnings(pr: AuthoredPullRequest, context: RetargetContext): PullRequestWarning[] {
+  const target = stripHeads(pr.targetRefName);
+  if (pr.status !== 'active' || target === context.baseBranch) {
+    return [];
+  }
+  const merged = context.pullRequests.find(
+    (other) =>
+      other.status === 'completed' &&
+      other.sourceRefName === pr.targetRefName &&
+      other.repository.id === pr.repository.id
+  );
+  let reason: string | undefined;
+  if (merged) {
+    reason = `Its base PR ${merged.pullRequestId} was completed`;
+  } else if (context.remoteBranches && !context.remoteBranches.has(target)) {
+    reason = `Its base branch ${target} no longer exists`;
+  }
+  if (!reason) {
+    return [];
+  }
+  return [
+    {
+      text: `${reason}: retarget to ${context.baseBranch}`,
+      severity: 'warning',
+      action: 'retarget',
+      actionLabel: `Retarget to ${context.baseBranch}`,
+    },
+  ];
 }
 
 const BACKLOG_TYPES = ['Product Backlog Item', 'User Story', 'Bug'];
@@ -472,8 +521,6 @@ export function formatAge(milliseconds: number): string {
   return hours < HOURS_PER_DAY ? `${hours} h` : `${Math.floor(hours / HOURS_PER_DAY)} d ${hours % HOURS_PER_DAY} h`;
 }
 
-const stripHeads = (ref: string) => ref.replace(/^refs\/heads\//, '');
-
 export interface ListOptions {
   now: Date;
   /** Formats the dates of the timeline; the local time by default */
@@ -486,6 +533,8 @@ export interface ListOptions {
   buildNotes?: BuildNotesOptions;
   /** Weekdays that count as waiting time of the published PRs (0 is Sunday); Monday to Friday by default */
   workingDays?: readonly number[];
+  /** Remote branches of each repository (by lowercase name), when already known: a PR whose target is gone is flagged */
+  remoteBranches?: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
 /** Completed no longer than windowMs ago (a window of 0 matches nothing) */
@@ -511,8 +560,17 @@ function waitingTime(data: AuthoredPullRequestData, now: Date, workingDays: read
 
 function toModel(
   { pr, extras }: AuthoredPullRequestData,
-  { now, baseBranch, minimumRequiredReviewers, buildNotes, formatDate, workingDays = DEFAULT_WORKING_DAYS }: ListOptions
+  options: ListOptions,
+  all: AuthoredPullRequestData[]
 ): MyPullRequestModel {
+  const {
+    now,
+    baseBranch,
+    minimumRequiredReviewers,
+    buildNotes,
+    formatDate,
+    workingDays = DEFAULT_WORKING_DAYS,
+  } = options;
   const { label, tone } = pullRequestStatus(pr);
   const isCompleted = pr.status === 'completed';
   const target = stripHeads(pr.targetRefName);
@@ -545,7 +603,14 @@ function toModel(
       nextTone: 'pending',
     };
   }
-  const warnings = pullRequestWarnings(pr, extras, { minimumRequiredReviewers, buildNotes });
+  const warnings = [
+    ...pullRequestWarnings(pr, extras, { minimumRequiredReviewers, buildNotes }),
+    ...retargetWarnings(pr, {
+      baseBranch,
+      pullRequests: all.map((entry) => entry.pr),
+      remoteBranches: options.remoteBranches?.get(pr.repository.name.toLowerCase()),
+    }),
+  ];
   const next = nextStep(pr, extras);
   return {
     ...base,
@@ -597,6 +662,6 @@ export function toMyPullRequestModels(
   const items = listed
     .filter(({ pr }) => options.showDrafts || !pr.isDraft)
     .sort(compare)
-    .map((entry) => toModel(entry, options));
+    .map((entry) => toModel(entry, options, data));
   return { items, hiddenDrafts, hiddenCompleted };
 }

@@ -1445,6 +1445,11 @@ function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean, fo
                 actionLabel ?? 'Add tag'
               )}</button>`
           : ''
+      }${
+        action === 'retarget'
+          ? `<button class="button small mypr-fix" data-action="retargetMyPullRequest" data-pr="${pr.id}"
+              title="Change the branch the PR merges into">${escapeHtml(actionLabel ?? 'Retarget')}</button>`
+          : ''
       }</li>`
   );
   return `<li class="mypr tone-${pr.tone}${pr.isCompleted ? ' completed' : ''}${
@@ -1985,6 +1990,8 @@ document.addEventListener('click', (event) => {
     post({ type: 'checkoutMyPullRequest', pullRequestId: Number(pr) });
   } else if (action === 'addBuildNotesSkipTag' && pr) {
     post({ type: 'addBuildNotesSkipTag', pullRequestId: Number(pr) });
+  } else if (action === 'retargetMyPullRequest' && pr) {
+    post({ type: 'retargetMyPullRequest', pullRequestId: Number(pr) });
   } else if (action === 'publishMyPullRequest' && pr) {
     post({ type: 'publishMyPullRequest', pullRequestId: Number(pr) });
   } else if (action === 'openMyPullRequest' && url) {

@@ -231,7 +231,10 @@ export type WebviewMessage =
   | { type: 'checkoutReviewRequest'; pullRequestId: number }
   | { type: 'openReviewRequest' | 'openMyPullRequest'; url: string }
   | { type: 'checkMyPullRequests' }
-  | { type: 'addBuildNotesSkipTag' | 'checkoutMyPullRequest' | 'publishMyPullRequest'; pullRequestId: number }
+  | {
+      type: 'addBuildNotesSkipTag' | 'checkoutMyPullRequest' | 'publishMyPullRequest' | 'retargetMyPullRequest';
+      pullRequestId: number;
+    }
   | { type: 'setShowDrafts' | 'setShowOptional'; show: boolean }
   | { type: 'setCompletedPeriod'; period: CompletedPeriod }
   /** Layout of one of the PR boxes */

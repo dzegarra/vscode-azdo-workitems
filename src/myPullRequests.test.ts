@@ -15,6 +15,7 @@ import {
   PullRequestExtras,
   PullRequestWarning,
   pullRequestWarnings,
+  retargetWarnings,
   toMyPullRequestModels,
   toPolicyEvaluation,
   voteKind,
@@ -682,5 +683,69 @@ describe('build notes warning', () => {
   it('prevents ready to merge', () => {
     const warnings = pullRequestWarnings(pr(), extras, options);
     expect(isReadyToMerge(pr(), { evaluations: [] }, warnings)).toBe(false);
+  });
+});
+
+describe('retargetWarnings', () => {
+  const stacked = pr({
+    pullRequestId: 13765,
+    targetRefName: 'refs/heads/feature/base',
+    sourceRefName: 'refs/heads/feature/task',
+  });
+  const basePr = pr({
+    pullRequestId: 13770,
+    status: 'completed',
+    sourceRefName: 'refs/heads/feature/base',
+    targetRefName: 'refs/heads/develop',
+  });
+  const context = { baseBranch: 'develop', pullRequests: [stacked, basePr] };
+
+  it('warns and offers the retarget when the PR of the target branch was completed', () => {
+    expect(retargetWarnings(stacked, context)).toEqual([
+      {
+        text: 'Its base PR 13770 was completed: retarget to develop',
+        severity: 'warning',
+        action: 'retarget',
+        actionLabel: 'Retarget to develop',
+      },
+    ]);
+  });
+
+  it('does not warn while the PR of the target branch is active', () => {
+    expect(retargetWarnings(stacked, { ...context, pullRequests: [stacked, { ...basePr, status: 'active' }] })).toEqual(
+      []
+    );
+  });
+
+  it('ignores a completed PR of another repository', () => {
+    const other = { ...basePr, repository: { id: 'other', name: 'Other', project: { id: 'project' } } };
+    expect(retargetWarnings(stacked, { ...context, pullRequests: [stacked, other] })).toEqual([]);
+  });
+
+  it('warns when the target branch no longer exists, only if the branches are known', () => {
+    const alone = { baseBranch: 'develop', pullRequests: [stacked] };
+    expect(retargetWarnings(stacked, alone)).toEqual([]);
+    expect(retargetWarnings(stacked, { ...alone, remoteBranches: new Set(['develop']) })[0].text).toBe(
+      'Its base branch feature/base no longer exists: retarget to develop'
+    );
+    expect(retargetWarnings(stacked, { ...alone, remoteBranches: new Set(['develop', 'feature/base']) })).toEqual([]);
+  });
+
+  it('never warns for a PR that targets the base branch or is not active', () => {
+    expect(retargetWarnings(pr(), context)).toEqual([]);
+    expect(retargetWarnings({ ...stacked, status: 'completed' }, context)).toEqual([]);
+  });
+
+  it('shows up in the model of the card and keeps it from being ready to merge', () => {
+    const { items } = toMyPullRequestModels(
+      [
+        { pr: stacked, extras: { runs: [], evaluations: [] } },
+        { pr: basePr, extras: { runs: [] } },
+      ],
+      { now: NOW, baseBranch: 'develop', showDrafts: true, minimumRequiredReviewers: 0 }
+    );
+    const card = items.find((item) => item.id === 13765);
+    expect(card?.warnings.map((w) => w.action)).toEqual(['retarget']);
+    expect(card?.readyToMerge).toBe(false);
   });
 });

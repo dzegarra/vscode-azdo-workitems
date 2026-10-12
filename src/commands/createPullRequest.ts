@@ -5,6 +5,7 @@ import { AzdoClient, GitRepository } from '../azdoClient';
 import { pickFromCatalog } from '../catalog';
 import { buildNotesSettings, resolveContext, settings } from '../config';
 import { localDiffChangesFile } from '../buildNotes';
+import { baseConfigKey, usableStoredBase } from '../baseBranch';
 import { GitAPI, pickRepository, Repository } from '../git';
 import { buildPrDescription, buildPrTitle, parseBranchName } from '../naming';
 import { chooseTaskBranch, PullRequestTaskRef } from '../pullRequestTasks';
@@ -17,6 +18,7 @@ import {
   startNewPullRequestTask,
 } from './pullRequestTask';
 import { WorkItemEntry, WorkItemsStore } from '../workItemsStore';
+import { remoteBranchNames } from './pickBaseBranch';
 import { git as runGit } from '../worktreeGit';
 
 /**
@@ -106,6 +108,61 @@ function pickDraft(title: string, placeHolder: string): Thenable<{ isDraft: bool
     ],
     { title, placeHolder, ignoreFocusOut: true }
   );
+}
+
+/** Base stored when the branch was created from another branch; undefined when none (or git cannot tell) */
+async function storedBase(repository: Repository, branch: string): Promise<string | undefined> {
+  try {
+    return (await repository.getConfig(baseConfigKey(branch))).trim() || undefined;
+  } catch {
+    // The variable is not set: the branch starts from the default base
+    return undefined;
+  }
+}
+
+/** Whether the PR of the base branch is completed; unknown (false) when the question fails */
+async function isBaseCompleted(client: AzdoClient, azdoRepository: GitRepository, base: string): Promise<boolean> {
+  try {
+    return await client.hasCompletedPullRequestFrom(azdoRepository, base);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Branch the PR merges into: the base the branch was created from while that branch still exists and its own PR
+ * is not completed (the user chooses between it and the default), otherwise the default. Undefined when cancelled
+ */
+async function resolveTarget(
+  repository: Repository,
+  client: AzdoClient,
+  azdoRepository: GitRepository,
+  branch: string
+): Promise<string | undefined> {
+  const { baseBranch } = settings();
+  const stored = await storedBase(repository, branch);
+  if (!stored || stored === baseBranch) {
+    return baseBranch;
+  }
+  const remoteBranches = await remoteBranchNames(repository);
+  const exists = remoteBranches.includes(stored);
+  const base = usableStoredBase({
+    stored,
+    defaultBase: baseBranch,
+    remoteBranches,
+    baseCompleted: exists && (await isBaseCompleted(client, azdoRepository, stored)),
+  });
+  if (!base) {
+    return baseBranch;
+  }
+  const picked = await vscode.window.showQuickPick(
+    [
+      { label: base, description: 'the branch it was created from', target: base },
+      { label: baseBranch, description: 'team default', target: baseBranch },
+    ],
+    { title: `Target branch of ${branch}`, placeHolder: 'The pull request merges into…', ignoreFocusOut: true }
+  );
+  return picked?.target;
 }
 
 const WRITE_NOTES = "Yes, I'll write the notes";
@@ -285,9 +342,14 @@ export async function createPullRequest(
     return;
   }
 
+  const targetBranch = await resolveTarget(repository, client, azdoRepository, branch);
+  if (!targetBranch) {
+    return;
+  }
+
   // First question: answering "I'll write the notes" stops here, before any other answer is given
   const head = isLocal ? branch : `${s.remote}/${branch}`;
-  const labels = await checkBuildNotes(repository.rootUri.fsPath, `${s.remote}/${s.baseBranch}`, head);
+  const labels = await checkBuildNotes(repository.rootUri.fsPath, `${s.remote}/${targetBranch}`, head);
   if (!labels) {
     return;
   }
@@ -298,7 +360,7 @@ export async function createPullRequest(
   }
   const { workItemIds, title } = content;
 
-  const draft = await pickDraft(title, `${branch} → ${s.baseBranch}`);
+  const draft = await pickDraft(title, `${branch} → ${targetBranch}`);
   if (!draft) {
     return;
   }
@@ -317,12 +379,12 @@ export async function createPullRequest(
         progress.report({ message: `pushing ${branch}` });
         await repository.push(s.remote, branch, true);
       }
-      const commits = await repository.log({ range: `${s.remote}/${s.baseBranch}..${head}` });
+      const commits = await repository.log({ range: `${s.remote}/${targetBranch}..${head}` });
       progress.report({ message: 'creating pull request' });
       try {
         const created = await client.createPullRequest(azdoRepository, {
           source: branch,
-          target: s.baseBranch,
+          target: targetBranch,
           title,
           description: buildPrDescription(commits.map((c) => c.message.split('\n')[0]).reverse()),
           isDraft: draft.isDraft,

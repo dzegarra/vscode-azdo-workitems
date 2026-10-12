@@ -17,6 +17,7 @@ import {
 } from './myPullRequests';
 import { RunModel } from './pipelines';
 import type { PullRequestExtrasLoader } from './pullRequestExtras';
+import { REF_TYPE_REMOTE_HEAD } from './git';
 import type { Layout } from './viewModel';
 import { WorkItemsStore } from './workItemsStore';
 
@@ -27,6 +28,7 @@ const MIN_INTERVAL_SECONDS = 30;
 export const CHECKOUT_MY_PULL_REQUEST_COMMAND = 'totalflowx.checkoutMyPullRequest';
 export const PUBLISH_PULL_REQUEST_COMMAND = 'totalflowx.publishPullRequest';
 export const ADD_BUILD_NOTES_SKIP_TAG_COMMAND = 'totalflowx.addBuildNotesSkipTag';
+export const RETARGET_PULL_REQUEST_COMMAND = 'totalflowx.retargetPullRequest';
 
 interface NotesContext {
   options: ReturnType<typeof buildNotesSettings>;
@@ -100,6 +102,7 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
     }));
     const { items, hiddenDrafts, hiddenCompleted } = toMyPullRequestModels(data, {
       now: new Date(),
+      remoteBranches: this.knownRemoteBranches(),
       baseBranch: settings().baseBranch,
       showDrafts,
       completedPeriod,
@@ -265,6 +268,24 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
   }
 
   /** Name of the repository open in VS Code and its checked out branch */
+  /** Remote branches the git extension already knows, by lowercase repository name; nothing is requested */
+  private knownRemoteBranches(): Map<string, Set<string>> | undefined {
+    const repository = this.store.repository();
+    const { remote, baseBranch } = settings();
+    const refs = repository?.state.refs;
+    const name = this.localRepository()?.name;
+    if (!refs || !name) {
+      return undefined;
+    }
+    const names = new Set(
+      refs
+        .filter((ref) => ref.type === REF_TYPE_REMOTE_HEAD && ref.remote === remote && ref.name)
+        .map((ref) => (ref.name ?? '').slice(remote.length + 1))
+    );
+    // Without the base branch the refs are not loaded yet: do not flag every target as missing
+    return names.has(baseBranch) ? new Map([[name.toLowerCase(), names]]) : undefined;
+  }
+
   private localRepository(): { name: string; head?: string } | undefined {
     const repository = this.store.repository();
     if (!repository) {

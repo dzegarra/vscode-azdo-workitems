@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { pickFromCatalog } from '../catalog';
+import { baseConfigKey } from '../baseBranch';
+import { pickFromCatalogOrExtra } from '../catalog';
 import { resolveContext, settings } from '../config';
 import { WorkItem } from '../azdoClient';
 import { GitAPI, pickRepository, Repository } from '../git';
@@ -10,6 +11,7 @@ import { WorkItemEntry, WorkItemsStore } from '../workItemsStore';
 import { offerBranchActions } from './checkoutBranch';
 import { resolveWorkItemEntry } from './pickWorkItem';
 import { findChildTaskWorkItem } from './pullRequestTask';
+import { pickBaseBranch } from './pickBaseBranch';
 import { confirmStart } from './startCheck';
 
 /** Moves the work item to "Committed" (or the configured state) when work on it starts */
@@ -43,39 +45,88 @@ async function moveTaskToStartedState(repository: Repository, task: WorkItem): P
   }
 }
 
+/** Module picker with the "Base: …" row; picking the row asks for the base and comes back to the modules */
+async function pickModuleAndBase(
+  repository: Repository,
+  entry: WorkItemEntry,
+  type: string
+): Promise<{ module: string; base: string } | undefined> {
+  const { remote, baseBranch } = settings();
+  let base = baseBranch;
+  for (;;) {
+    const pick = await pickFromCatalogOrExtra({
+      setting: 'branchModules',
+      title: `${type}/<module>/${entry.workItem.id}-…`,
+      placeholder: 'Select the module affected by the changes',
+      newItemPrompt: 'New module name (kebab-case, e.g. fui-apps-xyz)',
+      validate: (value) => (isValidModule(value) ? undefined : 'Use lowercase letters, numbers and dashes'),
+      extraItem: {
+        label: `$(git-branch) Base: ${remote}/${base} · change…`,
+        description: base === baseBranch ? 'team default' : 'the pull request will target it',
+      },
+    });
+    if (pick?.kind !== 'extra') {
+      return pick && { module: pick.value, base };
+    }
+    base = (await pickBaseBranch(repository, entry)) ?? base;
+  }
+}
+
 /** Questions of the branch name: module and short name. The id and type are the ones of the Backlog Item / Bug */
-async function askBranchName(workItem: WorkItem, suggestedName: string): Promise<string | undefined> {
+async function askBranchName(
+  repository: Repository,
+  entry: WorkItemEntry,
+  suggestedName: string
+): Promise<{ name: string; base: string } | undefined> {
+  const { workItem } = entry;
   const type = branchTypeFor(workItem.type, settings().branchTypeByWorkItemType);
-  const module = await pickFromCatalog({
-    setting: 'branchModules',
-    title: `${type}/<module>/${workItem.id}-…`,
-    placeholder: 'Select the module affected by the changes',
-    newItemPrompt: 'New module name (kebab-case, e.g. fui-apps-xyz)',
-    validate: (value) => (isValidModule(value) ? undefined : 'Use lowercase letters, numbers and dashes'),
-  });
-  if (!module) {
+  const picked = await pickModuleAndBase(repository, entry, type);
+  if (!picked) {
     return undefined;
   }
   const slug = await vscode.window.showInputBox({
-    title: `${type}/${module}/${workItem.id}-<name>`,
+    title: `${type}/${picked.module}/${workItem.id}-<name>`,
     prompt: 'Short branch name',
     value: slugify(suggestedName),
     ignoreFocusOut: true,
     validateInput: (value) => (slugify(value) ? undefined : 'Name is required'),
   });
-  return slug === undefined ? undefined : buildBranchName(type, module, workItem.id, slug);
+  return slug === undefined
+    ? undefined
+    : { name: buildBranchName(type, picked.module, workItem.id, slug), base: picked.base };
+}
+
+/** Remembers the base of a branch that does not start from the default one: Create PR targets it */
+async function rememberBase(repository: Repository, branchName: string, base: string): Promise<void> {
+  try {
+    await repository.setConfig(baseConfigKey(branchName), base);
+  } catch (error) {
+    void vscode.window.showWarningMessage(
+      `Branch ${branchName} was created, but its base "${base}" could not be remembered: ${
+        (error as Error).message
+      }. Choose the target when you create the pull request.`
+    );
+  }
 }
 
 /** Creates the branch from the base branch (no checkout), publishes it and links it to the work items */
-async function createAndLinkBranch(repository: Repository, branchName: string, linkIds: number[]): Promise<void> {
+async function createAndLinkBranch(
+  repository: Repository,
+  branchName: string,
+  base: string,
+  linkIds: number[]
+): Promise<void> {
   const s = settings();
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: `Creating ${branchName}` },
     async (progress) => {
-      progress.report({ message: `fetching ${s.remote}/${s.baseBranch}` });
-      await repository.fetch(s.remote, s.baseBranch);
+      progress.report({ message: `fetching ${s.remote}/${base}` });
+      await repository.fetch(s.remote, base);
       progress.report({ message: 'creating the branch' });
-      await repository.createBranch(branchName, false, `${s.remote}/${s.baseBranch}`);
+      await repository.createBranch(branchName, false, `${s.remote}/${base}`);
+      if (base !== s.baseBranch) {
+        await rememberBase(repository, branchName, base);
+      }
 
       if (s.linkBranchToWorkItem) {
         progress.report({ message: `publishing to ${s.remote}` });
@@ -141,11 +192,12 @@ export async function createBranch(
     return;
   }
 
-  const branchName = await askBranchName(workItem, (task ?? workItem).title);
-  if (!branchName) {
+  const asked = await askBranchName(repository, target, (task ?? workItem).title);
+  if (!asked) {
     return;
   }
-  await createAndLinkBranch(repository, branchName, task ? [workItem.id, task.id] : [workItem.id]);
+  const branchName = asked.name;
+  await createAndLinkBranch(repository, branchName, asked.base, task ? [workItem.id, task.id] : [workItem.id]);
 
   await moveToStartedState(repository, workItem);
   if (task) {

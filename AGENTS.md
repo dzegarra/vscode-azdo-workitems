@@ -44,7 +44,7 @@ src/workItemsView.ts      sidebar webview provider: builds the ViewModel (src/vi
 src/webview/main.ts       sidebar webview (cards, PR boxes, filters); src/webview/dependencies.ts: dependency map
 src/workItemDetails.ts    Work Item Details panel (one editor tab per work item); HTML in src/detailsHtml.ts
 src/dependencyMap.ts      dependency map panel; graph/layout in src/dependencyGraph.ts, iteration model in src/schedule.ts
-src/commands/*.ts         user flows (create branch / PR, checkout + worktrees, delete branch, publish, …)
+src/commands/*.ts         user flows (create branch / PR, checkout + worktrees, delete branch, publish, retarget, …); base branch rules: src/baseBranch.ts (pure)
 src/*StatusBar.ts         status bar items (CI runs, reviews, current work item)
 media/*.css               styles of the webviews (webview.css shared by the sidebar and the details panel)
 ```

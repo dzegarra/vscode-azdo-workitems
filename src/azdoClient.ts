@@ -614,6 +614,14 @@ export class AzdoClient {
     });
   }
 
+  /** Changes the branch the PR merges into (e.g. "refs/heads/develop") */
+  async updatePullRequestTarget(repositoryId: string, pullRequestId: number, targetRefName: string): Promise<void> {
+    await this.request(this.url(`git/repositories/${repositoryId}/pullrequests/${pullRequestId}`), {
+      method: 'PATCH',
+      body: JSON.stringify({ targetRefName }),
+    });
+  }
+
   /** Active PRs of the project where the user is a reviewer (directly, not through a group) */
   async getPullRequestsToReview(reviewerId: string): Promise<ReviewerPullRequest[]> {
     const result = await this.request<{
@@ -693,6 +701,17 @@ export class AzdoClient {
     );
     const pr = result.value.at(0);
     return pr && { ...pr, webUrl: this.pullRequestWebUrl(repository, pr.pullRequestId) };
+  }
+
+  /** The branch has a completed PR (its changes are in the target of that PR) */
+  async hasCompletedPullRequestFrom(repository: GitRepository, branch: string): Promise<boolean> {
+    const source = encodeURIComponent(`refs/heads/${branch}`);
+    const result = await this.request<{ value: unknown[] }>(
+      this.url(
+        `git/repositories/${repository.id}/pullrequests?searchCriteria.sourceRefName=${source}&searchCriteria.status=completed&$top=1`
+      )
+    );
+    return result.value.length > 0;
   }
 
   async createPullRequest(
