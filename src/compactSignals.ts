@@ -125,6 +125,16 @@ function severalBranchesSignal(item: WorkItemModel): CompactSignal {
 }
 
 function branchSignal(item: WorkItemModel): CompactSignal | undefined {
+  const deletable = item.deletableBranches ?? [];
+  if (deletable.length && (isFinishedState(item.state) || (item.branch && deletable.includes(item.branch)))) {
+    // The PR was completed and the branch is still there: whatever the state of the work item
+    return {
+      kind: 'branch',
+      label: 'not deleted',
+      title: `${deletable.join(', ')}: the PR is merged, the branch should be deleted`,
+      tone: 'leftover',
+    };
+  }
   if (!isFinishedState(item.state) && item.branches.length > 1) {
     return severalBranchesSignal(item);
   }
@@ -137,14 +147,7 @@ function branchSignal(item: WorkItemModel): CompactSignal | undefined {
   }
   if (isFinishedState(item.state)) {
     // Once the branch is deleted nothing is left to tell
-    return item.leftoverBranch
-      ? {
-          kind: 'branch',
-          label: 'not deleted',
-          title: `${item.branch}: the PR is merged, the branch should be deleted`,
-          tone: 'leftover',
-        }
-      : undefined;
+    return undefined;
   }
   if (item.isCurrentBranch) {
     return { kind: 'branch', label: 'current', title: `${item.branch}: checked out`, tone: 'current' };

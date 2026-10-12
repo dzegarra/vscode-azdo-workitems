@@ -16,7 +16,7 @@ export interface TaskMenuTask {
 
 /** The message an item of the menu posts: the data attributes of its button */
 export interface TaskMenuAction {
-  action: 'checkoutHere' | 'openWorktree' | 'openPullRequest' | 'createBranch' | 'createPullRequest';
+  action: 'checkoutHere' | 'openWorktree' | 'deleteBranch' | 'openPullRequest' | 'createBranch' | 'createPullRequest';
   /** Id sent as `id`: the task, or the parent work item for the create actions */
   id: number;
   kind?: 'task';
@@ -31,6 +31,8 @@ export interface TaskMenuItem {
   detail?: string;
   /** Without action: the item only informs (dimmed) */
   act?: TaskMenuAction;
+  /** Destructive: shown in the danger colour */
+  danger?: boolean;
 }
 
 export interface TaskMenuSection {
@@ -40,6 +42,16 @@ export interface TaskMenuSection {
 
 export function taskMenuSections(task: TaskMenuTask, parentId: number): TaskMenuSection[] {
   const branchItems = task.taskBranches.flatMap((branch): TaskMenuItem[] => {
+    const remove: TaskMenuItem[] = branch.deletable
+      ? [
+          {
+            label: `Delete branch ${branch.name}`,
+            detail: 'The PR is merged',
+            danger: true,
+            act: { action: 'deleteBranch', id: task.id, kind: 'task', branch: branch.name },
+          },
+        ]
+      : [];
     if (branch.canCheckout) {
       const base = { id: task.id, kind: 'task' as const, branch: branch.name };
       return [
@@ -49,10 +61,11 @@ export function taskMenuSections(task: TaskMenuTask, parentId: number): TaskMenu
           act: { action: 'checkoutHere', ...base },
         },
         { label: 'Open in a worktree', detail: branch.name, act: { action: 'openWorktree', ...base } },
+        ...remove,
       ];
     }
     const note = branch.state === 'current' ? 'Checked out' : describeTaskBranch(branch);
-    return [{ label: branch.name, detail: branch.state === 'current' ? `${note} (${branch.where})` : note }];
+    return [{ label: branch.name, detail: branch.state === 'current' ? `${note} (${branch.where})` : note }, ...remove];
   });
   const prItems = task.taskPullRequests.map(
     (pr): TaskMenuItem => ({

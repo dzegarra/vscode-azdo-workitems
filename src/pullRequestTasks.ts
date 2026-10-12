@@ -3,6 +3,7 @@
  * no such state): In Progress while the PR is published, Done once it is completed. Decisions about those tasks.
  * Pure, so no "vscode" import
  */
+import { deleteBranchOffer } from './deletableBranches';
 import { isNotStartedState, stateCategory, normalizeState } from './states';
 
 export const TASK_IN_PROGRESS = 'In Progress';
@@ -130,8 +131,12 @@ function listTasks(tasks: { id: number }[]): string {
 }
 
 /** Question once a PR is completed */
-export function completedPullRequestPrompt(pullRequestId: number, tasks: { id: number }[]): string {
-  return `PR ${pullRequestId} completed. Set its ${listTasks(tasks)} to ${TASK_DONE}?`;
+export function completedPullRequestPrompt(pullRequestId: number, tasks: { id: number }[], branch?: string): string {
+  if (!tasks.length) {
+    return branch ? deleteBranchOffer(pullRequestId, branch) : `PR ${pullRequestId} completed.`;
+  }
+  const question = `PR ${pullRequestId} completed. Set its ${listTasks(tasks)} to ${TASK_DONE}?`;
+  return branch ? `${question} The branch ${branch} can be deleted.` : question;
 }
 
 /** Info message after publishing */

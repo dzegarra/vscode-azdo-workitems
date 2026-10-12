@@ -4,6 +4,7 @@ import { escapeHtml } from './html';
 import { icon } from './icons';
 import { isFinishedState } from './states';
 import type { BranchModel, WorkItemModel } from './viewModel';
+import { mergedBranchHint } from './deletableBranches';
 import { branchTooltip } from './workItemBranches';
 
 export interface BranchRowOptions {
@@ -11,18 +12,18 @@ export interface BranchRowOptions {
   id: number;
   /** A small Checkout button (with its ▾ worktree menu) for the branches of this repository that are not checked out */
   showCheckout: boolean;
-  /** The PR is merged and the branch still exists: "not deleted" instead of where it is */
-  leftover?: boolean;
+  /** The PR is merged and the branch still exists: "not deleted" instead of where it is, and a Delete branch button */
+  deletable?: boolean;
 }
 
 /**
  * One branch: icon, name, where it is (current / local / remote / linked) and the worktree that has it. The ones of
  * other repositories are dimmed like the PRs of other repositories and cannot be checked out
  */
-export function renderBranchRow(branch: BranchModel, { id, showCheckout, leftover }: BranchRowOptions): string {
+export function renderBranchRow(branch: BranchModel, { id, showCheckout, deletable }: BranchRowOptions): string {
   const tooltip = branchTooltip(branch);
-  const pill = leftover
-    ? '<span class="pill tone-leftover" title="The PR is merged: the branch should be deleted">not deleted</span>'
+  const pill = deletable
+    ? `<span class="pill tone-leftover" title="${mergedBranchHint()}">not deleted</span>`
     : `<span class="pill tone-${branch.location}">${branch.location}</span>`;
   const checkout =
     showCheckout && !branch.otherRepository && !branch.isCurrent
@@ -36,24 +37,30 @@ export function renderBranchRow(branch: BranchModel, { id, showCheckout, leftove
           branch: branch.name,
         })
       : '';
+  const remove = deletable
+    ? `<button class="button small danger" data-action="deleteBranch" data-id="${id}" data-branch="${escapeHtml(
+        branch.name
+      )}" title="Delete ${escapeHtml(branch.name)}: ${mergedBranchHint()}">Delete</button>`
+    : '';
   return `<div class="row branch${branch.otherRepository ? ' other-repo' : ''}"${
     branch.otherRepository ? ` title="${escapeHtml(tooltip)}"` : ''
   }>${icon('branch')}<code title="${escapeHtml(branch.otherRepository ? tooltip : branch.name)}">${escapeHtml(
     branch.name
-  )}</code><span class="branch-meta">${pill}${worktreePill(branch.worktree)}${checkout}</span></div>`;
+  )}</code><span class="branch-meta">${pill}${worktreePill(branch.worktree)}${checkout}${remove}</span></div>`;
 }
 
-/** Finished work items list their leftover branch and the other local branches: remote refs and links remain after deletion */
-function isListedWhenFinished(branch: BranchModel, card: Pick<WorkItemModel, 'leftoverBranch'>): boolean {
-  return branch.name === card.leftoverBranch?.name || (!branch.otherRepository && branch.location === 'local');
+/** Finished work items list the branches to delete and the other local branches: remote refs and links remain after deletion */
+function isListedWhenFinished(branch: BranchModel, card: Pick<WorkItemModel, 'deletableBranches'>): boolean {
+  return !!card.deletableBranches?.includes(branch.name) || (!branch.otherRepository && branch.location === 'local');
 }
 
 /**
  * Every branch of the work item, one row each. The buttons of the card act on its main branch, so the rows only get
- * their own Checkout when there are several branches. "No branch" / "Branch deleted" when the main branch is missing
+ * their own Checkout when there are several branches, and their own Delete when several are deletable. "No branch"
+ * when there is none; a finished work item without a branch to show says so
  */
 export function renderBranchList(
-  card: Pick<WorkItemModel, 'branch' | 'branches' | 'id' | 'leftoverBranch' | 'state'>
+  card: Pick<WorkItemModel, 'branch' | 'branches' | 'id' | 'deletableBranches' | 'state'>
 ): string {
   const finished = isFinishedState(card.state);
   const muted = (text: string) => `<div class="row muted">${icon('branch')}<span>${text}</span></div>`;
@@ -62,12 +69,12 @@ export function renderBranchList(
     renderBranchRow(branch, {
       id: card.id,
       showCheckout: !finished && card.branches.length > 1,
-      leftover: finished && branch.name === card.leftoverBranch?.name,
+      deletable: !branch.otherRepository && !!card.deletableBranches?.includes(branch.name),
     })
   );
-  if (finished && card.branch && !card.leftoverBranch) {
-    // The links of the work item remain after the branch is deleted
-    return muted('Branch deleted') + rows.join('');
+  if (finished && card.branch && !rows.length) {
+    // The links of the work item remain after the branch is deleted; whether it still exists is only asked when its PR is merged
+    return muted('No branch to delete');
   }
   return (card.branch ? '' : muted('No branch')) + rows.join('');
 }

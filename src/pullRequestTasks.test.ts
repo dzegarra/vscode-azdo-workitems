@@ -147,6 +147,10 @@ describe('messages', () => {
   it('names the task or tasks', () => {
     expect(completedPullRequestPrompt(13770, [{ id: 60985 }])).toBe('PR 13770 completed. Set its task 60985 to Done?');
     expect(completedPullRequestPrompt(1, [{ id: 2 }, { id: 3 }])).toBe('PR 1 completed. Set its tasks 2, 3 to Done?');
+    expect(completedPullRequestPrompt(1, [{ id: 2 }], 'f/a')).toBe(
+      'PR 1 completed. Set its task 2 to Done? The branch f/a can be deleted.'
+    );
+    expect(completedPullRequestPrompt(1, [], 'f/a')).toBe('PR 1 completed. Delete the branch f/a?');
     expect(publishedPullRequestMessage(5, [{ id: 9 }])).toBe('PR 5 published: its task 9 moved to In Progress.');
   });
 });

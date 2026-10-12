@@ -92,7 +92,7 @@
       },
       {
         "command": "totalflowx.deleteBranch",
-        "title": "Delete Branch of a Finished Work Item",
+        "title": "Delete Branch of a Completed PR",
         "category": "Totalflow X",
         "icon": "$(trash)"
       },

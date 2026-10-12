@@ -26,6 +26,16 @@ const pr = (overrides: Partial<TaskBranchPullRequest> = {}): TaskBranchPullReque
 });
 
 describe('toTaskBranchModels', () => {
+  it('marks the branches to delete', () => {
+    const models = toTaskBranchModels(
+      [link('feature/a'), link('feature/b')],
+      [],
+      context({ deletable: ['feature/b'] })
+    );
+    expect(models.find((model) => model.name === 'feature/b')?.deletable).toBe(true);
+    expect(models.find((model) => model.name === 'feature/a')?.deletable).toBeUndefined();
+  });
+
   it('marks the checked out branch and where it exists', () => {
     const [branch] = toTaskBranchModels(
       [link('feature/a')],

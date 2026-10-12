@@ -85,8 +85,8 @@ export interface WorkItemModel {
   workingOn?: WorkingOnLevel;
   /** Another worktree has the branch checked out: its folder */
   worktree?: string;
-  /** Finished work items (Done, Ready to Test…) whose branch still exists: it should be deleted */
-  leftoverBranch?: { name: string; local: boolean; remote: boolean };
+  /** Branches of this repository that still exist and whose PR was completed: they should be deleted (see deletableBranches.ts) */
+  deletableBranches?: string[];
   pullRequests: PullRequestModel[];
   /** Tasks only: their PRs for the icons of the task rows, active ones first */
   taskPullRequests?: TaskPullRequestModel[];
@@ -275,23 +275,26 @@ export type BranchAction = 'checkout' | 'createBranch' | 'createPullRequest' | '
 
 /**
  * Branch actions offered for a work item. Finished work items (Done, Ready to Test…) get no new branch, checkout
- * or PR: their branch only needs to be deleted, when it still exists and no PR is still active on it
+ * or PR. "Delete branch" is offered whatever the state when exactly one branch is deletable (its PR was completed):
+ * with several, each branch row has its own button
  */
 export function branchActions(
-  item: Pick<WorkItemModel, 'branch' | 'branches' | 'isCurrentBranch' | 'leftoverBranch' | 'pullRequests' | 'state'>
+  item: Pick<WorkItemModel, 'branch' | 'branches' | 'isCurrentBranch' | 'deletableBranches' | 'pullRequests' | 'state'>
 ): BranchAction[] {
   // Only the PRs of this repository count: an active PR in another one does not cover this branch
   const hasActivePullRequest = item.pullRequests.some((pr) => pr.isActive && !pr.otherRepository);
+  const remove: BranchAction[] = item.deletableBranches?.length === 1 ? ['deleteBranch'] : [];
   if (isFinishedState(item.state)) {
-    return item.leftoverBranch && !hasActivePullRequest ? ['deleteBranch'] : [];
+    return remove;
   }
   if (!item.branch) {
-    return ['createBranch'];
+    return ['createBranch', ...remove];
   }
   return [
     // With several branches each branch row has its own Checkout (src/branchRows.ts): a card button would be ambiguous
     ...(item.isCurrentBranch || item.branches.length > 1 ? [] : ['checkout' as const]),
     ...(hasActivePullRequest ? [] : ['createPullRequest' as const]),
+    ...remove,
   ];
 }
 

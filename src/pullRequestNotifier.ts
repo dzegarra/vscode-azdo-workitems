@@ -12,7 +12,7 @@ import {
   StoredSnapshot,
   toStored,
 } from './pullRequestEvents';
-import { offerCompletedPullRequestTasks } from './commands/pullRequestTask';
+import { offerCompletedPullRequest } from './commands/pullRequestTask';
 import { snapshotThreads } from './pullRequestThreadSnapshots';
 import { threadUrl } from './reviewThreads';
 import { WorkItemsStore } from './workItemsStore';
@@ -138,32 +138,47 @@ export class PullRequestNotifier implements vscode.Disposable {
   private notify(allEvents: PullRequestEvent[]): void {
     const enabled = notificationSettings().events;
     const events = allEvents.filter((event) => enabled.includes(event.kind));
-    if (enabled.includes('taskDone')) {
-      // The baseline of detectEvents means PRs completed before the first poll are not offered
-      allEvents.filter((event) => event.kind === 'merged').forEach((event) => void this.offerTaskDone(event));
-    }
+    const announce = enabled.includes('merged');
+    // The baseline of detectEvents means PRs completed before the first poll are not offered. A completed PR gets
+    // one notification: the offer to set its task Done and to delete its branch, or the plain "merged" when there is
+    // nothing to offer
+    allEvents
+      .filter((event) => event.kind === 'merged' && (announce || enabled.includes('taskDone')))
+      .forEach((event) => void this.handleMerged(event, enabled.includes('taskDone'), announce));
     if (!events.length) {
       return;
     }
     // PR states shown in the work items view may have changed
     void this.store.refresh();
-    if (events.length > MAX_NOTIFICATIONS) {
-      void this.showSummary(events);
+    // Completed PRs are shown by handleMerged
+    const shown = events.filter((event) => event.kind !== 'merged');
+    if (shown.length > MAX_NOTIFICATIONS) {
+      void this.showSummary(shown);
       return;
     }
-    for (const event of events) {
+    for (const event of shown) {
       void this.show(event);
     }
   }
 
-  private async offerTaskDone(event: PullRequestEvent): Promise<void> {
+  /** The offer for a completed PR (tasks to Done, branch to delete); the plain notification when there is none */
+  private async handleMerged(event: PullRequestEvent, offerTasks: boolean, announce: boolean): Promise<void> {
+    let offered = false;
     try {
       const { client } = resolveContext(this.store.repository());
       const pr =
         this.store.findPullRequest(event.pullRequest.id) ?? (await client.getPullRequest(event.pullRequest.id));
-      await offerCompletedPullRequestTasks(client, pr, (url) => vscode.env.openExternal(vscode.Uri.parse(url)));
+      offered = await offerCompletedPullRequest(client, pr, {
+        tasks: offerTasks,
+        branch: await this.store.mergedBranchToDelete(client, pr),
+        open: (url) => vscode.env.openExternal(vscode.Uri.parse(url)),
+        deleteBranch: (branch) => vscode.commands.executeCommand('totalflowx.deleteBranch', undefined, branch),
+      });
     } catch {
-      // Only an offer: the task can be changed from the card
+      // Only an offer: the task can be changed from the card and the branch deleted from there
+    }
+    if (!offered && announce) {
+      await this.show(event);
     }
   }
 

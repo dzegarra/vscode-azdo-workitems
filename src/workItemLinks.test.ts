@@ -283,7 +283,7 @@ describe('branch actions', () => {
     isCurrentBranch: false,
     pullRequests: [],
   };
-  const leftoverBranch = { name: 'feature/x/1-a', local: true, remote: true };
+  const deletableBranches = ['feature/x/1-a'];
 
   it('offers to create the branch, check it out and create the PR of work items in progress', () => {
     expect(branchActions({ ...item, branch: undefined })).toEqual(['createBranch']);
@@ -296,14 +296,22 @@ describe('branch actions', () => {
     expect(branchActions({ ...item, branches })).toEqual(['createPullRequest']);
   });
 
-  it('only offers to delete the branch of finished work items, when it still exists', () => {
+  it('finished work items only get Delete branch, when exactly one branch is deletable', () => {
     for (const state of ['Done', 'Ready to Test', 'Ready-to-Test']) {
       expect(branchActions({ ...item, state })).toEqual([]);
       expect(branchActions({ ...item, state, branch: undefined })).toEqual([]);
-      expect(branchActions({ ...item, state, leftoverBranch, pullRequests: [pr(false)] })).toEqual(['deleteBranch']);
+      expect(branchActions({ ...item, state, deletableBranches })).toEqual(['deleteBranch']);
     }
-    // A PR still active on the branch would be broken
-    expect(branchActions({ ...item, state: 'Done', leftoverBranch, pullRequests: [pr(true)] })).toEqual([]);
+    expect(branchActions({ ...item, state: 'Done', deletableBranches: ['a', 'b'] })).toEqual([]);
+  });
+
+  it('offers Delete branch whatever the state of the work item, after the other buttons', () => {
+    expect(branchActions({ ...item, deletableBranches })).toEqual(['checkout', 'createPullRequest', 'deleteBranch']);
+    expect(branchActions({ ...item, branch: undefined, deletableBranches })).toEqual(['createBranch', 'deleteBranch']);
+  });
+
+  it('leaves Delete branch to the branch rows when several branches are deletable', () => {
+    expect(branchActions({ ...item, deletableBranches: ['a', 'b'] })).toEqual(['checkout', 'createPullRequest']);
   });
 });
 

@@ -33,6 +33,23 @@ const task = (over: Partial<TaskMenuTask> = {}): TaskMenuTask => ({
 });
 
 describe('taskMenuSections', () => {
+  it('offers to delete a deletable branch, in the danger style, also when it is checked out', () => {
+    const [section] = taskMenuSections(task({ taskBranches: [branch({ deletable: true })] }), 5);
+    const remove = section.items.at(-1);
+    expect(remove).toMatchObject({ label: 'Delete branch feature/1-x', danger: true });
+    expect(remove?.act).toEqual({ action: 'deleteBranch', id: 11, kind: 'task', branch: 'feature/1-x' });
+    const [current] = taskMenuSections(
+      task({ taskBranches: [branch({ state: 'current', canCheckout: false, deletable: true })] }),
+      5
+    );
+    expect(current.items.map((item) => item.act?.action)).toEqual([undefined, 'deleteBranch']);
+  });
+
+  it('does not offer to delete the other branches', () => {
+    const [section] = taskMenuSections(task({ taskBranches: [branch()] }), 5);
+    expect(section.items.some((item) => item.danger)).toBe(false);
+  });
+
   it('offers checkout and worktree for a branch that exists', () => {
     const [section] = taskMenuSections(task({ taskBranches: [branch()] }), 5);
     expect(section.title).toBe('Branches');

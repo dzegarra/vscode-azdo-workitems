@@ -713,7 +713,7 @@ button {
 }
 
 /*
- * Branch of a finished work item still to be deleted: solid amber with dark text, like the P2 pill, so it reads well
+ * Branch whose PR is merged and that is still to be deleted: solid amber with dark text, like the P2 pill, so it reads well
  * in any theme (a tinted orange was barely readable)
  */
 .pill.tone-leftover,
@@ -2995,6 +2995,16 @@ button.task-menu-item:focus-visible {
 
 .task-menu-item.info {
   opacity: 0.65;
+}
+
+/* Destructive item (Delete branch): the label in the error colour, the usual selection colours on hover */
+button.task-menu-item.danger .task-menu-label {
+  color: var(--vscode-errorForeground, var(--red));
+}
+
+button.task-menu-item.danger:hover .task-menu-label,
+button.task-menu-item.danger:focus-visible .task-menu-label {
+  color: inherit;
 }
 
 .task-menu-label,

@@ -703,6 +703,17 @@ export class AzdoClient {
     return pr && { ...pr, webUrl: this.pullRequestWebUrl(repository, pr.pullRequestId) };
   }
 
+  /** Id of an active PR whose source is the branch; undefined when there is none */
+  async findActivePullRequestId(repositoryId: string, branch: string): Promise<number | undefined> {
+    const source = encodeURIComponent(`refs/heads/${branch}`);
+    const result = await this.request<{ value: { pullRequestId: number }[] }>(
+      this.url(
+        `git/repositories/${repositoryId}/pullrequests?searchCriteria.sourceRefName=${source}&searchCriteria.status=active&$top=1`
+      )
+    );
+    return result.value.at(0)?.pullRequestId;
+  }
+
   /** The branch has a completed PR (its changes are in the target of that PR) */
   async hasCompletedPullRequestFrom(repository: GitRepository, branch: string): Promise<boolean> {
     const source = encodeURIComponent(`refs/heads/${branch}`);

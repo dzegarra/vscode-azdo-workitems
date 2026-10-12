@@ -192,11 +192,17 @@ describe('compactSignals', () => {
     });
   });
 
-  it('flags the leftover branch of a finished work item, and ignores a deleted one', () => {
-    const leftover = { name: 'f', local: false, remote: true };
-    expect(compactSignals(item({ state: 'Done', branch: 'f', leftoverBranch: leftover }), [], NOW)).toEqual([
+  it('flags the branches of completed PRs that still exist, whatever the state, and ignores the rest', () => {
+    expect(compactSignals(item({ state: 'Done', branch: 'f', deletableBranches: ['f'] }), [], NOW)).toEqual([
       expect.objectContaining({ kind: 'branch', label: 'not deleted', tone: 'leftover' }),
     ]);
+    expect(compactSignals(item({ state: 'Active', branch: 'f', deletableBranches: ['f'] }), [], NOW)).toEqual([
+      expect.objectContaining({ kind: 'branch', label: 'not deleted', tone: 'leftover' }),
+    ]);
+    // Another branch is merged, the main one is not
+    expect(compactSignals(item({ state: 'Active', branch: 'f', deletableBranches: ['g'] }), [], NOW)[0]).toMatchObject({
+      label: '',
+    });
     expect(compactSignals(item({ state: 'Done', branch: 'f' }), [], NOW)).toEqual([]);
   });
 

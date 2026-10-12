@@ -17,6 +17,8 @@ export interface TaskBranchModel {
   where?: string;
   /** The branch of this repository exists and can be checked out (or opened in its worktree) */
   canCheckout: boolean;
+  /** The PR of the branch was completed and the branch still exists: it can be deleted (see deletableBranches.ts) */
+  deletable?: boolean;
   /** The PR of the task that has this branch as source */
   pullRequest?: { id: number; status: string; tone: PullRequestTone };
 }
@@ -39,6 +41,8 @@ export interface TaskBranchContext {
   currentBranch?: string;
   /** Names of the local branches */
   local: readonly string[];
+  /** Names of the branches to delete (merged PR, still existing); see deletableBranches.ts */
+  deletable?: readonly string[];
   /** Whether Azure DevOps has the branch (asked there, cached); undefined: unknown */
   remoteExists: (name: string) => boolean | undefined;
 }
@@ -101,6 +105,7 @@ function toTaskBranch(
     where: whereOf(local, remote),
     // Already checked out: nothing to do
     canCheckout: !isCurrent,
+    ...(context.deletable?.includes(link.name) ? { deletable: true } : {}),
     pullRequest,
   };
 }

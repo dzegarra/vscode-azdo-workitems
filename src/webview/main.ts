@@ -491,7 +491,7 @@ const BRANCH_ACTION_BUTTONS: Record<BranchAction, { label: string; className: st
   deleteBranch: {
     label: 'Delete branch',
     className: 'danger',
-    title: 'The work item is finished: delete its branch, as the team does once the PR is merged',
+    title: 'The PR is merged: delete the branch, as the team does',
   },
 };
 
@@ -506,7 +506,10 @@ function branchActionButton(action: BranchAction, item: WorkItemModel): string {
     });
   }
   const { label, className, title } = BRANCH_ACTION_BUTTONS[action];
-  return `<button class="button ${className}" data-action="${action}" data-id="${item.id}" title="${title}">${label}</button>`;
+  // Delete branch is only offered with one deletable branch: it is the one the button acts on
+  const branch = action === 'deleteBranch' && item.deletableBranches?.length === 1 ? item.deletableBranches[0] : '';
+  const target = branch ? ` data-branch="${escapeHtml(branch)}"` : '';
+  return `<button class="button ${className}" data-action="${action}" data-id="${item.id}"${target} title="${title}">${label}</button>`;
 }
 
 function renderActions(item: WorkItemModel): string {
@@ -691,7 +694,10 @@ function renderTaskMenuItem(item: TaskMenuItem): string {
     pr ? `data-pr="${pr}"` : '',
     task ? `data-task="${task}"` : '',
   ].filter(Boolean);
-  return `<button class="task-menu-item" role="menuitem" tabindex="-1" ${attributes.join(' ')}>${text}</button>`;
+  const danger = item.danger ? ' danger' : '';
+  return `<button class="task-menu-item${danger}" role="menuitem" tabindex="-1" ${attributes.join(
+    ' '
+  )}>${text}</button>`;
 }
 
 /** The actions of a task, open under its pill (only the menu of `openTaskMenu` is in the page) */

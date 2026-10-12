@@ -297,7 +297,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     command('totalflowx.createPullRequest', (entry?: WorkItemEntry, options?: { taskId?: number }) =>
       createPullRequest(git, store, entry, options)
     ),
-    command('totalflowx.deleteBranch', (entry?: WorkItemEntry) => deleteBranch(git, store, entry)),
+    command('totalflowx.deleteBranch', (entry?: WorkItemEntry, branch?: string) =>
+      deleteBranch(git, store, entry, branch)
+    ),
     command('totalflowx.checkout', async (entry: WorkItemEntry, branch?: string) => {
       // The main branch of the card, or the branch of one of its rows. For a branch that only exists in the
       // remote, git creates the local tracking branch

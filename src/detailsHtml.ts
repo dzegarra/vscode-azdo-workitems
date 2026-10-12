@@ -146,9 +146,11 @@ const BRANCH_BUTTONS: Record<BranchAction, (card: WorkItemModel) => string> = {
       title: 'Switch to the branch of the work item',
       worktree,
     }),
-  deleteBranch: ({ id }) =>
-    `<button class="button danger" data-action="deleteBranch" data-id="${id}"
-      title="The work item is finished: delete its branch, as the team does once the PR is merged">Delete branch</button>`,
+  deleteBranch: ({ id, deletableBranches }) =>
+    `<button class="button danger" data-action="deleteBranch" data-id="${id}" data-branch="${escapeHtml(
+      deletableBranches?.[0] ?? ''
+    )}"
+      title="The PR is merged: delete the branch, as the team does">Delete branch</button>`,
 };
 
 function renderActions(data: DetailsData): string {
@@ -165,7 +167,7 @@ function renderActions(data: DetailsData): string {
         ]),
     ...renderFigmaActions(data),
   ];
-  // Same branch actions as the cards; finished work items only get "Delete branch"
+  // Same branch actions as the cards
   const branchButtons = card ? branchActions(card).map((action) => BRANCH_BUTTONS[action](card)) : [];
   actions.unshift(...branchButtons);
   actions.push(`<button class="button ghost" data-action="reload" data-id="${data.id}">Reload</button>`);

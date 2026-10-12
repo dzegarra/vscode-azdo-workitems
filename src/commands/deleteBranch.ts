@@ -1,36 +1,11 @@
 import * as vscode from 'vscode';
+import { AzdoClient, GitRepository } from '../azdoClient';
 import { resolveContext, settings } from '../config';
 import { GitAPI, pickRepository } from '../git';
-import { isFinishedState } from '../states';
+import { deleteBranchQuestion, isProtectedBranch } from '../deletableBranches';
 import { WorkItemEntry, WorkItemsStore } from '../workItemsStore';
 import { listWorktrees, removeWorktree, worktreeHasChanges } from '../worktreeGit';
 import { findWorktree } from '../worktrees';
-
-/** Work item the command was invoked on, or one of the finished work items whose branch still exists */
-async function resolveEntry(
-  store: WorkItemsStore,
-  entry: WorkItemEntry | undefined
-): Promise<WorkItemEntry | undefined> {
-  if (entry) {
-    return entry;
-  }
-  await store.ensureLoaded();
-  const leftovers = store.workItems.filter((wi) => wi.leftoverBranch);
-  if (!leftovers.length) {
-    void vscode.window.showInformationMessage('The branches of your finished work items are already deleted.');
-    return undefined;
-  }
-  const picked = await vscode.window.showQuickPick(
-    leftovers.map((wi) => ({
-      label: `${wi.workItem.id} ${wi.workItem.title}`,
-      description: wi.workItem.state,
-      detail: wi.leftoverBranch?.name,
-      entry: wi,
-    })),
-    { title: 'Delete the branch of a finished work item', ignoreFocusOut: true }
-  );
-  return picked?.entry;
-}
 
 /**
  * Removes the worktree of the branch. When it has uncommitted changes the user decides: remove it anyway (the changes
@@ -59,53 +34,116 @@ async function removeOrKeepWorktree(root: string, folder: string): Promise<boole
   return true;
 }
 
+/** A branch to delete, and the work item it was found on when known (for the messages) */
+interface Target {
+  name: string;
+  owner?: WorkItemEntry['workItem'];
+}
+
+/** Branch picked among the ones to delete of the work item, or of the whole list (command palette) */
+async function resolveTarget(
+  store: WorkItemsStore,
+  entry: WorkItemEntry | undefined,
+  branch: string | undefined
+): Promise<Target | undefined> {
+  if (branch) {
+    // From a branch row, the menu of a task or a notification: it is checked again below
+    return { name: branch, owner: entry?.workItem };
+  }
+  await store.ensureLoaded();
+  const list = entry ? entry.deletableBranches.map((name) => ({ name, entry })) : store.deletableBranchList();
+  if (!list.length) {
+    void vscode.window.showInformationMessage('There are no branches of completed PRs to delete.');
+    return undefined;
+  }
+  if (entry && list.length === 1) {
+    return { name: list[0].name, owner: entry.workItem };
+  }
+  const picked = await vscode.window.showQuickPick(
+    list.map((item) => ({
+      label: item.name,
+      description: `${item.entry.workItem.type} ${item.entry.workItem.id} ${item.entry.workItem.title}`,
+      detail: 'The PR is completed',
+      target: { name: item.name, owner: item.entry.workItem },
+    })),
+    { title: 'Delete the branch of a completed PR', ignoreFocusOut: true }
+  );
+  return picked?.target;
+}
+
+/** What Azure DevOps says now about the branch: its commit, and whether a PR is still active or one was completed */
+interface LiveState {
+  remoteObjectId?: string;
+  activePullRequestId?: number;
+  completed: boolean;
+}
+
+async function liveState(client: AzdoClient, repository: GitRepository, name: string): Promise<LiveState> {
+  const [remoteObjectId, active, completed] = await Promise.all([
+    client.getBranchObjectId(repository.id, name),
+    client.findActivePullRequestId(repository.id, name),
+    client.hasCompletedPullRequestFrom(repository, name),
+  ]);
+  return { remoteObjectId, activePullRequestId: active, completed };
+}
+
 /**
- * Deletes the branch of a finished work item (Done, Ready to Test…), in Azure DevOps and locally: the team deletes
- * the branches once their PR is merged. Asks for confirmation, telling what is deleted
+ * Deletes a branch whose PR was completed, in Azure DevOps and locally: the team deletes the branches once their PR
+ * is merged, whatever the state of the work item. Everything is checked again with Azure DevOps first (the list may
+ * be minutes old); asks for confirmation, telling what is deleted.
+ * `node`/`branch`: the work item and branch of a button or menu item; none: the command palette
  */
-export async function deleteBranch(git: GitAPI, store: WorkItemsStore, node: WorkItemEntry | undefined): Promise<void> {
-  const entry = await resolveEntry(store, node);
-  const leftover = entry?.leftoverBranch;
-  if (!entry || !leftover) {
+export async function deleteBranch(
+  git: GitAPI,
+  store: WorkItemsStore,
+  node: WorkItemEntry | undefined,
+  branch?: string
+): Promise<void> {
+  const target = await resolveTarget(store, node, branch);
+  if (!target) {
     return;
   }
-  const { workItem } = entry;
-  if (!isFinishedState(workItem.state)) {
-    throw new Error(
-      `${workItem.type} ${workItem.id} is ${workItem.state}: only the branches of finished work items are deleted.`
-    );
-  }
-  const activePullRequest = entry.pullRequests.find(
-    (pr) => pr.status === 'active' && pr.sourceRefName === `refs/heads/${leftover.name}`
-  );
-  if (activePullRequest) {
-    throw new Error(
-      `PR ${activePullRequest.pullRequestId} is still active on ${leftover.name}: complete or abandon it first.`
-    );
-  }
-
+  const { name, owner } = target;
   const repository = pickRepository(git);
   const { client, repositoryName } = resolveContext(repository);
   const { remote, baseBranch } = settings();
-  const isCurrent = repository.state.HEAD?.name === leftover.name;
-  const local = leftover.local ? await repository.getBranch(leftover.name) : undefined;
+  const azdoRepository = await client.getRepository(repositoryName);
+  if (isProtectedBranch(name) || name === baseBranch) {
+    throw new Error(`${name} is a base branch: it is never deleted.`);
+  }
+  const live = await liveState(client, azdoRepository, name);
+  if (live.activePullRequestId !== undefined) {
+    throw new Error(`PR ${live.activePullRequestId} is still active on ${name}: complete or abandon it first.`);
+  }
+  if (!live.completed) {
+    throw new Error(`${name} has no completed PR: only the branches of completed PRs are deleted.`);
+  }
+  const { remoteObjectId } = live;
+  const isCurrent = repository.state.HEAD?.name === name;
+  const local = await repository.getBranch(name).catch(() => undefined);
+  if (!local && !remoteObjectId) {
+    void vscode.window.showInformationMessage(`The branch ${name} is already deleted.`);
+    store.forgetBranch(name);
+    await store.refresh();
+    return;
+  }
   const root = repository.rootUri.fsPath;
-  const worktree = local ? findWorktree(await listWorktrees(root).catch(() => []), leftover.name, [root]) : undefined;
+  const worktree = local ? findWorktree(await listWorktrees(root).catch(() => []), name, [root]) : undefined;
   const details = [
-    ...(leftover.remoteObjectId ? [`• In Azure DevOps (${remote}/${leftover.name})`] : []),
+    ...(remoteObjectId ? [`• In Azure DevOps (${remote}/${name})`] : []),
     ...(local ? ['• Local branch'] : []),
     ...(worktree ? [`• Worktree at ${worktree.path}`] : []),
     ...(isCurrent ? [`\nIt is checked out: VS Code switches to ${baseBranch} first.`] : []),
   ];
-  if (local && local.commit !== leftover.remoteObjectId) {
+  if (local && local.commit !== remoteObjectId) {
     details.push(
-      leftover.remoteObjectId
+      remoteObjectId
         ? '\nThe local branch is not the same as the one in Azure DevOps: its commits that were not pushed will be lost.'
         : '\nThe branch only exists locally: its commits that were not merged will be lost.'
     );
   }
   const confirm = await vscode.window.showWarningMessage(
-    `Delete the branch ${leftover.name} of ${workItem.type} ${workItem.id} (${workItem.state})?`,
+    deleteBranchQuestion(name, owner),
     { modal: true, detail: details.join('\n') },
     'Delete Branch'
   );
@@ -115,7 +153,7 @@ export async function deleteBranch(git: GitAPI, store: WorkItemsStore, node: Wor
 
   let keptWorktree: string | undefined;
   await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: `Deleting ${leftover.name}…` },
+    { location: vscode.ProgressLocation.Notification, title: `Deleting ${name}…` },
     async () => {
       if (isCurrent) {
         await repository.checkout(baseBranch);
@@ -123,14 +161,14 @@ export async function deleteBranch(git: GitAPI, store: WorkItemsStore, node: Wor
       if (worktree && !(await removeOrKeepWorktree(root, worktree.path))) {
         keptWorktree = worktree.path;
       }
-      if (leftover.remoteObjectId) {
+      if (remoteObjectId) {
         // Refused by Azure DevOps if someone pushed to the branch since it was checked
-        const { id } = await client.getRepository(repositoryName);
-        await client.deleteRemoteBranch(id, leftover.name, leftover.remoteObjectId);
+        await client.deleteRemoteBranch(azdoRepository.id, name, remoteObjectId);
+        store.forgetBranch(name);
       }
       if (local && !keptWorktree) {
         // Forced: after a squash merge, git does not see the branch as merged
-        await repository.deleteBranch(leftover.name, true);
+        await repository.deleteBranch(name, true);
       }
       try {
         // Removes the "origin/…" ref of the deleted branch
@@ -142,12 +180,10 @@ export async function deleteBranch(git: GitAPI, store: WorkItemsStore, node: Wor
   );
   if (keptWorktree) {
     void vscode.window.showWarningMessage(
-      `Deleted ${leftover.name} in Azure DevOps only: the worktree at ${keptWorktree} has uncommitted changes, so it and the local branch were kept.`
+      `Deleted ${name} in Azure DevOps only: the worktree at ${keptWorktree} has uncommitted changes, so it and the local branch were kept.`
     );
   } else {
-    void vscode.window.showInformationMessage(
-      `Deleted the branch ${leftover.name} of ${workItem.type} ${workItem.id}${worktree ? ' and its worktree' : ''}.`
-    );
+    void vscode.window.showInformationMessage(`Deleted the branch ${name}${worktree ? ' and its worktree' : ''}.`);
   }
   await store.refresh();
 }

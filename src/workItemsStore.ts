@@ -7,7 +7,8 @@ import { GitAPI, pickRepository, Ref, REF_TYPE_HEAD, Repository } from './git';
 import { TeamIteration } from './iterations';
 import { branchBelongsToWorkItem } from './naming';
 import { collectBranches, EntryBranch, toBranchModels, unknownRepositoryIds } from './workItemBranches';
-import { isFinishedState, stateCategory } from './states';
+import { stateCategory } from './states';
+import { branchesToCheckRemotely, deletableBranches, isProtectedBranch } from './deletableBranches';
 import { fixLinks } from './fixLinks';
 import { openPredecessors } from './predecessors';
 import { ScheduledIteration } from './schedule';
@@ -34,8 +35,8 @@ export interface WorkItemEntry {
   branchLocation?: 'local' | 'remote';
   /** Every branch of the work item (the main one included), in this repository and in others */
   branches: EntryBranch[];
-  /** Branch of a finished work item that still exists (it should have been deleted after its PR was merged) */
-  leftoverBranch?: LeftoverBranch;
+  /** Branches of this work item (of this repository) that still exist and whose PR was completed: to be deleted */
+  deletableBranches: string[];
   pullRequests: PullRequestDetails[];
   /** Tasks under the work item that are not in the list (assigned to other people or in other iterations) */
   otherTasks: OtherTaskEntry[];
@@ -48,14 +49,6 @@ export interface WorkItemEntry {
 export interface OtherTaskEntry {
   workItem: WorkItem;
   pullRequests: PullRequestDetails[];
-}
-
-export interface LeftoverBranch {
-  name: string;
-  /** The local branch exists */
-  local: boolean;
-  /** Commit of the branch in Azure DevOps; undefined when it does not exist there */
-  remoteObjectId?: string;
 }
 
 interface BranchCandidates {
@@ -98,29 +91,6 @@ function findBranch(
     branches.remote.find((name) => branchBelongsToWorkItem(name, workItem.id)) ??
     workItem.links.branches.find((link) => link.repositoryId === repositoryId)?.name;
   return remote ? { branch: remote, branchLocation: 'remote' } : {};
-}
-
-/**
- * Branch of a finished work item that still exists, locally or in Azure DevOps. The remote one is checked in
- * Azure DevOps: the links of the work item and the local "origin/…" refs remain after the branch is deleted
- */
-async function findLeftoverBranch(
-  client: AzdoClient,
-  repositoryId: string,
-  { workItem, branch }: Pick<WorkItemEntry, 'branch' | 'workItem'>,
-  branches: BranchCandidates
-): Promise<LeftoverBranch | undefined> {
-  if (!branch || !isFinishedState(workItem.state)) {
-    return undefined;
-  }
-  const local = branches.local.includes(branch);
-  let remoteObjectId: string | undefined;
-  try {
-    remoteObjectId = await client.getBranchObjectId(repositoryId, branch);
-  } catch {
-    // Unknown: only the local branch is offered for deletion
-  }
-  return local || remoteObjectId ? { name: branch, local, remoteObjectId } : undefined;
 }
 
 interface PullRequestLink {
@@ -600,17 +570,81 @@ export class WorkItemsStore {
           repositoryNames,
         }),
         pullRequests: itemPullRequests,
+        deletableBranches: [],
         alerts: rules ? alertsOf(workItem, related, itemPullRequests, rules) : [],
         predecessors: dependencies.predecessors.get(workItem.id),
         successors: dependencies.successors.get(workItem.id),
       };
     });
-    await Promise.all(
-      entries.map(async (entry) => {
-        entry.leftoverBranch = await findLeftoverBranch(client, azdoRepository.id, entry, branches);
-      })
-    );
+    await this.findDeletableBranches(client, azdoRepository.id, entries, [...pullRequests.values()]);
     return entries;
+  }
+
+  /**
+   * Sets the branches to delete of every entry: the ones of this repository with a completed PR (and no active
+   * one) that still exist. Only those are asked to Azure DevOps (cached like the task branches)
+   */
+  private async findDeletableBranches(
+    client: AzdoClient,
+    repositoryId: string,
+    entries: WorkItemEntry[],
+    pullRequests: PullRequestDetails[]
+  ): Promise<void> {
+    const namesOf = (entry: WorkItemEntry) =>
+      entry.branches.filter((branch) => !branch.otherRepository).map((branch) => branch.name);
+    const toAsk = entries.flatMap((entry) =>
+      branchesToCheckRemotely(namesOf(entry), pullRequests, this.localBranches, repositoryId)
+    );
+    await this.verifyBranches(client, repositoryId, toAsk);
+    for (const entry of entries) {
+      entry.deletableBranches = deletableBranches({
+        names: namesOf(entry),
+        pullRequests,
+        repositoryId,
+        local: this.localBranches,
+        remoteExists: (name) => this.branchExistenceCache.get(this.branchKey(repositoryId, name))?.exists,
+      });
+    }
+  }
+
+  /**
+   * Source branch of a completed PR when it should be offered for deletion: it still exists (locally or in Azure
+   * DevOps) in the open repository and no other PR from it is active. Up to three requests; undefined on any doubt
+   */
+  async mergedBranchToDelete(client: AzdoClient, pr: PullRequestDetails): Promise<string | undefined> {
+    const name = pr.sourceRefName.replace('refs/heads/', '');
+    if (pr.status !== 'completed' || isProtectedBranch(name) || name === settings().baseBranch) {
+      return undefined;
+    }
+    const repository = this.repository();
+    if (!repository || isOtherRepository(pr.repository.id, this.repositoryId)) {
+      return undefined;
+    }
+    try {
+      const [local, remoteObjectId, activeId] = await Promise.all([
+        repository.getBranch(name).catch(() => undefined),
+        client.getBranchObjectId(pr.repository.id, name),
+        client.findActivePullRequestId(pr.repository.id, name),
+      ]);
+      return activeId === undefined && (local || remoteObjectId) ? name : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** The branch was deleted from Azure DevOps: do not trust a cached "exists" for it */
+  forgetBranch(name: string): void {
+    if (this.repositoryId) {
+      this.branchExistenceCache.set(this.branchKey(this.repositoryId, name), { exists: false, at: Date.now() });
+    }
+  }
+
+  /** Every branch to delete of the work items in the list, once each, with the work item it was found on */
+  deletableBranchList(): { name: string; entry: WorkItemEntry }[] {
+    const seen = new Set<string>();
+    return this.entries.flatMap((entry) =>
+      entry.deletableBranches.filter((name) => !seen.has(name) && seen.add(name)).map((name) => ({ name, entry }))
+    );
   }
 
   /**
@@ -658,10 +692,22 @@ export class WorkItemsStore {
     links: { repositoryId: string; name: string }[]
   ): Promise<void> {
     const now = Date.now();
-    const names = branchesToVerify(links, repositoryId, (name) => {
-      const known = this.branchExistenceCache.get(this.branchKey(repositoryId, name));
-      return !!known && now - known.at < BRANCH_EXISTENCE_TTL_MS;
-    });
+    await this.verifyBranches(
+      client,
+      repositoryId,
+      branchesToVerify(links, repositoryId, (name) => this.isExistenceFresh(repositoryId, name, now))
+    );
+  }
+
+  private isExistenceFresh(repositoryId: string, name: string, now: number): boolean {
+    const known = this.branchExistenceCache.get(this.branchKey(repositoryId, name));
+    return !!known && now - known.at < BRANCH_EXISTENCE_TTL_MS;
+  }
+
+  /** Asks Azure DevOps whether the branches exist, except the ones asked recently; failures stay unknown */
+  private async verifyBranches(client: AzdoClient, repositoryId: string, branchNames: string[]): Promise<void> {
+    const now = Date.now();
+    const names = [...new Set(branchNames)].filter((name) => !this.isExistenceFresh(repositoryId, name, now));
     await Promise.all(
       names.map(async (name) => {
         try {
@@ -678,7 +724,8 @@ export class WorkItemsStore {
   private taskBranches(
     task: WorkItem,
     pullRequests: PullRequestDetails[],
-    currentBranch: string | undefined
+    currentBranch: string | undefined,
+    deletable: readonly string[] = []
   ): TaskBranchModel[] {
     const repositoryId = this.repositoryId;
     return toTaskBranchModels(task.links.branches, pullRequests, {
@@ -686,6 +733,7 @@ export class WorkItemsStore {
       repositoryNames: this.repositoryNameById,
       currentBranch,
       local: this.localBranches,
+      deletable,
       remoteExists: (name) =>
         repositoryId ? this.branchExistenceCache.get(this.branchKey(repositoryId, name))?.exists : undefined,
     });
@@ -723,7 +771,7 @@ export class WorkItemsStore {
       branch,
       branchLocation,
       branches,
-      leftoverBranch,
+      deletableBranches,
       pullRequests,
       predecessors,
       successors,
@@ -755,11 +803,7 @@ export class WorkItemsStore {
       }),
       workingOn: levels.get(workItem.id),
       worktree: branch === currentBranch ? undefined : this.worktreeFor(branch)?.path,
-      leftoverBranch: leftoverBranch && {
-        name: leftoverBranch.name,
-        local: leftoverBranch.local,
-        remote: !!leftoverBranch.remoteObjectId,
-      },
+      deletableBranches,
       // Active PRs first, then the most recent
       pullRequests: pullRequests
         .map((pr) => toPullRequestModel(pr, this.runs.get(pr.pullRequestId) ?? [], this.repositoryId))
@@ -767,7 +811,8 @@ export class WorkItemsStore {
       openPredecessors: predecessors && openPredecessors(workItem, predecessors, completedStates, this.schedule),
       ...fixLinks(workItem, predecessors, successors),
       taskPullRequests: workItem.type === 'Task' ? this.taskPullRequests(pullRequests) : [],
-      taskBranches: workItem.type === 'Task' ? this.taskBranches(workItem, pullRequests, currentBranch) : [],
+      taskBranches:
+        workItem.type === 'Task' ? this.taskBranches(workItem, pullRequests, currentBranch, deletableBranches) : [],
       canCreateBranch:
         workItem.type === 'Task' &&
         canCreateBranchForTask({

@@ -150,24 +150,43 @@ export async function startPublishedPullRequestTasks(
   }
 }
 
-/** A PR of the user was completed: offers to set its open tasks to Done */
-export async function offerCompletedPullRequestTasks(
+export interface CompletedPullRequestOffer {
+  /** Offer to set the open tasks of the PR to Done */
+  tasks: boolean;
+  /** Source branch of the PR when it still exists and can be deleted: offered in the same notification */
+  branch?: string;
+  open: (url: string) => Thenable<unknown>;
+  deleteBranch: (branch: string) => Thenable<unknown>;
+}
+
+/**
+ * A PR of the user was completed: one notification offers to set its open tasks to Done and to delete its branch
+ * (when it still exists). Returns whether something was offered
+ */
+export async function offerCompletedPullRequest(
   client: AzdoClient,
   pr: Pick<PullRequestDetails, 'pullRequestId' | 'repository'>,
-  open: (url: string) => Thenable<unknown>
-): Promise<void> {
-  const tasks = tasksToComplete(await tasksLinkedTo(client, pr), pr.pullRequestId);
-  if (!tasks.length) {
-    return;
+  { tasks: offerTasks, branch, open, deleteBranch }: CompletedPullRequestOffer
+): Promise<boolean> {
+  const tasks = offerTasks ? tasksToComplete(await tasksLinkedTo(client, pr), pr.pullRequestId) : [];
+  if (!tasks.length && !branch) {
+    return false;
   }
+  const buttons = [
+    ...(tasks.length ? ['Set Done'] : []),
+    ...(branch ? ['Delete branch'] : []),
+    ...(tasks.length ? ['Open task'] : []),
+  ];
   const picked = await vscode.window.showInformationMessage(
-    completedPullRequestPrompt(pr.pullRequestId, tasks),
-    'Set Done',
-    'Open task'
+    completedPullRequestPrompt(pr.pullRequestId, tasks, branch),
+    ...buttons
   );
   if (picked === 'Set Done') {
     await moveTasks(client, tasks, TASK_DONE);
+  } else if (picked === 'Delete branch' && branch) {
+    await deleteBranch(branch);
   } else if (picked === 'Open task') {
     await open(client.workItemWebUrl(tasks[0].id));
   }
+  return true;
 }
