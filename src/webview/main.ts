@@ -1864,6 +1864,19 @@ function menuTriggerOf(key: string): HTMLElement | null {
   );
 }
 
+/** The notch on the top edge of the open menu points at the centre of the button that opened it (CSSOM: the CSP has no inline styles) */
+function pointMenuAtTrigger(): void {
+  const menu = document.querySelector<HTMLElement>('.action-menu');
+  const trigger = openMenu === undefined ? null : menuTriggerOf(openMenu);
+  if (!menu || !trigger) {
+    return;
+  }
+  const triggerBox = trigger.getBoundingClientRect();
+  const menuBox = menu.getBoundingClientRect();
+  const x = Math.min(Math.max(triggerBox.left + triggerBox.width / 2 - menuBox.left, 10), menuBox.width - 10);
+  menu.style.setProperty('--notch-x', `${Math.round(x)}px`);
+}
+
 /** Where the focus is in the open menu, to put it back after the page is rendered again */
 function captureMenuFocus(): () => void {
   const active = document.activeElement;
@@ -1930,6 +1943,7 @@ function render(): void {
   if (openMenu !== undefined && !document.querySelector('.action-menu')) {
     openMenu = undefined;
   }
+  pointMenuAtTrigger();
   restoreMenuFocus();
   if (revealPending()) {
     render();

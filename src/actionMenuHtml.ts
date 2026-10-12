@@ -1,10 +1,14 @@
 /** HTML of the popover action menu (task pill, branch rows), shared by the sidebar. No "vscode" import */
-import type { ActionMenuItem, ActionMenuSection } from './actionMenu';
+import { actionMenuIcon, type ActionMenuItem, type ActionMenuSection } from './actionMenu';
 import { escapeHtml } from './html';
+import { icon } from './icons';
 
 function renderItem(item: ActionMenuItem): string {
   const detail = item.detail ? `<span class="action-menu-detail">${escapeHtml(item.detail)}</span>` : '';
-  const text = `<span class="action-menu-label">${escapeHtml(item.label)}</span>${detail}`;
+  const glyph = actionMenuIcon(item);
+  const text = `${icon(glyph.icon, `action-menu-icon tone-${glyph.tone}`)}<span class="action-menu-label">${escapeHtml(
+    item.label
+  )}</span>${detail}`;
   if (!item.act) {
     return `<div class="action-menu-item info" role="menuitem" aria-disabled="true">${text}</div>`;
   }
