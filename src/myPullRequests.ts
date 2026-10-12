@@ -18,8 +18,27 @@ import { PullRequestReviewer, pullRequestStatus, PullRequestTone } from './workI
 const MS_PER_MINUTE = 60 * 1000;
 const MS_PER_HOUR = 60 * MS_PER_MINUTE;
 const HOURS_PER_DAY = 24;
-/** PRs completed less than this ago are still listed, faded */
+/** PRs completed less than this ago are counted as hidden when the completed PRs are not listed */
 export const COMPLETED_WINDOW_MS = HOURS_PER_DAY * MS_PER_HOUR;
+const DAYS_PER_WEEK = 7;
+const DAYS_PER_MONTH = 30;
+
+/** How far back the completed PRs are listed (totalflowx.myPullRequests.completedPeriod) */
+export type CompletedPeriod = 'hidden' | 'day' | 'week' | 'month';
+
+/** The window of the completed PRs to list, in ms; 0 when they are not listed */
+export function completedWindowMs(period: CompletedPeriod): number {
+  switch (period) {
+    case 'hidden':
+      return 0;
+    case 'day':
+      return COMPLETED_WINDOW_MS;
+    case 'week':
+      return DAYS_PER_WEEK * COMPLETED_WINDOW_MS;
+    case 'month':
+      return DAYS_PER_MONTH * COMPLETED_WINDOW_MS;
+  }
+}
 
 const VOTE_APPROVED = 10;
 const VOTE_APPROVED_WITH_SUGGESTIONS = 5;
@@ -460,15 +479,19 @@ export interface ListOptions {
   formatDate?: (isoDate: string) => string;
   baseBranch: string;
   showDrafts: boolean;
-  /** The PRs completed in the last 24 hours are listed (default true when omitted) */
-  showCompleted?: boolean;
+  /** How far back the completed PRs are listed (default: the last 24 hours) */
+  completedPeriod?: CompletedPeriod;
   minimumRequiredReviewers: number;
   buildNotes?: BuildNotesOptions;
 }
 
-export function isCompletedRecently(pr: AuthoredPullRequest, now: Date): boolean {
+/** Completed no longer than windowMs ago (a window of 0 matches nothing) */
+export function isCompletedWithin(pr: AuthoredPullRequest, now: Date, windowMs: number): boolean {
   return (
-    pr.status === 'completed' && !!pr.closedDate && now.getTime() - Date.parse(pr.closedDate) <= COMPLETED_WINDOW_MS
+    windowMs > 0 &&
+    pr.status === 'completed' &&
+    !!pr.closedDate &&
+    now.getTime() - Date.parse(pr.closedDate) <= windowMs
   );
 }
 
@@ -548,19 +571,22 @@ function compare(a: AuthoredPullRequestData, b: AuthoredPullRequestData): number
 }
 
 /**
- * The PRs to list: the active ones and those completed in the last 24 hours. Abandoned PRs are never listed.
- * Drafts and completed PRs can be hidden: they are counted, so the box can say so
+ * The PRs to list: the active ones and those completed within the period. Abandoned PRs are never listed.
+ * Drafts can be hidden, and so can the completed PRs (period "hidden"): they are counted (the completed ones
+ * of the last 24 hours), so the box can say so
  */
 export function toMyPullRequestModels(
   data: AuthoredPullRequestData[],
   options: ListOptions
 ): { items: MyPullRequestModel[]; hiddenDrafts: number; hiddenCompleted: number } {
-  const showCompleted = options.showCompleted ?? true;
-  const listed = data.filter(({ pr }) => pr.status === 'active' || isCompletedRecently(pr, options.now));
+  const period = options.completedPeriod ?? 'day';
+  const windowMs = completedWindowMs(period);
+  const listed = data.filter(({ pr }) => pr.status === 'active' || isCompletedWithin(pr, options.now, windowMs));
   const hiddenDrafts = options.showDrafts ? 0 : listed.filter(({ pr }) => pr.isDraft).length;
-  const hiddenCompleted = showCompleted ? 0 : listed.filter(({ pr }) => pr.status === 'completed').length;
+  const hiddenCompleted =
+    period === 'hidden' ? data.filter(({ pr }) => isCompletedWithin(pr, options.now, COMPLETED_WINDOW_MS)).length : 0;
   const items = listed
-    .filter(({ pr }) => (options.showDrafts || !pr.isDraft) && (showCompleted || pr.status !== 'completed'))
+    .filter(({ pr }) => options.showDrafts || !pr.isDraft)
     .sort(compare)
     .map((entry) => toModel(entry, options));
   return { items, hiddenDrafts, hiddenCompleted };

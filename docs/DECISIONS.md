@@ -32,6 +32,7 @@ The extension enforces or supports these team rules; many features exist because
 
 ## Reviews and pull requests
 
+- **Completed PRs of "My Pull Requests" are listed for a chosen period** (`totalflowx.myPullRequests.completedPeriod`: hidden / 24 h / 7 days / 30 days; default 24 h). The latest 50 completed PRs are fetched in one request. Completed PRs barely change, so their threads (for the timeline popover) are fetched **once per PR, only while it is inside the period**, and cached in the watcher (entries of PRs no longer returned are dropped); this keeps the request budget low even with 30 days. Completed PRs outside the period cost no requests. Only active PRs get policies, runs and build notes.
 - **Waiting time counts from the publication** of the PR (last time it left draft, from the `IsDraftUpdate` system thread), not its creation: reviewers are not asked to review drafts.
 - **Required reviewers first**; optional reviews are listed only on demand. The overdue/due-soon counters count required reviews only (the 24 h rule is about them). Optional reviews are **tracked even while hidden**, so switching them on does not flood notifications (trade-off: an optional PR that became overdue while hidden does not notify at that moment).
 - **"Ready to merge" (green) means nothing stops the merge**: published, every blocking policy satisfied (approvals included), no conflicts, no warnings. Waiting for approvals is not green.

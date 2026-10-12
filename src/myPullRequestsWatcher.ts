@@ -8,7 +8,9 @@ import { buildNotesSettings, resolveContext, SECTION, settings } from './config'
 import {
   AuthoredPullRequest,
   AuthoredPullRequestData,
-  isCompletedRecently,
+  CompletedPeriod,
+  completedWindowMs,
+  isCompletedWithin,
   MyPullRequestModel,
   PullRequestExtras,
   toMyPullRequestModels,
@@ -42,9 +44,15 @@ async function fileExistsIn(root: string, relativePath: string): Promise<boolean
   }
 }
 
+const COMPLETED_PERIODS: CompletedPeriod[] = ['hidden', 'day', 'week', 'month'];
+
+function completedPeriodSetting(value: string): CompletedPeriod {
+  return COMPLETED_PERIODS.find((period) => period === value) ?? 'day';
+}
+
 export function myPullRequestSettings(): {
   showDrafts: boolean;
-  showCompleted: boolean;
+  completedPeriod: CompletedPeriod;
   layout: Layout;
   intervalSeconds: number;
   minimumRequiredReviewers: number;
@@ -52,7 +60,7 @@ export function myPullRequestSettings(): {
   const config = vscode.workspace.getConfiguration(`${SECTION}.myPullRequests`);
   return {
     showDrafts: config.get<boolean>('showDrafts', true),
-    showCompleted: config.get<boolean>('showCompleted', true),
+    completedPeriod: completedPeriodSetting(config.get<string>('completedPeriod', 'day')),
     layout: config.get<Layout>('layout', 'compact') === 'large' ? 'large' : 'compact',
     minimumRequiredReviewers: Math.max(0, config.get<number>('minimumRequiredReviewers', 2)),
     intervalSeconds: Math.max(MIN_INTERVAL_SECONDS, config.get<number>('pollIntervalSeconds', 120)),
@@ -76,13 +84,15 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
   private myId?: Promise<string>;
   /** Whether each PR changes the build notes file, by head commit: asked again only after a push */
   private readonly buildNotesCache = new BuildNotesDiffCache();
+  /** Threads of the completed PRs by id: they barely change, so they are fetched once */
+  private readonly completedThreads = new Map<number, PullRequestExtras['threads']>();
 
   constructor(private readonly store: WorkItemsStore, private readonly extras: PullRequestExtrasLoader) {}
 
   /** The cards to show, with whether their branch can be checked out, right now */
   models(): { items: MyPullRequestModel[]; hiddenDrafts: number; hiddenCompleted: number } {
     const local = this.localRepository();
-    const { showDrafts, showCompleted, minimumRequiredReviewers } = myPullRequestSettings();
+    const { showDrafts, completedPeriod, minimumRequiredReviewers } = myPullRequestSettings();
     const data = this.data.map(({ pr, extras }) => ({
       pr,
       // The store follows the active PRs of the user and refreshes their runs; the own fetch is the fallback
@@ -92,7 +102,7 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
       now: new Date(),
       baseBranch: settings().baseBranch,
       showDrafts,
-      showCompleted,
+      completedPeriod,
       minimumRequiredReviewers,
       buildNotes: buildNotesSettings(),
     });
@@ -165,10 +175,14 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
       const { client } = resolveContext(this.store.repository());
       this.myId ??= client.getMyId();
       const pullRequests = await client.getMyPullRequests(await this.myId);
-      // Only the active PRs need the details: the completed ones are shown faded, with their timeline
+      // Only the active PRs need the details: the completed ones of the period are shown faded, with their timeline (threads cached)
       const now = new Date();
       const notes = this.buildNotesContext();
       this.buildNotesCache.keepOnly(pullRequests.map((pr) => pr.pullRequestId));
+      const listedIds = new Set(pullRequests.map((pr) => pr.pullRequestId));
+      [...this.completedThreads.keys()]
+        .filter((id) => !listedIds.has(id))
+        .forEach((id) => this.completedThreads.delete(id));
       this.data = await Promise.all(
         pullRequests.map(async (pr) => ({
           pr,
@@ -206,10 +220,18 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
       ]);
       return { ...extras, buildNotes };
     }
-    if (!isCompletedRecently(pr, now)) {
+    const { completedPeriod } = myPullRequestSettings();
+    if (!isCompletedWithin(pr, now, completedWindowMs(completedPeriod))) {
       return { runs: [] };
     }
+    const cached = this.completedThreads.get(pr.pullRequestId);
+    if (cached) {
+      return { threads: cached, runs: [] };
+    }
     const threads = await client.getPullRequestThreads(pr.repository.id, pr.pullRequestId).catch(() => undefined);
+    if (threads) {
+      this.completedThreads.set(pr.pullRequestId, threads);
+    }
     return { threads, runs: [] };
   }
 

@@ -72,7 +72,7 @@ const MAX_MY_ACTIVE_PULL_REQUESTS = 100;
 /** Changes asked for the diff between two commits; the response says when there are more */
 const MAX_DIFF_CHANGES = 2000;
 /** Recently completed PRs of the user: the sidebar lists the last 24 hours of them */
-const MAX_MY_COMPLETED_PULL_REQUESTS = 10;
+const MAX_MY_COMPLETED_PULL_REQUESTS = 50;
 
 export interface GitRepository {
   id: string;

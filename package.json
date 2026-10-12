@@ -869,10 +869,22 @@
           "default": true,
           "description": "List your draft pull requests in the \"My Pull Requests\" box. The box has a button to switch it. When hidden, the box counts the drafts."
         },
-        "totalflowx.myPullRequests.showCompleted": {
-          "type": "boolean",
-          "default": true,
-          "description": "List your pull requests completed in the last 24 hours in the \"My Pull Requests\" box. The box has a button to switch it. When hidden, the box counts them."
+        "totalflowx.myPullRequests.completedPeriod": {
+          "type": "string",
+          "enum": [
+            "hidden",
+            "day",
+            "week",
+            "month"
+          ],
+          "enumDescriptions": [
+            "Completed pull requests are not listed (the box counts those completed in the last 24 hours).",
+            "Completed in the last 24 hours.",
+            "Completed in the last 7 days.",
+            "Completed in the last 30 days."
+          ],
+          "default": "day",
+          "description": "How far back your completed pull requests are listed (faded) in the \"My Pull Requests\" box. The box has a selector for it. The latest 50 completed pull requests are fetched."
         },
         "totalflowx.myPullRequests.layout": {
           "type": "string",

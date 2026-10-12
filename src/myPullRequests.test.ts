@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   AuthoredPullRequest,
   AuthoredPullRequestData,
+  CompletedPeriod,
+  completedWindowMs,
   countUnresolvedThreads,
   formatAge,
+  isCompletedWithin,
   isReadyToMerge,
   nextTone,
   plainDescription,
@@ -491,23 +494,57 @@ describe('toMyPullRequestModels', () => {
     expect(toMyPullRequestModels(list, options).items).toHaveLength(3);
   });
 
-  it('hides the completed PRs and counts them; only those listed are counted', () => {
+  describe('completed period', () => {
+    const HOUR = 3600 * 1000;
+    const ago = (hours: number) => new Date(NOW.getTime() - hours * HOUR).toISOString();
     const list = [
       data({ pullRequestId: 1 }),
-      data({ pullRequestId: 2, status: 'completed', closedDate: '2026-10-07T01:00:00Z' }),
-      data({ pullRequestId: 3, status: 'completed', closedDate: '2026-10-07T02:00:00Z' }),
-      // Completed long ago: not listed, so not counted either
-      data({ pullRequestId: 4, status: 'completed', closedDate: '2026-09-01T02:00:00Z' }),
+      data({ pullRequestId: 2, status: 'completed', closedDate: ago(2) }),
+      data({ pullRequestId: 3, status: 'completed', closedDate: ago(24 * 3) }),
+      data({ pullRequestId: 4, status: 'completed', closedDate: ago(24 * 20) }),
+      data({ pullRequestId: 5, status: 'completed', closedDate: ago(24 * 60) }),
+      data({ pullRequestId: 6, status: 'abandoned', closedDate: ago(1) }),
     ];
-    expect(toMyPullRequestModels(list, { ...options, showCompleted: false })).toMatchObject({
-      items: [{ id: 1 }],
-      hiddenCompleted: 2,
+    const ids = (completedPeriod?: CompletedPeriod) =>
+      toMyPullRequestModels(list, { ...options, completedPeriod }).items.map((item) => item.id);
+
+    it('lists the completed PRs of the period, latest first', () => {
+      expect(ids('day')).toEqual([1, 2]);
+      expect(ids('week')).toEqual([1, 2, 3]);
+      expect(ids('month')).toEqual([1, 2, 3, 4]);
+      // The last 24 hours by default
+      expect(ids()).toEqual([1, 2]);
     });
-    const shown = toMyPullRequestModels(list, { ...options, showCompleted: true });
-    expect(shown.items.map((item) => item.id)).toEqual([1, 3, 2]);
-    expect(shown.hiddenCompleted).toBe(0);
-    // Listed by default
-    expect(toMyPullRequestModels(list, options).items).toHaveLength(3);
+
+    it('does not list the completed PRs when hidden, and counts those of the last 24 hours', () => {
+      const result = toMyPullRequestModels(list, { ...options, completedPeriod: 'hidden' });
+      expect(result.items.map((item) => item.id)).toEqual([1]);
+      expect(result.hiddenCompleted).toBe(1);
+      expect(toMyPullRequestModels(list, { ...options, completedPeriod: 'week' }).hiddenCompleted).toBe(0);
+    });
+
+    it('includes the PR completed exactly at the limit and excludes the next millisecond', () => {
+      const pr = (closedDate: string) => data({ pullRequestId: 9, status: 'completed', closedDate });
+      const at = (closedDate: string) =>
+        toMyPullRequestModels([pr(closedDate)], { ...options, completedPeriod: 'week' }).items.length;
+      expect(at(ago(24 * 7))).toBe(1);
+      expect(at(new Date(NOW.getTime() - 24 * 7 * HOUR - 1).toISOString())).toBe(0);
+    });
+
+    it('gives the window of each period', () => {
+      expect([completedWindowMs('hidden'), completedWindowMs('day'), completedWindowMs('week')]).toEqual([
+        0,
+        24 * HOUR,
+        7 * 24 * HOUR,
+      ]);
+      expect(completedWindowMs('month')).toBe(30 * 24 * HOUR);
+    });
+
+    it('matches nothing with a window of 0', () => {
+      const completed = data({ pullRequestId: 1, status: 'completed', closedDate: NOW.toISOString() }).pr;
+      expect(isCompletedWithin(completed, NOW, 0)).toBe(false);
+      expect(isCompletedWithin(completed, NOW, HOUR)).toBe(true);
+    });
   });
 
   it('builds the card of an active PR', () => {

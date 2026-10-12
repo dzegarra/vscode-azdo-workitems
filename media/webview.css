@@ -848,6 +848,26 @@ button {
   background: transparent;
 }
 
+.period-select {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  height: 20px;
+  padding: 0 2px;
+  border: 1px solid var(--vscode-dropdown-border, var(--border));
+  border-radius: 3px;
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.period-select:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
 .button:focus-visible,
 .link:focus-visible,
 .iteration-toggle:focus-visible,

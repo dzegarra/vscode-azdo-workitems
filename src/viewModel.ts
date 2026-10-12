@@ -7,7 +7,7 @@ import type { FixLink } from './fixLinks';
 import { OpenPredecessor, predecessorFilterValue } from './predecessors';
 import { priorityFilterValue } from './priority';
 import type { CoverageThresholds } from './coverage';
-import type { MyPullRequestModel } from './myPullRequests';
+import type { CompletedPeriod, MyPullRequestModel } from './myPullRequests';
 import type { RunModel } from './pipelines';
 import type { ReviewRequestModel } from './reviewRequests';
 import type { TaskPullRequestModel } from './taskPullRequests';
@@ -182,9 +182,9 @@ export interface MyPullRequestsModel {
   showDrafts: boolean;
   /** Drafts not in the list because of showDrafts */
   hiddenDrafts: number;
-  /** totalflowx.myPullRequests.showCompleted */
-  showCompleted: boolean;
-  /** Completed PRs not in the list because of showCompleted */
+  /** totalflowx.myPullRequests.completedPeriod */
+  completedPeriod: CompletedPeriod;
+  /** Completed PRs (last 24 hours) not in the list because the period is "hidden" */
   hiddenCompleted: number;
   /** totalflowx.myPullRequests.layout */
   layout: Layout;
@@ -222,7 +222,8 @@ export type WebviewMessage =
   | { type: 'openReviewRequest' | 'openMyPullRequest'; url: string }
   | { type: 'checkMyPullRequests' }
   | { type: 'addBuildNotesSkipTag' | 'checkoutMyPullRequest' | 'publishMyPullRequest'; pullRequestId: number }
-  | { type: 'setShowDrafts' | 'setShowCompleted' | 'setShowOptional'; show: boolean }
+  | { type: 'setShowDrafts' | 'setShowOptional'; show: boolean }
+  | { type: 'setCompletedPeriod'; period: CompletedPeriod }
   /** Layout of one of the PR boxes */
   | { type: 'setPanelLayout'; panel: PanelId; layout: Layout }
   | { type: 'ready' }

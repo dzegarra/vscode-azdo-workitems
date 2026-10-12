@@ -73,7 +73,7 @@ By default the view lists your work items in the current iteration of **every te
 
 ## My pull requests
 
-The **My Pull Requests** box, above your work items, lists the pull requests you created, in all the repositories of the project: the active ones (drafts included; **Hide drafts** in its header, or `totalflowx.myPullRequests.showDrafts`) and, faded, the ones completed in the last 24 hours. Each card shows:
+The **My Pull Requests** box, above your work items, lists the pull requests you created, in all the repositories of the project: the active ones (drafts included; **Hide drafts** in its header, or `totalflowx.myPullRequests.showDrafts`) and, faded, the ones completed in the chosen period (last 24 hours by default). Each card shows:
 
 - the PR, its status, the target branch when it is not `develop`, and its linked work items (click one to open its Work Item Details panel);
 - how long it has been published (since its creation for drafts). Hover it, or focus it with the keyboard, to see the history of the PR: creation, publication, pushes, reviewers added, votes, comments, auto-complete, completion;
@@ -87,7 +87,7 @@ The **My Pull Requests** box, above your work items, lists the pull requests you
 
 PRs that nothing stops from being merged (published, every blocking policy satisfied, approvals included, no conflicts and no warnings) are highlighted in green (**Ready to merge**). When a PR breaks a rule that only someone else may act on (e.g. auto-complete would complete a Bug), its **Next** line is red with a warning icon, even when it says _Will complete automatically_.
 
-**Hide completed** / **Show completed (N)** in the box hides the PRs completed in the last 24 hours (`totalflowx.myPullRequests.showCompleted`).
+The selector in the box options (**Completed: hidden / 24 h / 7 days / 30 days**, saved in `totalflowx.myPullRequests.completedPeriod`) sets how far back the completed PRs are listed; the latest 50 completed PRs are fetched. When hidden, the box says how many were completed in the last 24 hours.
 
 Both PR boxes have their own layout button: **compact** rows (2 lines: PR, title and state; then the main signals) by default, or the **large** cards; click a compact row to unfold it (`totalflowx.reviews.layout`, `totalflowx.myPullRequests.layout`).
 

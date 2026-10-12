@@ -111,7 +111,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         error: this.myPullRequests.error,
         showDrafts: pullRequestConfig.showDrafts,
         hiddenDrafts,
-        showCompleted: pullRequestConfig.showCompleted,
+        completedPeriod: pullRequestConfig.completedPeriod,
         hiddenCompleted,
         layout: pullRequestConfig.layout,
         items,
@@ -211,10 +211,10 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
           .getConfiguration(`${SECTION}.myPullRequests`)
           .update('showDrafts', message.show, vscode.ConfigurationTarget.Global);
         return;
-      case 'setShowCompleted':
+      case 'setCompletedPeriod':
         await vscode.workspace
           .getConfiguration(`${SECTION}.myPullRequests`)
-          .update('showCompleted', message.show, vscode.ConfigurationTarget.Global);
+          .update('completedPeriod', message.period, vscode.ConfigurationTarget.Global);
         return;
       case 'setShowOptional':
         await vscode.workspace

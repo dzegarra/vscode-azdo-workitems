@@ -30,6 +30,7 @@ import { hasTaskAlerts, isTaskListOpen, taskProgress } from '../taskProgress';
 import { pullRequestTooltip } from '../pullRequestModel';
 import { describeTaskPullRequest, splitTaskPullRequests, TaskPullRequestModel } from '../taskPullRequests';
 import { splitWorkingOn, workingOnBadge } from '../workingOn';
+import type { CompletedPeriod } from '../myPullRequests';
 import type {
   CheckoutKind,
   ExtensionMessage,
@@ -1453,8 +1454,23 @@ function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean, fo
   </li>`;
 }
 
+const COMPLETED_PERIOD_OPTIONS: { value: CompletedPeriod; label: string }[] = [
+  { value: 'hidden', label: 'Completed: hidden' },
+  { value: 'day', label: 'Completed: 24 h' },
+  { value: 'week', label: 'Completed: 7 days' },
+  { value: 'month', label: 'Completed: 30 days' },
+];
+
+function renderCompletedPeriod(period: CompletedPeriod): string {
+  const title = 'Completed PRs to list (saved in your settings)';
+  const options = COMPLETED_PERIOD_OPTIONS.map(
+    ({ value, label }) => `<option value="${value}"${value === period ? ' selected' : ''}>${label}</option>`
+  ).join('');
+  return `<select class="period-select" data-setting="completedPeriod" title="${title}" aria-label="${title}">${options}</select>`;
+}
+
 function renderMyPullRequests(current: ViewModel): string {
-  const { items, status, error, showDrafts, hiddenDrafts, showCompleted, hiddenCompleted, layout } =
+  const { items, status, error, showDrafts, hiddenDrafts, completedPeriod, hiddenCompleted, layout } =
     current.pullRequests;
   const failure =
     status === 'error'
@@ -1463,7 +1479,7 @@ function renderMyPullRequests(current: ViewModel): string {
         )}</span><button class="link" data-action="checkMyPullRequests">Retry</button></div>`
       : '';
   const hasDrafts = hiddenDrafts > 0 || items.some((item) => item.isDraft);
-  if (!items.length && !hiddenDrafts && !hiddenCompleted) {
+  if (!items.length && !hiddenDrafts && !hiddenCompleted && completedPeriod === 'day') {
     return failure;
   }
   const repositories = new Set(items.map((item) => item.repository));
@@ -1476,14 +1492,7 @@ function renderMyPullRequests(current: ViewModel): string {
         showDrafts ? 'Hide' : 'Show'
       } your draft pull requests (saved in your settings)">${showDrafts ? 'Hide drafts' : 'Show drafts'}</button>`
     : '';
-  const hasCompleted = hiddenCompleted > 0 || items.some((item) => item.isCompleted);
-  const completedButton = hasCompleted
-    ? `<button class="button small ghost" data-action="toggleCompleted" title="${
-        showCompleted ? 'Hide' : 'Show'
-      } your pull requests completed in the last 24 hours (saved in your settings)">${
-        showCompleted ? 'Hide completed' : `Show completed (${hiddenCompleted})`
-      }</button>`
-    : '';
+  const completedSelect = renderCompletedPeriod(completedPeriod);
   const renderRow = (pr: MyPullRequestModel) =>
     layout === 'large' || expandedPullRequests.has(pr.id)
       ? renderMyPullRequest(pr, repositories.size > 1, layout === 'compact')
@@ -1497,7 +1506,7 @@ function renderMyPullRequests(current: ViewModel): string {
       title: 'My Pull Requests',
       count: items.length,
       sub: escapeHtml(hidden.length ? `${hidden.join(', ')} hidden` : ''),
-      options: `${draftsButton}${completedButton}${layoutButton('myPullRequests', layout, 'your pull requests')}`,
+      options: `${draftsButton}${completedSelect}${layoutButton('myPullRequests', layout, 'your pull requests')}`,
       tools: `<button class="icon-button" data-action="checkMyPullRequests" title="Check now" aria-label="Check your pull requests now">${icon(
         'refresh'
       )}</button>`,
@@ -1862,6 +1871,16 @@ function placeCoveragePopover(event: Event): void {
 document.addEventListener('pointerover', placeCoveragePopover);
 document.addEventListener('focusin', placeCoveragePopover);
 // Escape closes the popover (WCAG 1.4.13): it only shows while the badge or something inside it has the focus or the pointer
+document.addEventListener('change', (event) => {
+  const select = event.target;
+  if (select instanceof HTMLSelectElement && select.dataset.setting === 'completedPeriod') {
+    const period = COMPLETED_PERIOD_OPTIONS.find((option) => option.value === select.value)?.value;
+    if (period) {
+      post({ type: 'setCompletedPeriod', period });
+    }
+  }
+});
+
 document.addEventListener('keydown', (event) => {
   const active = document.activeElement;
   if (event.key === 'Escape' && active instanceof HTMLElement && active.closest('.cov-wrap, .pred-wrap')) {
@@ -1920,8 +1939,6 @@ document.addEventListener('click', (event) => {
     toggleRow(expandedPullRequests, Number(id), 'toggleMyPullRequestRow');
   } else if (action === 'toggleOptional' && model) {
     post({ type: 'setShowOptional', show: !model.reviews.includeOptional });
-  } else if (action === 'toggleCompleted' && model) {
-    post({ type: 'setShowCompleted', show: !model.pullRequests.showCompleted });
   } else if (action === 'expandAllTasks' || action === 'collapseAllTasks') {
     setTasksExpanded(action === 'expandAllTasks');
   } else if (action === 'toggleTasks' && id) {

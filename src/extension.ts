@@ -257,10 +257,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       if (event.affectsConfiguration(`${SECTION}.myPullRequests`)) {
-        // Only the polling interval needs to fetch again: showing or hiding the drafts and the completed PRs, and
+        // Only the polling interval needs to fetch again: showing or hiding the drafts, and
         // the layout, are done by the view
         if (event.affectsConfiguration(`${SECTION}.myPullRequests.pollIntervalSeconds`)) {
           myPullRequests.start();
+        }
+        if (event.affectsConfiguration(`${SECTION}.myPullRequests.completedPeriod`)) {
+          // The threads of the completed PRs that the new period brings in are fetched
+          void myPullRequests.poll();
         }
         view.post();
         return;
