@@ -9,6 +9,8 @@ export interface ReviewerPullRequest {
   status: 'abandoned' | 'active' | 'completed' | 'notSet';
   isDraft: boolean;
   creationDate: string;
+  /** When the PR was completed or abandoned */
+  closedDate?: string;
   createdBy: { id: string; displayName: string };
   targetRefName: string;
   sourceRefName: string;

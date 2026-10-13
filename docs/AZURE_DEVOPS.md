@@ -21,6 +21,7 @@ When you use a new endpoint or find that something here is wrong, update this fi
 
 ## Pull requests
 
+- Reviewed history (verified read-only, org ABB-PAMA-BVL, 2026-10): `git/pullrequests?searchCriteria.reviewerId=<id>&searchCriteria.status=all&$top=N` returns `reviewers[]` with `vote` (10, 5, 0, -5, -10, `hasDeclined`) and, for completed/abandoned PRs, `closedDate`. It is ordered by creation date (newest first) and mixes in the user's own PRs (13 of 50). `$top=50` reached back only ~3 weeks (50 PRs from 2026-09-22), `$top=100` ~11 weeks (since 2026-07-27): 43 of those 100 were reviewed by me (39 completed, 2 active, 2 abandoned), 13 closed in the last 30 days. We use 100; a PR created before the oldest listed one but closed within the window is missed.
 - Lists: `git/pullrequests?searchCriteria.creatorId=…` / `searchCriteria.reviewerId=…` (also returns the user's own PRs as reviewer), `searchCriteria.status=active|completed|all`, `$top`.
 - **Labels (tags) come only in the list response** (`labels: [{ name, active }]`, absent when none); `GET git/pullrequests/{id}` does not return them.
 - `completionOptions` (`deleteSourceBranch`, `transitionWorkItems`, `mergeStrategy`) and `autoCompleteSetBy` (auto-complete on) are in both list and single responses.

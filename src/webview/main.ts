@@ -27,6 +27,7 @@ import { dueSoonZoneStart } from '../reviewDue';
 import { myPullRequestCompactSignals, PrSignal, reviewCompactSignals } from '../prCompactSignals';
 import { countLate } from '../reviewRequests';
 import type { ReviewRequestModel, ReviewUrgency } from '../reviewRequests';
+import type { ReviewedDetails, ReviewedPeriod, ReviewedRequest } from '../reviewedRequests';
 import { hasTaskAlerts, isTaskListOpen, taskProgress } from '../taskProgress';
 import { pullRequestTooltip } from '../pullRequestModel';
 import { describeTaskBranch, TaskBranchModel } from '../taskBranches';
@@ -86,6 +87,8 @@ interface SavedState {
   expandedReviews: number[];
   /** Same for "My Pull Requests" */
   expandedPullRequests: number[];
+  /** Reviewed PRs the user unfolded: the extension fetches their details */
+  expandedReviewed: number[];
 }
 declare function acquireVsCodeApi(): VsCodeApi;
 
@@ -112,6 +115,7 @@ const collapsedTasks = new Set(savedState?.collapsedTasks ?? []);
 const expandedCards = new Set(savedState?.expandedCards ?? []);
 const expandedReviews = new Set(savedState?.expandedReviews ?? []);
 const expandedPullRequests = new Set(savedState?.expandedPullRequests ?? []);
+const expandedReviewed = new Set(savedState?.expandedReviewed ?? []);
 /** Task whose action menu is open (UI only, not saved). Only one menu at a time; the page is rendered again on every update */
 /** Key of the open actions menu (task pill or branch row); only one is open at a time */
 let openMenu: string | undefined;
@@ -133,6 +137,7 @@ function saveState(): void {
     expandedCards: [...expandedCards],
     expandedReviews: [...expandedReviews],
     expandedPullRequests: [...expandedPullRequests],
+    expandedReviewed: [...expandedReviewed],
   });
 }
 
@@ -1159,7 +1164,7 @@ function renderReviewBranch(request: ReviewRequestModel): string {
 }
 
 /** What a reviewer needs to know about the PR, under the title. Empty until the PR is checked in depth */
-function renderReviewDetails({ details }: ReviewRequestModel): string {
+function renderReviewDetails({ details }: { details?: ReviewedDetails }): string {
   if (!details) {
     return '';
   }
@@ -1429,8 +1434,114 @@ function renderReviewList(requests: ReviewRequestModel[], layout: Layout): strin
   return `<ul class="review-list${layout === 'compact' ? ' compact' : ''}">${rows.join('')}</ul>`;
 }
 
+const REVIEWED_PERIOD_OPTIONS: { value: ReviewedPeriod; label: string }[] = [
+  { value: 'hidden', label: 'Reviewed: hidden' },
+  { value: 'active', label: 'Reviewed: active' },
+  { value: 'day', label: 'Reviewed: 24 h' },
+  { value: 'week', label: 'Reviewed: 7 days' },
+  { value: 'month', label: 'Reviewed: 30 days' },
+];
+
+function renderReviewedPeriod(period: ReviewedPeriod): string {
+  const title = 'Pull requests you already reviewed to list below the ones waiting (saved in your settings)';
+  const options = REVIEWED_PERIOD_OPTIONS.map(
+    ({ value, label }) => `<option value="${value}"${value === period ? ' selected' : ''}>${label}</option>`
+  ).join('');
+  return `<select class="period-select" data-setting="reviewedPeriod" title="${title}" aria-label="${title}">${options}</select>`;
+}
+
+/** "Completed 2 d ago" / "Abandoned 5 h ago" of a closed reviewed PR; nothing for the active ones */
+function renderReviewedStatus(request: ReviewedRequest): string {
+  if (request.status === 'active') {
+    return '';
+  }
+  const label = request.status === 'completed' ? 'Completed' : 'Abandoned';
+  return `<span class="pill tone-${request.status}">${label}${
+    request.closedAgo ? ` ${escapeHtml(request.closedAgo)} ago` : ''
+  }</span>`;
+}
+
+/** The vote of the user in a reviewed PR, as the chips of the reviewers */
+function renderReviewedVote(request: ReviewedRequest): string {
+  const vote = VOTE_LABELS[request.vote];
+  return `<span class="reviewer vote-${request.vote}" title="Your vote: ${vote}">${icon(
+    VOTE_ICONS[request.vote]
+  )}<span class="reviewer-name">${vote}</span></span>`;
+}
+
+/** Compact row of a reviewed PR: dimmed; clicking it unfolds the details (the ID opens the PR in Azure DevOps) */
+function renderCompactReviewed(request: ReviewedRequest, author: string): string {
+  return `<li class="review compact reviewed role-optional" data-reviewed="${
+    request.id
+  }" data-action="toggleReviewedRow" data-id="${request.id}">
+    <div class="compact-head">
+      ${rowChevron('toggleReviewedRow', request.id, false, `reviewed pull request ${request.id}`)}
+      <button class="link id" data-action="openReviewRequest" data-url="${escapeHtml(
+        request.url
+      )}" title="Open the PR in Azure DevOps">PR ${request.id}</button>
+      <span class="compact-title" title="${escapeHtml(request.title)}">${escapeHtml(request.title)}</span>
+    </div>
+    <div class="signals pr-signals">${renderReviewedVote(request)}${renderReviewedStatus(
+    request
+  )}<span class="signal signal-author" title="${escapeHtml(author)}">${escapeHtml(author)}</span></div>
+  </li>`;
+}
+
+/** Unfolded reviewed PR: the card of a PR waiting for review without the waiting-time parts */
+function renderUnfoldedReviewed(request: ReviewedRequest, author: string): string {
+  const { details } = request;
+  const closedLabel = request.status === 'completed' ? 'Completed' : 'Abandoned';
+  const status = details
+    ? `<span class="pill tone-${details.tone} review-status">${escapeHtml(details.status)}</span>`
+    : request.status !== 'active' && `<span class="pill tone-${request.status} review-status">${closedLabel}</span>`;
+  return `<li class="review reviewed unfolded" data-reviewed="${request.id}">
+    <div class="review-line foldable" data-action="toggleReviewedRow" data-id="${request.id}">
+      ${rowChevron('toggleReviewedRow', request.id, true, `reviewed pull request ${request.id}`)}
+      <span class="review-meta" title="${escapeHtml(`${request.repository}: ${author}`)}">PR ${
+    request.id
+  } · ${escapeHtml(author)}</span>
+      ${status || ''}
+    </div>
+    <button class="link review-title" data-action="openReviewRequest" data-url="${escapeHtml(request.url)}"
+      title="Open the PR in Azure DevOps">${escapeHtml(request.title)}</button>
+    <div class="reviewed-vote">${renderReviewedVote(request)}${
+    request.closedAgo ? `<span class="muted reviewed-closed">closed ${escapeHtml(request.closedAgo)} ago</span>` : ''
+  }</div>
+    ${
+      details
+        ? renderReviewDetails({ details })
+        : '<p class="muted reviewed-loading" role="status">Loading details…</p>'
+    }
+  </li>`;
+}
+
+/** A PR already reviewed: a compact row, or the card with its details once the user unfolds it */
+function renderReviewed(request: ReviewedRequest, showRepository: boolean): string {
+  const author = [request.author, showRepository ? request.repository : ''].filter(Boolean).join(' · ');
+  return expandedReviewed.has(request.id)
+    ? renderUnfoldedReviewed(request, author)
+    : renderCompactReviewed(request, author);
+}
+
+/** The PRs already reviewed, below the ones waiting; empty when the period is hidden */
+function renderReviewedList(
+  reviewed: ReviewedRequest[],
+  period: ReviewedPeriod,
+  waiting: ReviewRequestModel[]
+): string {
+  if (period === 'hidden') {
+    return '';
+  }
+  const repositories = new Set([...reviewed.map((request) => request.repository), ...waiting.map((r) => r.repository)]);
+  const rows = reviewed.length
+    ? reviewed.map((request) => renderReviewed(request, repositories.size > 1)).join('')
+    : '<li class="muted reviewed-empty">No reviewed PRs in this period</li>';
+  return `<ul class="review-list reviewed-list compact"><li class="review-separator" role="separator" aria-label="Reviewed pull requests"><span>Reviewed (${reviewed.length})</span></li>${rows}</ul>`;
+}
+
 function renderReviews(current: ViewModel): string {
-  const { requests, status, error, includeOptional, hiddenOptional, layout } = current.reviews;
+  const { requests, status, error, includeOptional, hiddenOptional, layout, reviewed, reviewedPeriod } =
+    current.reviews;
   if (status === 'error') {
     return `<div class="reviews-error muted">${icon(
       'warning'
@@ -1438,7 +1549,7 @@ function renderReviews(current: ViewModel): string {
       error ?? ''
     )}</span><button class="link" data-action="checkReviewRequests">Retry</button></div>`;
   }
-  if (!requests.length && !hiddenOptional) {
+  if (!requests.length && !hiddenOptional && !reviewed.length && reviewedPeriod === 'hidden') {
     return '';
   }
   // The team rule about the maximum wait is about required reviewers: the optional ones are not counted as late
@@ -1463,13 +1574,19 @@ function renderReviews(current: ViewModel): string {
     title: 'Waiting for your review',
     count: requests.length,
     sub: pills,
-    options: `${optionalButton}${layoutButton('reviews', layout, 'the pull requests to review')}`,
+    options: `${optionalButton}${renderReviewedPeriod(reviewedPeriod)}${layoutButton(
+      'reviews',
+      layout,
+      'the pull requests to review'
+    )}`,
     tools: `<button class="icon-button" data-action="checkReviewRequests" title="Check now" aria-label="Check the PRs waiting for your review now">${icon(
       'refresh'
     )}</button>`,
-    body: requests.length
-      ? renderReviewList(requests, layout)
-      : '<p class="muted panel-empty">No required reviews are waiting</p>',
+    body: `${
+      requests.length
+        ? renderReviewList(requests, layout)
+        : '<p class="muted panel-empty">No required reviews are waiting</p>'
+    }${renderReviewedList(reviewed, reviewedPeriod, requests)}`,
   });
 }
 
@@ -2076,6 +2193,7 @@ const MORPHING = [
   ['card', 'wi'],
   ['review', 'review'],
   ['mypr', 'mypr'],
+  ['reviewed', 'reviewed'],
 ] as const;
 
 /** View Transitions API (Chromium 111+), not yet in the TypeScript DOM types of this project */
@@ -2171,6 +2289,30 @@ function toggleRow(expanded: Set<number>, id: number, chevronAction: string): vo
   );
 }
 
+/** The most recent unfolded reviewed PRs are remembered: the older ones fold back, so the saved state stays small */
+const MAX_EXPANDED_REVIEWED = 50;
+/** What the extension was last told about the unfolded reviewed PRs, so it is told only when it changes */
+let postedReviewedKey: string | undefined;
+
+/** Tells the extension which reviewed PRs are unfolded: it fetches the details of those only */
+function syncReviewedExpanded(): void {
+  const ids = [...expandedReviewed];
+  const key = ids.join(',');
+  if (key !== postedReviewedKey) {
+    postedReviewedKey = key;
+    post({ type: 'setReviewedExpanded', ids });
+  }
+}
+
+/** Unfolds a reviewed PR into its details, or folds it back */
+function toggleReviewedRow(id: number): void {
+  toggleRow(expandedReviewed, id, 'toggleReviewedRow');
+  while (expandedReviewed.size > MAX_EXPANDED_REVIEWED) {
+    expandedReviewed.delete(expandedReviewed.values().next().value as number);
+  }
+  syncReviewedExpanded();
+}
+
 /** Layout of a PR box: shown right away; the extension saves it and posts the view again */
 function setPanelLayout(panel: PanelId, layout: Layout): void {
   if (!model) {
@@ -2221,10 +2363,18 @@ document.addEventListener('focusin', placeCoveragePopover);
 // Escape closes the popover (WCAG 1.4.13): it only shows while the badge or something inside it has the focus or the pointer
 document.addEventListener('change', (event) => {
   const select = event.target;
-  if (select instanceof HTMLSelectElement && select.dataset.setting === 'completedPeriod') {
+  if (!(select instanceof HTMLSelectElement)) {
+    return;
+  }
+  if (select.dataset.setting === 'completedPeriod') {
     const period = COMPLETED_PERIOD_OPTIONS.find((option) => option.value === select.value)?.value;
     if (period) {
       post({ type: 'setCompletedPeriod', period });
+    }
+  } else if (select.dataset.setting === 'reviewedPeriod') {
+    const period = REVIEWED_PERIOD_OPTIONS.find((option) => option.value === select.value)?.value;
+    if (period) {
+      post({ type: 'setReviewedPeriod', period });
     }
   }
 });
@@ -2323,6 +2473,8 @@ document.addEventListener('click', (event) => {
     }
   } else if (action === 'toggleReviewRow' && id) {
     toggleRow(expandedReviews, Number(id), 'toggleReviewRow');
+  } else if (action === 'toggleReviewedRow' && id) {
+    toggleReviewedRow(Number(id));
   } else if (action === 'toggleMyPullRequestRow' && id) {
     toggleRow(expandedPullRequests, Number(id), 'toggleMyPullRequestRow');
   } else if (action === 'toggleOptional' && model) {
@@ -2406,6 +2558,7 @@ window.addEventListener('message', ({ data }: MessageEvent<ExtensionMessage>) =>
   trackNewReviews(model);
   pruneExpandedPullRequests(model);
   render();
+  syncReviewedExpanded();
 });
 
 post({ type: 'ready' });

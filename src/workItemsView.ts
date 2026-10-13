@@ -106,6 +106,8 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         dueSoonHours: reviewConfig.dueSoonHours,
         includeOptional: reviewConfig.includeOptional,
         hiddenOptional: this.reviews.hiddenOptional(),
+        reviewedPeriod: reviewConfig.reviewedPeriod,
+        reviewed: this.reviews.reviewed(),
         layout: reviewConfig.layout,
       },
       pullRequests: {
@@ -188,10 +190,10 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         await this.store.ensureLoaded();
         return;
       case 'refresh':
-        await Promise.all([this.store.refresh(), this.reviews.poll(), this.myPullRequests.poll()]);
+        await Promise.all([this.store.refresh(), this.reviews.poll(true), this.myPullRequests.poll()]);
         return;
       case 'checkReviewRequests':
-        await this.reviews.poll();
+        await this.reviews.poll(true);
         return;
       case 'checkoutReviewRequest':
         await vscode.commands.executeCommand(CHECKOUT_REVIEW_COMMAND, message.pullRequestId);
@@ -221,6 +223,14 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         await vscode.workspace
           .getConfiguration(`${SECTION}.myPullRequests`)
           .update('completedPeriod', message.period, vscode.ConfigurationTarget.Global);
+        return;
+      case 'setReviewedPeriod':
+        await vscode.workspace
+          .getConfiguration(`${SECTION}.reviews`)
+          .update('reviewedPeriod', message.period, vscode.ConfigurationTarget.Global);
+        return;
+      case 'setReviewedExpanded':
+        await this.reviews.setReviewedExpanded(message.ids);
         return;
       case 'setShowOptional':
         await vscode.workspace

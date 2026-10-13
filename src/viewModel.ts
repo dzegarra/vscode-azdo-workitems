@@ -10,6 +10,7 @@ import type { CoverageThresholds } from './coverage';
 import type { CompletedPeriod, MyPullRequestModel } from './myPullRequests';
 import type { RunModel } from './pipelines';
 import type { ReviewRequestModel } from './reviewRequests';
+import type { ReviewedPeriod, ReviewedRequest } from './reviewedRequests';
 import type { TaskBranchModel } from './taskBranches';
 import type { TaskPullRequestModel } from './taskPullRequests';
 import { isFinishedState } from './states';
@@ -195,6 +196,10 @@ export interface ReviewsModel {
   includeOptional: boolean;
   /** Optional reviews not in the list because of includeOptional */
   hiddenOptional: number;
+  /** totalflowx.reviews.reviewedPeriod */
+  reviewedPeriod: ReviewedPeriod;
+  /** PRs already reviewed by the user, for the "Reviewed" section: they never count as waiting */
+  reviewed: ReviewedRequest[];
   /** totalflowx.reviews.layout */
   layout: Layout;
 }
@@ -261,6 +266,9 @@ export type WebviewMessage =
     }
   | { type: 'setShowDrafts' | 'setShowOptional'; show: boolean }
   | { type: 'setCompletedPeriod'; period: CompletedPeriod }
+  | { type: 'setReviewedPeriod'; period: ReviewedPeriod }
+  /** The reviewed PRs unfolded in the box: the only ones whose details the extension fetches */
+  | { type: 'setReviewedExpanded'; ids: number[] }
   /** Layout of one of the PR boxes */
   | { type: 'setPanelLayout'; panel: PanelId; layout: Layout }
   | { type: 'ready' }

@@ -34,6 +34,17 @@ import {
   ThreadResponse,
   toStoredObservations,
 } from './reviewThreads';
+import {
+  listsClosedReviews,
+  ReviewedPeriod,
+  reviewedIdsToDrop,
+  reviewedIdsToFetch,
+  reviewedPeriodSetting,
+  ReviewedRef,
+  ReviewedRequest,
+  toReviewedDetails,
+  toReviewedRequests,
+} from './reviewedRequests';
 import type { Layout } from './viewModel';
 import { WorkItemsStore } from './workItemsStore';
 
@@ -50,6 +61,8 @@ const TICK_MS = 60 * MS_PER_SECOND;
 const MIN_INTERVAL_SECONDS = 30;
 /** Above this, a single summary notification is shown instead of one per event */
 const MAX_NOTIFICATIONS = 3;
+/** The PRs already completed or abandoned change little: they are fetched again after this long */
+const CLOSED_REVIEWS_MAX_AGE_MS = 10 * 60 * MS_PER_SECOND;
 /** The sidebar shows the PRs waiting for review above the work items */
 const SHOW_LIST_COMMAND = 'totalflowx.myItems.focus';
 export const CHECKOUT_REVIEW_COMMAND = 'totalflowx.checkoutPullRequest';
@@ -58,6 +71,7 @@ export type ReviewNotification = ObservationEvent['kind'] | ReviewEvent['kind'] 
 
 export function reviewSettings(): ReviewRules & {
   includeOptional: boolean;
+  reviewedPeriod: ReviewedPeriod;
   layout: Layout;
   notifications: ReviewNotification[];
   intervalSeconds: number;
@@ -66,6 +80,7 @@ export function reviewSettings(): ReviewRules & {
   const config = vscode.workspace.getConfiguration(`${SECTION}.reviews`);
   return {
     includeOptional: config.get<boolean>('includeOptional', false),
+    reviewedPeriod: reviewedPeriodSetting(config.get<string>('reviewedPeriod', 'hidden')),
     layout: config.get<Layout>('layout', 'compact') === 'large' ? 'large' : 'compact',
     maxWaitHours: config.get<number>('maxWaitHours', 24),
     workingDays: workingDaysSetting(),
@@ -103,6 +118,14 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
    * not: whether the optional ones are shown is a setting of the view, applied by shown()
    */
   requests: ReviewRequest[] = [];
+  /**
+   * PRs where the user is a reviewer, active ones (from the poll) and closed ones (fetched only while the period
+   * of "Reviewed" has a window). Kept apart from `requests`: they never count in the badge, the urgency, the
+   * Summary view, the digest or the notifications
+   */
+  private activeReviewed: ReviewerPullRequest[] = [];
+  private closedReviewed: ReviewerPullRequest[] = [];
+  private closedReviewedAt = 0;
   status: 'error' | 'loading' | 'ready' = 'loading';
   error?: string;
   private timer?: NodeJS.Timeout;
@@ -113,6 +136,14 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
   private userId?: string;
   /** What each card shows besides its urgency; a part is missing when it could not be fetched */
   private details = new Map<number, ReviewCardData>();
+  /** Reviewed PRs the user has unfolded in the sidebar (sent by the webview): the only ones whose details are fetched */
+  private reviewedExpanded = new Set<number>();
+  /**
+   * Details of the unfolded reviewed PRs. Those of closed PRs stay for the session (they do not change); those of
+   * active ones are refreshed at each check while unfolded, and forgotten when folded
+   */
+  private readonly reviewedDetails = new Map<number, ReviewCardData>();
+  private readonly reviewedLoading = new Set<number>();
   /** Files changed per PR in its latest iteration: a new push is the only thing that changes them */
   private readonly filesChanged = new Map<number, { iteration: number; files: FilesChanged }>();
   /** The last answer of Azure DevOps, to fetch the details of the optional PRs when the user shows them */
@@ -128,6 +159,112 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
   private shown(): { requests: ReviewRequest[]; hiddenOptional: number } {
     const { shown, hiddenOptional } = splitOptional(this.requests, reviewSettings().includeOptional);
     return { requests: shown, hiddenOptional };
+  }
+
+  /**
+   * The PRs already reviewed by the user, for the box's "Reviewed" section only. Nothing else may use them: see
+   * `activeReviewed`
+   */
+  reviewed(): ReviewedRequest[] {
+    const { baseBranch } = extensionSettings();
+    const { minimumRequiredReviewers } = myPullRequestSettings();
+    return this.listedReviewed().map((request) => {
+      const data = this.reviewedDetails.get(request.id);
+      return {
+        ...request,
+        details:
+          data && this.userId
+            ? toReviewedDetails(
+                {
+                  ...data,
+                  myId: this.userId,
+                  extras: { ...data.extras, runs: this.store.runsOf(request.id) ?? data.extras.runs },
+                },
+                { baseBranch, minimumRequiredReviewers }
+              )
+            : undefined,
+      };
+    });
+  }
+
+  /** The reviewed PRs of the period, without details */
+  private listedReviewed(): ReviewedRequest[] {
+    return this.userId
+      ? toReviewedRequests(
+          [...this.activeReviewed, ...this.closedReviewed],
+          this.userId,
+          new Date(),
+          reviewSettings().reviewedPeriod
+        )
+      : [];
+  }
+
+  /**
+   * The webview tells which reviewed PRs are unfolded. Their details are fetched now when missing (closed PRs
+   * only the first time); folded active ones lose theirs, so they stop being refreshed
+   */
+  setReviewedExpanded(ids: number[]): Promise<void> {
+    return withFeature('reviews', async () => {
+      this.reviewedExpanded = new Set(ids);
+      const dropped = this.dropReviewedDetails();
+      let loaded = 0;
+      try {
+        loaded = await this.loadReviewedDetails(false);
+      } finally {
+        if (loaded || dropped) {
+          this.changed.fire();
+        }
+      }
+    });
+  }
+
+  private dropReviewedDetails(): number {
+    const known: ReviewedRef[] = [...this.reviewedDetails].map(([id, { pr }]) => ({
+      id,
+      status: pr.status === 'completed' || pr.status === 'abandoned' ? pr.status : 'active',
+    }));
+    const dropped = reviewedIdsToDrop(known, this.listedReviewed(), this.reviewedExpanded);
+    dropped.forEach((id) => this.reviewedDetails.delete(id));
+    return dropped.length;
+  }
+
+  /**
+   * Fetches the details of the unfolded reviewed PRs that need them (see reviewedIdsToFetch); `refreshActive` is
+   * set by the check, which has just read the threads of the active PRs. A PR whose details fail stays "loading"
+   * and is tried again at the next check. Returns how many were fetched
+   */
+  private async loadReviewedDetails(refreshActive: boolean): Promise<number> {
+    const ids = reviewedIdsToFetch(
+      this.listedReviewed(),
+      this.reviewedExpanded,
+      (id) => this.reviewedDetails.has(id),
+      refreshActive
+    ).filter((id) => !this.reviewedLoading.has(id));
+    const all = [...this.activeReviewed, ...this.closedReviewed];
+    const prs = ids.flatMap((id) => all.filter((pr) => pr.pullRequestId === id).slice(0, 1));
+    if (!prs.length) {
+      return 0;
+    }
+    try {
+      const { client } = resolveContext(this.store.repository());
+      prs.forEach(({ pullRequestId }) => this.reviewedLoading.add(pullRequestId));
+      await Promise.all(prs.map((pr) => this.loadReviewedDetailsOf(client, pr, refreshActive)));
+      return prs.length;
+    } catch {
+      return 0;
+    } finally {
+      prs.forEach(({ pullRequestId }) => this.reviewedLoading.delete(pullRequestId));
+    }
+  }
+
+  private async loadReviewedDetailsOf(client: AzdoClient, pr: ReviewerPullRequest, refreshed: boolean): Promise<void> {
+    // The check has just read the threads of the active PRs
+    const known = refreshed && pr.status === 'active' ? this.last?.threads.get(pr.pullRequestId) : undefined;
+    const [extras, filesChanged] = await Promise.all([
+      this.extras.fetch(client, pr, known),
+      this.fetchFilesChanged(client, pr),
+    ]);
+    this.reviewedDetails.set(pr.pullRequestId, { pr, extras, filesChanged });
   }
 
   /** Optional requests not listed because of `includeOptional` */
@@ -187,11 +324,52 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
     this.changed.dispose();
   }
 
-  poll(): Promise<void> {
-    return withFeature('reviews', () => this.runPoll());
+  /** `manual`: the user asked to check now, so the closed PRs of "Reviewed" are fetched again too */
+  poll(manual = false): Promise<void> {
+    return withFeature('reviews', async () => {
+      await this.runPoll(manual);
+    });
   }
 
-  private async runPoll(): Promise<void> {
+  /**
+   * The user chose a period with a window for "Reviewed": fetches the closed PRs when not known yet. The active
+   * ones are already known from the poll
+   */
+  refreshReviewed(): Promise<void> {
+    return withFeature('reviews', async () => {
+      if (this.userId && !this.polling) {
+        try {
+          await this.loadClosedReviewed(false);
+          await this.loadReviewedDetails(false);
+        } finally {
+          this.changed.fire();
+        }
+      }
+    });
+  }
+
+  /**
+   * One request for the PRs completed or abandoned where the user is a reviewer, only while the period lists
+   * them and no more often than CLOSED_REVIEWS_MAX_AGE_MS. A failure keeps the previous list: the rest of the
+   * box does not depend on it
+   */
+  private async loadClosedReviewed(force: boolean): Promise<void> {
+    if (!this.userId || !listsClosedReviews(reviewSettings().reviewedPeriod)) {
+      return;
+    }
+    if (!force && Date.now() - this.closedReviewedAt < CLOSED_REVIEWS_MAX_AGE_MS) {
+      return;
+    }
+    try {
+      const { client } = resolveContext(this.store.repository());
+      this.closedReviewed = (await client.getReviewedPullRequests(this.userId)).filter((pr) => pr.status !== 'active');
+      this.closedReviewedAt = Date.now();
+    } catch {
+      // Not essential: tried again at the next check
+    }
+  }
+
+  private async runPoll(manual: boolean): Promise<void> {
     if (this.polling) {
       return;
     }
@@ -218,6 +396,7 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
       const requests = toReviewRequests(pullRequests, myId);
       const publishedDates = new Map(requests.map(({ id }) => [id, lastPublishedFromDraft(threads.get(id) ?? [])]));
       this.requests = withPublishedDates(requests, publishedDates);
+      this.activeReviewed = pullRequests;
       this.status = 'ready';
       this.error = undefined;
       // The cards are shown right away; their details come as they are fetched
@@ -249,6 +428,10 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
       this.notifyObservations(observationEvents.filter((event) => settings.notifications.includes(event.kind)));
       this.last = { client, pullRequests, threads };
       await this.loadDetails(client, pullRequests, threads);
+      await this.loadClosedReviewed(manual);
+      // Only the unfolded reviewed PRs: closed ones are fetched once, active ones at every check
+      this.dropReviewedDetails();
+      await this.loadReviewedDetails(true);
     } catch (error) {
       this.myId = undefined;
       this.status = 'error';
@@ -301,7 +484,7 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
     );
     this.details = new Map(entries);
     for (const id of [...this.filesChanged.keys()]) {
-      if (!this.details.has(id)) {
+      if (!this.details.has(id) && !this.reviewedDetails.has(id)) {
         this.filesChanged.delete(id);
       }
     }

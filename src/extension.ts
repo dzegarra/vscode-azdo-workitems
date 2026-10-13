@@ -254,6 +254,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (event.affectsConfiguration(`${SECTION}.reviews.pollIntervalSeconds`)) {
           reviewRequests.start();
         }
+        if (event.affectsConfiguration(`${SECTION}.reviews.reviewedPeriod`)) {
+          // The PRs completed or abandoned are only fetched while the period lists them
+          void reviewRequests.refreshReviewed();
+        }
         if (event.affectsConfiguration(`${SECTION}.reviews.includeOptional`)) {
           // The details of the optional PRs were not fetched while they were hidden
           void reviewRequests.refreshDetails();
@@ -359,7 +363,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     command('totalflowx.openDependencyMap', (id?: number) => dependencyMap.open(id)),
     command('totalflowx.checkPullRequests', () => notifier.poll(true)),
-    command('totalflowx.checkReviewRequests', () => reviewRequests.poll()),
+    command('totalflowx.checkReviewRequests', () => reviewRequests.poll(true)),
     command(CHECKOUT_REVIEW_COMMAND, async (pullRequestId?: number) => {
       const requests = reviewRequests.models();
       // From the command palette: pick one of the PRs waiting for review

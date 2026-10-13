@@ -2676,6 +2676,43 @@ button.state:focus-visible {
   background: var(--border);
 }
 
+/* ---------- Reviewed pull requests (below the ones waiting) ---------- */
+
+/* Reviewed PRs keep the neutral border of the optional ones; unfolded, they show at full strength */
+.review.reviewed {
+  border-left-color: var(--border);
+}
+
+.review.reviewed.unfolded {
+  opacity: 1;
+}
+
+.reviewed-vote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.reviewed-closed {
+  font-size: 11.5px;
+}
+
+.reviewed-loading {
+  margin: 0;
+  font-size: 11.5px;
+}
+
+.reviewed-empty {
+  padding: 0 4px;
+  font-size: 11.5px;
+}
+
+.review-list.reviewed-list {
+  padding-top: 0;
+}
+
 /* ---------- Compact rows of the PR boxes ---------- */
 
 .review.compact,

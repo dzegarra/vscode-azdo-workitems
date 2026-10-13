@@ -623,12 +623,24 @@ export class AzdoClient {
   }
 
   /** Active PRs of the project where the user is a reviewer (directly, not through a group) */
-  async getPullRequestsToReview(reviewerId: string): Promise<ReviewerPullRequest[]> {
+  getPullRequestsToReview(reviewerId: string): Promise<ReviewerPullRequest[]> {
+    return this.listReviewerPullRequests(reviewerId, 'active');
+  }
+
+  /**
+   * The latest PRs of the project where the user is a reviewer, whatever their status (the user's own PRs
+   * included), newest first: the ones already completed or abandoned are what "Reviewed" lists
+   */
+  getReviewedPullRequests(reviewerId: string): Promise<ReviewerPullRequest[]> {
+    return this.listReviewerPullRequests(reviewerId, 'all');
+  }
+
+  private async listReviewerPullRequests(reviewerId: string, status: 'active' | 'all'): Promise<ReviewerPullRequest[]> {
     const result = await this.request<{
       value: (Omit<ReviewerPullRequest, 'reviewers' | 'webUrl'> & Partial<ReviewerPullRequest>)[];
     }>(
       this.url(
-        `git/pullrequests?searchCriteria.reviewerId=${reviewerId}&searchCriteria.status=active&$top=${MAX_REVIEW_REQUESTS}`
+        `git/pullrequests?searchCriteria.reviewerId=${reviewerId}&searchCriteria.status=${status}&$top=${MAX_REVIEW_REQUESTS}`
       )
     );
     return result.value.map((pr) => ({
