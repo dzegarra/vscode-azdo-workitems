@@ -963,6 +963,11 @@
           "default": true,
           "description": "Show how many pull requests are waiting for your review in the status bar."
         },
+        "totalflowx.myPullRequests.showInStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show in the status bar how many of your pull requests need you (rejected, waiting for you, conflicts, failed CI, unresolved comments) or are ready to merge."
+        },
         "totalflowx.myPullRequests.showDrafts": {
           "type": "boolean",
           "default": true,

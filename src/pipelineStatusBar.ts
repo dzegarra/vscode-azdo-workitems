@@ -1,18 +1,8 @@
 import * as vscode from 'vscode';
 import { SECTION } from './config';
-import { countRunStates, RunState } from './pipelines';
+import { ciHasFailures, ciStatusText, ciTooltipTitle, countRunStates, STATE_ICONS } from './pipelines';
 import { runExtraLines, runLabel, testsUrl } from './runDetails';
 import { WorkItemsStore } from './workItemsStore';
-
-/** Codicons of each state; "~spin" animates the icon in the status bar */
-const STATE_ICONS: Record<RunState, string> = {
-  failed: '$(error)',
-  partial: '$(warning)',
-  running: '$(sync~spin)',
-  queued: '$(clock)',
-  canceled: '$(circle-slash)',
-  succeeded: '$(check)',
-};
 
 export const SHOW_RUNS_COMMAND = 'totalflowx.showPipelineRuns';
 
@@ -51,13 +41,16 @@ export class PipelineStatusBar implements vscode.Disposable {
       return;
     }
     const counts = countRunStates(runs.map(({ run }) => run.state));
-    this.item.text = `$(rocket) ${counts.map(({ state, count }) => `${STATE_ICONS[state]} ${count}`).join('  ')}`;
-    const hasFailures = counts.some(({ state }) => state === 'failed');
-    this.item.backgroundColor = hasFailures ? new vscode.ThemeColor('statusBarItem.errorBackground') : undefined;
+    this.item.text = ciStatusText(counts);
+    this.item.backgroundColor = ciHasFailures(counts)
+      ? new vscode.ThemeColor('statusBarItem.errorBackground')
+      : undefined;
 
     const now = new Date();
     const tooltip = new vscode.MarkdownString(undefined, true);
-    tooltip.appendMarkdown('**CI runs of my pull requests**\n\n');
+    tooltip.appendMarkdown('**');
+    tooltip.appendText(ciTooltipTitle(counts));
+    tooltip.appendMarkdown('**\n\n');
     for (const { pullRequestId, title, run } of runs) {
       const label = runLabel(run, now);
       tooltip.appendMarkdown(

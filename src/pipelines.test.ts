@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   BuildRun,
+  ciHasFailures,
+  ciStatusText,
+  ciTooltipTitle,
   countRunStates,
   describeRun,
   finishedRuns,
@@ -85,5 +88,40 @@ describe('pipelines', () => {
       { state: 'succeeded', count: 2 },
     ]);
     expect(countRunStates([])).toEqual([]);
+  });
+
+  describe('CI status bar item', () => {
+    const counts = (...states: Parameters<typeof countRunStates>[0]) => countRunStates(states);
+
+    it('labels the item CI and orders the states by severity', () => {
+      // Rule STATUSBAR-CI-1
+      expect(ciStatusText(counts('succeeded', 'queued', 'running', 'partial', 'failed', 'succeeded'))).toBe(
+        'CI  $(error) 1  $(warning) 1  $(sync~spin) 1  $(clock) 1  $(check) 2'
+      );
+      expect(ciStatusText(counts('succeeded', 'succeeded', 'succeeded', 'queued'))).toBe('CI  $(clock) 1  $(check) 3');
+    });
+
+    it('leaves the canceled runs out of the text', () => {
+      // Rule STATUSBAR-CI-1
+      expect(ciStatusText(counts('canceled', 'succeeded', 'canceled'))).toBe('CI  $(check) 1');
+    });
+
+    it('shows the canceled runs when they are the only ones', () => {
+      // Rule STATUSBAR-CI-2
+      expect(ciStatusText(counts('canceled', 'canceled'))).toBe('CI  $(circle-slash) 2');
+    });
+
+    it('is red only when a run failed', () => {
+      // Rule STATUSBAR-CI-3
+      expect(ciHasFailures(counts('failed', 'succeeded'))).toBe(true);
+      expect(ciHasFailures(counts('partial', 'succeeded'))).toBe(false);
+    });
+
+    it('totals every state, canceled included, in the tooltip title', () => {
+      // Rule STATUSBAR-CI-4
+      expect(ciTooltipTitle(counts('failed', 'succeeded', 'succeeded', 'canceled'))).toBe(
+        'CI runs of my pull requests: 1 failed · 2 succeeded · 1 canceled'
+      );
+    });
   });
 });

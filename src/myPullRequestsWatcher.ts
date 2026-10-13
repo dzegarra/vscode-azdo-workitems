@@ -58,10 +58,12 @@ export function myPullRequestSettings(): {
   layout: Layout;
   intervalSeconds: number;
   minimumRequiredReviewers: number;
+  showInStatusBar: boolean;
 } {
   const config = vscode.workspace.getConfiguration(`${SECTION}.myPullRequests`);
   return {
     showDrafts: config.get<boolean>('showDrafts', true),
+    showInStatusBar: config.get<boolean>('showInStatusBar', true),
     completedPeriod: completedPeriodSetting(config.get<string>('completedPeriod', 'day')),
     layout: config.get<Layout>('layout', 'compact') === 'large' ? 'large' : 'compact',
     minimumRequiredReviewers: Math.max(0, config.get<number>('minimumRequiredReviewers', 2)),

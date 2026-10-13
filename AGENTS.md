@@ -49,7 +49,7 @@ src/webview/main.ts       sidebar webview (cards, PR boxes, filters); src/webvie
 src/workItemDetails.ts    Work Item Details panel (one editor tab per work item); HTML in src/detailsHtml.ts
 src/dependencyMap.ts      dependency map panel; graph/layout in src/dependencyGraph.ts, iteration model in src/schedule.ts
 src/commands/*.ts         user flows (create branch / PR, checkout + worktrees, delete branch, publish, retarget, …); base branch rules: src/baseBranch.ts (pure)
-src/*StatusBar.ts         status bar items (CI runs, reviews, current work item)
+src/*StatusBar.ts         status bar items (CI runs, reviews, my PRs that need me, current work item); texts/colours are pure: ciStatusText (src/pipelines.ts), src/myPullRequestsAttention.ts
 media/*.css               styles of the webviews (webview.css shared by the sidebar and the details panel)
 ```
 

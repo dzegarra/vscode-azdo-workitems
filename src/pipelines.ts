@@ -142,12 +142,50 @@ export function finishedRuns(previous: Map<number, RunState>, current: RunModel[
   });
 }
 
-/** Status bar order: what needs attention first */
-const SUMMARY_ORDER: RunState[] = ['failed', 'partial', 'running', 'queued', 'canceled', 'succeeded'];
+/** Status bar order: what needs attention first; canceled runs are the least interesting */
+const SUMMARY_ORDER: RunState[] = ['failed', 'partial', 'running', 'queued', 'succeeded', 'canceled'];
 
 /** Count of runs per state, in SUMMARY_ORDER, skipping the states without runs */
 export function countRunStates(states: RunState[]): { state: RunState; count: number }[] {
   return SUMMARY_ORDER.map((state) => ({ state, count: states.filter((s) => s === state).length })).filter(
     (entry) => entry.count > 0
   );
+}
+
+export type RunCount = { state: RunState; count: number };
+
+/** Codicons of each state; "~spin" animates the icon in the status bar */
+export const STATE_ICONS: Record<RunState, string> = {
+  failed: '$(error)',
+  partial: '$(warning)',
+  running: '$(sync~spin)',
+  queued: '$(clock)',
+  canceled: '$(circle-slash)',
+  succeeded: '$(check)',
+};
+
+/**
+ * Text of the CI status bar item: "CI  $(error) 1  $(check) 3". Rule STATUSBAR-CI-1: the states go by severity
+ * (as countRunStates returns them) and the canceled runs are left out, since they need nothing from the user.
+ * Rule STATUSBAR-CI-2: when only canceled runs exist they are shown, so the item is not empty
+ */
+export function ciStatusText(counts: RunCount[]): string {
+  // Rule STATUSBAR-CI-1
+  const shown = counts.filter(({ state }) => state !== 'canceled');
+  // Rule STATUSBAR-CI-2
+  const entries = shown.length ? shown : counts;
+  return `CI  ${entries.map(({ state, count }) => `${STATE_ICONS[state]} ${count}`).join('  ')}`;
+}
+
+/** Title line of the CI tooltip: the totals per state, canceled included */
+export function ciTooltipTitle(counts: RunCount[]): string {
+  // Rule STATUSBAR-CI-4
+  const totals = counts.map(({ state, count }) => `${count} ${STATE_LABELS[state].toLowerCase()}`).join(' · ');
+  return `CI runs of my pull requests: ${totals}`;
+}
+
+/** Whether the CI item gets the error background: some run failed (partial ones do not) */
+export function ciHasFailures(counts: RunCount[]): boolean {
+  // Rule STATUSBAR-CI-3
+  return counts.some(({ state }) => state === 'failed');
 }

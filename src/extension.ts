@@ -29,6 +29,7 @@ import {
   PUBLISH_PULL_REQUEST_COMMAND,
 } from './myPullRequestsWatcher';
 import { CoverageRecordsStore } from './coverageRecordsStore';
+import { MyPullRequestsStatusBar } from './myPullRequestsStatusBar';
 import { PipelineStatusBar } from './pipelineStatusBar';
 import { PipelineWatcher } from './pipelineWatcher';
 import { PullRequestNotifier } from './pullRequestNotifier';
@@ -106,6 +107,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const reviewRequests = new ReviewRequestsWatcher(context.globalState, store, pullRequestExtras);
   const reviewStatusBar = new ReviewStatusBar(reviewRequests);
   const myPullRequests = new MyPullRequestsWatcher(store, pullRequestExtras);
+  const myPullRequestsStatusBar = new MyPullRequestsStatusBar(myPullRequests, store);
   const coverageRecords = new CoverageRecordsStore(context.globalState);
   const pipelineWatcher = new PipelineWatcher(store, myPullRequests, coverageRecords);
   const view = new WorkItemsViewProvider(context.extensionUri, store, reviewRequests, myPullRequests, coverageRecords);
@@ -223,6 +225,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     summary,
     reviewRequests.onDidChange(() => view.post()),
     myPullRequests,
+    myPullRequestsStatusBar,
     myPullRequests.onDidChange(() => view.post()),
     alertsStatus,
     store.onDidChange(() => {

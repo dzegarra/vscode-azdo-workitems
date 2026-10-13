@@ -105,6 +105,8 @@ Both PR boxes have their own layout button: **compact** rows (2 lines: PR, title
 
 Buttons: **Open PR**, **Checkout** (PRs of the repository open in VS Code) and **Publish** for drafts (after a confirmation: reviewers are notified). PRs are checked every 2 minutes (`totalflowx.myPullRequests.pollIntervalSeconds`, or the refresh button of the box). The box and the _Waiting for your review_ one can be collapsed.
 
+**In the status bar**, a second item counts your active, published PRs that need you, even when the sidebar is closed: `$(git-pull-request) 2 need you`, and `$(git-merge) 1 ready` (or `1 ready to merge` alone) for those nothing stops from being merged. A PR needs you when it is **Rejected** or **Waiting for author** (with who), has **conflicts**, a **failed** (or partially succeeded) CI run, or **unresolved comments**. The item is red when a PR is rejected, has conflicts or failed CI, yellow when it is only waiting for you or has unresolved comments, and default when it is only ready PRs. Hover it for one line per PR with its reasons; click it to show the list. It is hidden when nothing needs you (`totalflowx.myPullRequests.showInStatusBar`, on by default).
+
 ## Worktrees
 
 Every **Checkout** (work items, PRs to review, My Pull Requests, details) can open the branch in a [git worktree](https://git-scm.com/docs/git-worktree) instead, so you do not have to stash your changes:
@@ -206,7 +208,7 @@ Next to the state of each active pull request, the card shows the last run of ea
 
 The runs of the PRs of your work items and of all your pull requests are followed. While a run is queued or running, only the runs are refreshed every 15 seconds (`totalflowx.pipelines.pollIntervalSeconds`); when none is, new runs (re-runs, new pushes) are looked for every minute (`totalflowx.pipelines.idlePollIntervalSeconds`, 0 to turn it off). A notification tells you when a run finishes (`totalflowx.pipelines.notifyOnFinish`).
 
-The status bar summarizes the runs of your pull requests even when the view is closed, e.g. `$(rocket) ✗ 1  ↻ 1  ✓ 2` (red when a run failed). Hover it to see each run with its PR, pipeline and duration; click it to pick a run and open it (`totalflowx.pipelines.showInStatusBar`).
+The status bar summarizes the runs of your pull requests even when the view is closed, as `CI` followed by a count per state by severity, e.g. `CI  ✗ 1  ↻ 1  ✓ 2` (red when a run failed; order: failed, partially succeeded, running, queued, succeeded). Canceled runs only show in the tooltip (unless they are all there is). Hover it to see the totals and each run with its PR, pipeline and duration; click it to pick a run and open it (`totalflowx.pipelines.showInStatusBar`).
 
 ### Why a run failed
 
@@ -258,7 +260,7 @@ Click the title to open the PR in Azure DevOps, or **Checkout** to review it loc
 
 The section takes the colour of the most urgent PR and counts the overdue and due soon ones. It can be collapsed; it opens again when a new PR arrives. The badge of the activity bar icon (carried by the [Summary view](#summary-view)) counts these PRs, together with the work items that need attention.
 
-**In the status bar**, e.g. `2 to review · 4 h left` (the time left of the most urgent PR), in yellow when one is due soon and in red when one is overdue. Hover it to see each PR; click it to show the list (`totalflowx.reviews.showInStatusBar`).
+**In the status bar** (reviews), e.g. `2 to review · 4 h left` (the time left of the most urgent PR), in yellow when one is due soon and in red when one is overdue. Hover it to see each PR; click it to show the list (`totalflowx.reviews.showInStatusBar`).
 
 **Notifications** (`totalflowx.reviews.notifications`):
 
@@ -306,7 +308,7 @@ Only the PRs where you are a reviewer yourself are listed: when a group (e.g. a 
 | `totalflowx.integrationBuild.*`                        | Feed, package and suffix used to fill Integrated in Build                   |
 | `totalflowx.layout`                                    | Layout of the cards: `compact` (default) or `large`                         |
 | `totalflowx.hoverStyle`                                | Hover of cards and PR tiles: `border` (default), `tint` or `accent`         |
-| `totalflowx.myPullRequests.*`                          | My pull requests: show drafts, refresh interval                             |
+| `totalflowx.myPullRequests.*`                          | My pull requests: show drafts, refresh interval, status bar                 |
 | `totalflowx.statusBar.currentWorkItem`                 | Show the work item of the current branch in the status bar                  |
 | `totalflowx.dependencies.*`                            | Completed states of predecessors, confirmation before starting              |
 | `totalflowx.coverage.*`                                | Coverage levels: minimum (60), target (80), excellent (95)                  |
