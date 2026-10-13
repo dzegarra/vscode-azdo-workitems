@@ -1717,6 +1717,13 @@ function renderCompletedPeriod(period: CompletedPeriod): string {
   return `<select class="period-select" data-setting="completedPeriod" title="${title}" aria-label="${title}">${options}</select>`;
 }
 
+/** Empty list: still loading (first check) or really no open PR */
+function myPullRequestsEmpty(status: ViewModel['pullRequests']['status']): string {
+  return status === 'loading'
+    ? '<p class="muted panel-empty" role="status">Loading your pull requests…</p>'
+    : '<p class="muted panel-empty">No open pull requests</p>';
+}
+
 function renderMyPullRequests(current: ViewModel): string {
   const { items, status, error, showDrafts, hiddenDrafts, completedPeriod, hiddenCompleted, layout, completedSummary } =
     current.pullRequests;
@@ -1762,7 +1769,7 @@ function renderMyPullRequests(current: ViewModel): string {
       )}</button>`,
       body: items.length
         ? `<ul class="mypr-list${layout === 'compact' ? ' compact' : ''}">${items.map(renderRow).join('')}</ul>`
-        : '<p class="muted panel-empty">No open pull requests</p>',
+        : myPullRequestsEmpty(status),
     })
   );
 }
