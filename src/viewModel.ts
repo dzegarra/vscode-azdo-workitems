@@ -39,6 +39,8 @@ export interface OtherTaskModel {
   assignedTo?: string;
   taskPullRequests: TaskPullRequestModel[];
   taskBranches?: TaskBranchModel[];
+  /** A branch of the task is checked out here or in another worktree: its row is highlighted */
+  taskWorkingOn?: WorkingOnLevel;
   /** The "Create branch" button of the task row is offered (see canCreateBranchForTask) */
   canCreateBranch?: boolean;
   /** The "Create PR" button of the task row is offered (see canCreatePullRequestForTask) */
@@ -92,6 +94,8 @@ export interface WorkItemModel {
   taskPullRequests?: TaskPullRequestModel[];
   /** Tasks only: their linked branches for the icons of the task rows */
   taskBranches?: TaskBranchModel[];
+  /** Tasks only: a branch of the task is checked out here or in another worktree: its row is highlighted */
+  taskWorkingOn?: WorkingOnLevel;
   /** Tasks only: the "Create branch" button of the task row is offered (see canCreateBranchForTask) */
   canCreateBranch?: boolean;
   /** Tasks only: the "Create PR" button of the task row is offered (see canCreatePullRequestForTask) */
@@ -220,6 +224,7 @@ export type WebviewMessage =
         | 'createPullRequest'
         | 'deleteBranch'
         | 'fillIntegrationBuild'
+        | 'linkTaskBranch'
         | 'openDependencyMap'
         | 'openDetails'
         | 'openPullRequest'
@@ -230,7 +235,7 @@ export type WebviewMessage =
       runId?: number;
       /** openRun: show the tests of the run instead of the run */
       tests?: boolean;
-      /** checkout: a branch of the work item other than its main one */
+      /** checkout: a branch of the work item other than its main one; linkTaskBranch: the branch of a task to link */
       branch?: string;
       /** createBranch / createPullRequest from a task row: `id` is the parent work item, this the task */
       taskId?: number;

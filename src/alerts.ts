@@ -7,6 +7,7 @@ export type AlertRule =
   | 'noPullRequestTask'
   | 'pullRequestTaskNotDone'
   | 'pullRequestTaskNotInProgress'
+  | 'taskBranchNotLinked'
   | 'tasksNotDone';
 
 export interface WorkItemAlert {
@@ -19,7 +20,9 @@ export interface WorkItemAlert {
   /** Reference name of the empty field, for "missingField" alerts */
   field?: string;
   /** Quick fix offered next to the alert */
-  action?: 'fillIntegrationBuild';
+  action?: 'fillIntegrationBuild' | 'linkTaskBranch';
+  /** Branch the alert is about, for "taskBranchNotLinked" */
+  branch?: string;
 }
 
 export interface AlertTask {
@@ -28,6 +31,8 @@ export interface AlertTask {
   state: string;
   /** PRs the task is linked to */
   pullRequestIds: number[];
+  /** Names of the branches of this repository linked to the task */
+  branches?: string[];
 }
 
 export interface AlertPullRequest {
@@ -44,6 +49,8 @@ export interface AlertInput {
   fields: Record<string, unknown>;
   tasks: AlertTask[];
   pullRequests: AlertPullRequest[];
+  /** Names of the branches of this repository linked to the work item itself (Development section) */
+  branches: string[];
 }
 
 export interface RequiredFieldsRule {
@@ -96,6 +103,27 @@ function taskAlerts(input: AlertInput): WorkItemAlert[] {
     ];
   }
   return [];
+}
+
+/** The branch of a task (this repository) that the work item does not link: the developer forgot to link it */
+function taskBranchAlerts(input: AlertInput): WorkItemAlert[] {
+  if (isOneOf(input.state, FINISHED_STATES) || isClosed(input.state)) {
+    return [];
+  }
+  const linked = new Set(input.branches);
+  return input.tasks
+    .filter((task) => !isClosed(task.state))
+    .flatMap((task) =>
+      [...new Set(task.branches ?? [])]
+        .filter((branch) => !linked.has(branch))
+        .map((branch) => ({
+          rule: 'taskBranchNotLinked' as const,
+          message: `Branch ${branch} of task ${task.id} is not linked to this work item`,
+          relatedId: task.id,
+          action: 'linkTaskBranch' as const,
+          branch,
+        }))
+    );
 }
 
 interface PullRequestWithTasks {
@@ -194,6 +222,7 @@ export function findAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[
   }
   return [
     ...taskAlerts(input),
+    ...taskBranchAlerts(input),
     ...pullRequestAlerts(input, rules),
     ...tagAlerts(input, rules),
     ...fieldAlerts(input, rules),

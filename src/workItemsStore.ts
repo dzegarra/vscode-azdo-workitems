@@ -21,7 +21,7 @@ import { followedPullRequestIds, RunsTracker } from './runsPolling';
 import { isOtherRepository, toPullRequestModel } from './pullRequestModel';
 import { listWorktrees } from './worktreeGit';
 import { findWorktree, otherWorktreeBranches, Worktree } from './worktrees';
-import { WorkingOnLevel, workingOnLevels } from './workingOn';
+import { taskWorkingOn, WorkingOnLevel, workingOnLevels } from './workingOn';
 import { realpathSync } from 'node:fs';
 import { canCreateBranchForTask, canCreatePullRequestForTask } from './pullRequestTasks';
 import { parsePriority, PRIORITY_FIELD, SEVERITY_FIELD } from './priority';
@@ -40,10 +40,18 @@ export interface WorkItemEntry {
   pullRequests: PullRequestDetails[];
   /** Tasks under the work item that are not in the list (assigned to other people or in other iterations) */
   otherTasks: OtherTaskEntry[];
+  /** Names of the branches (this repository) linked to its child tasks: they also mark the work item as "working on" */
+  taskBranches: string[];
   /** Work items that must be done before this one; undefined when they could not be loaded */
   predecessors?: WorkItem[];
   /** Work items that depend on this one; undefined when they could not be loaded */
   successors?: WorkItem[];
+}
+
+interface WorkingOnState {
+  levels: Map<number, WorkingOnLevel>;
+  /** Branches checked out in the other worktrees; empty when they are not wanted */
+  worktreeBranches: string[];
 }
 
 export interface OtherTaskEntry {
@@ -203,12 +211,36 @@ function withQuickFixes(alerts: WorkItemAlert[], integrationBuildField: string |
   );
 }
 
+/** Names of the linked branches that are in the repository */
+function branchNamesOf(links: { repositoryId: string; name: string }[], repositoryId: string | undefined): string[] {
+  return [
+    ...new Set(links.filter((link) => !isOtherRepository(link.repositoryId, repositoryId)).map((link) => link.name)),
+  ];
+}
+
+/** Names of the branches linked to the tasks of a work item (the ones of the list and of other people) */
+function taskBranchNamesOf(
+  workItem: WorkItem,
+  related: Map<number, WorkItem>,
+  repositoryId: string | undefined
+): string[] {
+  return [
+    ...new Set(
+      workItem.links.childIds
+        .map((id) => related.get(id))
+        .filter((child): child is WorkItem => child?.type === 'Task')
+        .flatMap((child) => branchNamesOf(child.links.branches, repositoryId))
+    ),
+  ];
+}
+
 /** Problems of the work item, from its child tasks, PRs, tags and fields */
 function alertsOf(
   workItem: WorkItem,
   related: Map<number, WorkItem>,
   pullRequests: PullRequestDetails[],
-  rules: AlertRules & { integrationBuildField?: string }
+  rules: AlertRules & { integrationBuildField?: string },
+  repositoryId: string
 ): WorkItemAlert[] {
   const tasks = workItem.links.childIds
     .map((id) => related.get(id))
@@ -218,6 +250,7 @@ function alertsOf(
       title,
       state,
       pullRequestIds: links.pullRequests.map((link) => link.id),
+      branches: branchNamesOf(links.branches, repositoryId),
     }));
   return withQuickFixes(
     findAlerts(
@@ -228,6 +261,7 @@ function alertsOf(
         fields: workItem.fields,
         tasks,
         pullRequests: pullRequests.map((pr) => ({ id: pr.pullRequestId, status: pr.status, isDraft: pr.isDraft })),
+        branches: branchNamesOf(workItem.links.branches, repositoryId),
       },
       rules
     ),
@@ -571,7 +605,8 @@ export class WorkItemsStore {
         }),
         pullRequests: itemPullRequests,
         deletableBranches: [],
-        alerts: rules ? alertsOf(workItem, related, itemPullRequests, rules) : [],
+        alerts: rules ? alertsOf(workItem, related, itemPullRequests, rules, azdoRepository.id) : [],
+        taskBranches: taskBranchNamesOf(workItem, related, azdoRepository.id),
         predecessors: dependencies.predecessors.get(workItem.id),
         successors: dependencies.successors.get(workItem.id),
       };
@@ -779,8 +814,10 @@ export class WorkItemsStore {
     }: WorkItemEntry,
     currentBranch: string | undefined,
     completedStates: string[],
-    levels: Map<number, WorkingOnLevel>
+    { levels, worktreeBranches }: WorkingOnState
   ): WorkItemModel {
+    const taskLevel = (task: WorkItem) =>
+      taskWorkingOn(branchNamesOf(task.links.branches, this.repositoryId), currentBranch, worktreeBranches);
     return {
       id: workItem.id,
       title: workItem.title,
@@ -813,6 +850,7 @@ export class WorkItemsStore {
       taskPullRequests: workItem.type === 'Task' ? this.taskPullRequests(pullRequests) : [],
       taskBranches:
         workItem.type === 'Task' ? this.taskBranches(workItem, pullRequests, currentBranch, deletableBranches) : [],
+      taskWorkingOn: workItem.type === 'Task' ? taskLevel(workItem) : undefined,
       canCreateBranch:
         workItem.type === 'Task' &&
         canCreateBranchForTask({
@@ -835,6 +873,7 @@ export class WorkItemsStore {
         assignedTo: task.assignedTo,
         taskPullRequests: this.taskPullRequests(taskPullRequests),
         taskBranches: this.taskBranches(task, taskPullRequests, currentBranch),
+        taskWorkingOn: taskLevel(task),
         canCreateBranch: canCreateBranchForTask({
           taskState: task.state,
           parentState: workItem.state,
@@ -849,15 +888,22 @@ export class WorkItemsStore {
     };
   }
 
-  /** Work items being worked on: their branch (or the PR of the branch) is checked out here or in another worktree */
-  private workingOnLevels(currentBranch: string | undefined): Map<number, WorkingOnLevel> {
+  /**
+   * Work items being worked on: their branch (or the PR of the branch, or the branch of one of their tasks) is
+   * checked out here or in another worktree. The worktree branches also mark the task rows
+   */
+  private workingOnState(currentBranch: string | undefined): WorkingOnState {
     const { showWorktrees, includeLinkedWorkItems } = settings().workingOn;
-    return workingOnLevels({
-      currentBranch,
-      worktreeBranches: showWorktrees ? otherWorktreeBranches(this.worktrees, this.openFolders()) : [],
-      entries: this.entries,
-      includeLinked: includeLinkedWorkItems,
-    });
+    const worktreeBranches = showWorktrees ? otherWorktreeBranches(this.worktrees, this.openFolders()) : [];
+    return {
+      worktreeBranches,
+      levels: workingOnLevels({
+        currentBranch,
+        worktreeBranches,
+        entries: this.entries,
+        includeLinked: includeLinkedWorkItems,
+      }),
+    };
   }
 
   /** Card data of one work item, or undefined when it is not in the current iterations */
@@ -866,7 +912,7 @@ export class WorkItemsStore {
     const currentBranch = this.repository()?.state.HEAD?.name;
     return (
       entry &&
-      this.toModel(entry, currentBranch, settings().dependencies.completedStates, this.workingOnLevels(currentBranch))
+      this.toModel(entry, currentBranch, settings().dependencies.completedStates, this.workingOnState(currentBranch))
     );
   }
 
@@ -875,8 +921,8 @@ export class WorkItemsStore {
   ): Omit<ViewModel, 'alwaysShowAlerts' | 'coverage' | 'layout' | 'pullRequests' | 'reviews' | 'workingOn'> {
     const currentBranch = this.repository()?.state.HEAD?.name;
     const { completedStates } = settings().dependencies;
-    const levels = this.workingOnLevels(currentBranch);
-    const workItems = this.entries.map((entry) => this.toModel(entry, currentBranch, completedStates, levels));
+    const state = this.workingOnState(currentBranch);
+    const workItems = this.entries.map((entry) => this.toModel(entry, currentBranch, completedStates, state));
     return {
       status: this.status,
       error: this.error,

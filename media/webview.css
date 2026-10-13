@@ -1116,6 +1116,52 @@ button {
   font-size: 12px;
 }
 
+/*
+ * Task rows whose branch is checked out here / in another worktree: the language of the cards, sized for a row (the
+ * parent card is "Working on" already and animates, so no animation here). Scoped to .child: the card rules
+ * (.card.working-here, .working-here .working-dot) never reach the rows
+ */
+.child.working-here,
+.child.working-worktree {
+  margin: -1px -4px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  transition: background-color 0.18s ease, outline-color 0.18s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .child.working-here,
+  .child.working-worktree {
+    transition: none;
+  }
+}
+
+.child.working-here {
+  background: color-mix(in srgb, var(--working-here) 14%, transparent);
+}
+
+.child.working-here:hover {
+  background: color-mix(in srgb, var(--working-here) 20%, transparent);
+}
+
+.child.working-here .child-title {
+  font-weight: 700;
+}
+
+.child.working-worktree {
+  outline: 1px dashed color-mix(in srgb, var(--working-worktree) 70%, var(--border));
+  outline-offset: -1px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .child-title {
   overflow: hidden;
   text-overflow: ellipsis;

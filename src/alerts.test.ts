@@ -36,13 +36,15 @@ const pbi = (overrides: Partial<AlertInput> = {}): AlertInput => ({
   fields: { [EFFORT]: 5, [EFFORT_DAYS]: 2 },
   tasks: [],
   pullRequests: [],
+  branches: [],
   ...overrides,
 });
-const task = (id: number, title: string, state: string, pullRequestIds: number[] = []) => ({
+const task = (id: number, title: string, state: string, pullRequestIds: number[] = [], branches: string[] = []) => ({
   id,
   title,
   state,
   pullRequestIds,
+  branches,
 });
 const rulesOf = (input: AlertInput) => findAlerts(input, rules).map((alert) => alert.rule);
 
@@ -191,5 +193,48 @@ describe('resolveFieldName', () => {
       'Microsoft.VSTS.Build.IntegrationBuild'
     );
     expect(resolveFieldName('Unknown', fields)).toBeUndefined();
+  });
+});
+
+describe('task branches not linked to the work item', () => {
+  const BRANCH = 'feature/common/1-widget';
+
+  it('alerts about the branch of a task that the work item does not link', () => {
+    const tasks = [task(1, 'Widget', 'In Progress', [], [BRANCH])];
+    expect(findAlerts(pbi({ tasks }), rules)).toEqual([
+      {
+        rule: 'taskBranchNotLinked',
+        message: `Branch ${BRANCH} of task 1 is not linked to this work item`,
+        relatedId: 1,
+        action: 'linkTaskBranch',
+        branch: BRANCH,
+      },
+    ]);
+  });
+
+  it('does not alert when the work item links the branch', () => {
+    const tasks = [task(1, 'Widget', 'In Progress', [], [BRANCH])];
+    expect(rulesOf(pbi({ tasks, branches: [BRANCH] }))).toEqual([]);
+  });
+
+  it('alerts once per branch, even when two tasks share it', () => {
+    const tasks = [task(1, 'A', 'To Do', [], [BRANCH, BRANCH]), task(2, 'B', 'To Do', [], ['other'])];
+    expect(findAlerts(pbi({ tasks }), rules).map((alert) => alert.branch)).toEqual([BRANCH, 'other']);
+  });
+
+  it('ignores Done and Removed tasks', () => {
+    const tasks = [task(1, 'A', 'Done', [], [BRANCH]), task(2, 'B', 'Removed', [], ['other'])];
+    expect(rulesOf(pbi({ tasks }))).toEqual([]);
+  });
+
+  it('ignores finished work items', () => {
+    const tasks = [task(1, 'A', 'To Do', [], [BRANCH])];
+    expect(rulesOf(pbi({ state: 'Done', tasks }))).not.toContain('taskBranchNotLinked');
+    expect(rulesOf(pbi({ state: 'Removed', tasks }))).not.toContain('taskBranchNotLinked');
+  });
+
+  it('ignores the types that are not checked', () => {
+    const tasks = [task(1, 'A', 'To Do', [], [BRANCH])];
+    expect(findAlerts(pbi({ type: 'Feature', tasks }), rules)).toEqual([]);
   });
 });

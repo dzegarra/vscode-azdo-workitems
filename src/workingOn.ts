@@ -26,6 +26,8 @@ export interface WorkingOnEntry {
   /** Branch of the work item (by name, or linked to it) */
   branch?: string;
   pullRequests: { status: string; sourceRefName: string }[];
+  /** Names of the branches (this repository) linked to its tasks, own and of other developers */
+  taskBranches?: string[];
 }
 
 const HEADS = 'refs/heads/';
@@ -37,10 +39,11 @@ function stripHeads(ref: string): string {
 /**
  * Work items that a checked out branch belongs to. Always the one whose branch it is; with `includeLinked`, also the
  * ones whose ID is in the branch name, whose active PR has the branch as source, or whose Development section links to it
+ * or one of whose tasks links to it (the developer forgot to link it to the work item: see the alerts)
  */
 export function workItemsOfBranch(branch: string, entries: WorkingOnEntry[], includeLinked: boolean): number[] {
   return entries
-    .filter(({ workItem, branch: entryBranch, pullRequests }) => {
+    .filter(({ workItem, branch: entryBranch, pullRequests, taskBranches }) => {
       if (entryBranch === branch) {
         return true;
       }
@@ -48,7 +51,8 @@ export function workItemsOfBranch(branch: string, entries: WorkingOnEntry[], inc
         includeLinked &&
         (branchBelongsToWorkItem(branch, workItem.id) ||
           pullRequests.some((pr) => pr.status === 'active' && stripHeads(pr.sourceRefName) === branch) ||
-          workItem.links.branches.some((link) => stripHeads(link.name) === branch))
+          workItem.links.branches.some((link) => stripHeads(link.name) === branch) ||
+          !!taskBranches?.some((name) => stripHeads(name) === branch))
       );
     })
     .map(({ workItem }) => workItem.id);
@@ -111,6 +115,19 @@ export function workingOnLevels({
     }
   }
   return levels;
+}
+
+/** Level of a task row: "here" when one of its branches is the checked out one, "worktree" when another worktree has one */
+export function taskWorkingOn(
+  branchNames: string[],
+  currentBranch: string | undefined,
+  worktreeBranches: string[]
+): WorkingOnLevel | undefined {
+  const names = branchNames.map(stripHeads);
+  if (currentBranch && names.includes(stripHeads(currentBranch))) {
+    return 'here';
+  }
+  return worktreeBranches.some((branch) => names.includes(stripHeads(branch))) ? 'worktree' : undefined;
 }
 
 export interface WorkingOnBadge {

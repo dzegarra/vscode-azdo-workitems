@@ -134,6 +134,11 @@
         "category": "Totalflow X"
       },
       {
+        "command": "totalflowx.linkTaskBranch",
+        "title": "Link the Branch of a Task to Its Work Item",
+        "category": "Totalflow X"
+      },
+      {
         "command": "totalflowx.showPipelineRuns",
         "title": "Show CI Runs of My Pull Requests",
         "category": "Totalflow X"

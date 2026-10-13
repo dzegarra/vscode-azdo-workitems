@@ -3,6 +3,7 @@ import {
   linkCandidates,
   normalizeWorkingOnAnimation,
   splitWorkingOn,
+  taskWorkingOn,
   WorkingOnEntry,
   workingOnAnimationClasses,
   workingOnBadge,
@@ -233,5 +234,50 @@ describe('working on animation', () => {
     expect(normalizeWorkingOnAnimation('runningBorder')).toBe('runningBorder');
     expect(normalizeWorkingOnAnimation('disco')).toBe('none');
     expect(normalizeWorkingOnAnimation(undefined)).toBe('none');
+  });
+});
+
+describe('branches of the tasks', () => {
+  it('marks the work item through the branch of one of its tasks', () => {
+    const entries = [entry(100, { taskBranches: [BRANCH] }), entry(101, { taskBranches: ['feature/x/101-y'] })];
+    const levels = workingOnLevels({ currentBranch: BRANCH, worktreeBranches: [], entries, includeLinked: true });
+    expect([...levels]).toEqual([[100, 'here']]);
+  });
+
+  it('marks it as worktree when another worktree has the branch of the task', () => {
+    const entries = [entry(100, { taskBranches: [BRANCH] })];
+    const levels = workingOnLevels({
+      currentBranch: undefined,
+      worktreeBranches: [BRANCH],
+      entries,
+      includeLinked: true,
+    });
+    expect(levels.get(100)).toBe('worktree');
+  });
+
+  it('does not mark it when the linked work items are off', () => {
+    const entries = [entry(100, { taskBranches: [BRANCH] })];
+    const levels = workingOnLevels({ currentBranch: BRANCH, worktreeBranches: [], entries, includeLinked: false });
+    expect(levels.size).toBe(0);
+  });
+});
+
+describe('taskWorkingOn', () => {
+  it('is "here" when a branch of the task is the checked out one', () => {
+    expect(taskWorkingOn(['a', BRANCH], BRANCH, [])).toBe('here');
+  });
+
+  it('is "worktree" when another worktree has a branch of the task', () => {
+    expect(taskWorkingOn([BRANCH], 'main', [BRANCH])).toBe('worktree');
+  });
+
+  it('is none otherwise', () => {
+    expect(taskWorkingOn([BRANCH], 'main', ['other'])).toBeUndefined();
+    expect(taskWorkingOn([], BRANCH, [BRANCH])).toBeUndefined();
+    expect(taskWorkingOn([BRANCH], undefined, [])).toBeUndefined();
+  });
+
+  it('"here" wins over "worktree"', () => {
+    expect(taskWorkingOn([BRANCH, 'b'], BRANCH, ['b'])).toBe('here');
   });
 });

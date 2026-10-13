@@ -15,6 +15,7 @@ import { resolveContext, SECTION, settings } from './config';
 import { getGitApi, pickRepository, Repository } from './git';
 import { resolveWorkItemEntry } from './commands/pickWorkItem';
 import { fillIntegrationBuild } from './commands/integrationBuild';
+import { linkTaskBranch } from './commands/linkTaskBranch';
 import { addTask, changeState } from './commands/workItemEdits';
 import { registerDiagnostics } from './diagnostics';
 import { withFeature } from './requestContext';
@@ -349,6 +350,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const workItemId = id ?? (await resolveWorkItemEntry(store, undefined))?.workItem.id;
       if (workItemId) {
         await fillIntegrationBuild(store, workItemId);
+      }
+    }),
+    command('totalflowx.linkTaskBranch', async (id?: number, branch?: string) => {
+      if (id !== undefined && branch) {
+        await linkTaskBranch(store, id, branch);
       }
     }),
     command('totalflowx.openDependencyMap', (id?: number) => dependencyMap.open(id)),

@@ -33,7 +33,7 @@ import { describeTaskBranch, TaskBranchModel } from '../taskBranches';
 import { TaskPullRequestModel } from '../taskPullRequests';
 import { actionMenuId, renderActionMenu } from '../actionMenuHtml';
 import { taskMenuSections, taskPill, TaskPill } from '../taskMenu';
-import { splitWorkingOn, workingOnAnimationClasses, workingOnBadge } from '../workingOn';
+import { splitWorkingOn, WorkingOnLevel, workingOnAnimationClasses, workingOnBadge } from '../workingOn';
 import type { CompletedPeriod } from '../myPullRequests';
 import type {
   CheckoutKind,
@@ -566,6 +566,8 @@ type TaskRow = Pick<WorkItemModel, 'id' | 'title' | 'type' | 'state' | 'priority
   assignedTo?: string;
   taskPullRequests: TaskPullRequestModel[];
   taskBranches: TaskBranchModel[];
+  /** A branch of the task is checked out here or in another worktree */
+  taskWorkingOn?: WorkingOnLevel;
   canCreateBranch?: boolean;
   canCreatePullRequest?: boolean;
 };
@@ -709,10 +711,18 @@ function initials(name: string): string {
     .join('');
 }
 
+const TASK_WORKING_NOTES: Record<WorkingOnLevel, string> = {
+  here: 'Checked out here',
+  worktree: 'Checked out in a worktree',
+};
+
 function renderChild(item: TaskRow, parentId: number): string {
   const title = item.assignedTo ? `${item.title} (${item.assignedTo})` : item.title;
-  return `<li class="child">
-    ${typeIcon(item.type)}
+  const note = item.taskWorkingOn ? TASK_WORKING_NOTES[item.taskWorkingOn] : '';
+  return `<li class="child${item.taskWorkingOn ? ` working-${item.taskWorkingOn}` : ''}"${
+    note ? ` title="${note}"` : ''
+  }>
+    ${note ? `<span class="visually-hidden">${note}: </span>` : ''}${typeIcon(item.type)}
     <button class="link id${typeIdClass(item.type)}" data-action="openDetails" data-id="${
     item.id
   }" title="Open the Work Item Details panel">${item.id}</button>
@@ -760,7 +770,11 @@ function renderAlerts(item: WorkItemModel): string {
   }
   const alerts = item.alerts.map((alert) => {
     let fix = '';
-    if (alert.action === 'fillIntegrationBuild') {
+    if (alert.action === 'linkTaskBranch' && alert.branch) {
+      fix = ` <button class="link" data-action="linkTaskBranch" data-id="${item.id}" data-branch="${escapeHtml(
+        alert.branch
+      )}" title="Add ${escapeHtml(alert.branch)} to the Development section of ${item.id}">Link branch</button>`;
+    } else if (alert.action === 'fillIntegrationBuild') {
       fix = ` <button class="link" data-action="fillIntegrationBuild" data-id="${item.id}" title="Use the last release of the deploy image">Fill</button>`;
     } else if (alert.relatedId) {
       fix = ` <button class="link" data-action="changeState" data-id="${alert.relatedId}" title="Change the state of ${alert.relatedId}">Fix</button>`;

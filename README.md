@@ -120,7 +120,8 @@ Every **Checkout** (work items, PRs to review, My Pull Requests, details) can op
 The work items of the checked-out branch are highlighted: a tinted card with an accent border and a **● Working on** badge (in compact rows too). You may work on several at once:
 
 - **Worktrees**: the work items of branches checked out in other worktrees are marked **⧉ In worktree**, in the blue of "working here" with a lighter touch (dashed border, outline badge, no tint; purple is kept for completed PRs) (`totalflowx.workingOn.showWorktrees`).
-- **Linked work items**: besides the work item whose ID is in the branch name, the ones linked to the PR of the branch or to the branch itself (Development links) are highlighted too (`totalflowx.workingOn.includeLinkedWorkItems`).
+- **Linked work items**: besides the work item whose ID is in the branch name, the ones linked to the PR of the branch, to the branch itself (Development links) or to a **task** whose branch is the checked-out one are highlighted too (`totalflowx.workingOn.includeLinkedWorkItems`).
+- **Task rows**: in a card's task list, the row of the task whose branch is checked out here has a light blue tint and a bold title; a task whose branch is checked out in another worktree has a thin dashed blue outline (`totalflowx.workingOn.showWorktrees`). Rows keep their height and do not animate; screen readers hear "Checked out here" / "Checked out in a worktree".
 - **Never hidden**: they ignore the State / PR / Priority filters and stay visible in a collapsed iteration group; the Type filter and the search still apply (`totalflowx.workingOn.ignoreFilters`).
 - **Working on section**: they are moved to a section at the top of the list, this window's first (`totalflowx.workingOn.section`).
 - **Animation** (optional, only for the card "here"; "In worktree" cards stay still): `totalflowx.workingOn.animation` = `none` (default), `borderLight` (a soft band travels down the thick left border), `runningBorder` (a short bright segment runs around the card border, as thick as the left border on that side), `glow` (a soft blue halo breathes) or `stripes` (diagonal stripes slide inside the badge). `totalflowx.workingOn.pulseBadge` (on by default) makes a halo expand from the **Working on** badge (and from the dot of the compact row) and fade out every 2 s; it combines with any animation. Nothing moves when the system asks for reduced motion.
@@ -147,17 +148,18 @@ Backlog Items and Bugs with problems the team agreed to avoid are flagged in red
 
 The filters apply to work items with alerts too: when they hide some, the banner tells how many ("2 work items need attention (1 hidden by filters)"), and **Show only these** shows every work item with alerts, whatever the State, PR and Priority filters. To always show them instead, turn on `totalflowx.filter.alwaysShowAlerts`.
 
-| Problem                                                                                                                      | Applies to             |
-| ---------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
-| Done / Ready to Test with tasks not done                                                                                     | Backlog Items and Bugs |
-| A published PR (not abandoned) has no PR task (each PR has its own, linked to it)                                            | Backlog Items and Bugs |
-| The PR is published (active, not draft) but the PR task is not In Progress                                                   | Backlog Items and Bugs |
-| The PR is completed but the PR task is not Done                                                                              | Backlog Items and Bugs |
-| Started while tagged Needs refinement, Requirements, UX feedback required, Missing REST API, Blocked or PT Feedback Required | Backlog Items and Bugs |
-| Effort or Effort in days is empty                                                                                            | Backlog Items          |
-| Integrated in Build is empty while Ready to Test                                                                             | Bugs                   |
+| Problem                                                                                                                            | Applies to             |
+| ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| Done / Ready to Test with tasks not done                                                                                           | Backlog Items and Bugs |
+| A published PR (not abandoned) has no PR task (each PR has its own, linked to it)                                                  | Backlog Items and Bugs |
+| The PR is published (active, not draft) but the PR task is not In Progress                                                         | Backlog Items and Bugs |
+| The PR is completed but the PR task is not Done                                                                                    | Backlog Items and Bugs |
+| Started while tagged Needs refinement, Requirements, UX feedback required, Missing REST API, Blocked or PT Feedback Required       | Backlog Items and Bugs |
+| Effort or Effort in days is empty                                                                                                  | Backlog Items          |
+| Integrated in Build is empty while Ready to Test                                                                                   | Bugs                   |
+| The branch of an open task (this repository) is not linked to the work item ("Branch … of task … is not linked to this work item") | Backlog Items and Bugs |
 
-The PR task of a PR is the child task linked to that PR, whatever its title (completed PRs without a task are not reported: they are history; drafts are not checked). Only for PRs without any linked task, an unlinked task whose title contains "PR" or "Pull Request" is used, once (work items from before the tasks were linked). **Fix** next to an alert about a single task opens its state picker. Tags, required fields, the work item types and the PR task pattern can be changed in the `totalflowx.alerts.*` settings.
+The PR task of a PR is the child task linked to that PR, whatever its title (completed PRs without a task are not reported: they are history; drafts are not checked). Only for PRs without any linked task, an unlinked task whose title contains "PR" or "Pull Request" is used, once (work items from before the tasks were linked). **Fix** next to an alert about a single task opens its state picker. **Link branch** next to a "branch not linked" alert asks for confirmation and adds that branch to the Development section of the work item (the alert covers every branch of every open task of the work item, not only the checked-out one; finished work items and Done / Removed tasks are not checked; Create branch for a task already links both, so it appears for branches linked by hand). Tags, required fields, the work item types and the PR task pattern can be changed in the `totalflowx.alerts.*` settings.
 
 ### Integrated in Build
 

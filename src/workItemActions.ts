@@ -25,6 +25,9 @@ async function runAction(store: WorkItemsStore, message: WorkItemAction): Promis
       // These work with any work item, including parents / children not assigned to the user
       await vscode.commands.executeCommand(`totalflowx.${message.type}`, message.id);
       return;
+    case 'linkTaskBranch':
+      await vscode.commands.executeCommand('totalflowx.linkTaskBranch', message.id, message.branch);
+      return;
     case 'openWorkItem': {
       // Parents and children shown in the details may not be assigned to the user
       const url = entry?.workItem.url ?? resolveContext(store.repository()).client.workItemWebUrl(message.id);
