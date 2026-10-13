@@ -407,7 +407,7 @@
             "accent"
           ],
           "enumDescriptions": [
-            "The border of the card or PR tile brightens and a soft shadow lifts it. The background (and the text contrast) does not change.",
+            "The border of the card or PR tile takes the colour of its left bar (state of the work item or PR) and a soft shadow lifts it. The background (and the text contrast) does not change.",
             "A faint lighter background. The text contrast drops only marginally.",
             "The coloured bar on the left gets brighter and wider. The background does not change."
           ],

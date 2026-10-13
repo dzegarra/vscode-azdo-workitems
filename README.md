@@ -55,7 +55,7 @@ The cards come in two layouts, switched with the **Compact / Large** buttons nex
 
 Switching layout, unfolding / folding a compact row (work items and both PR boxes), expanding / collapsing the **Waiting for your review** and **My Pull Requests** boxes, and opening / closing the **Tasks** of a card (one, or all with **Expand / Collapse all tasks**) are animated (a box grows or shrinks, the rest slides); each card morphs from one form to the other in about 0.2 s and the rest of the view slides to its new place. Nothing moves when the system asks for reduced motion.
 
-Hovering (or focusing with the keyboard) a work item card or a PR tile does not change its background, so the text keeps its contrast: by default the border brightens and a soft shadow lifts the tile (`totalflowx.hoverStyle`; see the settings table for `tint` and `accent`).
+Hovering (or focusing with the keyboard) a work item card or a PR tile does not change its background, so the text keeps its contrast: by default the whole border takes the colour of the tile's left bar and a soft shadow lifts the tile (`totalflowx.hoverStyle`; see the settings table for `tint` and `accent`).
 
 ### Tasks
 

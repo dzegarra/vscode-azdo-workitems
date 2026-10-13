@@ -3393,31 +3393,59 @@ button.action-menu-item:focus-visible .action-menu-detail {
 
 /* border (default): the background stays; the border brightens and a soft shadow lifts the tile. Only the sides
    without a coloured bar change: the left bar of the tiles keeps its colour */
+/* --bar: the colour of the thick left bar of each kind of tile (state of the work item, state of the PR…), used by
+   the hover styles: "border" draws the whole border in it, "accent" brightens and widens the bar */
+.card {
+  --bar: var(--grey);
+}
+
+.card.state-border-in-progress {
+  --bar: var(--blue);
+}
+
+.card.state-border-done {
+  --bar: var(--green);
+}
+
+.card.state-border-removed {
+  --bar: var(--red);
+}
+
+.card.working-here,
+.card.working-worktree {
+  --bar: var(--working-here);
+}
+
+.card.has-alerts {
+  --bar: var(--red);
+}
+
+.review {
+  --bar: var(--review-accent);
+}
+
+.review.role-optional {
+  --bar: var(--border);
+}
+
+.mypr {
+  --bar: var(--pill-color, var(--grey));
+}
+
+.mypr.ready-to-merge {
+  --bar: var(--vscode-testing-iconPassed, var(--green));
+}
+
 .hover-border :is(.card, .mypr):is(:hover, :focus-within) {
-  --hover-edge: var(--vscode-focusBorder);
-  border-top-color: var(--hover-edge);
-  border-right-color: var(--hover-edge);
-  border-bottom-color: var(--hover-edge);
+  border-top-color: var(--bar);
+  border-right-color: var(--bar);
+  border-bottom-color: var(--bar);
   box-shadow: 0 1px 4px var(--vscode-widget-shadow, rgb(0 0 0 / 35%));
 }
 
 /* The PR cards of "Waiting for review" have only the bar: a thin ring inside, on the padding edge */
 .hover-border .review:is(:hover, :focus-within) {
-  box-shadow: inset 0 0 0 1px var(--vscode-focusBorder), 0 1px 4px var(--vscode-widget-shadow, rgb(0 0 0 / 35%));
-}
-
-/* Tiles with a coloured border keep their colour, brighter */
-.hover-border .card.working-here:is(:hover, :focus-within),
-.hover-border .card.working-worktree:is(:hover, :focus-within) {
-  --hover-edge: color-mix(in srgb, var(--working-here) 75%, var(--vscode-foreground));
-}
-
-.hover-border .card.has-alerts:is(:hover, :focus-within) {
-  --hover-edge: color-mix(in srgb, var(--red) 75%, var(--vscode-foreground));
-}
-
-.hover-border .mypr.ready-to-merge:is(:hover, :focus-within) {
-  --hover-edge: color-mix(in srgb, var(--vscode-testing-iconPassed, var(--green)) 75%, var(--vscode-foreground));
+  box-shadow: inset 0 0 0 1px var(--bar), 0 1px 4px var(--vscode-widget-shadow, rgb(0 0 0 / 35%));
 }
 
 /* tint: a faint lighter background over the tile's own one (the blue of "Working on" and the green of "ready to
@@ -3442,49 +3470,7 @@ button.action-menu-item:focus-visible .action-menu-detail {
   );
 }
 
-/* accent: the background stays; the coloured left bar gets brighter and 2 px wider. The extra width is an inset
-   shadow, so the content does not move. --bar is the colour of the bar of each kind of tile */
-.hover-accent .card {
-  --bar: var(--grey);
-}
-
-.hover-accent .card.state-border-in-progress {
-  --bar: var(--blue);
-}
-
-.hover-accent .card.state-border-done {
-  --bar: var(--green);
-}
-
-.hover-accent .card.state-border-removed {
-  --bar: var(--red);
-}
-
-.hover-accent .card.working-here,
-.hover-accent .card.working-worktree {
-  --bar: var(--working-here);
-}
-
-.hover-accent .card.has-alerts {
-  --bar: var(--red);
-}
-
-.hover-accent .review {
-  --bar: var(--review-accent);
-}
-
-.hover-accent .review.role-optional {
-  --bar: var(--border);
-}
-
-.hover-accent .mypr {
-  --bar: var(--pill-color, var(--grey));
-}
-
-.hover-accent .mypr.ready-to-merge {
-  --bar: var(--vscode-testing-iconPassed, var(--green));
-}
-
+/* accent: the background stays; the left bar gets brighter and 2 px wider (an inset shadow: the content does not move) */
 .hover-accent :is(.card, .review, .mypr):is(:hover, :focus-within) {
   --bar-hover: color-mix(in srgb, var(--bar) 70%, var(--vscode-foreground));
   border-left-color: var(--bar-hover);
