@@ -8,6 +8,7 @@ import { parseCheckoutMode } from './worktrees';
 import { DEFAULT_COMPLETED_STATES } from './predecessors';
 import { DEFAULT_STATE_ORDER } from './states';
 import { parseWorkingDays } from './workingTime';
+import { normalizeHoverStyle } from './hoverStyle';
 import { normalizeWorkingOnAnimation } from './workingOn';
 
 export const SECTION = 'totalflowx';
@@ -45,6 +46,7 @@ export function settings() {
       protocolType: config.get<string>('integrationBuild.protocolType', 'UPack'),
       suffix: config.get<string>('integrationBuild.suffix', '+'),
     },
+    hoverStyle: normalizeHoverStyle(config.get<string>('hoverStyle', 'border')),
     workingOn: {
       showWorktrees: config.get<boolean>('workingOn.showWorktrees', true),
       includeLinkedWorkItems: config.get<boolean>('workingOn.includeLinkedWorkItems', true),

@@ -33,6 +33,7 @@ import { describeTaskBranch, TaskBranchModel } from '../taskBranches';
 import { TaskPullRequestModel } from '../taskPullRequests';
 import { actionMenuId, renderActionMenu } from '../actionMenuHtml';
 import { taskMenuSections, taskPill, TaskPill } from '../taskMenu';
+import { HOVER_STYLES, hoverStyleClass } from '../hoverStyle';
 import { splitWorkingOn, WorkingOnLevel, workingOnAnimationClasses, workingOnBadge } from '../workingOn';
 import type { CompletedPeriod } from '../myPullRequests';
 import type {
@@ -1948,6 +1949,10 @@ function render(): void {
       saveState();
       render();
     });
+  }
+  // Hover style of the cards and PR tiles, switched by a class (strict CSP: no inline styles)
+  for (const style of HOVER_STYLES) {
+    app.classList.toggle(hoverStyleClass(style), style === model.hoverStyle);
   }
   const scope = describeScope(model.iterations);
   const scopeElement = document.getElementById('scope') as HTMLElement;

@@ -918,7 +918,10 @@ export class WorkItemsStore {
 
   toViewModel(
     filter: FilterModel
-  ): Omit<ViewModel, 'alwaysShowAlerts' | 'coverage' | 'layout' | 'pullRequests' | 'reviews' | 'workingOn'> {
+  ): Omit<
+    ViewModel,
+    'alwaysShowAlerts' | 'coverage' | 'hoverStyle' | 'layout' | 'pullRequests' | 'reviews' | 'workingOn'
+  > {
     const currentBranch = this.repository()?.state.HEAD?.name;
     const { completedStates } = settings().dependencies;
     const state = this.workingOnState(currentBranch);

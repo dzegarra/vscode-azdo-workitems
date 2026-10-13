@@ -412,15 +412,11 @@ button {
   background: var(--card-bg);
 }
 
-.card:hover {
-  background: var(--card-hover);
-}
-
 /* Hover on the work item and PR tiles: eased in and out instead of switching at once */
 .card,
 .review,
 .mypr {
-  transition: background-color 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
+  transition: background-color 0.18s ease, border-color 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -450,10 +446,6 @@ button {
   border-color: color-mix(in srgb, var(--working-worktree) 70%, var(--border));
   border-left-width: 3px;
   border-left-color: var(--working-worktree);
-}
-
-.card.working-here:hover {
-  background: color-mix(in srgb, var(--working-here) 20%, var(--card-bg));
 }
 
 /* The badge makes the header longer than a narrow sidebar: the state moves to a second line instead of overlapping */
@@ -2693,11 +2685,6 @@ button.state:focus-visible {
   cursor: pointer;
 }
 
-.review.compact:hover,
-.mypr.compact:hover {
-  background: var(--card-hover);
-}
-
 .review-list.compact,
 .mypr-list.compact {
   gap: 5px;
@@ -3358,4 +3345,111 @@ button.action-menu-item:focus-visible .action-menu-detail {
   ::view-transition-new(*) {
     animation: none;
   }
+}
+
+/*
+ * Hover (and keyboard focus) of the work item cards and the PR tiles: totalflowx.hoverStyle, a class on #app.
+ * The list hover colour (--card-hover) is not used on them: in many themes it is close to the muted greys, the blue
+ * IDs and the state colours, which lowers their contrast. Placed last so that these rules win over the tile variants.
+ * Common to all styles: z-index for the popovers (rules above) and the optional reviews reaching full opacity.
+ */
+
+/* border (default): the background stays; the border brightens and a soft shadow lifts the tile. Only the sides
+   without a coloured bar change: the left bar of the tiles keeps its colour */
+.hover-border :is(.card, .mypr):is(:hover, :focus-within) {
+  --hover-edge: var(--vscode-focusBorder);
+  border-top-color: var(--hover-edge);
+  border-right-color: var(--hover-edge);
+  border-bottom-color: var(--hover-edge);
+  box-shadow: 0 1px 4px var(--vscode-widget-shadow, rgb(0 0 0 / 35%));
+}
+
+/* The PR cards of "Waiting for review" have only the bar: a thin ring inside, on the padding edge */
+.hover-border .review:is(:hover, :focus-within) {
+  box-shadow: inset 0 0 0 1px var(--vscode-focusBorder), 0 1px 4px var(--vscode-widget-shadow, rgb(0 0 0 / 35%));
+}
+
+/* Tiles with a coloured border keep their colour, brighter */
+.hover-border .card.working-here:is(:hover, :focus-within),
+.hover-border .card.working-worktree:is(:hover, :focus-within) {
+  --hover-edge: color-mix(in srgb, var(--working-here) 75%, var(--vscode-foreground));
+}
+
+.hover-border .card.has-alerts:is(:hover, :focus-within) {
+  --hover-edge: color-mix(in srgb, var(--red) 75%, var(--vscode-foreground));
+}
+
+.hover-border .mypr.ready-to-merge:is(:hover, :focus-within) {
+  --hover-edge: color-mix(in srgb, var(--vscode-testing-iconPassed, var(--green)) 75%, var(--vscode-foreground));
+}
+
+/* tint: a faint lighter background over the tile's own one (the blue of "Working on" and the green of "ready to
+   merge" stay underneath) */
+.hover-tint :is(.card, .review, .mypr):is(:hover, :focus-within) {
+  background: color-mix(in srgb, var(--vscode-foreground) 5%, var(--card-bg));
+}
+
+.hover-tint .card.working-here:is(:hover, :focus-within) {
+  background: color-mix(
+    in srgb,
+    var(--vscode-foreground) 5%,
+    color-mix(in srgb, var(--working-here) 14%, var(--card-bg))
+  );
+}
+
+.hover-tint .mypr.ready-to-merge:is(:hover, :focus-within) {
+  background: color-mix(
+    in srgb,
+    var(--vscode-foreground) 5%,
+    color-mix(in srgb, var(--vscode-testing-iconPassed, var(--green)) 8%, var(--card-bg))
+  );
+}
+
+/* accent: the background stays; the coloured left bar gets brighter and 2 px wider. The extra width is an inset
+   shadow, so the content does not move. --bar is the colour of the bar of each kind of tile */
+.hover-accent .card {
+  --bar: var(--grey);
+}
+
+.hover-accent .card.state-border-in-progress {
+  --bar: var(--blue);
+}
+
+.hover-accent .card.state-border-done {
+  --bar: var(--green);
+}
+
+.hover-accent .card.state-border-removed {
+  --bar: var(--red);
+}
+
+.hover-accent .card.working-here,
+.hover-accent .card.working-worktree {
+  --bar: var(--working-here);
+}
+
+.hover-accent .card.has-alerts {
+  --bar: var(--red);
+}
+
+.hover-accent .review {
+  --bar: var(--review-accent);
+}
+
+.hover-accent .review.role-optional {
+  --bar: var(--border);
+}
+
+.hover-accent .mypr {
+  --bar: var(--pill-color, var(--grey));
+}
+
+.hover-accent .mypr.ready-to-merge {
+  --bar: var(--vscode-testing-iconPassed, var(--green));
+}
+
+.hover-accent :is(.card, .review, .mypr):is(:hover, :focus-within) {
+  --bar-hover: color-mix(in srgb, var(--bar) 70%, var(--vscode-foreground));
+  border-left-color: var(--bar-hover);
+  box-shadow: inset 2px 0 0 var(--bar-hover);
 }

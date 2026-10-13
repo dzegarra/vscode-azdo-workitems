@@ -14,6 +14,7 @@ import type { TaskBranchModel } from './taskBranches';
 import type { TaskPullRequestModel } from './taskPullRequests';
 import { isFinishedState } from './states';
 import type { PullRequestTone } from './workItemLinks';
+import type { HoverStyle } from './hoverStyle';
 import type { WorkingOnAnimation, WorkingOnLevel } from './workingOn';
 
 export interface PullRequestModel {
@@ -159,6 +160,8 @@ export interface ViewModel {
   /** Work items with alerts skip the state / PR / priority filters (totalflowx.filter.alwaysShowAlerts) */
   alwaysShowAlerts: boolean;
   layout: Layout;
+  /** How the cards and PR tiles react to the pointer (totalflowx.hoverStyle) */
+  hoverStyle: HoverStyle;
   coverage: CoverageViewModel;
   workingOn: WorkingOnViewModel;
 }

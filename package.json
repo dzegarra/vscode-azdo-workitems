@@ -399,6 +399,21 @@
           "default": "compact",
           "description": "How the work items of the view are shown. Also switchable with the button of the view title."
         },
+        "totalflowx.hoverStyle": {
+          "type": "string",
+          "enum": [
+            "border",
+            "tint",
+            "accent"
+          ],
+          "enumDescriptions": [
+            "The border of the card or PR tile brightens and a soft shadow lifts it. The background (and the text contrast) does not change.",
+            "A faint lighter background. The text contrast drops only marginally.",
+            "The coloured bar on the left gets brighter and wider. The background does not change."
+          ],
+          "default": "border",
+          "markdownDescription": "How the work item cards and the PR tiles react to the pointer (and to the keyboard focus). The default does not touch the background, because the list hover colour of many themes is close to the text colours and makes them harder to read."
+        },
         "totalflowx.filter.alwaysShowAlerts": {
           "type": "boolean",
           "default": false,
