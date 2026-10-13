@@ -33,6 +33,7 @@ export function priorityFilterValue(item: { priority?: number }): string {
 
 const LAST = Number.MAX_SAFE_INTEGER;
 
+// Rule SORT-1
 /**
  * Sorts by state (following the given order), then by priority, then by severity.
  * Missing values go last; otherwise the original order is kept

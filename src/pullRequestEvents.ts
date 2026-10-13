@@ -133,6 +133,7 @@ export function toStored(pullRequests: PullRequestSnapshot[], previous: StoredSn
 const CLOSED_STATUSES = ['fixed', 'wontFix', 'closed', 'byDesign'];
 const REOPENED_STATUSES = ['active', 'pending'];
 
+// Rule MYPR-NOTIF-5
 function detectReopened(
   before: StoredPullRequest,
   pullRequest: PullRequestSnapshot,
@@ -193,6 +194,7 @@ function diffReviewers(
   return changes;
 }
 
+// Rule MYPR-NOTIF-4
 /** People that became required reviewers, left, declined or switched between required and optional */
 function detectReviewerChanges(before: StoredPullRequest, pullRequest: PullRequestSnapshot, myId: string) {
   const { reviewerUpdates } = pullRequest;
@@ -217,6 +219,7 @@ function detectReviewerChanges(before: StoredPullRequest, pullRequest: PullReque
   ];
 }
 
+// Rules MYPR-NOTIF-1..3, MYPR-NOTIF-6
 /** Events since the previous snapshot. PRs not seen before only establish a baseline */
 export function detectEvents(
   previous: StoredSnapshot,

@@ -28,6 +28,7 @@ export interface FilesChanged {
   capped: boolean;
 }
 
+// Rule REVIEW-CARD-4
 /**
  * Files of a page of changes asked with `$top = limit + 1`: the API gives no total, only `nextSkip` when there
  * are more. The count never goes over the limit
@@ -47,6 +48,7 @@ const REQUIRED_REVIEWERS_POLICY = 'Required reviewers';
 /** Rejected until the completion options are chosen: the one who completes the PR picks it, not a reviewer */
 const MERGE_STRATEGY_POLICY = 'Require a merge strategy';
 
+// Rules REVIEW-APPROVE-1..6
 /**
  * The approval of the user is the last thing the PR needs. True when all of this holds:
  * - the PR is active, published and has no conflicts, and the policies are known;
@@ -169,6 +171,7 @@ export function toReviewDetails(
   const open = summarizeOpenObservations(myObservations(extras.threads ?? [], myId), myId);
   let autoCompleteNote: PullRequestWarning | undefined;
   if (pr.autoCompleteSetBy) {
+    // Rule REVIEW-CARD-1
     autoCompleteNote = autoCompleteError ?? { text: AUTO_COMPLETE_REVIEWER_NOTE, severity: 'warning' };
   }
   return {
@@ -184,9 +187,11 @@ export function toReviewDetails(
     autoComplete: !!pr.autoCompleteSetBy,
     approvalCompletes: approvalCompletes(pr, extras.evaluations, myId),
     autoCompleteNote,
+    // Rule REVIEW-CARD-3
     myComments: extras.threads ? myCommentsLine(open) : undefined,
     filesChanged,
     filesChangedText: filesChanged && describeFilesChanged(filesChanged),
+    // Rule REVIEW-CARD-2
     teamRules: ruleWarnings(pr, extras, { minimumRequiredReviewers }).map(({ text }) => text),
   };
 }

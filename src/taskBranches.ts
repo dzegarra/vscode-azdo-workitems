@@ -59,6 +59,7 @@ function whereOf(local: boolean, remote: boolean | undefined): string {
   return 'remote only';
 }
 
+// Rule TASK-BRANCH-4
 function pullRequestOf(
   link: TaskBranchLink,
   pullRequests: TaskBranchPullRequest[]
@@ -78,6 +79,7 @@ function pullRequestOf(
   return { id: pr.pullRequestId, status: label, tone };
 }
 
+// Rules TASK-BRANCH-1..3
 function toTaskBranch(
   link: TaskBranchLink,
   pullRequests: TaskBranchPullRequest[],
@@ -112,6 +114,7 @@ function toTaskBranch(
 
 const RANK: Record<TaskBranchState, number> = { current: 0, exists: 1, deleted: 2, other: 3 };
 
+// Rule TASK-BRANCH-5
 /**
  * The branches linked to a task (once each), the checked out one first, then the ones that exist, the deleted
  * ones and the ones of other repositories

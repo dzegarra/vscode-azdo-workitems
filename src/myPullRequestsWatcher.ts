@@ -115,6 +115,7 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
       hiddenCompleted,
       completedSummary,
       items: items.map((item) => {
+        // Rule MYPR-CARD-3
         const canCheckout = !!local && item.repository.toLowerCase() === local.name.toLowerCase();
         const isCurrentBranch = canCheckout && local.head === item.sourceBranch;
         return {
@@ -212,6 +213,7 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
     }
   }
 
+  // Rules MYPR-LIST-6, MYPR-LIST-7
   private async fetchPollExtras(
     client: AzdoClient,
     pr: AuthoredPullRequest,

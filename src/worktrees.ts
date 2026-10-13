@@ -63,6 +63,7 @@ export function samePath(a: string, b: string): boolean {
   return normalize(a) === normalize(b);
 }
 
+// Rule WORKTREE-1
 /**
  * Worktree where the branch is checked out, ignoring the folders in `exclude` (the one open in this window) and the
  * entries whose directory is gone
@@ -74,6 +75,7 @@ export function findWorktree(worktrees: Worktree[], branch: string, exclude: str
   );
 }
 
+// Rule WORKTREE-2
 /** Branches checked out in the worktrees other than the folders open in this window */
 export function otherWorktreeBranches(worktrees: Worktree[], openFolders: string[]): string[] {
   return worktrees
@@ -87,6 +89,7 @@ export function otherWorktreeBranches(worktrees: Worktree[], openFolders: string
     .map((worktree) => worktree.branch as string);
 }
 
+// Rule WORKTREE-3
 /**
  * Where the worktree of a branch is created: next to the repository, in "<repository folder>.worktrees", with the
  * slashes of the branch name as subfolders: /dev/app + feature/x/12-y -> /dev/app.worktrees/feature/x/12-y
@@ -136,6 +139,7 @@ export function parseCheckoutMode(value: unknown): CheckoutMode {
   return value === 'branch' || value === 'worktree' ? value : 'ask';
 }
 
+// Rules CHECKOUT-1..3
 /**
  * What a Checkout does: "here" (switch the branch of this window), "worktree" or "ask" the user.
  * An explicit choice (the ▾ menu) skips the mode and the question
@@ -158,6 +162,7 @@ export function decideCheckout(options: {
   }
 }
 
+// Rule CHECKOUT-7
 /** Actions offered after creating a branch, in the order of the buttons: the one of totalflowx.checkout.mode first */
 export function branchActionOrder(mode: CheckoutMode): CheckoutChoice[] {
   return mode === 'worktree' ? ['worktree', 'here'] : ['here', 'worktree'];
@@ -208,6 +213,7 @@ export function isMainWorktree(worktrees: Worktree[], target: Worktree): boolean
   return !!main && samePath(main.path, target.path);
 }
 
+// Rule WORKTREE-4
 /** Why a worktree cannot be removed, or undefined when it can */
 export function removalBlocker(
   worktrees: Worktree[],
@@ -264,4 +270,12 @@ export function emptyParentCandidates(worktreeFolder: string, root: string): str
     folder = path.dirname(folder);
   }
   return folder === boundary ? candidates : [];
+}
+
+/**
+ * Rules WORKTREE-OPEN-1, WORKTREE-OPEN-2: what "Open in a worktree" / "Open worktree" does for a branch: open the worktree that exists,
+ * or create it (with its local branch) when there is none
+ */
+export function worktreeOpenAction(hasWorktree: boolean): 'create' | 'open' {
+  return hasWorktree ? 'open' : 'create';
 }

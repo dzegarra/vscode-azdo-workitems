@@ -55,6 +55,7 @@ function defined(signals: (PrSignal | undefined)[]): PrSignal[] {
   return signals.filter((signal): signal is PrSignal => !!signal);
 }
 
+// Rules PRSIGNAL-3, PRSIGNAL-4
 /**
  * Signals of a PR waiting for the user's review, in the order they are shown: required / optional, author, the
  * time waited as a bar, CI, unresolved comments, and whether its branch is the one checked out or is in a worktree.
@@ -99,6 +100,7 @@ export function reviewCompactSignals(request: ReviewRequestModel, now = new Date
   ]);
 }
 
+// Rules PRSIGNAL-1, PRSIGNAL-2, PRSIGNAL-5
 /**
  * Signals of one of the user's PRs, in the order they are shown: next step, CI, unresolved comments, warnings
  * (red when one is an error), auto-complete and ready to merge. Completed PRs only tell when they were completed

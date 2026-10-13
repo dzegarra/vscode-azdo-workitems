@@ -40,6 +40,7 @@ export async function changeState(store: WorkItemsStore, id: number): Promise<vo
   if (!picked || normalizeState(picked.state) === current) {
     return;
   }
+  // Rule DEP-4
   // Starting work (not moving between started states): the predecessors should be completed
   if (stateCategory(picked.state) === 'in-progress' && stateCategory(workItem.state) !== 'in-progress') {
     if (!(await confirmStart(store, workItem))) {

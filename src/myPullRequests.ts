@@ -109,6 +109,7 @@ export interface RawPolicyEvaluation {
   };
 }
 
+// Rule PR-POLICY-1
 /** Undefined for the policies that are disabled or deleted: they do not apply to the PR */
 export function toPolicyEvaluation(raw: RawPolicyEvaluation): PolicyEvaluation | undefined {
   const { configuration } = raw;
@@ -158,6 +159,7 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
+// Rules PR-REVIEWERS-4, PRIM-4
 /** Approvals (approved, or approved with suggestions) of people: groups vote through their members */
 export function countApprovals(pr: AuthoredPullRequest, creatorVoteCounts: boolean): number {
   return pr.reviewers.filter(
@@ -171,10 +173,14 @@ export function countApprovals(pr: AuthoredPullRequest, creatorVoteCounts: boole
 
 export const READY_TO_MERGE = 'Ready to merge';
 export const COMPLETES_BY_ITSELF = 'Will complete automatically';
+export const FIX_THE_WARNINGS = 'Fix the warnings';
+export const NO_APPROVALS_YET = 'No approvals yet';
 
+// Rule PR-POLICY-2
 const SATISFIED_STATUSES = ['approved', 'notApplicable'];
 
 function policyStep(evaluation: PolicyEvaluation, pr: AuthoredPullRequest, extras: PullRequestExtras): string {
+  // Rules PR-STEP-1..7
   switch (evaluation.type) {
     case 'Minimum number of reviewers': {
       const missing = (evaluation.minimumApproverCount ?? 1) - countApprovals(pr, !!evaluation.creatorVoteCounts);
@@ -205,6 +211,7 @@ function policyStep(evaluation: PolicyEvaluation, pr: AuthoredPullRequest, extra
   return `${evaluation.type}: ${evaluation.status}`;
 }
 
+// Rules PR-REVIEWERS-3, PRIM-4
 /**
  * Reviewers who sent the PR back to its author: "Waiting for author" or "Rejected". Branch policies do not count
  * these votes, so without this the PR could look ready to merge. People are named; a group (e.g. a team) only when
@@ -225,6 +232,79 @@ export function feedbackReviewers(pr: Pick<AuthoredPullRequest, 'reviewers' | 'c
   };
 }
 
+const isApprovedBy = (reviewer: AuthoredReviewer) =>
+  !reviewer.hasDeclined && reviewer.vote >= VOTE_APPROVED_WITH_SUGGESTIONS;
+
+/**
+ * Rule PR-REVIEWERS-1: required reviewers who still have to approve. Branch policies may not exist
+ * (e.g. the target is a feature branch) and then nobody else enforces the "required" flag. Not counted: the author,
+ * those who declined, those who approved (vote >= 5) and those who sent the PR back (waiting / rejected: the
+ * feedback steps and warnings already name them). People are listed; a required group only when no required person
+ * is pending and nobody (other than the author) has approved yet, since a group votes through its members
+ */
+export function pendingRequiredReviewers(pr: Pick<AuthoredPullRequest, 'reviewers' | 'createdBy'>): string[] {
+  const pending = pr.reviewers.filter(
+    (reviewer) =>
+      reviewer.isRequired &&
+      reviewer.id !== pr.createdBy.id &&
+      !reviewer.hasDeclined &&
+      reviewer.vote < VOTE_APPROVED_WITH_SUGGESTIONS &&
+      reviewer.vote > VOTE_WAITING_FOR_AUTHOR
+  );
+  const people = pending.filter((reviewer) => !reviewer.isContainer);
+  if (people.length) {
+    return people.map((reviewer) => reviewer.displayName);
+  }
+  const anyApproval = pr.reviewers.some(
+    (reviewer) => !reviewer.isContainer && reviewer.id !== pr.createdBy.id && isApprovedBy(reviewer)
+  );
+  return anyApproval ? [] : pending.map((reviewer) => reviewer.displayName);
+}
+
+const REVIEWER_POLICIES = ['Minimum number of reviewers', 'Required reviewers'];
+
+const isUnsatisfiedBlocking = (evaluation: PolicyEvaluation) =>
+  evaluation.isBlocking && !SATISFIED_STATUSES.includes(evaluation.status);
+
+/** A blocking reviewer policy (minimum number / required reviewers) exists: it enforces the approvals itself */
+function hasReviewerPolicy(extras: Pick<PullRequestExtras, 'evaluations'>): boolean {
+  return (extras.evaluations ?? []).some(
+    (evaluation) => evaluation.isBlocking && REVIEWER_POLICIES.includes(evaluation.type)
+  );
+}
+
+/**
+ * Rules PR-REVIEWERS-2, PR-READY-7: the policies are known, none of them asks for reviewers and nobody but the
+ * author approved: nothing else would ever ask for an approval
+ */
+function lacksFirstApproval(pr: AuthoredPullRequest, extras: Pick<PullRequestExtras, 'evaluations'>): boolean {
+  return (
+    !!extras.evaluations &&
+    !hasReviewerPolicy(extras) &&
+    !pr.reviewers.some((reviewer) => !reviewer.isContainer && reviewer.id !== pr.createdBy.id && isApprovedBy(reviewer))
+  );
+}
+
+/**
+ * The approval steps the reviewer policies do not already say (Rule PR-NEXT-5). "No approvals yet" is the last
+ * gate: it only shows when nothing else is missing
+ */
+function approvalSteps(pr: AuthoredPullRequest, extras: PullRequestExtras, otherSteps: string[]): string[] {
+  const { waiting, rejected } = feedbackReviewers(pr);
+  const covered = (extras.evaluations ?? []).some(
+    (evaluation) => isUnsatisfiedBlocking(evaluation) && REVIEWER_POLICIES.includes(evaluation.type)
+  );
+  const pending = pendingRequiredReviewers(pr);
+  if (pending.length && !covered) {
+    return [`Approval of ${pending.join(', ')} missing`];
+  }
+  if (!pending.length && !otherSteps.length && !waiting.length && !rejected.length && lacksFirstApproval(pr, extras)) {
+    return [NO_APPROVALS_YET];
+  }
+  return [];
+}
+
+// Rule PR-NEXT-3
 /** The feedback steps of the "Next" line: what the author has to do about the reviewers who sent the PR back */
 function feedbackSteps(pr: AuthoredPullRequest): string[] {
   const { waiting, rejected } = feedbackReviewers(pr);
@@ -238,7 +318,12 @@ function feedbackSteps(pr: AuthoredPullRequest): string[] {
  * What is missing before the PR can be merged, in one line: the draft state, the conflicts and the blocking
  * policies that are not satisfied. Undefined when nothing is known to be missing and the policies are unknown
  */
-export function nextStep(pr: AuthoredPullRequest, extras: PullRequestExtras): string | undefined {
+export function nextStep(
+  pr: AuthoredPullRequest,
+  extras: PullRequestExtras,
+  warnings: PullRequestWarning[] = []
+): string | undefined {
+  // Rules PR-NEXT-1, PR-NEXT-2, PR-NEXT-4, PR-NEXT-5, PR-NEXT-7, PR-NEXT-8
   const steps: string[] = [];
   if (pr.isDraft) {
     steps.push('Publish the draft');
@@ -252,8 +337,13 @@ export function nextStep(pr: AuthoredPullRequest, extras: PullRequestExtras): st
       steps.push(policyStep(evaluation, pr, extras));
     }
   }
+  steps.push(...approvalSteps(pr, extras, steps));
   if (steps.length) {
     return [...new Set(steps)].join(' · ');
+  }
+  // Rule PR-NEXT-6: with warnings the PR is not ready, so Next never says it is
+  if (warnings.length) {
+    return FIX_THE_WARNINGS;
   }
   if (!extras.evaluations) {
     return undefined;
@@ -273,6 +363,7 @@ export interface PullRequestWarning {
   actionLabel?: string;
 }
 
+// Rule PR-REVIEWERS-5
 /** Reviewers that must approve: people marked as required, not the author nor those who declined */
 function countRequiredReviewers(pr: AuthoredPullRequest): number {
   return pr.reviewers.filter(
@@ -306,6 +397,7 @@ export interface RetargetContext {
   remoteBranches?: ReadonlySet<string>;
 }
 
+// Rule PR-WARN-10
 /**
  * An active PR that targets a branch other than the base, whose own base is gone: its PR was completed (the changes
  * were squash-merged into the base) or the branch no longer exists. Offers to retarget it to the base branch
@@ -351,6 +443,7 @@ export interface WarningOptions {
 
 export const DEFAULT_WARNING_OPTIONS: WarningOptions = { minimumRequiredReviewers: 2 };
 
+// Rules PR-WARN-5..9
 /** The team rules a published PR breaks. Never for drafts nor for PRs that are not active */
 export function ruleWarnings(
   pr: AuthoredPullRequest,
@@ -394,6 +487,7 @@ export function ruleWarnings(
 export const BUG_AUTOCOMPLETE_WARNING =
   "Auto-complete shouldn't complete the linked Bug: Only testers have that prerogative.";
 
+// Rules PR-WARN-3, PR-WARN-4
 /** Mistakes of the auto-complete settings: only while auto-complete is set */
 export function autoCompleteWarnings(
   pr: AuthoredPullRequest,
@@ -414,6 +508,7 @@ export function autoCompleteWarnings(
   return warnings;
 }
 
+// Rules PR-WARN-1, PR-WARN-2
 /**
  * A reviewer sent the PR back: the author has to act. "Rejected" is an error, "Waiting for author" a warning. Both
  * keep the PR from being "Ready to merge" and make it count in the Summary's PRs with warnings
@@ -459,12 +554,15 @@ export function isReadyToMerge(
   extras: Pick<PullRequestExtras, 'evaluations'>,
   warnings: PullRequestWarning[]
 ): boolean {
+  // Rules PR-READY-1..9
   if (
     pr.status !== 'active' ||
     pr.isDraft ||
     pr.mergeStatus === 'conflicts' ||
     warnings.length ||
-    !extras.evaluations
+    !extras.evaluations ||
+    pendingRequiredReviewers(pr).length ||
+    lacksFirstApproval(pr, extras)
   ) {
     return false;
   }
@@ -480,14 +578,17 @@ export function isReadyToMerge(
 export type NextTone = 'ready' | 'danger' | 'pending';
 
 export function nextTone(next: string | undefined, warnings: PullRequestWarning[]): NextTone {
+  // Rules PR-TONE-1, PR-EFFECT-2
   if (warnings.some((warning) => warning.severity === 'error')) {
     return 'danger';
   }
-  return next === READY_TO_MERGE || next === COMPLETES_BY_ITSELF ? 'ready' : 'pending';
+  // Rules PR-TONE-2, PR-TONE-3: 'ready' only without warnings (the PR is ready to merge, or completes by itself)
+  return !warnings.length && (next === READY_TO_MERGE || next === COMPLETES_BY_ITSELF) ? 'ready' : 'pending';
 }
 
 export type VoteKind = 'approved' | 'declined' | 'none' | 'rejected' | 'suggestions' | 'waiting';
 
+// Rules VOTE-1..6
 export function voteKind(reviewer: Pick<AuthoredReviewer, 'hasDeclined' | 'vote'>): VoteKind {
   if (reviewer.hasDeclined) {
     return 'declined';
@@ -514,6 +615,7 @@ export interface ReviewerModel {
   isContainer: boolean;
 }
 
+// Rule PRIM-3
 /** The author is left out: they appear in the reviewers when they added themselves. Required ones first */
 export function reviewerModels(
   pr: Pick<AuthoredPullRequest, 'reviewers'> & { createdBy: { id?: string } },
@@ -629,6 +731,7 @@ export interface ListOptions {
   remoteBranches?: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
+// Rule MYPR-LIST-2
 /** Completed no longer than windowMs ago (a window of 0 matches nothing) */
 export function isCompletedWithin(pr: AuthoredPullRequest, now: Date, windowMs: number): boolean {
   return (
@@ -644,6 +747,7 @@ function waitingSince({ pr, extras }: AuthoredPullRequestData): string {
   return pr.isDraft ? pr.creationDate : publishedAt(pr, extras.threads);
 }
 
+// Rule MYPR-CARD-2
 /** How long the PR has been waiting: working time once published (as the reviewers see it), calendar time for a draft */
 function waitingTime(data: AuthoredPullRequestData, now: Date, workingDays: readonly number[]): string {
   const since = new Date(waitingSince(data));
@@ -710,6 +814,7 @@ function toModel(
     repositoryId: pr.repository.id,
     url: pr.webUrl,
     sourceBranch: stripHeads(pr.sourceRefName),
+    // Rule MYPR-CARD-1
     target: target === baseBranch ? undefined : target,
     workItems: extras.workItems ?? [],
     timeline: buildTimeline(pr, extras.threads, formatDate),
@@ -718,6 +823,7 @@ function toModel(
     isDraft: pr.isDraft,
     isCompleted,
   };
+  // Rules PR-EFFECT-4, MYPR-LIST-7
   if (isCompleted) {
     const ago = formatAge(now.getTime() - Date.parse(pr.closedDate ?? ''));
     const fields = phaseFields(pullRequestPhases(pr, extras.threads, workingDays), formatDate ?? formatTimelineDate);
@@ -742,7 +848,8 @@ function toModel(
       remoteBranches: options.remoteBranches?.get(pr.repository.name.toLowerCase()),
     }),
   ];
-  const next = nextStep(pr, extras);
+  // Rule PR-EFFECT-1
+  const next = nextStep(pr, extras, warnings);
   return {
     ...base,
     time: waitingTime({ pr, extras }, now, workingDays),
@@ -758,6 +865,7 @@ function toModel(
   };
 }
 
+// Rule MYPR-LIST-5
 /** Active non-draft PRs (oldest publication first), then the drafts, then the recently completed (latest first) */
 function compare(a: AuthoredPullRequestData, b: AuthoredPullRequestData): number {
   const rank = ({ pr }: AuthoredPullRequestData) => {
@@ -783,6 +891,7 @@ export interface MyPullRequestList {
   completedSummary?: string;
 }
 
+// Rules MYPR-LIST-2..4
 /**
  * The PRs to list: the active ones and those completed within the period. Abandoned PRs are never listed.
  * Drafts can be hidden, and so can the completed PRs (period "hidden"): they are counted (the completed ones

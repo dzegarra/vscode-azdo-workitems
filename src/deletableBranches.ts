@@ -17,11 +17,13 @@ function sourceBranch(pr: Pick<BranchPullRequest, 'sourceRefName'>): string {
   return pr.sourceRefName.replace(HEADS_PREFIX, '');
 }
 
+// Rule DELETABLE-1
 /** Branches that PRs merge into and out of, never offered for deletion even if a PR (e.g. develop to a release) used them as source */
 export function isProtectedBranch(name: string): boolean {
   return ['develop', 'main', 'master'].includes(name) || name.startsWith('release/');
 }
 
+// Rule DELETABLE-2
 /**
  * Whether the PRs say the branch is merged: one of them (source = the branch, in this repository) is completed and
  * none is still active (a new PR may have been opened from the same branch). Abandoned PRs do not count; base
@@ -54,6 +56,7 @@ export interface DeletableInput {
   remoteExists: (name: string) => boolean | undefined;
 }
 
+// Rule DELETABLE-3
 /**
  * The merged branches that still exist, locally or in Azure DevOps. A branch whose remote existence is unknown and
  * that is not local is left out (it is asked again next time)

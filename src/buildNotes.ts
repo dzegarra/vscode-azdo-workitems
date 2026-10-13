@@ -41,6 +41,7 @@ export function normalizeRepoPath(path: string): string {
     .replace(/^(\.?\/)+/, '');
 }
 
+// Rule BUILDNOTES-2
 /** The PR has the tag (case-insensitive); removed tags (inactive labels) do not count */
 export function hasSkipTag(labels: PullRequestLabel[] | undefined, tag: string): boolean {
   const wanted = tag.trim().toLowerCase();
@@ -55,6 +56,7 @@ export interface CommitsDiff {
   allChangesIncluded?: boolean;
 }
 
+// Rule BUILDNOTES-3
 /**
  * Whether the diff touches the file. Undefined (unknown) when the file is not in the list and the list is not
  * complete
@@ -93,6 +95,7 @@ export interface BuildNotesStatus {
   changed?: boolean;
 }
 
+// Rule BUILDNOTES-1
 /** Whether the rule applies to the PR at all: published, active, enabled, local repository with the file */
 export function ruleApplies(
   pr: Pick<BuildNotesPullRequest, 'isDraft' | 'status'>,
@@ -126,6 +129,7 @@ export function buildNotesWarningText(options: Pick<BuildNotesOptions, 'path' | 
   return `Explain the changes for testers in ${options.path}, or tag the PR "${options.skipTag}"`;
 }
 
+// Rule BUILDNOTES-3
 /** The PR should explain its changes: the rule applies, it is not tagged, and it surely does not change the file */
 export function needsBuildNotesWarning(
   pr: BuildNotesPullRequest,

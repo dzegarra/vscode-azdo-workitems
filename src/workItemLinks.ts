@@ -106,6 +106,7 @@ const VOTE_APPROVED_WITH_SUGGESTIONS = 5;
 const VOTE_WAITING_FOR_AUTHOR = -5;
 const VOTE_REJECTED = -10;
 
+// Rules PR-STATUS-1..9
 /** Summary of a PR as shown in Azure DevOps: draft, waiting for review, approved, rejected… */
 export function pullRequestStatus(pr: PullRequestState): { label: string; tone: PullRequestTone } {
   if (pr.status === 'completed') {

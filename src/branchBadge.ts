@@ -19,6 +19,7 @@ const LOCATION_TITLES = {
   linked: 'Known only from a link or a PR',
 } as const;
 
+// Rules BRANCH-BADGE-1..3
 export function branchBadge(
   branch: Pick<BranchModel, 'location' | 'worktree'>,
   deletable: boolean,

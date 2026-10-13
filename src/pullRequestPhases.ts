@@ -98,6 +98,7 @@ function systemEvents(threads: ThreadResponse[], from: number, to: number): Syst
     .sort((a, b) => a.at - b.at);
 }
 
+// Rule MYPR-PHASE-7
 /**
  * Votes that move the PR between phases: the ones of the required reviewers when they voted, otherwise of anybody
  * but the author
@@ -110,6 +111,7 @@ function relevantVoter(pr: PhasesSource, events: SystemEvent[]): (name: string |
   return (name) => !name || name !== pr.createdBy.displayName;
 }
 
+// Rule MYPR-PHASE-6
 /** The last approval after which nobody asked for changes or reset the votes */
 function mergeStart(events: SystemEvent[], isRelevant: (name: string | undefined) => boolean): number | undefined {
   let start: number | undefined;
@@ -126,6 +128,7 @@ function mergeStart(events: SystemEvent[], isRelevant: (name: string | undefined
   return start;
 }
 
+// Rules MYPR-PHASE-4, MYPR-PHASE-5
 function voteKind(kind: PhaseKind, event: SystemEvent, isRelevant: (name: string | undefined) => boolean): PhaseKind {
   const vote = event.vote ?? 0;
   if (!isRelevant(event.voter) || kind === 'draft') {
@@ -137,6 +140,7 @@ function voteKind(kind: PhaseKind, event: SystemEvent, isRelevant: (name: string
   return kind === 'author' ? 'review' : kind;
 }
 
+// Rules MYPR-PHASE-3, MYPR-PHASE-5
 function nextKind(kind: PhaseKind, event: SystemEvent, isRelevant: (name: string | undefined) => boolean): PhaseKind {
   switch (event.type) {
     case 'publish':
@@ -164,6 +168,7 @@ interface Transition {
   kind: PhaseKind;
 }
 
+// Rule MYPR-PHASE-2
 function transitions(
   events: SystemEvent[],
   start: number,
@@ -228,6 +233,7 @@ function eventOf(event: SystemEvent): PhaseEvent | undefined {
   }
 }
 
+// Rules MYPR-PHASE-1, MYPR-PHASE-8
 /**
  * Segments from the creation to the completion, without gaps or overlaps, and the events to mark on them.
  * Without a completion date (or with unreadable dates) there are no phases. Without threads the PR waited for review

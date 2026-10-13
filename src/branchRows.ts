@@ -5,7 +5,7 @@ import { branchMenuSections } from './branchMenu';
 import { checkoutButton } from './checkoutButtons';
 import { escapeHtml } from './html';
 import { icon } from './icons';
-import { isFinishedState } from './states';
+import { isClosedState } from './states';
 import type { BranchModel, WorkItemModel } from './viewModel';
 import { mergedBranchHint } from './deletableBranches';
 import { branchTooltip } from './workItemBranches';
@@ -29,6 +29,7 @@ export function branchMenuKey(id: number, branch: string): string {
   return `branch-${id}-${branch}`;
 }
 
+// Rules BRANCH-ROW-1, BRANCH-ROW-2, BRANCH-ROW-4
 /**
  * One branch: icon, name, where it is (current / local / remote / linked) and the worktree that has it. The ones of
  * other repositories are dimmed like the PRs of other repositories and cannot be checked out
@@ -78,6 +79,7 @@ export function renderBranchRow(branch: BranchModel, options: BranchRowOptions):
   }</span></div>`;
 }
 
+// Rule BRANCH-ROW-3
 /** Finished work items list the branches to delete and the other local branches: remote refs and links remain after deletion */
 function isListedWhenFinished(branch: BranchModel, card: Pick<WorkItemModel, 'deletableBranches'>): boolean {
   return !!card.deletableBranches?.includes(branch.name) || (!branch.otherRepository && branch.location === 'local');
@@ -92,7 +94,7 @@ export function renderBranchList(
   card: Pick<WorkItemModel, 'branch' | 'branches' | 'id' | 'deletableBranches' | 'state'>,
   popover?: BranchRowOptions['popover']
 ): string {
-  const finished = isFinishedState(card.state);
+  const finished = isClosedState(card.state);
   const muted = (text: string) => `<div class="row muted">${icon('branch')}<span>${text}</span></div>`;
   const branches = finished ? card.branches.filter((branch) => isListedWhenFinished(branch, card)) : card.branches;
   const rows = branches.map((branch) =>

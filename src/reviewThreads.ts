@@ -79,6 +79,7 @@ export interface OpenObservations {
   answered: boolean;
 }
 
+// Rule REVIEW-CARD-3
 export function summarizeOpenObservations(observations: Observation[], myId: string): OpenObservations {
   const open = observations.filter(isOpen);
   const answered = open.some(({ comments }) => {
@@ -118,6 +119,7 @@ export interface ObservationEvent {
   replies: ObservationComment[];
 }
 
+// Rule REVIEW-NOTIF-8
 /**
  * Replies of other people and resolutions since the previous check, one event per thread.
  * A PR seen for the first time only establishes a baseline

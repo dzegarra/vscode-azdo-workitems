@@ -8,6 +8,7 @@ import { isNotStartedState, normalizeState } from './states';
 
 export const DEFAULT_COMPLETED_STATES = ['Done', 'Ready to Test', 'Closed', 'Removed'];
 
+// Rule DEP-1
 /** True when the state is one of the completed states ("Ready-to-Test" matches "Ready to Test") */
 export function isCompletedState(state: string, completedStates: string[] = DEFAULT_COMPLETED_STATES): boolean {
   const normalized = normalizeState(state);
@@ -91,6 +92,7 @@ export function predecessorFilterValue(item: { openPredecessors?: unknown[] }): 
   return item.openPredecessors.length ? OPEN_PREDECESSORS : NONE_OPEN;
 }
 
+// Rule DEP-3
 /** Not started and nothing open before it. Unknown predecessors give no hint */
 export function isReadyToStart(item: { state: string; openPredecessors?: unknown[] }): boolean {
   return isNotStartedState(item.state) && item.openPredecessors?.length === 0;

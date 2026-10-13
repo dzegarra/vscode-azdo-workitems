@@ -157,6 +157,7 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
 
   /** Requests that count: the required ones, and the optional ones when `includeOptional` is on */
   private shown(): { requests: ReviewRequest[]; hiddenOptional: number } {
+    // Rule REVIEW-REQ-5
     const { shown, hiddenOptional } = splitOptional(this.requests, reviewSettings().includeOptional);
     return { requests: shown, hiddenOptional };
   }
@@ -403,6 +404,7 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
       this.changed.fire();
 
       const requestsKey = `reviewRequests.v2:${scope}`;
+      // Rule REVIEW-NOTIF-7: only the shown requests are notified
       // Read just before comparing: another window may have stored a newer state meanwhile
       // The stored state tracks every request, optional ones included: switching "include optional" on later
       // then finds them known, and the user is not flooded with "new request" notifications. Only the events of

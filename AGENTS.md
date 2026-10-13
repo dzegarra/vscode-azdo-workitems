@@ -4,6 +4,7 @@ VS Code extension (ID `abb-totalflowx.vscode-azdo-workitems`, display name "Tota
 
 - What it does, for users: [README.md](README.md).
 - Why things are the way they are: [docs/DECISIONS.md](docs/DECISIONS.md). **Read it before changing behaviour.**
+- The exact decision rules (which states are shown, which actions are unlocked), with stable IDs: [docs/RULES.md](docs/RULES.md).
 - What we learned about the Azure DevOps REST API (verified on our organization): [docs/AZURE_DEVOPS.md](docs/AZURE_DEVOPS.md).
 
 ## Context
@@ -35,6 +36,7 @@ src/repositoryGate.ts     startup gate (whenRepositoryReady on the store): await
 src/azdoClient.ts         REST client (fetch + bearer token from the VS Code Microsoft sign-in, src/auth.ts)
 src/requestRecorder.ts    the ONLY place that calls fetch: records every request (src/requestStats.ts, src/diagnostics.ts)
 src/requestContext.ts     AsyncLocalStorage "feature" attribution of requests (withFeature)
+docs/RULES.md             decision tables of every rule (IDs referenced by `// Rule <ID>` comments; src/rulesDoc.test.ts)
 src/pullRequestTasks.ts    pure rules of the PR tasks (reusable tasks, which move on publish / completion, branch of a task row)
 src/taskMenu.ts            pure: the pill of a task row (branches + PRs) and the actions menu behind it
 src/deletableBranches.ts   pure: when a branch is offered for deletion (completed PR, still exists, no active PR); texts of the delete flows
@@ -79,9 +81,10 @@ These files are the project's memory: conversations with AI agents are not share
 - [README.md](README.md): every user-visible change (features, settings, commands, texts).
 - [docs/DECISIONS.md](docs/DECISIONS.md): every decision with a "why" (a team rule, a trade-off, something that looks like a bug but is intended). Correct or remove entries that the change makes wrong.
 - [docs/AZURE_DEVOPS.md](docs/AZURE_DEVOPS.md): every new or corrected fact about the API (endpoints, versions, quirks), only once verified.
+- [docs/RULES.md](docs/RULES.md): every change to a decision rule (states shown, actions unlocked, thresholds): update its row, its `// Rule <ID>` comment and a test in the same change. `src/rulesDoc.test.ts` enforces that the IDs in the code and in the document match.
 - This file (AGENTS.md): when the architecture, commands, conventions, verification steps or safety rules change, or when a convention turns out to be missing.
 
-Before finishing a task, check that these four files still describe the code; say in the summary of the change which ones were updated.
+Before finishing a task, check that these files still describe the code; say in the summary of the change which ones were updated.
 
 ## Safety rules (for humans and agents)
 

@@ -37,6 +37,7 @@ export class PullRequestExtrasLoader {
     const { id: repositoryId, project } = pr.repository;
     const id = pr.pullRequestId;
     const [evaluations, threads, workItems, runs] = await Promise.all([
+      // Rule PR-POLICY-3: failed policies stay undefined
       client.getPolicyEvaluations(project.id, id).catch(() => undefined),
       knownThreads ?? client.getPullRequestThreads(repositoryId, id).catch(() => undefined),
       this.fetchWorkItems(client, repositoryId, id),

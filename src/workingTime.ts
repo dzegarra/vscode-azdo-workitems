@@ -24,6 +24,7 @@ function localMidnight(date: Date, dayOffset = 0): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + dayOffset);
 }
 
+// Rule PRIM-2
 /**
  * Milliseconds of [start, end) that fall on working weekdays of the local time zone. Days are walked from midnight
  * to midnight, so a day with a daylight saving change counts 23 or 25 hours. 0 when end is not after start

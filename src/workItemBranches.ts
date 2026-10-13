@@ -37,6 +37,7 @@ function locationIn(name: string, local: string[], remote: string[]): BranchLoca
   return remote.includes(name) ? 'remote' : 'linked';
 }
 
+// Rules BRANCH-SET-1..3
 /**
  * Branches of the work item, once each (by repository and name): local and remote branches named after it, the ones
  * linked in its Development section and the source branches of its active PRs
@@ -111,6 +112,7 @@ export interface BranchContext {
   worktreeFor: (branch: string) => string | undefined;
 }
 
+// Rule BRANCH-SET-4
 /** Branches as the card shows them: the checked out one first, then the main branch, the rest of this repository and the other repositories */
 export function toBranchModels(branches: EntryBranch[], context: BranchContext): BranchModel[] {
   return branches

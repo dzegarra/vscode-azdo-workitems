@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { AzdoClient } from '../azdoClient';
 import { AuthoredPullRequest } from '../myPullRequests';
 
+// Rule FLOW-RETARGET-1
 /** Moves a PR of the user to the base branch, after confirming: its base was merged, so the branch may need a rebase */
 export async function retargetPullRequest(
   client: AzdoClient,

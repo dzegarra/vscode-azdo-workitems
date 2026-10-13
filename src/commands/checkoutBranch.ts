@@ -11,6 +11,7 @@ import {
   findWorktree,
   hasUncommittedChanges,
   stashMessage,
+  worktreeOpenAction,
   worktreePath,
 } from '../worktrees';
 
@@ -36,6 +37,7 @@ async function hasChanges(repository: Repository): Promise<boolean> {
   });
 }
 
+// Rule CHECKOUT-6
 /**
  * Switches this window to the branch. For a PR the branch is fetched first and, when the local branch existed and is
  * behind, the latest commits are pulled. For a branch that only exists in the remote, git creates the local one
@@ -160,6 +162,18 @@ export async function openInWorktree(
   void vscode.window.showInformationMessage(`Opened ${branch} in a worktree at ${folder}`);
 }
 
+/**
+ * Rules WORKTREE-OPEN-1, WORKTREE-OPEN-2: the "Open in a worktree" / "Open worktree" items of the menus: opens the worktree of the
+ * branch, or creates it when there is none (same as the Open in a worktree button of the ▾ menu)
+ */
+export async function openOrCreateWorktree(git: GitAPI, store: WorkItemsStore, branch: string): Promise<void> {
+  if (worktreeOpenAction(!!store.worktreeFor(branch)) === 'open') {
+    await openWorktree(store, branch);
+    return;
+  }
+  await openInWorktree(pickRepository(git), store, { branch });
+}
+
 const CHOICES: Record<string, CheckoutChoice | 'stash'> = {
   [OPEN_IN_WORKTREE]: 'worktree',
   [STASH_AND_CHECKOUT]: 'stash',
@@ -182,6 +196,7 @@ async function askWhatToDo(current: string | undefined): Promise<CheckoutChoice 
   return picked ? CHOICES[picked] : undefined;
 }
 
+// Rules CHECKOUT-3, CHECKOUT-4, CHECKOUT-5
 /**
  * Checks out a branch of a work item or PR. By default (totalflowx.checkout.mode "ask") a clean repository switches
  * branch and a repository with uncommitted changes asks what to do. `choice` (the ▾ menu) skips the question
@@ -259,6 +274,7 @@ function branchActionButtons(): string[] {
   );
 }
 
+// Rule CHECKOUT-7
 /**
  * Offers to check out the branch or open it in a worktree (a notification, not modal: dismissing it stays on the
  * current branch). Resolves when the user answered and the chosen action finished

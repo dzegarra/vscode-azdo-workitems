@@ -19,6 +19,7 @@ export interface PullRequestTaskRef {
   branchNames?: string[];
 }
 
+// Rule TASK-PR-1
 /** Done or Removed: nothing more to do in the task */
 export function isTaskClosed(state: string): boolean {
   return ['done', 'removed'].includes(stateCategory(state));
@@ -33,6 +34,7 @@ export function pullRequestTaskTitle(description: string): string {
   return `PR: ${description.trim()}`;
 }
 
+// Rule TASK-PR-2
 /** Open tasks that can stand for a new PR: not closed and not already linked to an active PR */
 export function reusableTasks(tasks: PullRequestTaskRef[], activePullRequestIds: ReadonlySet<number>) {
   return tasks.filter(
@@ -40,6 +42,7 @@ export function reusableTasks(tasks: PullRequestTaskRef[], activePullRequestIds:
   );
 }
 
+// Rule TASK-PR-4
 /** Tasks of the PR that must move to In Progress when the PR is published */
 export function tasksToStart(tasks: PullRequestTaskRef[], pullRequestId: number): PullRequestTaskRef[] {
   return tasks.filter(
@@ -47,16 +50,19 @@ export function tasksToStart(tasks: PullRequestTaskRef[], pullRequestId: number)
   );
 }
 
+// Rule TASK-PR-5
 /** Tasks of the PR to offer to set Done once the PR is completed */
 export function tasksToComplete(tasks: PullRequestTaskRef[], pullRequestId: number): PullRequestTaskRef[] {
   return tasks.filter((task) => task.pullRequestIds.includes(pullRequestId) && !isTaskClosed(task.state));
 }
 
+// Rule TASK-PR-3
 /** State of the task of a PR just created: In Progress when the PR is published, untouched for a draft */
 export function stateForNewPullRequestTask(task: Pick<PullRequestTaskRef, 'state'>, isDraft: boolean) {
   return isDraft || isTaskClosed(task.state) || isInProgress(task.state) ? undefined : TASK_IN_PROGRESS;
 }
 
+// Rule TASK-ACT-2
 /** The "Create PR" button of a task row: open task, no active PR yet, and its work item not finished */
 export function canCreatePullRequestForTask(input: {
   taskState: string;
@@ -72,6 +78,7 @@ export function canCreatePullRequestForTask(input: {
   );
 }
 
+// Rule TASK-ACT-1
 /** The "Create branch" button of a task row: open task without branch, and its work item not finished */
 export function canCreateBranchForTask(input: {
   taskState: string;
@@ -88,6 +95,7 @@ export function canCreateBranchForTask(input: {
   );
 }
 
+// Rule TASK-PR-6
 /** State of the task once a branch is created for it: In Progress when it was not started, untouched otherwise */
 export function stateForNewBranchTask(task: Pick<PullRequestTaskRef, 'state'>): string | undefined {
   return isNotStartedState(task.state) ? TASK_IN_PROGRESS : undefined;
@@ -102,6 +110,7 @@ export interface CandidateBranch {
 
 export type TaskBranchChoice = { kind: 'branch'; name: string } | { kind: 'pick'; names: string[] } | { kind: 'none' };
 
+// Rule TASK-PR-7
 /**
  * Branch for a PR created from a task: the branches linked to the task come first when some are usable in this
  * repository, otherwise the ones of the work item. Among them: the current branch when it is one, otherwise the

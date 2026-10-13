@@ -13,7 +13,7 @@ import type { ReviewRequestModel } from './reviewRequests';
 import type { ReviewedPeriod, ReviewedRequest } from './reviewedRequests';
 import type { TaskBranchModel } from './taskBranches';
 import type { TaskPullRequestModel } from './taskPullRequests';
-import { isFinishedState } from './states';
+import { isClosedState } from './states';
 import type { PullRequestTone } from './workItemLinks';
 import type { HoverStyle } from './hoverStyle';
 import type { WorkingOnAnimation, WorkingOnLevel } from './workingOn';
@@ -293,8 +293,9 @@ export const NO_PULL_REQUEST = 'No PR';
 
 export type BranchAction = 'checkout' | 'createBranch' | 'createPullRequest' | 'deleteBranch';
 
+// Rules CARD-ACT-1..5
 /**
- * Branch actions offered for a work item. Finished work items (Done, Ready to Test…) get no new branch, checkout
+ * Branch actions offered for a work item. Finished or Removed work items (Done, Ready to Test, Removed…) get no new branch, checkout
  * or PR. "Delete branch" is offered whatever the state when exactly one branch is deletable (its PR was completed):
  * with several, each branch row has its own button
  */
@@ -304,7 +305,7 @@ export function branchActions(
   // Only the PRs of this repository count: an active PR in another one does not cover this branch
   const hasActivePullRequest = item.pullRequests.some((pr) => pr.isActive && !pr.otherRepository);
   const remove: BranchAction[] = item.deletableBranches?.length === 1 ? ['deleteBranch'] : [];
-  if (isFinishedState(item.state)) {
+  if (isClosedState(item.state)) {
     return remove;
   }
   if (!item.branch) {
@@ -342,6 +343,7 @@ export function pullRequestFilterValue(item: Pick<WorkItemModel, 'pullRequests'>
   return item.pullRequests.at(0)?.status ?? NO_PULL_REQUEST;
 }
 
+// Rules FILTER-1..6, ALERT-SHOW-3, WORKON-4
 /**
  * True when the work item passes the type / state / PR / priority / predecessors filters and matches the search text.
  * With "alwaysShowAlerts", work items with alerts skip the state / PR / priority / predecessors filters: they must be fixed
@@ -389,6 +391,7 @@ type FilterableItem = Pick<WorkItemModel, 'pullRequests' | 'state' | 'type'> & {
   openPredecessors?: unknown[];
 };
 
+// Rule FILTER-7
 /**
  * Filter values hiding something among the given work items: types left out, and states, PR states, priorities and
  * predecessor states hidden. Values no work item has are not counted: they have no chip to switch back on

@@ -10,6 +10,7 @@ export const WORKING_ON_ANIMATIONS = ['none', 'borderLight', 'runningBorder', 'g
 /** totalflowx.workingOn.animation: what the card of a work item being worked on "here" does */
 export type WorkingOnAnimation = (typeof WORKING_ON_ANIMATIONS)[number];
 
+// Rule WORKON-5
 /** Unknown values (a typo in settings.json) mean no animation */
 export function normalizeWorkingOnAnimation(value: string | undefined): WorkingOnAnimation {
   return WORKING_ON_ANIMATIONS.find((animation) => animation === value) ?? 'none';
@@ -36,6 +37,7 @@ function stripHeads(ref: string): string {
   return ref.startsWith(HEADS) ? ref.slice(HEADS.length) : ref;
 }
 
+// Rules WORKON-1, WORKON-2
 /**
  * Work items that a checked out branch belongs to. Always the one whose branch it is; with `includeLinked`, also the
  * ones whose ID is in the branch name, whose active PR has the branch as source, or whose Development section links to it
@@ -117,6 +119,7 @@ export function workingOnLevels({
   return levels;
 }
 
+// Rule TASK-WORK-1
 /** Level of a task row: "here" when one of its branches is the checked out one, "worktree" when another worktree has one */
 export function taskWorkingOn(
   branchNames: string[],
@@ -154,6 +157,7 @@ export function workingOnBadge(level: WorkingOnLevel, worktreePath?: string): Wo
   };
 }
 
+// Rule WORKON-3
 /**
  * Splits the visible cards into the "Working on" section (here first, then worktree; the order of the rest is kept)
  * and the rest. Without a section, nothing moves

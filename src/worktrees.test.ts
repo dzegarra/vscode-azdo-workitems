@@ -6,6 +6,7 @@ import {
   envFileCandidates,
   findWorktree,
   hasUncommittedChanges,
+  worktreeOpenAction,
   parseCheckoutMode,
   parseSetupMarker,
   parseWorktreeList,
@@ -282,5 +283,12 @@ describe('branchActionOrder', () => {
   it('puts the checkout first in the other modes', () => {
     expect(branchActionOrder('ask')).toEqual(['here', 'worktree']);
     expect(branchActionOrder('branch')).toEqual(['here', 'worktree']);
+  });
+});
+
+describe('worktreeOpenAction (Rules WORKTREE-OPEN-1, WORKTREE-OPEN-2)', () => {
+  it('opens the worktree that exists and creates it otherwise', () => {
+    expect(worktreeOpenAction(true)).toBe('open');
+    expect(worktreeOpenAction(false)).toBe('create');
   });
 });

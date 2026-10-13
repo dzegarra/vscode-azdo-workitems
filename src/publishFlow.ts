@@ -8,6 +8,7 @@ export interface PublishSteps {
   refresh(): Promise<void>;
 }
 
+// Rules FLOW-PUBLISH-1, FLOW-PUBLISH-2
 /** Returns false when the user cancels: nothing is sent to Azure DevOps then */
 export async function publishDraft(pullRequestId: number, isDraft: boolean, steps: PublishSteps): Promise<boolean> {
   if (!isDraft) {

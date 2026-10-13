@@ -11,6 +11,7 @@ export interface BranchMenuOptions {
   checkout: boolean;
 }
 
+// Rules BRANCH-MENU-1..3
 function checkoutItems(branch: BranchModel, id: number): ActionMenuItem[] {
   const base = { id, kind: 'workItem' as const, branch: branch.name };
   if (branch.isCurrent) {
@@ -28,6 +29,7 @@ function checkoutItems(branch: BranchModel, id: number): ActionMenuItem[] {
   ];
 }
 
+// Rules BRANCH-MENU-4, BRANCH-MENU-5
 /** Items of a branch of the open repository (none for the branches of other repositories); Delete when it is deletable */
 export function branchMenuSections(
   branch: BranchModel,

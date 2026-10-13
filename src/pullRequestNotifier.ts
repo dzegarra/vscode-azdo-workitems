@@ -152,6 +152,7 @@ export class PullRequestNotifier implements vscode.Disposable {
     void this.store.refresh();
     // Completed PRs are shown by handleMerged
     const shown = events.filter((event) => event.kind !== 'merged');
+    // Rule MYPR-NOTIF-7
     if (shown.length > MAX_NOTIFICATIONS) {
       void this.showSummary(shown);
       return;
@@ -177,6 +178,7 @@ export class PullRequestNotifier implements vscode.Disposable {
     } catch {
       // Only an offer: the task can be changed from the card and the branch deleted from there
     }
+    // Rule MYPR-OFFER-3
     if (!offered && announce) {
       await this.show(event);
     }

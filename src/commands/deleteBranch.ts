@@ -40,6 +40,7 @@ interface Target {
   owner?: WorkItemEntry['workItem'];
 }
 
+// Rule FLOW-DELETE-6
 /** Branch picked among the ones to delete of the work item, or of the whole list (command palette) */
 async function resolveTarget(
   store: WorkItemsStore,
@@ -108,19 +109,23 @@ export async function deleteBranch(
   const { client, repositoryName } = resolveContext(repository);
   const { remote, baseBranch } = settings();
   const azdoRepository = await client.getRepository(repositoryName);
+  // Rule FLOW-DELETE-1
   if (isProtectedBranch(name) || name === baseBranch) {
     throw new Error(`${name} is a base branch: it is never deleted.`);
   }
   const live = await liveState(client, azdoRepository, name);
+  // Rule FLOW-DELETE-2
   if (live.activePullRequestId !== undefined) {
     throw new Error(`PR ${live.activePullRequestId} is still active on ${name}: complete or abandon it first.`);
   }
+  // Rule FLOW-DELETE-3
   if (!live.completed) {
     throw new Error(`${name} has no completed PR: only the branches of completed PRs are deleted.`);
   }
   const { remoteObjectId } = live;
   const isCurrent = repository.state.HEAD?.name === name;
   const local = await repository.getBranch(name).catch(() => undefined);
+  // Rule FLOW-DELETE-4
   if (!local && !remoteObjectId) {
     void vscode.window.showInformationMessage(`The branch ${name} is already deleted.`);
     store.forgetBranch(name);
@@ -142,6 +147,7 @@ export async function deleteBranch(
         : '\nThe branch only exists locally: its commits that were not merged will be lost.'
     );
   }
+  // Rule FLOW-DELETE-5
   const confirm = await vscode.window.showWarningMessage(
     deleteBranchQuestion(name, owner),
     { modal: true, detail: details.join('\n') },

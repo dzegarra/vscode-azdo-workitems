@@ -11,6 +11,7 @@ import {
   isCompletedWithin,
   isReadyToMerge,
   nextTone,
+  pendingRequiredReviewers,
   plainDescription,
   nextStep,
   phaseTotals,
@@ -65,6 +66,10 @@ const POLICIES_13713: PolicyEvaluation[] = [
   evaluation('Required reviewers', 'queued', false),
   evaluation('Status', 'approved', false),
 ];
+
+/** A PR somebody (not the author) approved: without any approval a PR is never ready (Rule PR-READY-7) */
+const approvedPr = (overrides: Partial<AuthoredPullRequest> = {}) =>
+  pr({ reviewers: [{ id: 'approver', displayName: 'Approver', vote: 10 }], ...overrides });
 
 const extras = (overrides: Partial<PullRequestExtras> = {}): PullRequestExtras => ({ runs: [], ...overrides });
 
@@ -140,12 +145,12 @@ describe('nextStep', () => {
       evaluation('Build', 'notApplicable'),
       evaluation('Work item linking', 'approved'),
     ];
-    expect(nextStep(pr(), extras({ evaluations: policies }))).toBe('Ready to merge');
+    expect(nextStep(approvedPr(), extras({ evaluations: policies }))).toBe('Ready to merge');
   });
 
   it('is ready, or completes by itself, when nothing blocks', () => {
-    expect(nextStep(pr(), extras({ evaluations: [] }))).toBe('Ready to merge');
-    expect(nextStep(pr({ autoCompleteSetBy: { id: ME } }), extras({ evaluations: [] }))).toBe(
+    expect(nextStep(approvedPr(), extras({ evaluations: [] }))).toBe('Ready to merge');
+    expect(nextStep(approvedPr({ autoCompleteSetBy: { id: ME } }), extras({ evaluations: [] }))).toBe(
       'Will complete automatically'
     );
   });
@@ -283,6 +288,116 @@ describe('pullRequestWarnings: team rules of the published PRs', () => {
   });
 });
 
+/** The PR 13847: the target is a feature branch, so no policies; two required people and a required group at 0 */
+const PR_13847 = () =>
+  pr({
+    reviewers: [
+      { id: 'kamil', displayName: 'Kamil Borecki EXT', vote: 0, isRequired: true },
+      { id: 'krzysztof', displayName: 'Krzysztof Siwak EXT', vote: 0, isRequired: true },
+      { id: 'team', displayName: 'UI Development Team', vote: 0, isRequired: true, isContainer: true },
+      { id: 'optional', displayName: 'Optional', vote: 0 },
+    ],
+  });
+
+describe('required reviewers (Rules PR-REVIEWERS-1..2, PR-READY-6..7, PR-NEXT-5)', () => {
+  const none = extras({ evaluations: [] });
+
+  it('lists the pending required people; a required group only while nobody approved', () => {
+    expect(pendingRequiredReviewers(PR_13847())).toEqual(['Kamil Borecki EXT', 'Krzysztof Siwak EXT']);
+    const groupOnly = pr({
+      reviewers: [{ id: 'team', displayName: 'Team', vote: 0, isRequired: true, isContainer: true }],
+    });
+    expect(pendingRequiredReviewers(groupOnly)).toEqual(['Team']);
+    const approvedMember = pr({
+      reviewers: [...groupOnly.reviewers, { id: 'member', displayName: 'Member', vote: 10 }],
+    });
+    expect(pendingRequiredReviewers(approvedMember)).toEqual([]);
+  });
+
+  it('does not count the author, the declined, the approved nor those who sent the PR back', () => {
+    const reviewers = [
+      { id: ME, displayName: 'Me', vote: 0, isRequired: true },
+      { id: 'd', displayName: 'Declined', vote: 0, isRequired: true, hasDeclined: true },
+      { id: 'a', displayName: 'Approved', vote: 5, isRequired: true },
+      { id: 'w', displayName: 'Waiting', vote: -5, isRequired: true },
+      { id: 'r', displayName: 'Rejected', vote: -10, isRequired: true },
+    ];
+    expect(pendingRequiredReviewers(pr({ reviewers }))).toEqual([]);
+  });
+
+  it('keeps the PR 13847 (no policies, required reviewers at 0) from being ready', () => {
+    expect(nextStep(PR_13847(), none)).toBe('Approval of Kamil Borecki EXT, Krzysztof Siwak EXT missing');
+    expect(isReadyToMerge(PR_13847(), none, [])).toBe(false);
+  });
+
+  it('is ready once the required reviewers approved, with no policies', () => {
+    const reviewers = [
+      { id: 'kamil', displayName: 'Kamil', vote: 10, isRequired: true },
+      { id: 'krzysztof', displayName: 'Krzysztof', vote: 5, isRequired: true },
+    ];
+    expect(nextStep(pr({ reviewers }), none)).toBe('Ready to merge');
+    expect(isReadyToMerge(pr({ reviewers }), none, [])).toBe(true);
+  });
+
+  it('says "No approvals yet" when nobody approved and no policy asks for reviewers', () => {
+    expect(nextStep(pr(), none)).toBe('No approvals yet');
+    expect(isReadyToMerge(pr(), none, [])).toBe(false);
+    // The author's own vote and a group do not count
+    const reviewers = [
+      { id: ME, displayName: 'Me', vote: 10 },
+      { id: 'team', displayName: 'Team', vote: 10, isContainer: true },
+    ];
+    expect(nextStep(pr({ reviewers }), none)).toBe('No approvals yet');
+    // Only when nothing else is missing
+    expect(nextStep(pr(), extras({ evaluations: [evaluation('Build', 'running', true, { displayName: 'CI' })] }))).toBe(
+      'CI running'
+    );
+  });
+
+  it('does not repeat the approval step when a reviewer policy already says it', () => {
+    const policies = [evaluation('Required reviewers', 'queued')];
+    expect(nextStep(PR_13847(), extras({ evaluations: policies }))).toBe('Approval of a required reviewer missing');
+    const minimum = [evaluation('Minimum number of reviewers', 'queued', true, { minimumApproverCount: 2 })];
+    expect(nextStep(PR_13847(), extras({ evaluations: minimum }))).toBe('2 more approvals needed');
+    // An approved or optional reviewer policy does not say it
+    const optional = [evaluation('Required reviewers', 'queued', false)];
+    expect(nextStep(PR_13847(), extras({ evaluations: optional }))).toBe(
+      'Approval of Kamil Borecki EXT, Krzysztof Siwak EXT missing'
+    );
+  });
+
+  it('names the waiting reviewers once (feedback), not as pending approval', () => {
+    const reviewers = [{ id: 'w', displayName: 'Waiting', vote: -5, isRequired: true }];
+    expect(nextStep(pr({ reviewers }), none)).toBe('Address the feedback of Waiting');
+  });
+});
+
+describe('Next agrees with Ready (Rules PR-NEXT-6, PR-TONE-2)', () => {
+  const warning: PullRequestWarning = { text: 'x', severity: 'warning' };
+  const error: PullRequestWarning = { text: 'x', severity: 'error' };
+
+  it('asks to fix the warnings instead of saying "Ready to merge"', () => {
+    const data = extras({ evaluations: [] });
+    expect(nextStep(approvedPr(), data, [warning])).toBe('Fix the warnings');
+    expect(nextTone('Fix the warnings', [warning])).toBe('pending');
+    expect(nextTone('Fix the warnings', [error])).toBe('danger');
+    expect(nextStep(approvedPr({ autoCompleteSetBy: { id: ME } }), data, [warning])).toBe('Fix the warnings');
+    expect(nextStep(approvedPr(), data, [])).toBe('Ready to merge');
+  });
+
+  it('never has the ready tone and no ready flag disagree on the card model', () => {
+    const options = { now: NOW, baseBranch: 'develop', showDrafts: true, minimumRequiredReviewers: 0 };
+    const card = (pull: AuthoredPullRequest) =>
+      toMyPullRequestModels([{ pr: pull, extras: extras({ evaluations: [] }) }], options).items[0];
+    // Auto-complete that does not delete the branch: a warning, nothing else missing
+    const warned = card(
+      approvedPr({ autoCompleteSetBy: { id: ME }, completionOptions: { deleteSourceBranch: false } })
+    );
+    expect(warned).toMatchObject({ readyToMerge: false, next: 'Fix the warnings', nextTone: 'pending' });
+    expect(card(approvedPr())).toMatchObject({ readyToMerge: true, next: 'Ready to merge', nextTone: 'ready' });
+  });
+});
+
 describe('isReadyToMerge', () => {
   const approved = POLICIES_13713.map((p) => ({ ...p, status: 'approved' }));
   const waitingApprovals = [
@@ -299,7 +414,7 @@ describe('isReadyToMerge', () => {
   it('is true when everything is approved and nothing warns', () => {
     expect(ready(pr(), approved)).toBe(true);
     expect(ready(pr({ autoCompleteSetBy: { id: ME } }), approved)).toBe(true);
-    expect(ready(pr(), [])).toBe(true);
+    expect(ready(approvedPr(), [])).toBe(true);
   });
 
   it('ignores the optional policies that are not satisfied', () => {
@@ -351,7 +466,9 @@ describe('isReadyToMerge', () => {
   it('colours the next line as danger when a warning is an error', () => {
     expect(nextTone('Will complete automatically', [{ text: 'x', severity: 'error' }])).toBe('danger');
     expect(nextTone('Ready to merge', [{ text: 'x', severity: 'error' }])).toBe('danger');
-    expect(nextTone('Will complete automatically', [{ text: 'x', severity: 'warning' }])).toBe('ready');
+    expect(nextTone('Will complete automatically', [{ text: 'x', severity: 'warning' }])).toBe('pending');
+    expect(nextTone('Fix the warnings', [{ text: 'x', severity: 'warning' }])).toBe('pending');
+    expect(nextTone('Fix the warnings', [{ text: 'x', severity: 'error' }])).toBe('danger');
     expect(nextTone('Ready to merge', [])).toBe('ready');
     expect(nextTone('1 more approval needed', [])).toBe('pending');
     expect(nextTone(undefined, [])).toBe('pending');

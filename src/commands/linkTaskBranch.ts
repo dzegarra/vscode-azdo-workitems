@@ -6,6 +6,7 @@ const STATUS_MESSAGE_MS = 5000;
 
 const LINK = 'Link branch';
 
+// Rule ALERT-FIX-1
 /**
  * Adds a branch of a task of the work item to the Development section of the work item (the quick fix of the alert
  * "Branch … of task … is not linked to this work item"). Only branches of the open repository, after a confirmation

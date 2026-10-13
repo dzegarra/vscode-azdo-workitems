@@ -168,6 +168,7 @@ export async function offerCompletedPullRequest(
   pr: Pick<PullRequestDetails, 'pullRequestId' | 'repository'>,
   { tasks: offerTasks, branch, open, deleteBranch }: CompletedPullRequestOffer
 ): Promise<boolean> {
+  // Rules MYPR-OFFER-1, MYPR-OFFER-2
   const tasks = offerTasks ? tasksToComplete(await tasksLinkedTo(client, pr), pr.pullRequestId) : [];
   if (!tasks.length && !branch) {
     return false;

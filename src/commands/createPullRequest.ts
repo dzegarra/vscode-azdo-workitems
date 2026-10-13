@@ -100,6 +100,7 @@ async function openExistingPullRequest(
   return true;
 }
 
+// Rule FLOW-PR-7
 function pickDraft(title: string, placeHolder: string): Thenable<{ isDraft: boolean } | undefined> {
   return vscode.window.showQuickPick(
     [
@@ -129,6 +130,7 @@ async function isBaseCompleted(client: AzdoClient, azdoRepository: GitRepository
   }
 }
 
+// Rule FLOW-PR-4
 /**
  * Branch the PR merges into: the base the branch was created from while that branch still exists and its own PR
  * is not completed (the user chooses between it and the default), otherwise the default. Undefined when cancelled
@@ -167,6 +169,7 @@ async function resolveTarget(
 
 const WRITE_NOTES = "Yes, I'll write the notes";
 
+// Rule FLOW-PR-5
 /**
  * Team rule: the branch explains its changes for testers in the build notes file or the PR is tagged. Checked
  * locally (no request), before any other question: stopping to write the notes loses no answer. Returns the tags
@@ -202,6 +205,7 @@ async function checkBuildNotes(root: string, base: string, head: string): Promis
   return choice === tagChoice ? [notes.skipTag] : undefined;
 }
 
+// Rule FLOW-PR-6
 /** Work items, feature name and description: the title "[ids] Feature: description". Undefined when cancelled */
 async function askTitle(
   client: AzdoClient,
@@ -262,6 +266,7 @@ async function pickTaskBranch(
   return branch ? { branch, isLocal: branch === current || location === 'local' } : undefined;
 }
 
+// Rule FLOW-PR-1
 /** From a work item: its branch. From the command palette: the current branch. From a task row: see pickTaskBranch */
 async function resolveSourceBranch(
   store: WorkItemsStore,
@@ -282,6 +287,7 @@ async function resolveSourceBranch(
   return { branch, isLocal: !node || node.branchLocation === 'local' };
 }
 
+// Rule FLOW-PR-8
 /** The PR task of the new PR: the task of the row, or the answer to the "PR task" question */
 async function resolvePullRequestTask(
   store: WorkItemsStore,
@@ -330,6 +336,7 @@ export async function createPullRequest(
     return;
   }
   const { branch, isLocal } = source;
+  // Rule FLOW-PR-2
   if (branch === s.baseBranch) {
     void vscode.window.showWarningMessage(`Cannot create a pull request from the base branch "${s.baseBranch}".`);
     return;
@@ -338,6 +345,7 @@ export async function createPullRequest(
   const { client, repositoryName } = resolveContext(repository);
   const azdoRepository = await client.getRepository(repositoryName);
 
+  // Rule FLOW-PR-3
   if (await openExistingPullRequest(client, azdoRepository, branch)) {
     return;
   }
@@ -370,6 +378,7 @@ export async function createPullRequest(
     return;
   }
 
+  // Rule FLOW-PR-9
   const pr = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: 'Creating pull request' },
     async (progress) => {

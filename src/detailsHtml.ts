@@ -153,6 +153,7 @@ const BRANCH_BUTTONS: Record<BranchAction, (card: WorkItemModel) => string> = {
       title="The PR is merged: delete the branch, as the team does">Delete branch</button>`,
 };
 
+// Rule CARD-BTN-3
 function renderActions(data: DetailsData): string {
   const { card } = data;
   const actions = [

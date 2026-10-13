@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { createBranch } from './commands/createBranch';
 import { checkoutPullRequest } from './commands/checkoutPullRequest';
 import { isCheckoutBranch } from './workItemBranches';
-import { BranchTarget, checkoutBranch, openWorktree, showCheckoutMenu } from './commands/checkoutBranch';
+import { BranchTarget, checkoutBranch, openOrCreateWorktree, showCheckoutMenu } from './commands/checkoutBranch';
 import { removeWorktreeOf, removeWorktreesCommand, showWorktreeMenu } from './commands/removeWorktree';
 import { runPendingWorktreeSetup } from './worktreeSetup';
 import { CheckoutKind } from './viewModel';
@@ -153,6 +153,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   };
 
+  // Rule ALERT-SHOW-5
   // Visible even when the sidebar is closed
   const alertsStatus = vscode.window.createStatusBarItem('totalflowx.alerts', vscode.StatusBarAlignment.Left);
   alertsStatus.name = 'Work items needing attention';
@@ -322,7 +323,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       checkoutBranch(git, store, branchTarget(kind, id, branch), 'here')
     ),
     command('totalflowx.openWorktree', async (kind: CheckoutKind, id: number, branch?: string) =>
-      openWorktree(store, branchTarget(kind, id, branch).branch)
+      openOrCreateWorktree(git, store, branchTarget(kind, id, branch).branch)
     ),
     command('totalflowx.worktreeMenu', async (kind: CheckoutKind, id: number, branch?: string) =>
       showWorktreeMenu(store, git, branchTarget(kind, id, branch).branch)

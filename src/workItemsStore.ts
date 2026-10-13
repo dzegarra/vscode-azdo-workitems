@@ -65,6 +65,7 @@ interface BranchCandidates {
 }
 
 const REMOTE_REF_TYPE = 1;
+// Rule DELETABLE-3: existence is cached this long
 /** How long a branch found (or not found) in Azure DevOps is trusted before asking again */
 const BRANCH_EXISTENCE_TTL_MS = 10 * 60 * 1000;
 
@@ -85,6 +86,7 @@ async function listBranches(repository: Repository | undefined, remoteName: stri
   };
 }
 
+// Rules BRANCH-MAIN-1, BRANCH-MAIN-2
 /** Local branch of the work item, or a remote one (by name or linked to the work item) */
 function findBranch(
   workItem: WorkItem,
@@ -202,6 +204,7 @@ async function fetchDependencies(client: AzdoClient, workItems: WorkItem[]): Pro
   };
 }
 
+// Rule ALERT-FIX-2
 /** "Integrated in Build" can be filled automatically from the last release of the deploy image */
 function withQuickFixes(alerts: WorkItemAlert[], integrationBuildField: string | undefined): WorkItemAlert[] {
   return alerts.map((alert) =>
@@ -269,6 +272,7 @@ function alertsOf(
   );
 }
 
+// Rule ALERT-GATE-1
 async function alertRules(client: AzdoClient): Promise<(AlertRules & { integrationBuildField?: string }) | undefined> {
   const s = settings().alerts;
   if (!s.enabled) {
@@ -615,6 +619,7 @@ export class WorkItemsStore {
     return entries;
   }
 
+  // Rule DELETABLE-4
   /**
    * Sets the branches to delete of every entry: the ones of this repository with a completed PR (and no active
    * one) that still exist. Only those are asked to Azure DevOps (cached like the task branches)
@@ -642,6 +647,7 @@ export class WorkItemsStore {
     }
   }
 
+  // Rule MYPR-OFFER-2
   /**
    * Source branch of a completed PR when it should be offered for deletion: it still exists (locally or in Azure
    * DevOps) in the open repository and no other PR from it is active. Up to three requests; undefined on any doubt

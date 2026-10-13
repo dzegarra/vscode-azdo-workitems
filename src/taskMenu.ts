@@ -19,6 +19,7 @@ export type TaskMenuAction = ActionMenuAction;
 export type TaskMenuItem = ActionMenuItem;
 export type TaskMenuSection = ActionMenuSection;
 
+// Rules TASK-MENU-1..5
 export function taskMenuSections(task: TaskMenuTask, parentId: number): TaskMenuSection[] {
   const branchItems = task.taskBranches.flatMap((branch): TaskMenuItem[] => {
     const remove: TaskMenuItem[] = branch.deletable
@@ -129,6 +130,7 @@ function describePill(task: TaskMenuTask, pr: TaskPullRequestModel | undefined):
     : `Task ${task.id}: create a branch or a pull request`;
 }
 
+// Rules TASK-PILL-1..3
 /** The pill of a task row; undefined when there is nothing to show and nothing to do */
 export function taskPill(task: TaskMenuTask): TaskPill | undefined {
   const linked = task.taskBranches.length + task.taskPullRequests.length > 0;

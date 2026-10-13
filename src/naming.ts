@@ -33,6 +33,7 @@ export function slugify(title: string, maxLength = MAX_SLUG_LENGTH): string {
   return (lastDash > 0 ? cut.slice(0, lastDash) : slug.slice(0, maxLength)).replace(/-+$/, '');
 }
 
+// Rule FLOW-BRANCH-4
 export function branchTypeFor(workItemType: string, mapping: Partial<Record<string, string>>): string {
   return mapping[workItemType] ?? DEFAULT_BRANCH_TYPE;
 }
@@ -41,6 +42,7 @@ export function isValidModule(module: string): boolean {
   return MODULE_PATTERN.test(module);
 }
 
+// Rule FLOW-BRANCH-4
 export function buildBranchName(type: string, module: string, id: number, slug: string): string {
   const cleanSlug = slugify(slug, Number.MAX_SAFE_INTEGER);
   return cleanSlug ? `${type}/${module}/${id}-${cleanSlug}` : `${type}/${module}/${id}`;

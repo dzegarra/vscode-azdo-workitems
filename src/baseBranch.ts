@@ -53,6 +53,7 @@ function toCandidate(name: string, pullRequests: BaseBranchPullRequest[]): BaseC
   return { name, description: pr && `PR ${pr.id} ${pr.status}`, completed: pr?.status === 'completed' };
 }
 
+// Rule FLOW-BRANCH-5
 /** Orders the branches a new branch can start from. Only branches that exist in the remote are candidates */
 export function baseCandidates(input: BaseCandidatesInput): BaseCandidates {
   const { defaultBase, pullRequests } = input;
@@ -79,6 +80,7 @@ export interface TargetInput {
   baseCompleted: boolean;
 }
 
+// Rule FLOW-PR-4
 /** The stored base when it still makes sense as a target; undefined when the default applies */
 export function usableStoredBase({
   stored,

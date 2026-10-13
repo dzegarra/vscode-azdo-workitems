@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { canHaveTasks, sanitizeHtml, stateButton } from './html';
 import {
   DEFAULT_STATE_ORDER,
+  isClosedState,
   normalizeState,
   sortByState,
   stateAfterBranchCreated,
@@ -75,5 +76,16 @@ describe('state button', () => {
     expect(canHaveTasks('Product Backlog Item')).toBe(true);
     expect(canHaveTasks('Bug')).toBe(true);
     expect(canHaveTasks('Task')).toBe(false);
+  });
+});
+
+describe('isClosedState (Rule STATE-7)', () => {
+  it('is true for done-like and removed states only', () => {
+    for (const state of ['Done', 'Ready to Test', 'Closed', 'Removed']) {
+      expect(isClosedState(state)).toBe(true);
+    }
+    for (const state of ['New', 'Approved', 'Committed', 'In Progress']) {
+      expect(isClosedState(state)).toBe(false);
+    }
   });
 });

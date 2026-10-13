@@ -13,6 +13,7 @@ export type ReviewedPeriod = 'active' | 'day' | 'hidden' | 'month' | 'week';
 
 export const REVIEWED_PERIODS: ReviewedPeriod[] = ['hidden', 'active', 'day', 'week', 'month'];
 
+// Rule REVIEWED-1
 /** The value of the setting, hidden when it is not a known period */
 export function reviewedPeriodSetting(value: string): ReviewedPeriod {
   return REVIEWED_PERIODS.find((period) => period === value) ?? 'hidden';
@@ -49,6 +50,7 @@ export interface ReviewedRequest {
 
 const VOTES_LISTED: VoteKind[] = ['approved', 'suggestions', 'waiting', 'rejected'];
 
+// Rule REVIEWED-2
 /** The user's vote in the PR when it is one to list: someone else's PR, published, voted by the user (not declined) */
 function myListedVote(pr: ReviewerPullRequest, myId: string): { vote: VoteKind; isRequired: boolean } | undefined {
   const me = pr.reviewers.find((reviewer) => reviewer.id === myId);
@@ -59,6 +61,7 @@ function myListedVote(pr: ReviewerPullRequest, myId: string): { vote: VoteKind; 
   return VOTES_LISTED.includes(vote) ? { vote, isRequired: !!me.isRequired } : undefined;
 }
 
+// Rules REVIEWED-3, REVIEWED-4
 /** Whether the PR is in the period: the active ones always, the closed ones when closed within the window */
 function inPeriod(pr: ReviewerPullRequest, now: Date, windowMs: number): boolean {
   if (pr.status === 'active') {
@@ -70,6 +73,7 @@ function inPeriod(pr: ReviewerPullRequest, now: Date, windowMs: number): boolean
   );
 }
 
+// Rule REVIEWED-5
 /** Active ones first (newest first), then the closed ones, the most recently closed first */
 function byActiveThenDate(a: ReviewerPullRequest, b: ReviewerPullRequest): number {
   const aActive = a.status === 'active';
@@ -81,6 +85,7 @@ function byActiveThenDate(a: ReviewerPullRequest, b: ReviewerPullRequest): numbe
     : (b.closedDate ?? '').localeCompare(a.closedDate ?? '');
 }
 
+// Rule REVIEWED-7: reviewed PRs never count as review requests
 /**
  * The PRs of other people that the user has voted on (approved, approved with suggestions, waiting for the
  * author, rejected), for the period: the active ones, plus those completed or abandoned within the window when
@@ -136,6 +141,7 @@ export interface ReviewedRef {
   status: ReviewedRequest['status'];
 }
 
+// Rule REVIEWED-6
 /**
  * The reviewed PRs whose details have to be fetched now. Only unfolded PRs (and listed ones) are ever fetched:
  * - closed (completed / abandoned) PRs do not change: fetched once, then kept for the session;
@@ -158,6 +164,7 @@ export function reviewedIdsToFetch(
     .map(({ id }) => id);
 }
 
+// Rule REVIEWED-6
 /**
  * The details to forget: those of active PRs that were folded (they would be stale when unfolded again) or are
  * no longer listed. The ones of closed PRs stay for the session

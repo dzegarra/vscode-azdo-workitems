@@ -305,6 +305,12 @@ describe('branch actions', () => {
     expect(branchActions({ ...item, state: 'Done', deletableBranches: ['a', 'b'] })).toEqual([]);
   });
 
+  it('removed work items get no new branch, checkout nor PR either (Rules STATE-7, CARD-ACT-1), only Delete branch', () => {
+    expect(branchActions({ ...item, state: 'Removed' })).toEqual([]);
+    expect(branchActions({ ...item, state: 'Removed', branch: undefined })).toEqual([]);
+    expect(branchActions({ ...item, state: 'Removed', deletableBranches })).toEqual(['deleteBranch']);
+  });
+
   it('offers Delete branch whatever the state of the work item, after the other buttons', () => {
     expect(branchActions({ ...item, deletableBranches })).toEqual(['checkout', 'createPullRequest', 'deleteBranch']);
     expect(branchActions({ ...item, branch: undefined, deletableBranches })).toEqual(['createBranch', 'deleteBranch']);

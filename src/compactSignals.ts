@@ -5,7 +5,7 @@ import { pullRequestTooltip } from './pullRequestModel';
 import type { RunModel, RunState } from './pipelines';
 import { runTooltip } from './runDetails';
 import { severityLevel, severityName } from './priority';
-import { isFinishedState } from './states';
+import { isClosedState } from './states';
 import { branchTooltip } from './workItemBranches';
 import { taskProgress } from './taskProgress';
 import type { WorkItemModel } from './viewModel';
@@ -124,9 +124,10 @@ function severalBranchesSignal(item: WorkItemModel): CompactSignal {
   };
 }
 
+// Rules SIGNAL-BRANCH-1..6
 function branchSignal(item: WorkItemModel): CompactSignal | undefined {
   const deletable = item.deletableBranches ?? [];
-  if (deletable.length && (isFinishedState(item.state) || (item.branch && deletable.includes(item.branch)))) {
+  if (deletable.length && (isClosedState(item.state) || (item.branch && deletable.includes(item.branch)))) {
     // The PR was completed and the branch is still there: whatever the state of the work item
     return {
       kind: 'branch',
@@ -135,17 +136,17 @@ function branchSignal(item: WorkItemModel): CompactSignal | undefined {
       tone: 'leftover',
     };
   }
-  if (!isFinishedState(item.state) && item.branches.length > 1) {
+  if (!isClosedState(item.state) && item.branches.length > 1) {
     return severalBranchesSignal(item);
   }
   if (!item.branch) {
     // Only branches of other repositories
     const [other] = item.branches;
-    return other && !isFinishedState(item.state)
+    return other && !isClosedState(item.state)
       ? { kind: 'branch', label: '', title: branchTooltip(other), tone: 'remote', otherRepository: true }
       : undefined;
   }
-  if (isFinishedState(item.state)) {
+  if (isClosedState(item.state)) {
     // Once the branch is deleted nothing is left to tell
     return undefined;
   }
@@ -173,6 +174,7 @@ function ciSignal(item: WorkItemModel, now: Date): CompactSignal | undefined {
   };
 }
 
+// Rules SIGNAL-1..10
 /**
  * Signals of a work item, in the order they are shown: working on, priority, severity, predecessors, fix links, branch, PR, CI of the PR, tasks, alerts.
  * Each one only when it applies. `children` are the tasks of the work item

@@ -516,6 +516,7 @@ export class AzdoClient {
     return data.authenticatedUser.id;
   }
 
+  // Rule MYPR-NOTIF-1
   /** PRs created by the user in the project: the active ones and the most recently closed */
   async getPullRequestsCreatedBy(creatorId: string, top = MAX_PULL_REQUESTS): Promise<PullRequestDetails[]> {
     const result = await this.request<{
@@ -528,6 +529,7 @@ export class AzdoClient {
     }));
   }
 
+  // Rule MYPR-LIST-1
   /**
    * PRs created by the user in the project: the active ones and the latest completed (newest first).
    * Abandoned PRs are not requested

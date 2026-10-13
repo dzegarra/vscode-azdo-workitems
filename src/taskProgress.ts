@@ -20,6 +20,7 @@ export function taskProgress(tasks: { state: string }[]): TaskProgress {
 /** Alerts about the tasks: their list opens by itself so the problem stays visible */
 const TASK_ALERT_RULES: AlertRule[] = ['tasksNotDone', 'pullRequestTaskNotDone', 'pullRequestTaskNotInProgress'];
 
+// Rule ALERT-SHOW-1
 export function hasTaskAlerts(alerts: { rule: AlertRule }[]): boolean {
   return alerts.some((alert) => TASK_ALERT_RULES.includes(alert.rule));
 }

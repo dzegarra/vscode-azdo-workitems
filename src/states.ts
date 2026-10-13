@@ -2,6 +2,7 @@
 
 export const DEFAULT_STATE_ORDER = ['Done', 'Ready to Test', 'Committed', 'In Progress', 'Approved', 'New', 'To Do'];
 
+// Rule STATE-1
 /**
  * Comparable form of a state name: case, spaces, dashes and doubled letters are ignored,
  * so "Ready-to-Test" matches "Ready to Test" and "Commited" matches "Committed"
@@ -35,6 +36,7 @@ export function sortByState<T extends { state: string }>(items: T[], order: stri
 
 export type StateCategory = 'done' | 'in-progress' | 'proposed' | 'removed';
 
+// Rules STATE-2..5
 /** Colour family of a state: green when done, blue when in progress, grey when proposed, red when removed */
 export function stateCategory(state: string): StateCategory {
   if (isOneOf(state, ['Done', 'Ready to Test', 'Closed', 'Resolved', 'Completed'])) {
@@ -46,6 +48,7 @@ export function stateCategory(state: string): StateCategory {
   return isOneOf(state, ['Removed']) ? 'removed' : 'proposed';
 }
 
+// Rule STATE-6
 /**
  * Done, Ready to Test… The work is finished: no more branches or PRs are created for it, and its branch
  * should be deleted (the team deletes the branches once their PR is merged)
@@ -54,13 +57,24 @@ export function isFinishedState(state: string): boolean {
   return stateCategory(state) === 'done';
 }
 
+/**
+ * Rule STATE-7: Done-like or Removed. No more branches, checkouts or PRs are offered for the work item (the
+ * rules for tasks, `canCreate*ForTask`, exclude done or removed parents as well); only cleanup remains
+ */
+export function isClosedState(state: string): boolean {
+  const category = stateCategory(state);
+  return category === 'done' || category === 'removed';
+}
+
 /** States in which work on the item has not started yet */
 const NOT_STARTED_STATES = ['New', 'Approved', 'To Do'];
 
+// Rule STATE-8
 export function isNotStartedState(state: string): boolean {
   return isOneOf(state, NOT_STARTED_STATES);
 }
 
+// Rule STATE-9
 /**
  * State the work item should move to when a branch is created for it, if any.
  * Only items not started yet are moved, so an item is never moved backwards

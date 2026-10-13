@@ -490,6 +490,7 @@ const BRANCH_ACTION_BUTTONS: Record<BranchAction, { label: string; className: st
   },
 };
 
+// Rule CARD-BTN-4
 function branchActionButton(action: BranchAction, item: WorkItemModel): string {
   if (action === 'checkout') {
     return checkoutButton({
@@ -507,6 +508,7 @@ function branchActionButton(action: BranchAction, item: WorkItemModel): string {
   return `<button class="button ${className}" data-action="${action}" data-id="${item.id}"${target} title="${title}">${label}</button>`;
 }
 
+// Rule CARD-BTN-1
 function renderActions(item: WorkItemModel): string {
   const actions = branchActions(item).map((action) => branchActionButton(action, item));
   if (canHaveTasks(item.type)) {
@@ -769,6 +771,7 @@ function renderUrgency(item: WorkItemModel): string {
   return `<span class="urgency" title="${escapeHtml(item.type)}">${pills.join('')}</span>`;
 }
 
+// Rules ALERT-FIX-1..4, ALERT-SHOW-1
 /** Problems the developers must fix ASAP */
 function renderAlerts(item: WorkItemModel): string {
   if (!item.alerts.length) {
@@ -988,6 +991,7 @@ function renderCards(items: WorkItemModel[], current: ViewModel): string {
     .join('');
 }
 
+// Rule WORKON-4
 /**
  * Work items of one iteration. The group can be collapsed to keep only the iterations of interest open;
  * its header keeps counting the work items, and the ones that need attention, while it is collapsed
@@ -1032,6 +1036,7 @@ function renderWorkingOnSection(items: WorkItemModel[], current: ViewModel): str
   </section>`;
 }
 
+// Rule ALERT-SHOW-4
 /**
  * Whether the card is shown. "Show only these" shows every work item with alerts, even those the
  * state / PR / priority filters hide
@@ -1045,6 +1050,7 @@ function isCardVisible(item: WorkItemModel, current: ViewModel): boolean {
   return isVisible(item, current.filter, search, current.alwaysShowAlerts, ignoreFilters);
 }
 
+// Rule ALERT-SHOW-2
 /** Summary of the work items with problems, with a toggle to show only them */
 function renderAlertsBanner(current: ViewModel): string {
   const withAlerts = cardItems(current).filter((item) => item.alerts.length);
@@ -1142,6 +1148,7 @@ function renderLinkedWorkItems(workItems: MyPullRequestModel['workItems']): stri
 
 /* ---------- PRs waiting for my review ---------- */
 
+// Rule REVIEW-CARD-5
 /** Most urgent first: the section takes the colour of the first one */
 /** Branch of the PR, to check it out and review it locally */
 function renderReviewBranch(request: ReviewRequestModel): string {
@@ -1592,6 +1599,7 @@ function renderReviews(current: ViewModel): string {
 
 /* ---------- My pull requests ---------- */
 
+// Rules MYPR-ACT-1..3
 function renderMyActions(pr: MyPullRequestModel): string {
   const buttons = [
     `<button class="button" data-action="openMyPullRequest" data-url="${escapeHtml(
@@ -1635,6 +1643,7 @@ function renderCompactMyPullRequest(pr: MyPullRequestModel): string {
   </li>`;
 }
 
+// Rules MYPR-ACT-4, MYPR-ACT-5, PR-EFFECT-3
 /** `foldable`: the full card of a row expanded in the compact layout; its chevron folds it back */
 function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean, foldable = false): string {
   const meta = [

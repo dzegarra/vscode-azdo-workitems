@@ -20,6 +20,7 @@ async function loadPredecessors(store: WorkItemsStore, workItem: WorkItem): Prom
   }
 }
 
+// Rules FLOW-BRANCH-3, DEP-4
 /**
  * Soft team rule: avoid starting a work item whose predecessors are not completed, unless agreed with their
  * owners. When it has open ones, asks before starting. The question is modal so it cannot be missed or

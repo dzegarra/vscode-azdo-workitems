@@ -4,6 +4,7 @@ import type { RunModel } from './pipelines';
 import type { PullRequestModel } from './viewModel';
 import { pullRequestStatus } from './workItemLinks';
 
+// Rule PRIM-1
 /** The PR is in a repository other than the one open in VS Code. Unknown local repository: nothing is flagged */
 export function isOtherRepository(prRepositoryId: string, localRepositoryId?: string): boolean {
   return !!localRepositoryId && prRepositoryId.toLowerCase() !== localRepositoryId.toLowerCase();

@@ -95,6 +95,7 @@ export function isCurrentIteration(iteration: ScheduledIteration, today: Date): 
  */
 export type DependencyRisk = 'done' | 'late' | 'ok' | 'tight' | 'unscheduled';
 
+// Rule DEP-2
 export function dependencyRisk(
   predecessor: { state: string; iterationPath: string },
   successor: { iterationPath: string },

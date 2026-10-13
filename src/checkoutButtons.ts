@@ -47,6 +47,7 @@ function iconCheckoutButton(options: CheckoutButtonOptions): string {
   )}" aria-haspopup="menu">${icon('caretDown')}</button></span>`;
 }
 
+// Rule CARD-BTN-2
 /**
  * "Checkout" with a ▾ part (one button group) that offers "Checkout here" / "Open in a worktree". When another
  * worktree has the branch, git cannot check it out again: "Open worktree ▾" ("Open worktree" / "Remove worktree") replaces it

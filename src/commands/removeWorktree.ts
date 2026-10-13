@@ -43,6 +43,7 @@ function confirmationDetail(candidates: Candidate[]): string {
   ].join('\n');
 }
 
+// Rule WORKTREE-4
 /**
  * Removes worktrees after a modal confirmation that lists them. The main working tree and the folders open in this
  * window are never removed; locked worktrees are skipped; entries whose folder is gone are pruned. Branches are kept

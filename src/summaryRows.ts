@@ -37,6 +37,7 @@ function lateColor(overdue: number, dueSoon: number): string | undefined {
   return dueSoon ? 'list.warningForeground' : undefined;
 }
 
+// Rule SUMMARY-2
 function reviewsRow(reviews: SummaryInput['reviews']): SummaryRow | undefined {
   if (!reviews.length) {
     return undefined;
@@ -54,6 +55,7 @@ function reviewsRow(reviews: SummaryInput['reviews']): SummaryRow | undefined {
   };
 }
 
+// Rules SUMMARY-3, SUMMARY-4
 function ownPullRequestRows(pullRequests: SummaryInput['myPullRequests']): SummaryRow[] {
   const open = pullRequests.filter((pr) => !pr.isCompleted);
   const withWarnings = open.filter((pr) => pr.warnings.length);
@@ -86,6 +88,7 @@ function ownPullRequestRows(pullRequests: SummaryInput['myPullRequests']): Summa
   return rows;
 }
 
+// Rules SUMMARY-1, SUMMARY-5, SUMMARY-7
 /** What needs the user's attention, one row each, only when the count is above 0 */
 export function summaryRows(input: SummaryInput): SummaryRow[] {
   const rows: SummaryRow[] = [];
@@ -135,6 +138,7 @@ export interface SummaryBadge {
   tooltip: string;
 }
 
+// Rule SUMMARY-6
 /**
  * Number on the activity bar icon: work items with alerts + PRs waiting for the user's review.
  * Undefined (no badge) when both are 0

@@ -109,6 +109,7 @@ async function rememberBase(repository: Repository, branchName: string, base: st
   }
 }
 
+// Rules FLOW-BRANCH-5, FLOW-BRANCH-6
 /** Creates the branch from the base branch (no checkout), publishes it and links it to the work items */
 async function createAndLinkBranch(
   repository: Repository,
@@ -142,6 +143,7 @@ async function createAndLinkBranch(
   );
 }
 
+// Rule FLOW-BRANCH-1
 /** The task of the row, or undefined (with a warning) when the store does not know it under the work item */
 function resolveTask(store: WorkItemsStore, parent: WorkItem, taskId: number): WorkItem | undefined {
   const task = findChildTaskWorkItem(store, parent.id, taskId);
@@ -173,6 +175,7 @@ export async function createBranch(
   }
   const repository = pickRepository(git);
 
+  // Rule FLOW-BRANCH-2
   // Several branches per work item are expected when they are created from its tasks
   if (!task && target.branch) {
     const choice = await offerBranchActions(
@@ -187,6 +190,7 @@ export async function createBranch(
     }
   }
 
+  // Rule FLOW-BRANCH-3
   // Creating the branch starts the work (and usually moves the work item to a started state): asked once, here
   if (!(await confirmStart(store, workItem))) {
     return;
@@ -199,6 +203,7 @@ export async function createBranch(
   const branchName = asked.name;
   await createAndLinkBranch(repository, branchName, asked.base, task ? [workItem.id, task.id] : [workItem.id]);
 
+  // Rule FLOW-BRANCH-7
   await moveToStartedState(repository, workItem);
   if (task) {
     await moveTaskToStartedState(repository, task);

@@ -89,6 +89,7 @@ function describeTasks(tasks: AlertTask[]): string {
   return tasks.map((task) => `${task.id} ${task.title} (${task.state})`).join(', ');
 }
 
+// Rule ALERT-1
 function taskAlerts(input: AlertInput): WorkItemAlert[] {
   const openTasks = input.tasks.filter((task) => !isClosed(task.state));
   if (isOneOf(input.state, FINISHED_STATES) && openTasks.length) {
@@ -105,6 +106,7 @@ function taskAlerts(input: AlertInput): WorkItemAlert[] {
   return [];
 }
 
+// Rule ALERT-2
 /** The branch of a task (this repository) that the work item does not link: the developer forgot to link it */
 function taskBranchAlerts(input: AlertInput): WorkItemAlert[] {
   if (isOneOf(input.state, FINISHED_STATES) || isClosed(input.state)) {
@@ -131,6 +133,7 @@ interface PullRequestWithTasks {
   tasks: AlertTask[];
 }
 
+// Rules ALERT-PRTASK-1, ALERT-PRTASK-2
 /**
  * The PR task of each PR: the child tasks linked to it (any title). PRs without a linked task get, once, an unlinked
  * task whose title says it is the PR task (work items from before the tasks were linked). Active PRs go first
@@ -153,6 +156,7 @@ function tasksOfPullRequests(input: AlertInput, rules: AlertRules): PullRequestW
   return entries;
 }
 
+// Rules ALERT-3, ALERT-4, ALERT-5
 function pullRequestAlert({ pullRequest, tasks }: PullRequestWithTasks): WorkItemAlert | undefined {
   const label = `PR ${pullRequest.id}`;
   if (pullRequest.status === 'active' && !pullRequest.isDraft) {
@@ -187,6 +191,7 @@ function pullRequestAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[
     .filter((alert): alert is WorkItemAlert => !!alert);
 }
 
+// Rule ALERT-6
 function tagAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {
   if (stateCategory(input.state) === 'proposed') {
     return [];
@@ -204,6 +209,7 @@ function tagAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {
     : [];
 }
 
+// Rule ALERT-7
 function fieldAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {
   return rules.requiredFields
     .filter((rule) => rule.types.includes(input.type) && (!rule.states?.length || isOneOf(input.state, rule.states)))
@@ -216,6 +222,7 @@ function fieldAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {
     }));
 }
 
+// Rule ALERT-GATE-2
 export function findAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {
   if (!rules.workItemTypes.includes(input.type)) {
     return [];

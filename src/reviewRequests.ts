@@ -51,6 +51,7 @@ export interface ReviewRequest {
   isRequired: boolean;
 }
 
+// Rule REVIEW-REQ-4
 /** Required reviews first, then optional ones; oldest first within each group, so the most urgent first */
 function byRoleThenPublishedDate(a: ReviewRequest, b: ReviewRequest): number {
   return Number(b.isRequired) - Number(a.isRequired) || a.publishedAt.localeCompare(b.publishedAt);
@@ -59,6 +60,7 @@ function byRoleThenPublishedDate(a: ReviewRequest, b: ReviewRequest): number {
 /** Vote of a reviewer who has not reviewed yet */
 const NO_VOTE = 0;
 
+// Rules REVIEW-REQ-1..3
 /**
  * Active, published PRs of other people where the user is a reviewer (required or optional) and has not voted
  * yet: the required ones first, oldest first within each group. Once the user votes (approve, wait for author,
@@ -98,6 +100,7 @@ export function toReviewRequests(pullRequests: ReviewerPullRequest[], myId: stri
     .sort(byRoleThenPublishedDate);
 }
 
+// Rule REVIEW-REQ-5
 /**
  * The requests to show: all of them, or only the required ones. The optional ones left out are counted, so the
  * box can offer to show them
@@ -119,6 +122,7 @@ export interface PullRequestThread {
   properties?: Partial<Record<string, { $value?: unknown }>>;
 }
 
+// Rule REVIEW-REQ-6
 /**
  * When the PR was last published from draft; undefined when it was never a draft. Azure DevOps records it as a
  * system thread "<name> published the pull request." of type IsDraftUpdate, with CodeReviewIsDraftNowSet "0"
@@ -183,6 +187,7 @@ export function timeLeftMs(
   return rules.maxWaitHours * MS_PER_HOUR - waitingMs(request, now, rules.workingDays);
 }
 
+// Rules REVIEW-URG-1..3
 export function reviewUrgency(
   request: Pick<ReviewRequest, 'publishedAt'>,
   now: Date,
@@ -273,6 +278,7 @@ export function toReviewModels(
   });
 }
 
+// Rule REVIEW-URG-4
 /**
  * Overdue and due soon requests among the required ones: the team rule about the maximum wait is about required
  * reviewers, so the optional ones do not count as late
@@ -313,6 +319,7 @@ function localDay(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 }
 
+// Rules REVIEW-NOTIF-1..6
 /**
  * Notifications since the last check: new review requests, PRs getting close to the maximum wait, and overdue
  * PRs (again every few hours while they stay overdue). "digest" is true on the first check of the day: one
