@@ -10,11 +10,32 @@
   --red: var(--vscode-charts-red, #f14c4c);
   --yellow: var(--vscode-charts-yellow, #cca700);
   --purple: var(--vscode-charts-purple, #b180d7);
-  --orange: var(--vscode-charts-orange, #d18616);
+  /*
+   * Orange and the warning colour mark what needs the user (Waiting for author, unresolved comments, warnings). Some
+   * themes make them dark, barely readable on a dark tile: they are pulled toward the text colour of the theme, which
+   * makes them lighter on dark themes and darker on light ones, keeping their hue
+   */
+  --orange: color-mix(in srgb, var(--vscode-charts-orange, #d18616) 65%, var(--vscode-foreground, #cccccc));
+  /*
+   * "Waiting for author" (a reviewer sent the PR back): a real orange of its own. The theme's orange can be a dark
+   * red-brown and its warning colour is the gold of the tasks, so it is a fixed colour that reads on dark (#f0883e) and
+   * light (#bc4c00, below) themes
+   */
+  --waiting: #f0883e;
+  --warning-fg: color-mix(
+    in srgb,
+    var(--vscode-editorWarning-foreground, #cca700) 70%,
+    var(--vscode-foreground, #cccccc)
+  );
   --grey: var(--vscode-disabledForeground, #8b8b8b);
   --working-here: var(--vscode-focusBorder, #007fd4);
   /* Same blue as "here" (both mean "I'm working on it"), told apart by shape: purple is for completed PRs */
   --working-worktree: var(--working-here);
+}
+
+body.vscode-light,
+body.vscode-high-contrast-light {
+  --waiting: #bc4c00;
 }
 
 body {
@@ -885,6 +906,26 @@ button {
   font-weight: 600;
 }
 
+/*
+ * Status of a PR sent back to its author ("Waiting for author", "Rejected"), in the PR tiles: the author has to act,
+ * so solid colours with a fixed text colour (a tinted orange or red on the tile was barely readable)
+ */
+.mypr-badges .pill.tone-waiting,
+.mypr .compact-head .pill.tone-waiting,
+.review-status.tone-waiting {
+  color: #1f1f1f;
+  background: #f0883e;
+  font-weight: 600;
+}
+
+.mypr-badges .pill.tone-rejected,
+.mypr .compact-head .pill.tone-rejected,
+.review-status.tone-rejected {
+  color: #ffffff;
+  background: #c72e2e;
+  font-weight: 600;
+}
+
 .signal.tone-leftover .icon,
 .signal.tone-caution .icon {
   color: #1f1f1f;
@@ -910,8 +951,9 @@ button {
 .tone-approved {
   --pill-color: var(--green);
 }
+/* Waiting for author: the author has to act. Its own orange (--waiting), not the gold of the tasks and warnings */
 .tone-waiting {
-  --pill-color: var(--orange);
+  --pill-color: var(--waiting);
 }
 .tone-rejected {
   --pill-color: var(--red);
@@ -1548,7 +1590,7 @@ button.state:focus-visible {
 }
 
 .phase-author {
-  --phase-color: var(--orange);
+  --phase-color: var(--waiting);
 }
 
 .phase-merge {
@@ -1572,7 +1614,7 @@ button.state:focus-visible {
 }
 
 .phase-dot-wait {
-  --dot-color: var(--orange);
+  --dot-color: var(--waiting);
 }
 
 .phase-dot-reject {
@@ -1977,7 +2019,7 @@ button.state:focus-visible {
 
 /* Not the usual target: worth noticing */
 .mypr-target {
-  color: var(--vscode-editorWarning-foreground, var(--orange));
+  color: var(--warning-fg);
   font-weight: 600;
 }
 
@@ -2018,7 +2060,7 @@ button.state:focus-visible {
 }
 
 .required {
-  color: var(--vscode-editorWarning-foreground, var(--orange));
+  color: var(--warning-fg);
   font-weight: 700;
 }
 
@@ -2029,7 +2071,7 @@ button.state:focus-visible {
   --vote-color: var(--yellow);
 }
 .vote-waiting {
-  --vote-color: var(--orange);
+  --vote-color: var(--waiting);
 }
 .vote-rejected {
   --vote-color: var(--vscode-errorForeground, var(--red));
@@ -2058,8 +2100,9 @@ button.state:focus-visible {
   height: 12px;
 }
 
-.signal-comments {
-  color: var(--vscode-editorWarning-foreground, var(--orange));
+/* Not the colour of the tile (.signal takes --pill-color, the orange of a "Waiting for author" tile) */
+.signal.signal-comments {
+  color: var(--warning-fg);
 }
 
 .signal-conflicts {
@@ -2072,7 +2115,7 @@ button.state:focus-visible {
   gap: 2px;
   margin: 0;
   padding: 0;
-  color: var(--vscode-editorWarning-foreground, var(--orange));
+  color: var(--warning-fg);
   font-size: 11px;
   line-height: 1.35;
   list-style: none;
@@ -2286,7 +2329,7 @@ button.state:focus-visible {
   --run-color: var(--vscode-testing-iconPassed, var(--green));
 }
 .run-partial {
-  --run-color: var(--vscode-editorWarning-foreground, var(--orange));
+  --run-color: var(--warning-fg);
 }
 .run-failed {
   --run-color: var(--vscode-errorForeground, var(--red));
@@ -2341,7 +2384,7 @@ button.state:focus-visible {
   --cov-color: var(--vscode-errorForeground, var(--red));
 }
 .cov-fair {
-  --cov-color: var(--vscode-editorWarning-foreground, var(--orange));
+  --cov-color: var(--warning-fg);
 }
 .cov-good {
   --cov-color: var(--vscode-testing-iconPassed, var(--green));
@@ -2797,7 +2840,7 @@ button.state:focus-visible {
 }
 
 .signal-warnings.tone-warning {
-  color: var(--vscode-editorWarning-foreground, var(--orange));
+  color: var(--warning-fg);
 }
 
 .signal-ready {
@@ -2996,7 +3039,7 @@ button.signal-predecessors:focus-visible {
 /* Planned after its successor, or not planned: the ones to talk about first. Amber, not red */
 .pred-risk.risk-late,
 .pred-risk.risk-unscheduled {
-  color: var(--vscode-editorWarning-foreground, var(--orange));
+  color: var(--warning-fg);
   font-style: normal;
   font-weight: 600;
 }

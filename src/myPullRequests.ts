@@ -206,6 +206,35 @@ function policyStep(evaluation: PolicyEvaluation, pr: AuthoredPullRequest, extra
 }
 
 /**
+ * Reviewers who sent the PR back to its author: "Waiting for author" or "Rejected". Branch policies do not count
+ * these votes, so without this the PR could look ready to merge. People are named; a group (e.g. a team) only when
+ * no member of it is listed with the same vote, since a group votes through its members
+ */
+export function feedbackReviewers(pr: Pick<AuthoredPullRequest, 'reviewers' | 'createdBy'>): {
+  waiting: string[];
+  rejected: string[];
+} {
+  const names = (vote: (value: number) => boolean) => {
+    const voters = pr.reviewers.filter((reviewer) => reviewer.id !== pr.createdBy.id && vote(reviewer.vote));
+    const people = voters.filter((reviewer) => !reviewer.isContainer);
+    return (people.length ? people : voters).map((reviewer) => reviewer.displayName);
+  };
+  return {
+    rejected: names((vote) => vote <= VOTE_REJECTED),
+    waiting: names((vote) => vote > VOTE_REJECTED && vote <= VOTE_WAITING_FOR_AUTHOR),
+  };
+}
+
+/** The feedback steps of the "Next" line: what the author has to do about the reviewers who sent the PR back */
+function feedbackSteps(pr: AuthoredPullRequest): string[] {
+  const { waiting, rejected } = feedbackReviewers(pr);
+  return [
+    ...(rejected.length ? [`Rejected by ${rejected.join(', ')}`] : []),
+    ...(waiting.length ? [`Address the feedback of ${waiting.join(', ')}`] : []),
+  ];
+}
+
+/**
  * What is missing before the PR can be merged, in one line: the draft state, the conflicts and the blocking
  * policies that are not satisfied. Undefined when nothing is known to be missing and the policies are unknown
  */
@@ -217,6 +246,7 @@ export function nextStep(pr: AuthoredPullRequest, extras: PullRequestExtras): st
   if (pr.mergeStatus === 'conflicts') {
     steps.push('Resolve the conflicts');
   }
+  steps.push(...feedbackSteps(pr));
   for (const evaluation of extras.evaluations ?? []) {
     if (evaluation.isBlocking && !SATISFIED_STATUSES.includes(evaluation.status)) {
       steps.push(policyStep(evaluation, pr, extras));
@@ -384,13 +414,40 @@ export function autoCompleteWarnings(
   return warnings;
 }
 
+/**
+ * A reviewer sent the PR back: the author has to act. "Rejected" is an error, "Waiting for author" a warning. Both
+ * keep the PR from being "Ready to merge" and make it count in the Summary's PRs with warnings
+ */
+export function feedbackWarnings(pr: AuthoredPullRequest): PullRequestWarning[] {
+  if (pr.status !== 'active') {
+    return [];
+  }
+  const { waiting, rejected } = feedbackReviewers(pr);
+  const who = (names: string[]) => names.join(', ');
+  return [
+    ...(rejected.length
+      ? [{ text: `Rejected by ${who(rejected)}: talk to them before going on`, severity: 'error' as const }]
+      : []),
+    ...(waiting.length
+      ? [
+          {
+            text: `${who(waiting)} ${
+              waiting.length === 1 ? 'is' : 'are'
+            } waiting for you: address their comments, then ask for a new review`,
+            severity: 'warning' as const,
+          },
+        ]
+      : []),
+  ];
+}
+
 /** Mistakes of the auto-complete settings and rules of the team the PR breaks, the most serious first */
 export function pullRequestWarnings(
   pr: AuthoredPullRequest,
   extras: Pick<PullRequestExtras, 'buildNotes' | 'workItems'>,
   options: WarningOptions = DEFAULT_WARNING_OPTIONS
 ): PullRequestWarning[] {
-  return [...autoCompleteWarnings(pr, extras), ...ruleWarnings(pr, extras, options)];
+  return [...feedbackWarnings(pr), ...autoCompleteWarnings(pr, extras), ...ruleWarnings(pr, extras, options)];
 }
 
 /**

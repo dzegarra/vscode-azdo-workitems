@@ -5,6 +5,8 @@ import {
   CompletedPeriod,
   completedWindowMs,
   countUnresolvedThreads,
+  feedbackReviewers,
+  feedbackWarnings,
   formatAge,
   isCompletedWithin,
   isReadyToMerge,
@@ -606,13 +608,15 @@ describe('toMyPullRequestModels', () => {
       conflicts: true,
       unresolved: 2,
       autoComplete: true,
+      // B voted "Waiting for author": the author has to act
       warnings: [
+        { text: 'B is waiting for you: address their comments, then ask for a new review', severity: 'warning' },
         {
           text: 'Auto-complete will not delete the branch (team rule: delete branches after merging)',
           severity: 'warning',
         },
       ],
-      next: 'Resolve the conflicts · 1 more approval needed · Choose an allowed merge strategy',
+      next: 'Resolve the conflicts · Address the feedback of B · 1 more approval needed · Choose an allowed merge strategy',
     });
     // The author is left out; required first, groups last
     expect(items[0].reviewers.map((r) => [r.name, r.vote])).toEqual([
@@ -798,5 +802,51 @@ describe('phaseTotals', () => {
       { kind: 'author', label: 'Waiting for author', duration: '19 h' },
       { kind: 'merge', label: 'Ready to merge', duration: '18 h' },
     ]);
+  });
+});
+
+describe('reviewer feedback (Waiting for author / Rejected)', () => {
+  // PR 13765: a required reviewer waits for the author, the other approved; the team mirrors the waiting vote
+  const sentBack = pr({
+    reviewers: [
+      { id: 'team', displayName: 'UI Development Team', vote: -5, isContainer: true },
+      { id: 'p', displayName: 'Paulina Hudziak EXT', vote: -5, isRequired: true },
+      { id: 's', displayName: 'Szymon Kwasek EXT', vote: 10, isRequired: true },
+      { id: ME, displayName: 'Me', vote: 0 },
+    ],
+  });
+  const allApproved = [evaluation('Minimum number of reviewers', 'approved')];
+
+  it('names the people who sent the PR back, not the group that mirrors their vote', () => {
+    expect(feedbackReviewers(sentBack)).toEqual({ waiting: ['Paulina Hudziak EXT'], rejected: [] });
+  });
+
+  it('names the group when no member of it is listed with that vote', () => {
+    const groupOnly = pr({ reviewers: [{ id: 'team', displayName: 'Team', vote: -5, isContainer: true }] });
+    expect(feedbackReviewers(groupOnly).waiting).toEqual(['Team']);
+  });
+
+  it('warns about "Waiting for author" and is an error for "Rejected"', () => {
+    expect(feedbackWarnings(sentBack)).toEqual([
+      expect.objectContaining({
+        severity: 'warning',
+        text: expect.stringContaining('Paulina Hudziak EXT is waiting for you'),
+      }),
+    ]);
+    const rejected = pr({ reviewers: [{ id: 'r', displayName: 'R', vote: -10 }] });
+    expect(feedbackWarnings(rejected)).toEqual([expect.objectContaining({ severity: 'error' })]);
+  });
+
+  it('is not "Ready to merge" even when every policy is satisfied', () => {
+    const warnings = pullRequestWarnings(sentBack, extras());
+    expect(isReadyToMerge(sentBack, extras({ evaluations: allApproved }), warnings)).toBe(false);
+    expect(nextStep(sentBack, extras({ evaluations: allApproved }))).toBe(
+      'Address the feedback of Paulina Hudziak EXT'
+    );
+  });
+
+  it('says nothing for completed PRs or when nobody sent it back', () => {
+    expect(feedbackWarnings({ ...sentBack, status: 'completed' })).toEqual([]);
+    expect(feedbackWarnings(pr({ reviewers: [{ id: 's', displayName: 'S', vote: 10 }] }))).toEqual([]);
   });
 });
