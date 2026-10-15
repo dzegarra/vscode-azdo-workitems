@@ -3,6 +3,8 @@ import {
   canCreatePullRequestForTask,
   canCreateBranchForTask,
   chooseTaskBranch,
+  isInReview,
+  shownState,
   stateForNewBranchTask,
   completedPullRequestPrompt,
   publishedPullRequestMessage,
@@ -208,5 +210,59 @@ describe('messages', () => {
     );
     expect(completedPullRequestPrompt(1, [], 'f/a')).toBe('PR 1 completed. Delete the branch f/a?');
     expect(publishedPullRequestMessage(5, [{ id: 9 }])).toBe('PR 5 published: its task 9 moved to In Progress.');
+  });
+});
+
+// Rule STATE-10
+describe('isInReview', () => {
+  const pattern = /\b(PR|pull request)\b/i;
+  const prTask = (state: string) => ({ id: 1, title: 'PR: Add label', state, pullRequestIds: [] });
+  const review = (state: string, tasks: ReturnType<typeof task>[]) => isInReview(state, tasks, pattern);
+
+  it('is true when the only task in progress is a PR task and the rest is Done', () => {
+    expect(review('Committed', [task(2, 'Done'), prTask('In Progress')])).toBe(true);
+  });
+
+  it('compares the work item state ignoring typos', () => {
+    expect(review('Commited', [prTask('In Progress')])).toBe(true);
+    expect(review('In Progress', [prTask('In Progress')])).toBe(false);
+    expect(review('New', [prTask('In Progress')])).toBe(false);
+  });
+
+  it('recognizes a PR task by its link even if the title does not match', () => {
+    expect(review('Committed', [task(2, 'In Progress', [10])])).toBe(true);
+  });
+
+  it('recognizes a PR task by its title even if it is not linked', () => {
+    expect(review('Committed', [{ ...task(2, 'In Progress'), title: 'Create pull request' }])).toBe(true);
+  });
+
+  it('ignores the Removed tasks', () => {
+    expect(review('Committed', [task(2, 'Removed'), prTask('In Progress')])).toBe(true);
+  });
+
+  it('stays Committed without tasks or when all of them are Done', () => {
+    expect(review('Committed', [])).toBe(false);
+    expect(review('Committed', [task(2, 'Done'), task(3, 'Removed')])).toBe(false);
+  });
+
+  it('is blocked by a To Do task', () => {
+    expect(review('Committed', [task(2, 'To Do'), prTask('In Progress')])).toBe(false);
+  });
+
+  it('is blocked by an In Progress task that is not a PR task', () => {
+    expect(review('Committed', [task(2, 'In Progress'), prTask('In Progress')])).toBe(false);
+  });
+
+  it('is false when the PR task is not In Progress', () => {
+    expect(review('Committed', [prTask('To Do')])).toBe(false);
+  });
+});
+
+describe('shownState', () => {
+  it('shows In review only when it applies and the setting is on', () => {
+    expect(shownState('Committed', true, true)).toBe('In review');
+    expect(shownState('Committed', true, false)).toBe('Committed');
+    expect(shownState('Committed', false, true)).toBe('Committed');
   });
 });

@@ -1,7 +1,7 @@
 import { withFeature } from './requestContext';
 import * as vscode from 'vscode';
 import { AzdoClient, PullRequestDetails, WorkItem } from './azdoClient';
-import { resolveContext, settings, DEFAULT_PULL_REQUEST_TASK_PATTERN } from './config';
+import { resolveContext, settings, compilePullRequestTaskPattern } from './config';
 import { RepositoryGate } from './repositoryGate';
 import { GitAPI, pickRepository, Ref, REF_TYPE_HEAD, Repository } from './git';
 import { TeamIteration } from './iterations';
@@ -23,7 +23,7 @@ import { listWorktrees } from './worktreeGit';
 import { findWorktree, otherWorktreeBranches, Worktree } from './worktrees';
 import { taskWorkingOn, WorkingOnLevel, workingOnLevels } from './workingOn';
 import { realpathSync } from 'node:fs';
-import { canCreateBranchForTask, canCreatePullRequestForTask } from './pullRequestTasks';
+import { canCreateBranchForTask, canCreatePullRequestForTask, isInReview, shownState } from './pullRequestTasks';
 import { parsePriority, PRIORITY_FIELD, SEVERITY_FIELD } from './priority';
 import { AlertRules, findAlerts, parseTags, resolveFieldName, resolveRequiredFields, WorkItemAlert } from './alerts';
 
@@ -31,6 +31,8 @@ export interface WorkItemEntry {
   workItem: WorkItem;
   parent?: { id: number; title: string; type: string };
   alerts: WorkItemAlert[];
+  /** Rule STATE-10 holds for the work item (whatever the setting says) */
+  inReview: boolean;
   branch?: string;
   branchLocation?: 'local' | 'remote';
   /** Every branch of the work item (the main one included), in this repository and in others */
@@ -237,15 +239,9 @@ function taskBranchNamesOf(
   ];
 }
 
-/** Problems of the work item, from its child tasks, PRs, tags and fields */
-function alertsOf(
-  workItem: WorkItem,
-  related: Map<number, WorkItem>,
-  pullRequests: PullRequestDetails[],
-  rules: AlertRules & { integrationBuildField?: string },
-  repositoryId: string
-): WorkItemAlert[] {
-  const tasks = workItem.links.childIds
+/** Child tasks of the work item (Removed ones included) with their PRs and branches */
+function taskRefsOf(workItem: WorkItem, related: Map<number, WorkItem>, repositoryId: string) {
+  return workItem.links.childIds
     .map((id) => related.get(id))
     .filter((child): child is WorkItem => child?.type === 'Task')
     .map(({ id, title, state, links }) => ({
@@ -255,6 +251,17 @@ function alertsOf(
       pullRequestIds: links.pullRequests.map((link) => link.id),
       branches: branchNamesOf(links.branches, repositoryId),
     }));
+}
+
+/** Problems of the work item, from its child tasks, PRs, tags and fields */
+function alertsOf(
+  workItem: WorkItem,
+  related: Map<number, WorkItem>,
+  pullRequests: PullRequestDetails[],
+  rules: AlertRules & { integrationBuildField?: string },
+  repositoryId: string
+): WorkItemAlert[] {
+  const tasks = taskRefsOf(workItem, related, repositoryId);
   return withQuickFixes(
     findAlerts(
       {
@@ -280,16 +287,10 @@ async function alertRules(client: AzdoClient): Promise<(AlertRules & { integrati
   }
   // Without the field names, only the required fields cannot be checked
   const fields = await client.getFields().catch(() => []);
-  let pullRequestTaskPattern: RegExp;
-  try {
-    pullRequestTaskPattern = new RegExp(s.pullRequestTaskPattern, 'i');
-  } catch {
-    pullRequestTaskPattern = DEFAULT_PULL_REQUEST_TASK_PATTERN;
-  }
   return {
     workItemTypes: s.workItemTypes,
     blockingTags: s.blockingTags,
-    pullRequestTaskPattern,
+    pullRequestTaskPattern: compilePullRequestTaskPattern(s.pullRequestTaskPattern),
     requiredFields: resolveRequiredFields(s.requiredFields, fields),
     integrationBuildField: resolveFieldName(settings().integrationBuild.field, fields),
   };
@@ -434,6 +435,12 @@ export class WorkItemsStore {
 
   find(id: number): WorkItemEntry | undefined {
     return this.entries.find((entry) => entry.workItem.id === id);
+  }
+
+  /** State shown for a work item of the list (In review when STATE-10 holds and the setting is on); undefined if not listed */
+  displayStateOf(id: number): string | undefined {
+    const entry = this.find(id);
+    return entry && shownState(entry.workItem.state, entry.inReview, settings().showInReviewState);
   }
 
   /** A PR linked to a work item of the list or to one of their tasks, e.g. the ones assigned to other developers */
@@ -588,6 +595,7 @@ export class WorkItemsStore {
     );
     const pullRequestsOf = (item: WorkItem) =>
       item.links.pullRequests.map((link) => pullRequests.get(link.id)).filter((pr): pr is PullRequestDetails => !!pr);
+    const pullRequestTaskPattern = compilePullRequestTaskPattern(s.alerts.pullRequestTaskPattern);
     const entries: WorkItemEntry[] = workItems.map((workItem) => {
       const parent = workItem.links.parentId === undefined ? undefined : related.get(workItem.links.parentId);
       const itemPullRequests = pullRequestsOf(workItem);
@@ -610,6 +618,7 @@ export class WorkItemsStore {
         pullRequests: itemPullRequests,
         deletableBranches: [],
         alerts: rules ? alertsOf(workItem, related, itemPullRequests, rules, azdoRepository.id) : [],
+        inReview: isInReview(workItem.state, taskRefsOf(workItem, related, azdoRepository.id), pullRequestTaskPattern),
         taskBranches: taskBranchNamesOf(workItem, related, azdoRepository.id),
         predecessors: dependencies.predecessors.get(workItem.id),
         successors: dependencies.successors.get(workItem.id),
@@ -809,6 +818,7 @@ export class WorkItemsStore {
       workItem,
       parent,
       alerts,
+      inReview,
       branch,
       branchLocation,
       branches,
@@ -831,6 +841,7 @@ export class WorkItemsStore {
       title: workItem.title,
       type: workItem.type,
       state: workItem.state,
+      displayState: shownState(workItem.state, inReview, settings().showInReviewState),
       iterationPath: workItem.iterationPath,
       url: workItem.url,
       parentId: workItem.links.parentId,

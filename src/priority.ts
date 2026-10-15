@@ -1,5 +1,5 @@
 /** Priority (1–4) and Severity ("1 - Critical" … "4 - Low") of work items. Pure, so no "vscode" import */
-import { stateRank } from './states';
+import { shownStateOf, stateRank } from './states';
 
 export const PRIORITY_FIELD = 'Microsoft.VSTS.Common.Priority';
 export const SEVERITY_FIELD = 'Microsoft.VSTS.Common.Severity';
@@ -38,7 +38,7 @@ const LAST = Number.MAX_SAFE_INTEGER;
  * Sorts by state (following the given order), then by priority, then by severity.
  * Missing values go last; otherwise the original order is kept
  */
-export function sortWorkItems<T extends { state: string; priority?: number; severity?: string }>(
+export function sortWorkItems<T extends { state: string; displayState?: string; priority?: number; severity?: string }>(
   items: T[],
   stateOrder: string[]
 ): T[] {
@@ -46,7 +46,7 @@ export function sortWorkItems<T extends { state: string; priority?: number; seve
     .map((item, index) => ({ item, index }))
     .sort(
       (a, b) =>
-        stateRank(a.item.state, stateOrder) - stateRank(b.item.state, stateOrder) ||
+        stateRank(shownStateOf(a.item), stateOrder) - stateRank(shownStateOf(b.item), stateOrder) ||
         (a.item.priority ?? LAST) - (b.item.priority ?? LAST) ||
         (severityLevel(a.item.severity) ?? LAST) - (severityLevel(b.item.severity) ?? LAST) ||
         a.index - b.index

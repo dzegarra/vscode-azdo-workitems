@@ -123,6 +123,13 @@ describe('isVisible', () => {
     otherRepository: false,
   };
 
+  // Rule STATE-10
+  it('filters by the shown state, not the real one', () => {
+    const inReview = { ...item, displayState: 'In review' };
+    expect(isVisible(inReview, { ...filter, hiddenStates: ['In review'] })).toBe(false);
+    expect(isVisible(inReview, { ...filter, hiddenStates: ['Committed'] })).toBe(true);
+  });
+
   it('applies the type and state filters', () => {
     expect(isVisible(item, filter)).toBe(true);
     expect(isVisible({ ...item, type: 'Task' }, filter)).toBe(false);

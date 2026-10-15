@@ -1,6 +1,20 @@
 /** Pure helpers about work item states. Shared by the extension and the webviews, so no "vscode" import */
 
-export const DEFAULT_STATE_ORDER = ['Done', 'Ready to Test', 'Committed', 'In Progress', 'Approved', 'New', 'To Do'];
+export const DEFAULT_STATE_ORDER = [
+  'Done',
+  'Ready to Test',
+  'In review',
+  'Committed',
+  'In Progress',
+  'Approved',
+  'New',
+  'To Do',
+];
+
+/** State the filters, chips and sorting work with: the shown one (Rule STATE-10) when the item has it */
+export function shownStateOf(item: { state: string; displayState?: string }): string {
+  return item.displayState ?? item.state;
+}
 
 // Rule STATE-1
 /**
@@ -42,7 +56,7 @@ export function stateCategory(state: string): StateCategory {
   if (isOneOf(state, ['Done', 'Ready to Test', 'Closed', 'Resolved', 'Completed'])) {
     return 'done';
   }
-  if (isOneOf(state, ['Committed', 'In Progress', 'Active'])) {
+  if (isOneOf(state, ['Committed', 'In Progress', 'Active', 'In review'])) {
     return 'in-progress';
   }
   return isOneOf(state, ['Removed']) ? 'removed' : 'proposed';

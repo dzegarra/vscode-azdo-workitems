@@ -7,6 +7,7 @@ import {
   sortByState,
   stateAfterBranchCreated,
   stateCategory,
+  shownStateOf,
   stateRank,
 } from './states';
 
@@ -70,6 +71,15 @@ describe('state button', () => {
     expect(html).toContain('data-action="changeState"');
     expect(html).toContain('data-id="66280"');
     expect(html).toContain('state-done');
+    expect(html).toContain('title="Change state"');
+  });
+
+  // Rule STATE-10
+  it('tells the real state in the tooltip when the shown one is derived', () => {
+    const html = stateButton(66068, 'In review', 'Committed');
+    expect(html).toContain('state-in-progress');
+    expect(html).toContain('>In review</button>');
+    expect(html).toContain('title="Committed in Azure DevOps — shown as In review');
   });
 
   it('allows tasks under Backlog Items and Bugs only', () => {
@@ -87,5 +97,18 @@ describe('isClosedState (Rule STATE-7)', () => {
     for (const state of ['New', 'Approved', 'Committed', 'In Progress']) {
       expect(isClosedState(state)).toBe(false);
     }
+  });
+});
+
+// Rule STATE-10
+describe('derived In review state', () => {
+  it('has the colour of Committed and goes before it in the default order', () => {
+    expect(stateCategory('In review')).toBe('in-progress');
+    expect(stateRank('In review', DEFAULT_STATE_ORDER)).toBeLessThan(stateRank('Committed', DEFAULT_STATE_ORDER));
+  });
+
+  it('uses the shown state when the item has one', () => {
+    expect(shownStateOf({ state: 'Committed', displayState: 'In review' })).toBe('In review');
+    expect(shownStateOf({ state: 'Committed' })).toBe('Committed');
   });
 });

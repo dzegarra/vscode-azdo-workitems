@@ -15,7 +15,7 @@ import type { ReviewRequestModel } from './reviewRequests';
 import type { ReviewedPeriod, ReviewedRequest } from './reviewedRequests';
 import type { TaskBranchModel } from './taskBranches';
 import type { TaskPullRequestModel } from './taskPullRequests';
-import { isClosedState } from './states';
+import { isClosedState, shownStateOf } from './states';
 import type { PullRequestTone } from './workItemLinks';
 import type { AttentionEffect } from './attentionEffect';
 import type { HoverStyle } from './hoverStyle';
@@ -72,6 +72,8 @@ export interface WorkItemModel {
   title: string;
   type: string;
   state: string;
+  /** State to show: In review (Rule STATE-10) or the real state. Filters, sorting and the state button use it */
+  displayState: string;
   iterationPath: string;
   url: string;
   parentId?: number;
@@ -364,6 +366,7 @@ export function pullRequestFilterValue(item: Pick<WorkItemModel, 'pullRequests'>
  */
 export function isVisible(
   item: Pick<WorkItemModel, 'branch' | 'id' | 'pullRequests' | 'state' | 'title' | 'type'> & {
+    displayState?: string;
     alerts?: unknown[];
     workingOn?: WorkingOnLevel;
     priority?: number;
@@ -378,7 +381,7 @@ export function isVisible(
     return false;
   }
   const hasAlerts = (alwaysShowAlerts && !!item.alerts?.length) || (workingOnIgnoresFilters && !!item.workingOn);
-  if (!hasAlerts && filter.hiddenStates.includes(item.state)) {
+  if (!hasAlerts && filter.hiddenStates.includes(shownStateOf(item))) {
     return false;
   }
   if (!hasAlerts && filter.hiddenPullRequestStates.includes(pullRequestFilterValue(item))) {
@@ -398,7 +401,7 @@ export function isVisible(
   );
 }
 
-type FilterableItem = Pick<WorkItemModel, 'pullRequests' | 'state' | 'type'> & {
+type FilterableItem = Pick<WorkItemModel, 'pullRequests' | 'state' | 'type'> & { displayState?: string } & {
   priority?: number;
   openPredecessors?: unknown[];
 };
@@ -424,10 +427,7 @@ export function activeFilterCount(filter: FilterModel, workItems: FilterableItem
   const types = filter.types.length ? [...present((item) => item.type)].filter((t) => !filter.types.includes(t)) : [];
   return (
     types.length +
-    hiddenAmong(
-      present((item) => item.state),
-      filter.hiddenStates
-    ) +
+    hiddenAmong(present(shownStateOf), filter.hiddenStates) +
     hiddenAmong(present(pullRequestFilterValue), filter.hiddenPullRequestStates) +
     hiddenAmong(present(priorityFilterValue), filter.hiddenPriorities) +
     hiddenAmong(present(predecessorFilterValue), filter.hiddenPredecessorStates)

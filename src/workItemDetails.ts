@@ -2,12 +2,13 @@ import { withFeature } from './requestContext';
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { AzdoClient, WorkItem } from './azdoClient';
-import { resolveContext } from './config';
+import { compilePullRequestTaskPattern, resolveContext, settings } from './config';
 import { DetailsData, RelatedWorkItem, renderDetailsBody, RICH_TEXT_FIELDS } from './detailsHtml';
 import { imageSources, isOrganizationUrl, replaceImageSources } from './richTextImages';
 import { isFigmaExtensionInstalled, openFigmaLinks } from './figma';
 import { findFigmaLinks } from './figmaLinks';
 import { escapeHtml } from './html';
+import { isInReview, shownState } from './pullRequestTasks';
 import { dependencyRisk } from './schedule';
 import { WebviewMessage } from './viewModel';
 import { runWorkItemAction } from './workItemActions';
@@ -21,7 +22,9 @@ type DetailsMessage =
 
 interface OpenPanel {
   panel: vscode.WebviewPanel;
-  data?: Omit<DetailsData, 'card'>;
+  data?: Omit<DetailsData, 'card' | 'displayState'>;
+  /** Rule STATE-10 holds for the work item, whatever the setting says */
+  inReview?: boolean;
   error?: string;
 }
 
@@ -50,6 +53,19 @@ async function embedImages(client: AzdoClient, fields: Record<string, unknown>):
     ...fields,
     ...Object.fromEntries(richText.map((name) => [name, replaceImageSources(fields[name] as string, replacements)])),
   };
+}
+
+/** Rule STATE-10 for the work item, from the tasks among its children (fetched with their PR links) */
+function isDetailsInReview(details: WorkItem, children: WorkItem[]): boolean {
+  const tasks = children
+    .filter((child) => child.type === 'Task')
+    .map(({ id, title, state, links }) => ({
+      id,
+      title,
+      state,
+      pullRequestIds: links.pullRequests.map((link) => link.id),
+    }));
+  return isInReview(details.state, tasks, compilePullRequestTaskPattern(settings().alerts.pullRequestTaskPattern));
 }
 
 function toRelated({ id, title, type, state, iterationPath }: WorkItem): RelatedWorkItem {
@@ -165,6 +181,7 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
         })),
         iterationNames: Object.fromEntries(schedule.map((iteration) => [iteration.path, iteration.name])),
       };
+      open.inReview = isDetailsInReview(details, pick(childIds));
       open.error = undefined;
     } catch (error) {
       open.error = (error as Error).message;
@@ -172,7 +189,14 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
     this.render(id, open);
   }
 
-  private render(id: number, { panel, data, error }: OpenPanel): void {
+  /** Draws the open panels again from what they loaded (e.g. a setting that changes how states are shown) */
+  rerender(): void {
+    for (const [id, open] of this.panels) {
+      this.render(id, open);
+    }
+  }
+
+  private render(id: number, { panel, data, error, inReview }: OpenPanel): void {
     const title = data ? `${id}: ${data.title}` : String(id);
     panel.title = title.length > MAX_TITLE_LENGTH ? `${title.slice(0, MAX_TITLE_LENGTH)}…` : title;
     let body = '<p class="muted">Loading…</p>';
@@ -182,6 +206,7 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
     } else if (data) {
       body = renderDetailsBody({
         ...data,
+        displayState: shownState(data.state, !!inReview, settings().showInReviewState),
         card: this.store.workItemModel(id),
         figmaInVsCode: isFigmaExtensionInstalled(),
       });

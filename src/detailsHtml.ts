@@ -25,6 +25,8 @@ export interface DetailsData {
   title: string;
   type: string;
   state: string;
+  /** State to show in the header: In review (Rule STATE-10) or the real state */
+  displayState?: string;
   fields: Record<string, unknown>;
   parent?: RelatedWorkItem;
   children: RelatedWorkItem[];
@@ -252,9 +254,9 @@ export function renderDetailsBody(data: DetailsData): string {
     renderDependencies('predecessor', 'Predecessors', data.predecessors, data, 'Does not depend on other work items.'),
     renderDependencies('successor', 'Successors', data.successors, data, 'No work items depend on this one.'),
   ];
-  return `<header class="details-head state-border-${stateCategory(data.state)}">
+  return `<header class="details-head state-border-${stateCategory(data.displayState ?? data.state)}">
       <div class="head-line">${typeIcon(data.type)}<span class="type">${escapeHtml(data.type)}</span>
-        <span class="id">${data.id}</span>${stateButton(data.id, data.state)}</div>
+        <span class="id">${data.id}</span>${stateButton(data.id, data.displayState ?? data.state, data.state)}</div>
       <h1>${escapeHtml(data.title)}</h1>
       ${renderActions(data)}
     </header>

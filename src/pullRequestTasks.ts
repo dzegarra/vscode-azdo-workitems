@@ -30,6 +30,36 @@ function isInProgress(state: string): boolean {
   return normalizeState(state) === normalizeState(TASK_IN_PROGRESS);
 }
 
+export const IN_REVIEW_STATE = 'In review';
+
+/** A PR task: its title matches the pattern or it is linked to a PR */
+function isPullRequestTask(task: PullRequestTaskRef, pattern: RegExp): boolean {
+  return task.pullRequestIds.length > 0 || pattern.test(task.title);
+}
+
+// Rule STATE-10
+/**
+ * Derived state of a Committed work item: the only work left is the review of its PRs. At least one task is In
+ * Progress, every In Progress task is a PR task and every other task is Done (Removed ones are ignored)
+ */
+export function isInReview(state: string, tasks: PullRequestTaskRef[], pattern: RegExp): boolean {
+  if (normalizeState(state) !== normalizeState('Committed')) {
+    return false;
+  }
+  const open = tasks.filter((task) => stateCategory(task.state) !== 'removed');
+  const inProgress = open.filter((task) => isInProgress(task.state));
+  return (
+    inProgress.length > 0 &&
+    inProgress.every((task) => isPullRequestTask(task, pattern)) &&
+    open.every((task) => isInProgress(task.state) || stateCategory(task.state) === 'done')
+  );
+}
+
+/** State to show for the work item: In review when it is derived and the user wants it, else the real one */
+export function shownState(state: string, inReview: boolean, enabled: boolean): string {
+  return inReview && enabled ? IN_REVIEW_STATE : state;
+}
+
 /** Title of the task created with a PR */
 export function pullRequestTaskTitle(description: string): string {
   return `PR: ${description.trim()}`;

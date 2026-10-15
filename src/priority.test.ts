@@ -31,4 +31,14 @@ describe('priority and severity', () => {
     ];
     expect(sortWorkItems(items, order).map((item) => item.id)).toEqual([6, 5, 4, 7, 2, 3, 1]);
   });
+
+  // Rule STATE-10
+  it('sorts by the shown state when the item has one', () => {
+    const order = ['Done', 'In review', 'Committed'];
+    const items = [
+      { id: 1, state: 'Committed' },
+      { id: 2, state: 'Committed', displayState: 'In review' },
+    ];
+    expect(sortWorkItems(items, order).map((item) => item.id)).toEqual([2, 1]);
+  });
 });

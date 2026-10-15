@@ -27,10 +27,17 @@ export function sanitizeHtml(html: string): string {
     .replace(/(href|src)\s*=\s*("|')?\s*javascript:[^"'>\s]*("|')?/gi, '$1="#"');
 }
 
-/** Coloured state of a work item. Clicking it lets the user change the state */
-export function stateButton(id: number, state: string): string {
-  return `<button class="state state-${stateCategory(state)}" data-action="changeState" data-id="${id}"
-    title="Change state">${escapeHtml(state)}</button>`;
+/**
+ * Coloured state of a work item. Clicking it lets the user change the state. When the shown state is derived
+ * (Rule STATE-10), the tooltip tells the real one
+ */
+export function stateButton(id: number, shown: string, real = shown): string {
+  const title =
+    shown === real
+      ? 'Change state'
+      : `${real} in Azure DevOps — shown as ${shown}: only the review of its PRs is left. Change state`;
+  return `<button class="state state-${stateCategory(shown)}" data-action="changeState" data-id="${id}"
+    title="${escapeHtml(title)}">${escapeHtml(shown)}</button>`;
 }
 
 /** Work item types that cannot have tasks under them */

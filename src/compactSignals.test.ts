@@ -11,6 +11,7 @@ function item(overrides: Partial<WorkItemModel> = {}): WorkItemModel {
     title: 'Title',
     type: 'Product Backlog Item',
     state: 'In Progress',
+    displayState: 'In Progress',
     iterationPath: 'p',
     url: '',
     alerts: [],

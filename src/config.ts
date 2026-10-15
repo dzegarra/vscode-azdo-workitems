@@ -18,6 +18,15 @@ export const SECTION = 'totalflowx';
 /** Recognizes the PR task by its title: "PR", "Create PR", "Pull Request review"… */
 export const DEFAULT_PULL_REQUEST_TASK_PATTERN = /\b(PR|pull request)\b/i;
 
+/** Compiles the pattern of the PR tasks; the default one when the setting is not a valid regular expression */
+export function compilePullRequestTaskPattern(source: string): RegExp {
+  try {
+    return new RegExp(source, 'i');
+  } catch {
+    return DEFAULT_PULL_REQUEST_TASK_PATTERN;
+  }
+}
+
 /** What the user set explicitly (folder, workspace or user), `undefined` when the setting still has its default */
 function explicitSetting<T>(config: vscode.WorkspaceConfiguration, key: string): T | undefined {
   const info = config.inspect<T>(key);
@@ -41,6 +50,7 @@ export function settings() {
     linkBranchToWorkItem: config.get<boolean>('linkBranchToWorkItem', true),
     stateOnBranchCreated: config.get<Partial<Record<string, string>>>('stateOnBranchCreated', {}),
     stateOrder: config.get<string[]>('stateOrder', DEFAULT_STATE_ORDER),
+    showInReviewState: config.get<boolean>('showInReviewState', true),
     dependencies: {
       completedStates: config.get<string[]>('dependencies.completedStates', DEFAULT_COMPLETED_STATES),
       confirmBeforeStart: config.get<boolean>('dependencies.confirmBeforeStart', true),

@@ -304,6 +304,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (event.affectsConfiguration(`${SECTION}.layout`)) {
         updateLayoutContext();
       }
+      if (event.affectsConfiguration(`${SECTION}.showInReviewState`)) {
+        // Display only: the panels redraw what they have, nothing is fetched
+        details.rerender();
+        dependencyMap.repost();
+      }
       // Filters and the layout are applied by the view; other settings need to reload the work items
       const onlyFilters = ['teams', 'organization', 'project', 'repository', 'remote', 'alerts'].every(
         (key) => !event.affectsConfiguration(`${SECTION}.${key}`)

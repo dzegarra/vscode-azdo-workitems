@@ -26,7 +26,7 @@ import { fixesBugsText, type FixLink } from '../fixLinks';
 import { isReadyToStart, NONE_OPEN, OPEN_PREDECESSORS, predecessorFilterValue } from '../predecessors';
 import { RISK_DESCRIPTIONS } from '../schedule';
 import { NO_PRIORITY, priorityFilterValue, severityLevel, severityName, sortWorkItems } from '../priority';
-import { stateCategory, stateRank } from '../states';
+import { shownStateOf, stateCategory, stateRank } from '../states';
 import { eventPosition, layoutBands } from '../phaseLayout';
 import { MyPullRequestModel, PhaseEventModel, ReviewerModel, VoteKind } from '../myPullRequests';
 import { describeTeamRules } from '../reviewCard';
@@ -229,7 +229,7 @@ function renderFilters(current: ViewModel): string {
   const { filter, stateOrder } = current;
   const workItems = cardItems(current);
   const types = countBy(workItems, (item) => item.type);
-  const states = countBy(workItems, (item) => item.state);
+  const states = countBy(workItems, shownStateOf);
   const pullRequests = countBy(workItems, pullRequestFilterValue);
   const priorities = countBy(workItems, priorityFilterValue);
   const tones = pullRequestTones(workItems);
@@ -877,7 +877,7 @@ function renderWorkingOn(item: WorkItemModel): string {
 function renderCard(item: WorkItemModel, children: TaskRow[], visibleIds: Set<number>, foldable: boolean): string {
   const classes = [
     'card',
-    `state-border-${stateCategory(item.state)}`,
+    `state-border-${stateCategory(item.displayState)}`,
     workingOnClass(item),
     item.alerts.length ? 'has-alerts' : '',
   ].join(' ');
@@ -895,7 +895,7 @@ function renderCard(item: WorkItemModel, children: TaskRow[], visibleIds: Set<nu
   }" title="Open the Work Item Details panel">${item.id}</button>
       ${renderWorkingOn(item)}
       ${renderUrgency(item)}
-      ${stateButton(item.id, item.state)}
+      ${stateButton(item.id, item.displayState, item.state)}
     </header>
     <div class="title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
     ${renderParent(item, visibleIds)}
@@ -982,7 +982,7 @@ function renderSignal(signal: CompactSignal, item: WorkItemModel): string {
 function renderCompactCard(item: WorkItemModel, children: TaskRow[]): string {
   const classes = [
     'card compact',
-    `state-border-${stateCategory(item.state)}`,
+    `state-border-${stateCategory(item.displayState)}`,
     workingOnClass(item),
     item.alerts.length ? 'has-alerts' : '',
   ].join(' ');
@@ -996,7 +996,7 @@ function renderCompactCard(item: WorkItemModel, children: TaskRow[]): string {
     item.id
   }" title="Open the Work Item Details panel">${item.id}</button>
       <span class="compact-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
-      ${stateButton(item.id, item.state)}
+      ${stateButton(item.id, item.displayState, item.state)}
     </div>
     ${signals.length ? `<div class="signals">${signals.join('')}</div>` : ''}
   </article>`;

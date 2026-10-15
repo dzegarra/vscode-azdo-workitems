@@ -65,6 +65,8 @@ export class CurrentWorkItemStatusBar implements vscode.Disposable {
       vscode.workspace.onDidChangeConfiguration((event) => {
         if (event.affectsConfiguration(`${SECTION}.statusBar.currentWorkItem`)) {
           this.schedule(true);
+        } else if (event.affectsConfiguration(`${SECTION}.showInReviewState`) && this.resolved) {
+          this.show(this.resolved);
         }
       })
     );
@@ -159,7 +161,7 @@ export class CurrentWorkItemStatusBar implements vscode.Disposable {
       `**${info.type} ${info.id}** · ${view.isMine ? 'assigned to you' : 'not assigned to you'}\n\n`
     );
     tooltip.appendText(info.title);
-    tooltip.appendMarkdown(`\n\nState: **${info.state}**  \nAssigned to: `);
+    tooltip.appendMarkdown(`\n\nState: **${this.store.displayStateOf(info.id) ?? info.state}**  \nAssigned to: `);
     tooltip.appendText(view.assignee);
     if (view.branchOwner) {
       tooltip.appendMarkdown('  \nBranch owner: ');

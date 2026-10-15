@@ -492,6 +492,11 @@
           "default": true,
           "description": "A halo expands from the \"Working on\" badge (and from the dot of the compact row) and fades out every ~2 s, like a recording light. Independent from the card animation. Nothing animates when the system asks for reduced motion."
         },
+        "totalflowx.showInReviewState": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show **In review** for a Committed work item whose only open tasks are In Progress PR tasks (title matching `#totalflowx.alerts.pullRequestTaskPattern#` or linked to a PR) while every other task is Done. Display only: nothing changes in Azure DevOps and the rules keep using the real state. Turn it off to see the real states."
+        },
         "totalflowx.stateOrder": {
           "type": "array",
           "items": {
@@ -500,6 +505,7 @@
           "default": [
             "Done",
             "Ready to Test",
+            "In review",
             "Committed",
             "In Progress",
             "Approved",

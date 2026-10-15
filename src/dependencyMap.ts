@@ -26,12 +26,13 @@ function dependencyIds(workItem: WorkItem): number[] {
   return [...workItem.links.predecessorIds, ...workItem.links.successorIds];
 }
 
-function toGraphItem(workItem: WorkItem): GraphItem {
+/** Only the work items of the list have their tasks loaded: the others show their real state */
+function toGraphItem(workItem: WorkItem, store: WorkItemsStore): GraphItem {
   return {
     id: workItem.id,
     title: workItem.title,
     type: workItem.type,
-    state: workItem.state,
+    state: store.displayStateOf(workItem.id) ?? workItem.state,
     iterationPath: workItem.iterationPath,
     assignedTo: workItem.assignedTo,
     priority: parsePriority(workItem.fields[PRIORITY_FIELD]),
@@ -163,13 +164,26 @@ export class DependencyMapPanel implements vscode.Disposable {
     }
   }
 
+  /** Sends the graph again from the work items already loaded (e.g. a setting that changes how states are shown) */
+  repost(): void {
+    if (this.panel) {
+      void withFeature('dependencyMap', () => this.post());
+    }
+  }
+
   private async post(): Promise<void> {
     if (!this.panel) {
       return;
     }
     const schedule = await (await this.client()).getIterationSchedule();
     const mineIds = new Set(this.store.workItems.map((entry) => entry.workItem.id));
-    const graph = buildGraph([...this.items.values()].map(toGraphItem), mineIds, schedule, new Date(), this.focusId);
+    const graph = buildGraph(
+      [...this.items.values()].map((workItem) => toGraphItem(workItem, this.store)),
+      mineIds,
+      schedule,
+      new Date(),
+      this.focusId
+    );
     await this.panel.webview.postMessage({
       type: 'graph',
       graph,
