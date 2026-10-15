@@ -18,6 +18,7 @@ import {
 import { RunModel } from './pipelines';
 import type { PullRequestExtrasLoader } from './pullRequestExtras';
 import { REF_TYPE_REMOTE_HEAD } from './git';
+import { AttentionEffect, normalizeAttentionEffect } from './attentionEffect';
 import type { Layout } from './viewModel';
 import { WorkItemsStore } from './workItemsStore';
 
@@ -59,11 +60,13 @@ export function myPullRequestSettings(): {
   intervalSeconds: number;
   minimumRequiredReviewers: number;
   showInStatusBar: boolean;
+  attentionEffect: AttentionEffect;
 } {
   const config = vscode.workspace.getConfiguration(`${SECTION}.myPullRequests`);
   return {
     showDrafts: config.get<boolean>('showDrafts', true),
     showInStatusBar: config.get<boolean>('showInStatusBar', true),
+    attentionEffect: normalizeAttentionEffect(config.get<string>('attentionEffect', 'pulse')),
     completedPeriod: completedPeriodSetting(config.get<string>('completedPeriod', 'day')),
     layout: config.get<Layout>('layout', 'compact') === 'large' ? 'large' : 'compact',
     minimumRequiredReviewers: Math.max(0, config.get<number>('minimumRequiredReviewers', 2)),

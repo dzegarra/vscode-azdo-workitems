@@ -17,6 +17,7 @@ import type { TaskBranchModel } from './taskBranches';
 import type { TaskPullRequestModel } from './taskPullRequests';
 import { isClosedState } from './states';
 import type { PullRequestTone } from './workItemLinks';
+import type { AttentionEffect } from './attentionEffect';
 import type { HoverStyle } from './hoverStyle';
 import type { TaskCountStyle } from './taskCountStyle';
 import type { WorkingOnAnimation, WorkingOnLevel } from './workingOn';
@@ -226,6 +227,8 @@ export interface MyPullRequestsModel {
   completedSummary?: string;
   /** totalflowx.myPullRequests.layout */
   layout: Layout;
+  /** totalflowx.myPullRequests.attentionEffect */
+  attentionEffect: AttentionEffect;
   items: MyPullRequestModel[];
 }
 

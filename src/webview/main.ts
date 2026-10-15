@@ -47,6 +47,8 @@ import { pullRequestTooltip } from '../pullRequestModel';
 import { describeTaskBranch, TaskBranchModel } from '../taskBranches';
 import { TaskPullRequestModel } from '../taskPullRequests';
 import { taskHasActions, taskPill, TaskPill } from '../taskMenu';
+import { needsAttention } from '../myPullRequestsAttention';
+import { ATTENTION_EFFECTS, attentionEffectClass } from '../attentionEffect';
 import { HOVER_STYLES, hoverStyleClass } from '../hoverStyle';
 import { TASK_COUNT_STYLES, taskCountStyleClass } from '../taskCountStyle';
 import { splitWorkingOn, WorkingOnLevel, workingOnAnimationClasses, workingOnBadge } from '../workingOn';
@@ -1659,12 +1661,15 @@ function renderMyActions(pr: MyPullRequestModel): string {
   return `<footer class="actions">${buttons.join('')}</footer>`;
 }
 
+// Rule MYPR-PULSE-5
 /** Two lines: ID, title and status; then the next step and the small signals. Clicking the row expands it */
 function renderCompactMyPullRequest(pr: MyPullRequestModel): string {
   const signals = myPullRequestCompactSignals(pr).map(renderPrSignal).join('');
   return `<li class="mypr compact tone-${pr.tone}${pr.isCompleted ? ' completed' : ''}${
     pr.readyToMerge ? ' ready-to-merge' : ''
-  }" data-mypr="${pr.id}" data-action="toggleMyPullRequestRow" data-id="${pr.id}">
+  }${needsAttention(pr) ? ' needs-attention' : ''}" data-mypr="${
+    pr.id
+  }" data-action="toggleMyPullRequestRow" data-id="${pr.id}">
     <div class="compact-head">
       ${rowChevron('toggleMyPullRequestRow', pr.id, false, `pull request ${pr.id}`)}
       <button class="link id" data-action="openMyPullRequest" data-url="${escapeHtml(
@@ -1677,7 +1682,7 @@ function renderCompactMyPullRequest(pr: MyPullRequestModel): string {
   </li>`;
 }
 
-// Rules MYPR-ACT-4, MYPR-ACT-5, PR-EFFECT-3
+// Rules MYPR-ACT-4, MYPR-ACT-5, MYPR-PULSE-5, PR-EFFECT-3
 /** `foldable`: the full card of a row expanded in the compact layout; its chevron folds it back */
 function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean, foldable = false): string {
   const meta = [
@@ -1708,7 +1713,7 @@ function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean, fo
   );
   return `<li class="mypr tone-${pr.tone}${pr.isCompleted ? ' completed' : ''}${
     pr.readyToMerge ? ' ready-to-merge' : ''
-  }" data-mypr="${pr.id}">
+  }${needsAttention(pr) ? ' needs-attention' : ''}" data-mypr="${pr.id}">
     <div class="mypr-head${foldable ? ` foldable" data-action="toggleMyPullRequestRow" data-id="${pr.id}` : ''}">
       ${foldable ? rowChevron('toggleMyPullRequestRow', pr.id, true, `pull request ${pr.id}`) : ''}
       <button class="link id" data-action="openMyPullRequest" data-url="${escapeHtml(pr.url)}"
@@ -2161,6 +2166,10 @@ function render(): void {
   // Hover style of the cards and PR tiles, switched by a class (strict CSP: no inline styles)
   for (const style of HOVER_STYLES) {
     app.classList.toggle(hoverStyleClass(style), style === model.hoverStyle);
+  }
+  // Rule MYPR-PULSE-4: effect of the My Pull Requests tiles that need the user (class on the tile, switched here)
+  for (const effect of ATTENTION_EFFECTS) {
+    app.classList.toggle(attentionEffectClass(effect), effect === model.pullRequests.attentionEffect);
   }
   // Delay of the popovers (a CSS variable: strict CSP, no inline styles)
   app.style.setProperty('--popover-delay', `${model.popoverDelay}ms`);

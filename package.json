@@ -997,6 +997,31 @@
           "default": true,
           "description": "Show in the status bar how many of your pull requests need you (rejected, waiting for you, conflicts, failed CI, unresolved comments) or are ready to merge."
         },
+        "totalflowx.myPullRequests.attentionEffect": {
+          "type": "string",
+          "enum": [
+            "none",
+            "static",
+            "pulse",
+            "waves",
+            "shimmer",
+            "ripple",
+            "rainbow",
+            "breathe"
+          ],
+          "enumDescriptions": [
+            "Nothing: the tiles that need you look like the others.",
+            "A steady faint orange tint, no motion.",
+            "The orange background breathes gently and continuously.",
+            "Soft orange diagonal bands drift slowly across the tile.",
+            "A soft orange light sweeps across the tile from left to right every few seconds, over the faint tint.",
+            "Orange rings expand from the left edge (the state bar) and fade out, repeating.",
+            "A slowly moving multicolour gradient at low opacity. The only effect that is not orange.",
+            "An orange glow grows and fades along the inside edges of the tile; the centre stays clear."
+          ],
+          "default": "pulse",
+          "markdownDescription": "Effect of the background of the My Pull Requests tiles that need your attention (reviewer feedback, conflicts, failed CI, unresolved comments, team-rule warnings). Only the background is drawn, behind the text, and it stays faint so the text keeps its contrast. With reduced motion in the system every animated effect shows the `static` tint."
+        },
         "totalflowx.myPullRequests.showDrafts": {
           "type": "boolean",
           "default": true,

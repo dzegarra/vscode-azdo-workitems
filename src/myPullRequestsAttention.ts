@@ -101,6 +101,19 @@ function isReady(pr: MyPullRequestModel, reasons: AttentionReason[]): boolean {
   return isFollowed(pr) && pr.readyToMerge && !pr.autoComplete && !reasons.length;
 }
 
+/**
+ * Whether the tile of the PR pulses in the sidebar: an active published PR with a reason that needs the user (the
+ * status bar ones) or a team-rule warning (which the status bar ignores). Drafts and completed PRs never do
+ */
+export function needsAttention(pr: MyPullRequestModel): boolean {
+  // Rule MYPR-PULSE-1
+  if (!isFollowed(pr)) {
+    return false;
+  }
+  // Rules MYPR-PULSE-2, MYPR-PULSE-3
+  return attentionReasons(pr).length > 0 || pr.warnings.length > 0;
+}
+
 export function attentionOf(pr: MyPullRequestModel): PullRequestAttention {
   const reasons = attentionReasons(pr);
   return { id: pr.id, title: pr.title, url: pr.url, reasons, ready: isReady(pr, reasons) };

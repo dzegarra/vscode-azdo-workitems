@@ -6,6 +6,7 @@ import {
   attentionOf,
   attentionReasons,
   myPullRequestsItem,
+  needsAttention,
 } from './myPullRequestsAttention';
 import type { RunModel } from './pipelines';
 
@@ -30,6 +31,7 @@ function model(overrides: Partial<MyPullRequestModel> = {}): MyPullRequestModel 
     runs: [],
     autoComplete: false,
     readyToMerge: false,
+    warnings: [],
     ...overrides,
   } as MyPullRequestModel;
 }
@@ -149,5 +151,39 @@ describe('myPullRequestsItem', () => {
       ['$(warning)', '3 unresolved comments'],
       ['$(git-merge)', 'Ready to merge'],
     ]);
+  });
+});
+
+describe('needsAttention', () => {
+  const warning = { text: 'Link the Backlog Item or Bug of this PR', severity: 'warning' as const };
+
+  it('is false for a quiet active PR', () => {
+    // Rule MYPR-PULSE-1
+    expect(needsAttention(model())).toBe(false);
+    expect(needsAttention(model({ readyToMerge: true }))).toBe(false);
+  });
+
+  it('is true for the reasons of the status bar', () => {
+    // Rule MYPR-PULSE-2
+    expect(needsAttention(model({ reviewers: [reviewer('Ann', 'waiting')] }))).toBe(true);
+    expect(needsAttention(model({ reviewers: [reviewer('Ann', 'rejected')] }))).toBe(true);
+    expect(needsAttention(model({ conflicts: true }))).toBe(true);
+    expect(needsAttention(model({ runs: [run('failed')] }))).toBe(true);
+    expect(needsAttention(model({ runs: [run('partial')] }))).toBe(true);
+    expect(needsAttention(model({ unresolved: 1 }))).toBe(true);
+    expect(needsAttention(model({ runs: [run('running')] }))).toBe(false);
+  });
+
+  it('is true for a team-rule warning alone, which the status bar ignores', () => {
+    // Rule MYPR-PULSE-3
+    const pr = model({ warnings: [warning] });
+    expect(needsAttention(pr)).toBe(true);
+    expect(attentionReasons(pr)).toEqual([]);
+  });
+
+  it('is never true for drafts nor completed PRs', () => {
+    // Rule MYPR-PULSE-1
+    expect(needsAttention(model({ isDraft: true, warnings: [warning], conflicts: true }))).toBe(false);
+    expect(needsAttention(model({ isCompleted: true, warnings: [warning], unresolved: 2 }))).toBe(false);
   });
 });

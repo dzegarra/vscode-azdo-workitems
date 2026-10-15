@@ -1753,6 +1753,166 @@ button.state:focus-visible {
   background: var(--phase-color);
 }
 
+/*
+ * My Pull Requests tiles that need the user (totalflowx.myPullRequests.attentionEffect, class attention-<effect> on
+ * #app). The effect is only a background, drawn on pseudo-elements behind the content, so the tile's own background,
+ * hover styles, green "ready" and menus stay as they are. They sit inside the padding edge (the border and the left
+ * bar are not covered), ignore the pointer, and clip themselves (the tile has no overflow:hidden, popovers must not
+ * be clipped); the tile isolates its stacking context so they stay above the tile's background but below its content.
+ * Colour: the fixed orange --waiting (not the theme warning colour, gold in some themes); rainbow is the only
+ * exception. Peak opacity 12-20 % keeps the text contrast. Without motion (reduced motion) every effect is the
+ * static faint tint below; the animations only animate opacity, transform or background-position
+ */
+:is(
+    .attention-static,
+    .attention-pulse,
+    .attention-waves,
+    .attention-shimmer,
+    .attention-ripple,
+    .attention-rainbow,
+    .attention-breathe
+  )
+  .mypr.needs-attention {
+  isolation: isolate;
+}
+
+:is(
+    .attention-static,
+    .attention-pulse,
+    .attention-waves,
+    .attention-shimmer,
+    .attention-ripple,
+    .attention-rainbow,
+    .attention-breathe
+  )
+  .mypr.needs-attention::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 5px;
+  background: var(--waiting);
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+@keyframes mypr-attention-pulse {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 0.15;
+  }
+}
+
+/* One period of the bands (40 px across, 45 degrees): moving by it loops without a jump */
+@keyframes mypr-attention-waves {
+  to {
+    background-position: 40px 0;
+  }
+}
+
+/* The light crosses in the first 55 % of the cycle and rests the rest of it */
+@keyframes mypr-attention-shimmer {
+  from {
+    background-position: 100% 0, 0 0;
+  }
+
+  55%,
+  to {
+    background-position: 0 0, 0 0;
+  }
+}
+
+@keyframes mypr-attention-ripple {
+  from {
+    transform: scaleX(0.05);
+    opacity: 0.3;
+  }
+
+  to {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+/* The gradient starts and ends on the same colour: moving by its width loops without a jump */
+@keyframes mypr-attention-rainbow {
+  to {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes mypr-attention-breathe {
+  from {
+    opacity: 0.04;
+  }
+
+  to {
+    opacity: 0.2;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .attention-pulse .mypr.needs-attention::before {
+    opacity: 0;
+    animation: mypr-attention-pulse 2.4s ease-in-out infinite alternate;
+  }
+
+  .attention-waves .mypr.needs-attention::before {
+    background: repeating-linear-gradient(45deg, transparent 0, var(--waiting) 14.142px, transparent 28.284px);
+    opacity: 0.14;
+    animation: mypr-attention-waves 5s linear infinite;
+  }
+
+  .attention-shimmer .mypr.needs-attention::before {
+    background-color: transparent;
+    background-image: linear-gradient(100deg, transparent 42%, var(--waiting) 50%, transparent 58%),
+      linear-gradient(
+        color-mix(in srgb, var(--waiting) 25%, transparent),
+        color-mix(in srgb, var(--waiting) 25%, transparent)
+      );
+    background-size: 300% 100%, 100% 100%;
+    background-repeat: no-repeat;
+    opacity: 0.2;
+    animation: mypr-attention-shimmer 4s ease-in-out infinite;
+  }
+
+  /* Two rings, half a cycle apart; each is a radial gradient growing from the left edge by transform */
+  .attention-ripple .mypr.needs-attention::before,
+  .attention-ripple .mypr.needs-attention::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: 5px;
+    background: radial-gradient(ellipse 100% 100% at 0 50%, transparent 35%, var(--waiting) 85%, transparent 100%);
+    transform-origin: 0 50%;
+    pointer-events: none;
+    opacity: 0;
+    animation: mypr-attention-ripple 4s ease-out infinite;
+  }
+
+  .attention-ripple .mypr.needs-attention::after {
+    animation-delay: -2s;
+  }
+
+  .attention-rainbow .mypr.needs-attention::before {
+    background: linear-gradient(90deg, #f85149, #f0883e, #d4a72c, #3fb950, #2ec4d6, #58a6ff, #bc8cff, #f85149);
+    background-size: 200% 100%;
+    opacity: 0.14;
+    animation: mypr-attention-rainbow 10s linear infinite;
+  }
+
+  .attention-breathe .mypr.needs-attention::before {
+    background: none;
+    box-shadow: inset 0 0 14px 2px var(--waiting);
+    opacity: 0.04;
+    animation: mypr-attention-breathe 3s ease-in-out infinite alternate;
+  }
+}
+
 /* The card with an open timeline goes over the following ones */
 .review:hover,
 .review:focus-within {

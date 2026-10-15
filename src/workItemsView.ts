@@ -122,6 +122,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         hiddenCompleted,
         completedSummary,
         layout: pullRequestConfig.layout,
+        attentionEffect: pullRequestConfig.attentionEffect,
         items,
       },
     };
