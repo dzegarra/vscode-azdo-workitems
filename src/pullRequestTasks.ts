@@ -4,6 +4,7 @@
  * Pure, so no "vscode" import
  */
 import { deleteBranchOffer } from './deletableBranches';
+import type { TaskBranchModel } from './taskBranches';
 import { isNotStartedState, stateCategory, normalizeState } from './states';
 
 export const TASK_IN_PROGRESS = 'In Progress';
@@ -62,20 +63,45 @@ export function stateForNewPullRequestTask(task: Pick<PullRequestTaskRef, 'state
   return isDraft || isTaskClosed(task.state) || isInProgress(task.state) ? undefined : TASK_IN_PROGRESS;
 }
 
+/** Branch of the task that exists in this repository: a PR can be created from it */
+function isUsableTaskBranch(branch: TaskBranchModel): boolean {
+  return branch.state === 'current' || branch.state === 'exists';
+}
+
 // Rule TASK-ACT-2
-/** The "Create PR" button of a task row: open task, no active PR yet, and its work item not finished */
+/**
+ * Branches of the task to offer "Create PR" for: the usable ones (here and not deleted) without a PR or whose PR
+ * was abandoned. Active, draft and completed PRs get nothing: they have "Open PR" (or "Delete branch")
+ */
+export function taskBranchesForNewPullRequest(branches: TaskBranchModel[]): string[] {
+  return branches
+    .filter((branch) => isUsableTaskBranch(branch) && (!branch.pullRequest || branch.pullRequest.tone === 'abandoned'))
+    .map((branch) => branch.name);
+}
+
+// Rule TASK-ACT-2
+/**
+ * The "Create PR" button of a task row: open task and its work item not finished, and either some usable branch
+ * without a PR, or (no usable branch) no active PR yet
+ */
 export function canCreatePullRequestForTask(input: {
   taskState: string;
   parentState: string | undefined;
   pullRequests: { status: string }[];
+  /** Branches linked to the task, as the pill shows them */
+  branches: TaskBranchModel[];
 }): boolean {
-  return (
+  const open =
     input.parentState !== undefined &&
     stateCategory(input.parentState) !== 'done' &&
     stateCategory(input.parentState) !== 'removed' &&
-    !isTaskClosed(input.taskState) &&
-    !input.pullRequests.some((pr) => pr.status === 'active')
-  );
+    !isTaskClosed(input.taskState);
+  if (!open) {
+    return false;
+  }
+  return input.branches.some(isUsableTaskBranch)
+    ? taskBranchesForNewPullRequest(input.branches).length > 0
+    : !input.pullRequests.some((pr) => pr.status === 'active');
 }
 
 // Rule TASK-ACT-1

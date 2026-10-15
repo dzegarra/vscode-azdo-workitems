@@ -3,6 +3,7 @@
  * Pure, so no "vscode" import: the webview bundles it
  */
 import type { ActionMenuAction, ActionMenuItem, ActionMenuSection } from './actionMenu';
+import { taskBranchesForNewPullRequest } from './pullRequestTasks';
 import { describeTaskBranch, TaskBranchModel } from './taskBranches';
 import type { TaskPullRequestModel } from './taskPullRequests';
 
@@ -18,6 +19,19 @@ export interface TaskMenuTask {
 export type TaskMenuAction = ActionMenuAction;
 export type TaskMenuItem = ActionMenuItem;
 export type TaskMenuSection = ActionMenuSection;
+
+// Rule TASK-MENU-5
+/** One "Create PR from <branch>" per branch without PR; the generic item when the task has none usable */
+function createPullRequestItems(task: TaskMenuTask, parentId: number): TaskMenuItem[] {
+  const branches = taskBranchesForNewPullRequest(task.taskBranches);
+  if (!branches.length) {
+    return [{ label: 'Create PR with this task', act: { action: 'createPullRequest', id: parentId, task: task.id } }];
+  }
+  return branches.map((branch) => ({
+    label: `Create PR from ${branch}`,
+    act: { action: 'createPullRequest', id: parentId, task: task.id, branch },
+  }));
+}
 
 // Rules TASK-MENU-1..5
 export function taskMenuSections(task: TaskMenuTask, parentId: number): TaskMenuSection[] {
@@ -62,10 +76,7 @@ export function taskMenuSections(task: TaskMenuTask, parentId: number): TaskMenu
     });
   }
   if (task.canCreatePullRequest) {
-    createItems.push({
-      label: 'Create PR with this task',
-      act: { action: 'createPullRequest', id: parentId, task: task.id },
-    });
+    createItems.push(...createPullRequestItems(task, parentId));
   }
   return [
     { title: 'Branches', items: branchItems },

@@ -53,7 +53,10 @@ async function runAction(store: WorkItemsStore, message: WorkItemAction): Promis
     }
     case 'createPullRequest':
       if (entry) {
-        await vscode.commands.executeCommand(COMMANDS.createPullRequest, entry, { taskId: message.taskId });
+        await vscode.commands.executeCommand(COMMANDS.createPullRequest, entry, {
+          taskId: message.taskId,
+          branch: message.branch,
+        });
       }
       return;
     case 'createBranch':

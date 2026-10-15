@@ -303,7 +303,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     command('totalflowx.createBranch', (entry?: WorkItemEntry, options?: { taskId?: number }) =>
       createBranch(git, store, entry, options)
     ),
-    command('totalflowx.createPullRequest', (entry?: WorkItemEntry, options?: { taskId?: number }) =>
+    command('totalflowx.createPullRequest', (entry?: WorkItemEntry, options?: { taskId?: number; branch?: string }) =>
       createPullRequest(git, store, entry, options)
     ),
     command('totalflowx.deleteBranch', (entry?: WorkItemEntry, branch?: string) =>

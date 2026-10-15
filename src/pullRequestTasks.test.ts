@@ -9,9 +9,11 @@ import {
   pullRequestTaskTitle,
   reusableTasks,
   stateForNewPullRequestTask,
+  taskBranchesForNewPullRequest,
   tasksToComplete,
   tasksToStart,
 } from './pullRequestTasks';
+import type { TaskBranchModel } from './taskBranches';
 
 const task = (id: number, state: string, pullRequestIds: number[] = []) => ({
   id,
@@ -61,8 +63,62 @@ describe('stateForNewPullRequestTask', () => {
   });
 });
 
+const taskBranch = (name: string, over: Partial<TaskBranchModel> = {}): TaskBranchModel => ({
+  name,
+  state: 'exists',
+  canCheckout: true,
+  ...over,
+});
+const withPr = (tone: 'abandoned' | 'completed' | 'draft' | 'review') => ({ id: 1, status: tone, tone });
+
+describe('taskBranchesForNewPullRequest', () => {
+  it('offers the usable branches without PR or with an abandoned one', () => {
+    const branches = [
+      taskBranch('none'),
+      taskBranch('current', { state: 'current' }),
+      taskBranch('abandoned', { pullRequest: withPr('abandoned') }),
+    ];
+    expect(taskBranchesForNewPullRequest(branches)).toEqual(['none', 'current', 'abandoned']);
+  });
+
+  it('skips active, draft and completed PRs, deleted branches and other repositories', () => {
+    const branches = [
+      taskBranch('active', { pullRequest: withPr('review') }),
+      taskBranch('draft', { pullRequest: withPr('draft') }),
+      taskBranch('completed', { pullRequest: withPr('completed') }),
+      taskBranch('deleted', { state: 'deleted', canCheckout: false }),
+      taskBranch('other', { state: 'other', canCheckout: false }),
+    ];
+    expect(taskBranchesForNewPullRequest(branches)).toEqual([]);
+  });
+});
+
 describe('canCreatePullRequestForTask', () => {
-  const base = { taskState: 'To Do', parentState: 'Committed', pullRequests: [] as { status: string }[] };
+  const base = {
+    taskState: 'To Do',
+    parentState: 'Committed',
+    pullRequests: [] as { status: string }[],
+    branches: [] as TaskBranchModel[],
+  };
+
+  it('is offered for a branch without PR although another branch has an active one', () => {
+    const branches = [taskBranch('a', { pullRequest: withPr('review') }), taskBranch('b')];
+    expect(canCreatePullRequestForTask({ ...base, pullRequests: [{ status: 'active' }], branches })).toBe(true);
+  });
+
+  it('is not offered when every usable branch has an active PR', () => {
+    const branches = [
+      taskBranch('a', { pullRequest: withPr('review') }),
+      taskBranch('b', { pullRequest: withPr('draft') }),
+    ];
+    expect(canCreatePullRequestForTask({ ...base, pullRequests: [{ status: 'active' }], branches })).toBe(false);
+  });
+
+  it('keeps the old check when the task has no usable branch', () => {
+    const branches = [taskBranch('gone', { state: 'deleted', canCheckout: false })];
+    expect(canCreatePullRequestForTask({ ...base, branches })).toBe(true);
+    expect(canCreatePullRequestForTask({ ...base, branches, pullRequests: [{ status: 'active' }] })).toBe(false);
+  });
 
   it('offers it for an open task without an active PR', () => {
     expect(canCreatePullRequestForTask(base)).toBe(true);

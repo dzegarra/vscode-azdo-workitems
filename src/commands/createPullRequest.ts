@@ -6,7 +6,7 @@ import { pickFromCatalog } from '../catalog';
 import { buildNotesSettings, resolveContext, settings } from '../config';
 import { localDiffChangesFile } from '../buildNotes';
 import { baseConfigKey, usableStoredBase } from '../baseBranch';
-import { GitAPI, pickRepository, Repository } from '../git';
+import { GitAPI, pickRepository, REF_TYPE_HEAD, Repository } from '../git';
 import { buildPrDescription, buildPrTitle, parseBranchName } from '../naming';
 import { chooseTaskBranch, PullRequestTaskRef } from '../pullRequestTasks';
 import { linkCandidates } from '../workingOn';
@@ -266,14 +266,33 @@ async function pickTaskBranch(
   return branch ? { branch, isLocal: branch === current || location === 'local' } : undefined;
 }
 
+/** Whether the branch is a local branch of the repository (a task branch may not be among those of the work item) */
+async function isLocalBranch(repository: Repository, node: WorkItemEntry, branch: string): Promise<boolean> {
+  if (
+    branch === repository.state.HEAD?.name ||
+    node.branches.some((c) => c.name === branch && c.location === 'local')
+  ) {
+    return true;
+  }
+  const local = await repository.getBranches({ remote: false });
+  return local.some((ref) => ref.type === REF_TYPE_HEAD && ref.name === branch);
+}
+
 // Rule FLOW-PR-1
-/** From a work item: its branch. From the command palette: the current branch. From a task row: see pickTaskBranch */
+/**
+ * From a work item: its branch. From the command palette: the current branch. From a task row: the branch chosen in
+ * its menu, else see pickTaskBranch
+ */
 async function resolveSourceBranch(
   store: WorkItemsStore,
   repository: Repository,
   node: WorkItemEntry | undefined,
-  taskId: number | undefined
+  options: { taskId?: number; branch?: string }
 ): Promise<SourceBranch | undefined> {
+  const { taskId, branch: chosen } = options;
+  if (node && taskId !== undefined && chosen) {
+    return { branch: chosen, isLocal: await isLocalBranch(repository, node, chosen) };
+  }
   if (node && taskId !== undefined) {
     return pickTaskBranch(repository, node, findChildTask(store, node, taskId)?.branchNames ?? []);
   }
@@ -326,12 +345,12 @@ export async function createPullRequest(
   store: WorkItemsStore,
   node?: WorkItemEntry,
   /** From a task row of a card: `node` is the parent work item and the task is the PR task */
-  options: { taskId?: number } = {}
+  options: { taskId?: number; branch?: string } = {}
 ): Promise<void> {
   const repository = pickRepository(git);
   const s = settings();
 
-  const source = await resolveSourceBranch(store, repository, node, options.taskId);
+  const source = await resolveSourceBranch(store, repository, node, options);
   if (!source) {
     return;
   }

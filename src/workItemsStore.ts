@@ -824,6 +824,8 @@ export class WorkItemsStore {
   ): WorkItemModel {
     const taskLevel = (task: WorkItem) =>
       taskWorkingOn(branchNamesOf(task.links.branches, this.repositoryId), currentBranch, worktreeBranches);
+    const taskBranches =
+      workItem.type === 'Task' ? this.taskBranches(workItem, pullRequests, currentBranch, deletableBranches) : [];
     return {
       id: workItem.id,
       title: workItem.title,
@@ -854,8 +856,7 @@ export class WorkItemsStore {
       openPredecessors: predecessors && openPredecessors(workItem, predecessors, completedStates, this.schedule),
       ...fixLinks(workItem, predecessors, successors),
       taskPullRequests: workItem.type === 'Task' ? this.taskPullRequests(pullRequests) : [],
-      taskBranches:
-        workItem.type === 'Task' ? this.taskBranches(workItem, pullRequests, currentBranch, deletableBranches) : [],
+      taskBranches,
       taskWorkingOn: workItem.type === 'Task' ? taskLevel(workItem) : undefined,
       canCreateBranch:
         workItem.type === 'Task' &&
@@ -870,27 +871,32 @@ export class WorkItemsStore {
           taskState: workItem.state,
           parentState: this.parentState(workItem),
           pullRequests,
+          branches: taskBranches,
         }),
-      otherTasks: otherTasks.map(({ workItem: task, pullRequests: taskPullRequests }) => ({
-        id: task.id,
-        title: task.title,
-        type: task.type,
-        state: task.state,
-        assignedTo: task.assignedTo,
-        taskPullRequests: this.taskPullRequests(taskPullRequests),
-        taskBranches: this.taskBranches(task, taskPullRequests, currentBranch),
-        taskWorkingOn: taskLevel(task),
-        canCreateBranch: canCreateBranchForTask({
-          taskState: task.state,
-          parentState: workItem.state,
-          branches: task.links.branches,
-        }),
-        canCreatePullRequest: canCreatePullRequestForTask({
-          taskState: task.state,
-          parentState: workItem.state,
-          pullRequests: taskPullRequests,
-        }),
-      })),
+      otherTasks: otherTasks.map(({ workItem: task, pullRequests: taskPullRequests }) => {
+        const otherBranches = this.taskBranches(task, taskPullRequests, currentBranch);
+        return {
+          id: task.id,
+          title: task.title,
+          type: task.type,
+          state: task.state,
+          assignedTo: task.assignedTo,
+          taskPullRequests: this.taskPullRequests(taskPullRequests),
+          taskBranches: otherBranches,
+          taskWorkingOn: taskLevel(task),
+          canCreateBranch: canCreateBranchForTask({
+            taskState: task.state,
+            parentState: workItem.state,
+            branches: task.links.branches,
+          }),
+          canCreatePullRequest: canCreatePullRequestForTask({
+            taskState: task.state,
+            parentState: workItem.state,
+            pullRequests: taskPullRequests,
+            branches: otherBranches,
+          }),
+        };
+      }),
     };
   }
 

@@ -101,6 +101,23 @@ describe('taskMenuSections', () => {
     expect(sections[2].items).toHaveLength(1);
   });
 
+  it('offers Create PR for each branch without PR, with the branch in the action', () => {
+    const sections = taskMenuSections(
+      task({
+        taskBranches: [
+          branch({ name: 'a', pullRequest: { id: 7, status: 'In review', tone: 'review' } }),
+          branch({ name: 'b' }),
+        ],
+        taskPullRequests: [pr()],
+        canCreatePullRequest: true,
+      }),
+      5
+    );
+    const create = sections.find((section) => section.title === 'Create');
+    expect(create?.items.map((item) => item.label)).toEqual(['Create PR from b']);
+    expect(create?.items[0].act).toEqual({ action: 'createPullRequest', id: 5, task: 11, branch: 'b' });
+  });
+
   it('is empty for a finished task', () => {
     expect(taskMenuSections(task(), 5)).toEqual([]);
   });
