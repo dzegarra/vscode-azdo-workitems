@@ -1,5 +1,6 @@
 /** The actions menu behind the button of a branch row. Pure, so no "vscode" import: the webview bundles it */
 import type { ActionMenuItem, ActionMenuSection } from './actionMenu';
+import { checkoutMenuItems } from './checkoutMenu';
 import type { BranchModel } from './viewModel';
 
 export interface BranchMenuOptions {
@@ -11,31 +12,23 @@ export interface BranchMenuOptions {
   checkout: boolean;
 }
 
-// Rules BRANCH-MENU-1..3
-function checkoutItems(branch: BranchModel, id: number): ActionMenuItem[] {
-  const base = { id, kind: 'workItem' as const, branch: branch.name };
-  if (branch.isCurrent) {
-    return [{ label: 'Checked out', detail: 'This is the branch open in this window' }];
-  }
-  if (branch.worktree) {
-    return [
-      { label: 'Open worktree', detail: branch.worktree, act: { action: 'openWorktree', ...base } },
-      { label: 'Remove worktree', detail: 'Keeps the branch', act: { action: 'removeWorktree', ...base } },
-    ];
-  }
-  return [
-    { label: 'Checkout here', detail: branch.name, act: { action: 'checkoutHere', ...base } },
-    { label: 'Open in a worktree', detail: branch.name, act: { action: 'openWorktree', ...base } },
-  ];
-}
-
 // Rules BRANCH-MENU-4, BRANCH-MENU-5
 /** Items of a branch of the open repository (none for the branches of other repositories); Delete when it is deletable */
 export function branchMenuSections(
   branch: BranchModel,
   { id, deletable, checkout: withCheckout }: BranchMenuOptions
 ): ActionMenuSection[] {
-  const checkout = branch.otherRepository || !withCheckout ? [] : checkoutItems(branch, id);
+  const checkout =
+    branch.otherRepository || !withCheckout
+      ? []
+      : checkoutMenuItems({
+          id,
+          kind: 'workItem',
+          branch: branch.name,
+          name: branch.name,
+          worktree: branch.worktree,
+          isCurrent: branch.isCurrent,
+        });
   const remove: ActionMenuItem[] = deletable
     ? [
         {

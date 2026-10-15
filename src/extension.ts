@@ -2,9 +2,11 @@ import * as vscode from 'vscode';
 import { createBranch } from './commands/createBranch';
 import { checkoutPullRequest } from './commands/checkoutPullRequest';
 import { isCheckoutBranch } from './workItemBranches';
-import { BranchTarget, checkoutBranch, openOrCreateWorktree, showCheckoutMenu } from './commands/checkoutBranch';
-import { removeWorktreeOf, removeWorktreesCommand, showWorktreeMenu } from './commands/removeWorktree';
+import { BranchTarget, checkoutBranch, openOrCreateWorktree } from './commands/checkoutBranch';
+import { removeWorktreeOf, removeWorktreesCommand } from './commands/removeWorktree';
 import { runPendingWorktreeSetup } from './worktreeSetup';
+import { showActionPicker } from './actionPickerUi';
+import { checkoutMenuSections } from './checkoutMenu';
 import { CheckoutKind } from './viewModel';
 import { publishPullRequest } from './commands/publishPullRequest';
 import { addBuildNotesSkipTag } from './commands/addBuildNotesSkipTag';
@@ -152,6 +154,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
         return { branch: pullRequest.sourceBranch, pullRequest: { id, title: pullRequest.title } };
       }
+    }
+  };
+
+  /**
+   * The ... of a Checkout / Open worktree button of the details panel: the native picker of the sidebar (same sections,
+   * built from the current state of the branch). What is chosen runs the command of the matching button
+   */
+  const showBranchActions = async (kind: CheckoutKind, id: number, branch?: string): Promise<void> => {
+    const name = branchTarget(kind, id, branch).branch;
+    const sections = checkoutMenuSections({ id, kind, branch, name, worktree: store.worktreeFor(name)?.path });
+    const message = await showActionPicker(name, sections);
+    if (message && 'kind' in message) {
+      await vscode.commands.executeCommand(`totalflowx.${message.type}`, message.kind, message.id, message.branch);
     }
   };
 
@@ -319,18 +334,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await checkoutBranch(git, store, target);
       }
     }),
-    command('totalflowx.checkoutMenu', async (kind: CheckoutKind, id: number, branch?: string) =>
-      showCheckoutMenu(git, store, branchTarget(kind, id, branch))
-    ),
+    // The ... of the Checkout / Open worktree buttons of the details panel: the same picker as the sidebar's
+    command('totalflowx.checkoutMenu', showBranchActions),
     command('totalflowx.checkoutHere', async (kind: CheckoutKind, id: number, branch?: string) =>
       checkoutBranch(git, store, branchTarget(kind, id, branch), 'here')
     ),
     command('totalflowx.openWorktree', async (kind: CheckoutKind, id: number, branch?: string) =>
       openOrCreateWorktree(git, store, branchTarget(kind, id, branch).branch)
     ),
-    command('totalflowx.worktreeMenu', async (kind: CheckoutKind, id: number, branch?: string) =>
-      showWorktreeMenu(store, git, branchTarget(kind, id, branch).branch)
-    ),
+    command('totalflowx.worktreeMenu', showBranchActions),
     command('totalflowx.removeWorktree', async (kind: CheckoutKind, id: number, branch?: string) =>
       removeWorktreeOf(store, git, branchTarget(kind, id, branch).branch)
     ),

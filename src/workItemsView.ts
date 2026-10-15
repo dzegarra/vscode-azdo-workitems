@@ -1,6 +1,7 @@
 import { migratePredecessorStates } from './predecessors';
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
+import { showActionPicker } from './actionPickerUi';
 import { coverageThresholds, recordsScope, SECTION, settings } from './config';
 import { safeRelativePath } from './coverage';
 import { describeRecords } from './coverageRecords';
@@ -96,6 +97,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       alwaysShowAlerts: vscode.workspace.getConfiguration(SECTION).get<boolean>('filter.alwaysShowAlerts', false),
       layout: layoutSetting(),
       hoverStyle: settings().hoverStyle,
+      hoverCardDelay: settings().hoverCardDelay,
       tasksCountStyle: settings().tasksCountStyle,
       workingOn: workingOnSettings(),
       coverage: this.coverageModel(),
@@ -182,6 +184,17 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     void this.view?.webview.postMessage(message);
   }
 
+  /**
+   * The native picker of a trigger of the view. What is chosen runs through onMessage, as if the webview had posted the
+   * message of that button: the picker only validated it (src/actionPicker.ts)
+   */
+  private async showActions(title: unknown, sections: unknown): Promise<void> {
+    const message = await showActionPicker(typeof title === 'string' ? title : 'Actions', sections);
+    if (message) {
+      await this.onMessage(message);
+    }
+  }
+
   private async onMessage(message: WebviewMessage): Promise<void> {
     switch (message.type) {
       case 'ready':
@@ -252,6 +265,9 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       case 'removeWorktree':
       case 'worktreeMenu':
         await vscode.commands.executeCommand(`totalflowx.${message.type}`, message.kind, message.id, message.branch);
+        return;
+      case 'showActions':
+        await this.showActions(message.title, message.sections);
         return;
       case 'openMyPullRequest':
       case 'openReviewRequest':

@@ -38,7 +38,12 @@ src/requestRecorder.ts    the ONLY place that calls fetch: records every request
 src/requestContext.ts     AsyncLocalStorage "feature" attribution of requests (withFeature)
 docs/RULES.md             decision tables of every rule (IDs referenced by `// Rule <ID>` comments; src/rulesDoc.test.ts)
 src/pullRequestTasks.ts    pure rules of the PR tasks (reusable tasks, which move on publish / completion, branch of a task row)
-src/taskMenu.ts            pure: the pill of a task row (branches + PRs) and the actions menu behind it
+src/taskMenu.ts            pure: the pill of a task row (branches + PRs) and the sections of the picker behind it
+src/checkoutMenu.ts        pure: items of the picker behind the ... of a Checkout button, and of the branch rows (src/branchMenu.ts)
+src/actionMenu.ts          pure: types of the picker sections / items and their codicon + colour (actionMenuIcon)
+src/actionRequests.ts      pure: title + sections of each trigger of the sidebar (task pill, branch row, Checkout ...), the `showActions` message
+src/actionPicker.ts        pure: sections -> picker entries (separators, icons) and the allowlist that validates what a chosen item may run
+src/actionPickerUi.ts      the native QuickPick of those entries (the only vscode-facing part); the details panel's ... use it too
 src/deletableBranches.ts   pure: when a branch is offered for deletion (completed PR, still exists, no active PR); texts of the delete flows
 src/workItemsStore.ts     work items of the current sprints + branches, PRs, CI runs, alerts, dependencies, worktrees
 src/*Watcher.ts           pollers: reviewRequestsWatcher (PRs to review), myPullRequestsWatcher (my PRs),

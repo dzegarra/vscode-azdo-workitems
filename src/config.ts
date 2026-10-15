@@ -8,6 +8,7 @@ import { parseCheckoutMode } from './worktrees';
 import { DEFAULT_COMPLETED_STATES } from './predecessors';
 import { DEFAULT_STATE_ORDER } from './states';
 import { parseWorkingDays } from './workingTime';
+import { normalizeHoverCardDelay } from './hoverCardDelay';
 import { normalizeHoverStyle } from './hoverStyle';
 import { normalizeTaskCountStyle } from './taskCountStyle';
 import { normalizeWorkingOnAnimation } from './workingOn';
@@ -48,6 +49,7 @@ export function settings() {
       suffix: config.get<string>('integrationBuild.suffix', '+'),
     },
     hoverStyle: normalizeHoverStyle(config.get<string>('hoverStyle', 'border')),
+    hoverCardDelay: normalizeHoverCardDelay(config.get<number>('tasks.hoverCardDelay', 500)),
     tasksCountStyle: normalizeTaskCountStyle(config.get<string>('tasks.countStyle', 'filled')),
     workingOn: {
       showWorktrees: config.get<boolean>('workingOn.showWorktrees', true),

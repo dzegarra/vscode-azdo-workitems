@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { openWorktree } from './checkoutBranch';
 import { GitAPI, pickRepository } from '../git';
 import { WorkItemsStore } from '../workItemsStore';
 import { listWorktrees, removeWorktreeSafely, worktreeHasChanges } from '../worktreeGit';
@@ -164,24 +163,4 @@ export async function removeWorktreeOf(store: WorkItemsStore, git: GitAPI, branc
     throw new Error(`${branch} has no worktree.`);
   }
   await removeWorktrees(store, pickRepository(git).rootUri.fsPath, [worktree]);
-}
-
-/** The ▾ of "Open worktree": open it or remove it */
-export async function showWorktreeMenu(store: WorkItemsStore, git: GitAPI, branch: string): Promise<void> {
-  const worktree = store.worktreeFor(branch);
-  if (!worktree) {
-    throw new Error(`${branch} has no worktree.`);
-  }
-  const picked = await vscode.window.showQuickPick(
-    [
-      { label: '$(folder-opened) Open worktree', description: worktree.path, action: 'open' as const },
-      { label: '$(trash) Remove worktree', description: 'Keeps the branch', action: 'remove' as const },
-    ],
-    { title: `Worktree of ${branch}`, ignoreFocusOut: true }
-  );
-  if (picked?.action === 'open') {
-    await openWorktree(store, branch);
-  } else if (picked?.action === 'remove') {
-    await removeWorktreeOf(store, git, branch);
-  }
 }

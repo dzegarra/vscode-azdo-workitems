@@ -2,6 +2,7 @@
  * Data exchanged between the extension and the work items webview.
  * Shared by both sides, so it must not import "vscode".
  */
+import type { ActionMenuSection } from './actionMenu';
 import type { WorkItemAlert } from './alerts';
 import type { FixLink } from './fixLinks';
 import { OpenPredecessor, predecessorFilterValue } from './predecessors';
@@ -164,6 +165,8 @@ export interface ViewModel {
   layout: Layout;
   /** How the cards and PR tiles react to the pointer (totalflowx.hoverStyle) */
   hoverStyle: HoverStyle;
+  /** Milliseconds before the details card of a task pill appears on hover (totalflowx.tasks.hoverCardDelay) */
+  hoverCardDelay: number;
   /** How the counts on the bar of the Tasks header look (totalflowx.tasks.countStyle) */
   tasksCountStyle: TaskCountStyle;
   coverage: CoverageViewModel;
@@ -252,7 +255,9 @@ export type WebviewMessage =
       taskId?: number;
     }
   | { type: 'openFile'; path: string }
-  /** The ▾ of a Checkout button (menu) and "Open worktree": the id is the work item or the PR; `branch`: a branch of the row of a work item */
+  /** Sidebar: a trigger (task pill, branch row, ... of a Checkout button) asks for the native picker of its actions */
+  | { type: 'showActions'; title: string; sections: ActionMenuSection[] }
+  /** The ... of a Checkout button (details panel: the extension builds the picker) and "Open worktree": the id is the work item or the PR; `branch`: a branch of the row of a work item */
   | {
       type: 'checkoutMenu' | 'checkoutHere' | 'openWorktree' | 'removeWorktree' | 'worktreeMenu';
       kind: CheckoutKind;

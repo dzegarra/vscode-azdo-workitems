@@ -142,7 +142,7 @@ export function parseCheckoutMode(value: unknown): CheckoutMode {
 // Rules CHECKOUT-1..3
 /**
  * What a Checkout does: "here" (switch the branch of this window), "worktree" or "ask" the user.
- * An explicit choice (the ▾ menu) skips the mode and the question
+ * An explicit choice (the … picker) skips the mode and the question
  */
 export function decideCheckout(options: {
   mode: CheckoutMode;

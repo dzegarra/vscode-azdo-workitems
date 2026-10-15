@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { taskMenuSections, taskPill, TaskMenuTask } from './taskMenu';
+import { taskHasActions, taskMenuSections, taskPill, TaskMenuTask } from './taskMenu';
 import type { TaskBranchModel } from './taskBranches';
 import type { TaskPullRequestModel } from './taskPullRequests';
 
@@ -163,5 +163,19 @@ describe('taskPill', () => {
     expect(taskPill(task({ taskBranches: [branch(), branch({ name: 'b' })] }))?.label).toBe(
       'Task 11: 2 branches. Actions'
     );
+  });
+});
+
+describe('taskHasActions', () => {
+  it('is true when something can be done: a PR to open, a branch to check out, something to create', () => {
+    expect(taskHasActions(task({ taskPullRequests: [pr()] }), 5)).toBe(true);
+    expect(taskHasActions(task({ taskBranches: [branch()] }), 5)).toBe(true);
+    expect(taskHasActions(task({ canCreateBranch: true }), 5)).toBe(true);
+  });
+
+  it('is false when the menu would only inform', () => {
+    const current = branch({ state: 'current', canCheckout: false, where: 'local' });
+    expect(taskHasActions(task({ taskBranches: [current] }), 5)).toBe(false);
+    expect(taskHasActions(task(), 5)).toBe(false);
   });
 });

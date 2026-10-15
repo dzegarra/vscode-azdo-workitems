@@ -982,6 +982,7 @@ button {
 /* ---------- Actions ---------- */
 
 .actions {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -1021,7 +1022,7 @@ button {
   background: color-mix(in srgb, var(--vscode-errorForeground, var(--red)) 14%, transparent);
 }
 
-/* "Checkout ▾": the main part and the narrow ▾ part read as one control */
+/* "Checkout …": the main part and the narrow … part read as one control */
 .button-group {
   display: inline-flex;
   flex: none;
@@ -1050,6 +1051,12 @@ button {
 .button.caret .icon {
   width: 12px;
   height: 12px;
+}
+
+/* The ellipsis is drawn with dots: filled, not a ring */
+.button.caret .icon circle {
+  fill: currentcolor;
+  stroke: none;
 }
 
 .button.ghost + .button.ghost {
@@ -2325,11 +2332,6 @@ button.state:focus-visible {
   row-gap: 3px;
 }
 
-/* The actions menu opens under the row */
-.row.branch {
-  position: relative;
-}
-
 /* Branches: one line; the name takes what is left of it (ellipsis, full name in the tooltip), the badge and the icon buttons are compact and never wrap under it */
 .row.branch code {
   flex: 1 1 0;
@@ -3137,7 +3139,7 @@ button.signal-predecessors:focus-visible {
 
 /* ---------- PRs of the tasks ---------- */
 
-/* The popover is as wide as the row of the task, like the PR timeline */
+/* The row positions the hover card of its pill */
 .child {
   position: relative;
 }
@@ -3157,27 +3159,53 @@ button.signal-predecessors:focus-visible {
   display: contents;
 }
 
-/* The padding keeps the hover while the pointer moves from the icon to the popover */
+/*
+ * The card hangs under the pill, right-aligned to it when there is room (--pop-right, set by the webview: it measures
+ * the pill and the view, and shifts the card so that it never leaves the view). Wide enough for the titles of the PRs,
+ * like a tooltip. The padding keeps the hover while the pointer moves from the pill to the card. Hidden with
+ * visibility, so that it can wait: it appears after --task-card-delay (totalflowx.tasks.hoverCardDelay) and goes away
+ * at once
+ */
 .task-pr-pop {
   position: absolute;
   z-index: 30;
   top: 100%;
-  right: 0;
-  left: 0;
-  display: none;
+  right: var(--pop-right, 0);
+  left: auto;
+  width: var(--pop-width, min(360px, calc(100vw - 16px)));
   padding-top: 4px;
   color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
   font-size: 11.5px;
+  opacity: 0;
+  transition: opacity 0.12s ease, visibility 0s linear;
+  visibility: hidden;
   white-space: normal;
 }
 
-.task-pr-wrap:hover .task-pr-pop,
-.task-pr-wrap:focus-within .task-pr-pop {
-  display: block;
+.task-pr-wrap:hover .task-pr-pop {
+  opacity: 1;
+  transition-delay: var(--task-card-delay, 500ms);
+  visibility: visible;
+}
+
+/* Keyboard focus: no wait. A click focuses the pill too, but that is not :focus-visible */
+.task-pr-wrap:has(:focus-visible) .task-pr-pop {
+  opacity: 1;
+  transition-delay: 0s;
+  visibility: visible;
+}
+
+/* After a click on the pill the card stays away until the pointer leaves it (class set from the webview) */
+.task-pr-wrap.card-suppressed .task-pr-pop {
+  opacity: 0 !important;
+  transition: none !important;
+  visibility: hidden !important;
 }
 
 .no-popovers .task-pr-pop {
-  display: none !important;
+  opacity: 0 !important;
+  transition: none !important;
+  visibility: hidden !important;
 }
 
 .task-pr-card {
@@ -3188,7 +3216,15 @@ button.signal-predecessors:focus-visible {
   border: 1px solid var(--vscode-editorHoverWidget-border, var(--border));
   border-radius: 4px;
   background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, var(--card-bg)));
-  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgb(0 0 0 / 35%));
+  box-shadow: 0 1px 4px var(--vscode-widget-shadow, rgb(0 0 0 / 25%));
+}
+
+/* Tells that the pill does more than show this card */
+.task-pr-hint {
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 10.5px;
 }
 
 .task-pr-head {
@@ -3233,8 +3269,7 @@ button.task-pill {
   cursor: pointer;
 }
 
-button.task-pill:hover,
-button.task-pill[aria-expanded='true'] {
+button.task-pill:hover {
   background: var(--card-hover);
 }
 
@@ -3289,11 +3324,6 @@ button.task-pill.empty:focus-visible {
   opacity: 0.55;
 }
 
-/* The hover card gives way to the menu */
-button.task-pill[aria-expanded='true'] ~ .task-pr-pop {
-  display: none !important;
-}
-
 .task-branch-name {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -3303,172 +3333,6 @@ button.task-pill[aria-expanded='true'] ~ .task-pr-pop {
 .task-pr-entry + .task-pr-entry {
   padding-top: 6px;
   border-top: 1px solid var(--border);
-}
-
-/* Actions of a task: under the row, as wide as it is */
-.action-menu {
-  position: absolute;
-  z-index: 40;
-  top: 100%;
-  right: 0;
-  left: 0;
-  display: grid;
-  gap: 2px;
-  margin-top: 7px;
-  padding: 4px;
-  border: 1px solid var(--vscode-menu-border, var(--vscode-editorHoverWidget-border, var(--border)));
-  border-radius: 4px;
-  background: var(--vscode-menu-background, var(--vscode-editorWidget-background, var(--card-bg)));
-  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgb(0 0 0 / 35%));
-  color: var(--vscode-menu-foreground, var(--vscode-foreground));
-  font-size: 11.5px;
-  white-space: normal;
-}
-
-/* Notch on the top edge, under the button that opened the menu (--notch-x set by pointMenuAtTrigger): border, then fill */
-.action-menu::before,
-.action-menu::after {
-  position: absolute;
-  left: var(--notch-x, 16px);
-  width: 0;
-  height: 0;
-  border: solid transparent;
-  content: '';
-  pointer-events: none;
-  transform: translateX(-50%);
-}
-
-.action-menu::before {
-  bottom: 100%;
-  border-width: 0 7px 7px;
-  border-bottom-color: var(--vscode-menu-border, var(--vscode-editorHoverWidget-border, var(--border)));
-}
-
-.action-menu::after {
-  bottom: calc(100% - 1px);
-  border-width: 0 6px 6px;
-  border-bottom-color: var(--vscode-menu-background, var(--vscode-editorWidget-background, var(--card-bg)));
-}
-
-/* The button of the open menu looks pressed (task pill, ▾ of a branch row), and its ▾ turns into ▴ */
-[data-action='toggleMenu'][aria-expanded='true'],
-button.task-pill[aria-expanded='true'] {
-  border-color: var(--vscode-inputOption-activeBorder, var(--vscode-focusBorder));
-  background: var(--vscode-inputOption-activeBackground, var(--card-hover));
-  color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
-}
-
-.button.caret[aria-expanded='true'] .icon {
-  transform: rotate(180deg);
-}
-
-.action-menu-section {
-  display: grid;
-  gap: 1px;
-}
-
-.action-menu-section + .action-menu-section {
-  margin-top: 2px;
-  padding-top: 2px;
-  border-top: 1px solid var(--vscode-menu-separatorBackground, var(--border));
-}
-
-.action-menu-title {
-  padding: 2px 6px;
-  color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.action-menu-item {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
-  column-gap: 7px;
-  align-items: center;
-  min-width: 0;
-  padding: 3px 6px;
-  border: 0;
-  border-radius: 3px;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-}
-
-button.action-menu-item {
-  cursor: pointer;
-}
-
-button.action-menu-item:hover,
-button.action-menu-item:focus-visible {
-  outline: none;
-  background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
-  color: var(--vscode-menu-selectionForeground, inherit);
-}
-
-.action-menu-item.info {
-  opacity: 0.65;
-}
-
-/* Destructive item (Delete branch): the label in the error colour, the usual selection colours on hover */
-button.action-menu-item.danger .action-menu-label {
-  color: var(--vscode-errorForeground, var(--red));
-}
-
-button.action-menu-item.danger:hover .action-menu-label,
-button.action-menu-item.danger:focus-visible .action-menu-label {
-  color: inherit;
-}
-
-/* Coloured icon per kind of action (src/actionMenu.ts actionMenuIcon), in the first column; label and detail in the second */
-.action-menu-icon {
-  grid-row: 1 / span 2;
-  width: 16px;
-  height: 16px;
-}
-
-.action-menu-icon.tone-blue {
-  color: var(--blue);
-}
-.action-menu-icon.tone-yellow {
-  color: var(--yellow);
-}
-.action-menu-icon.tone-orange {
-  color: var(--orange);
-}
-.action-menu-icon.tone-red {
-  color: var(--vscode-errorForeground, var(--red));
-}
-.action-menu-icon.tone-green {
-  color: var(--green);
-}
-.action-menu-icon.tone-grey {
-  color: var(--muted);
-}
-
-/* On the selection background the colours may vanish: the icon takes the selection colour */
-button.action-menu-item:hover .action-menu-icon,
-button.action-menu-item:focus-visible .action-menu-icon {
-  color: inherit;
-}
-
-.action-menu-label,
-.action-menu-detail {
-  grid-column: 2;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.action-menu-detail {
-  color: var(--muted);
-  font-size: 10.5px;
-}
-
-button.action-menu-item:hover .action-menu-detail,
-button.action-menu-item:focus-visible .action-menu-detail {
-  color: inherit;
-  opacity: 0.8;
 }
 
 .reviewer-more {

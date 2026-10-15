@@ -85,6 +85,11 @@ export function taskMenuSections(task: TaskMenuTask, parentId: number): TaskMenu
   ].filter((section) => section.items.length);
 }
 
+/** Something can be done from the menu (an info-only menu is not worth a "Click for actions" hint) */
+export function taskHasActions(task: TaskMenuTask, parentId: number): boolean {
+  return taskMenuSections(task, parentId).some((section) => section.items.some((item) => item.act));
+}
+
 export type PillBranchTone = 'current' | 'local' | 'remote' | 'dim';
 export type PillPullRequestTone = TaskPullRequestModel['tone'];
 

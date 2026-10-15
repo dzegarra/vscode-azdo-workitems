@@ -934,6 +934,7 @@ export class WorkItemsStore {
     ViewModel,
     | 'alwaysShowAlerts'
     | 'coverage'
+    | 'hoverCardDelay'
     | 'hoverStyle'
     | 'layout'
     | 'pullRequests'

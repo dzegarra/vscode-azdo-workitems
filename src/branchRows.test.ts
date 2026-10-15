@@ -63,37 +63,27 @@ describe('renderBranchList', () => {
   });
 });
 
-describe('renderBranchList with the popover menu', () => {
-  const popoverCard = card({
+describe('renderBranchList ... buttons', () => {
+  const rows = card({
     branches: [branch('f/a', { location: 'local' }), branch('f/b')],
     deletableBranches: ['f/b'],
   });
 
-  it('keeps the icon split button and the trash button; the ▾ opens the menu instead of a QuickPick', () => {
-    const html = renderBranchList(popoverCard, {});
-    expect(html.match(/data-action="toggleMenu"/g)).toHaveLength(2);
-    expect(html).toContain('data-menu="branch-7-f/a"');
-    expect(html).toContain('aria-expanded="false"');
+  it('keeps the icon split button (with the ellipsis that asks for the picker) and the trash button', () => {
+    const html = renderBranchList(rows);
+    expect(html.match(/data-action="checkoutMenu"/g)).toHaveLength(2);
+    expect(html).toContain('data-branch="f/a"');
     expect(html).toContain('checkout-group');
     expect(html).toContain('data-action="checkout"');
-    expect(html).not.toContain('data-action="checkoutMenu"');
     expect(html.match(/data-action="deleteBranch"/g)).toHaveLength(1);
-    expect(html).not.toContain('class="action-menu"');
-  });
-
-  it('renders the menu of the open branch only', () => {
-    const html = renderBranchList(popoverCard, { openMenu: 'branch-7-f/b' });
-    expect(html.match(/class="action-menu"/g)).toHaveLength(1);
-    expect(html).toContain('aria-expanded="true"');
-    expect(html.match(/data-action="deleteBranch"/g)).toHaveLength(2);
-    expect(html).toContain('data-action="checkoutHere"');
+    expect(html).not.toContain('action-menu');
+    expect(html).not.toContain('toggleMenu');
   });
 
   it('has no button for a branch of another repository or without actions', () => {
     const html = renderBranchList(
-      card({ branches: [branch('f/a', { otherRepository: true }), branch('f/b', { isCurrent: true })] }),
-      {}
+      card({ branches: [branch('f/a', { otherRepository: true }), branch('f/b', { isCurrent: true })] })
     );
-    expect(html).not.toContain('toggleMenu');
+    expect(html).not.toContain('checkoutMenu');
   });
 });

@@ -164,7 +164,7 @@ export async function openInWorktree(
 
 /**
  * Rules WORKTREE-OPEN-1, WORKTREE-OPEN-2: the "Open in a worktree" / "Open worktree" items of the menus: opens the worktree of the
- * branch, or creates it when there is none (same as the Open in a worktree button of the ▾ menu)
+ * branch, or creates it when there is none (same as the Open in a worktree button of the … picker)
  */
 export async function openOrCreateWorktree(git: GitAPI, store: WorkItemsStore, branch: string): Promise<void> {
   if (worktreeOpenAction(!!store.worktreeFor(branch)) === 'open') {
@@ -199,7 +199,7 @@ async function askWhatToDo(current: string | undefined): Promise<CheckoutChoice 
 // Rules CHECKOUT-3, CHECKOUT-4, CHECKOUT-5
 /**
  * Checks out a branch of a work item or PR. By default (totalflowx.checkout.mode "ask") a clean repository switches
- * branch and a repository with uncommitted changes asks what to do. `choice` (the ▾ menu) skips the question
+ * branch and a repository with uncommitted changes asks what to do. `choice` (the … picker) skips the question
  */
 export async function checkoutBranch(
   git: GitAPI,
@@ -242,28 +242,6 @@ export async function checkoutBranch(
   }
   if (!target.pullRequest) {
     await store.refresh();
-  }
-}
-
-/** The ▾ of a Checkout button */
-export async function showCheckoutMenu(git: GitAPI, store: WorkItemsStore, target: BranchTarget): Promise<void> {
-  const picked = await vscode.window.showQuickPick(
-    [
-      {
-        label: '$(git-branch) Checkout here',
-        description: 'Switch this window to the branch',
-        choice: 'here' as const,
-      },
-      {
-        label: '$(folder-opened) Open in a worktree',
-        description: 'Its own folder and window; your changes here stay untouched',
-        choice: 'worktree' as const,
-      },
-    ],
-    { title: `Check out ${target.branch}`, ignoreFocusOut: true }
-  );
-  if (picked) {
-    await checkoutBranch(git, store, target, picked.choice);
   }
 }
 

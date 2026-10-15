@@ -427,6 +427,13 @@
           "default": "filled",
           "markdownDescription": "How the counts look on the bar of the `Tasks` header of a large card: a circle on each segment of the bar (To do, In progress, Done). The default fills the circle, which guarantees the text contrast."
         },
+        "totalflowx.tasks.hoverCardDelay": {
+          "type": "number",
+          "default": 500,
+          "minimum": 0,
+          "maximum": 3000,
+          "description": "Delay before the details card of a task's branches and pull requests appears on hover (milliseconds). 0 shows it at once."
+        },
         "totalflowx.filter.alwaysShowAlerts": {
           "type": "boolean",
           "default": false,

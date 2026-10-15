@@ -1,6 +1,12 @@
 import { compactSignals, CompactSignal } from '../compactSignals';
 import { renderBranchList } from '../branchRows';
 import { checkoutButton, worktreePill } from '../checkoutButtons';
+import {
+  pullRequestActionsRequest,
+  taskActionsRequest,
+  workItemActionsRequest,
+  type ActionsRequest,
+} from '../actionRequests';
 import { canHaveTasks, escapeHtml, stateButton } from '../html';
 import { ICONS, icon, TYPE_CLASSES, typeIcon, typeIdClass } from '../icons';
 import {
@@ -39,8 +45,7 @@ import {
 import { pullRequestTooltip } from '../pullRequestModel';
 import { describeTaskBranch, TaskBranchModel } from '../taskBranches';
 import { TaskPullRequestModel } from '../taskPullRequests';
-import { actionMenuId, renderActionMenu } from '../actionMenuHtml';
-import { taskMenuSections, taskPill, TaskPill } from '../taskMenu';
+import { taskHasActions, taskPill, TaskPill } from '../taskMenu';
 import { HOVER_STYLES, hoverStyleClass } from '../hoverStyle';
 import { TASK_COUNT_STYLES, taskCountStyleClass } from '../taskCountStyle';
 import { splitWorkingOn, WorkingOnLevel, workingOnAnimationClasses, workingOnBadge } from '../workingOn';
@@ -124,12 +129,11 @@ const expandedCards = new Set(savedState?.expandedCards ?? []);
 const expandedReviews = new Set(savedState?.expandedReviews ?? []);
 const expandedPullRequests = new Set(savedState?.expandedPullRequests ?? []);
 const expandedReviewed = new Set(savedState?.expandedReviewed ?? []);
-/** Task whose action menu is open (UI only, not saved). Only one menu at a time; the page is rendered again on every update */
-/** Key of the open actions menu (task pill or branch row); only one is open at a time */
-let openMenu: string | undefined;
-/** Scrolling closes the menu, but not the scroll that brings it into view */
-let ignoreScrollUntil = 0;
-const MENU_SCROLL_GRACE_MS = 300;
+/**
+ * Task whose pill was clicked: its detail card stays away until the pointer leaves the pill and the card. A module
+ * variable because the page is rendered again on every update and the wrap of the pill is `display: contents`
+ */
+let suppressedTaskCard: number | undefined;
 
 function saveState(): void {
   vscode.setState({
@@ -671,12 +675,7 @@ function renderPillPullRequests(pill: TaskPill): string {
 }
 
 /** The detail card of the pill (hover or focus): every branch, then every PR */
-/** Key of the menu of a task pill */
-function taskMenuKey(id: number): string {
-  return `task-${id}`;
-}
-
-function renderTaskPillDetails(task: TaskRow, id: string): string {
+function renderTaskPillDetails(task: TaskRow, id: string, parentId: number): string {
   const entries = [
     ...task.taskBranches.map(renderTaskBranchCard),
     ...task.taskPullRequests.map((pr) => renderTaskPullRequestCard(task, pr)),
@@ -684,18 +683,15 @@ function renderTaskPillDetails(task: TaskRow, id: string): string {
   return entries.length
     ? `<div class="task-pr-pop" id="${id}" role="tooltip"><div class="task-pr-card">${entries
         .map((entry) => `<div class="task-pr-entry">${entry}</div>`)
-        .join('')}</div></div>`
+        .join('')}${
+        taskHasActions(task, parentId) ? '<div class="task-pr-hint">Click for actions</div>' : ''
+      }</div></div>`
     : '';
-}
-
-/** The actions of a task, open under its pill */
-function renderTaskMenu(task: TaskRow, parentId: number): string {
-  return renderActionMenu(taskMenuSections(task, parentId), taskMenuKey(task.id), `Task ${task.id}`);
 }
 
 /**
  * One pill per task with its branches and PRs (icons and counts); a dim "+" when there are none but something can be
- * created. Hover shows the details, click the menu with the actions
+ * created. Hover shows the details, click the native picker with the actions
  */
 function renderTaskPill(task: TaskRow, parentId: number): string {
   const pill = taskPill(task);
@@ -703,18 +699,18 @@ function renderTaskPill(task: TaskRow, parentId: number): string {
     return '';
   }
   const detailsId = `task-pill-pop-${task.id}`;
-  const menuId = actionMenuId(taskMenuKey(task.id));
-  const open = openMenu === taskMenuKey(task.id);
   const content = pill.empty ? '+' : `${renderPillBranches(pill)}${renderPillPullRequests(pill)}`;
-  return `<span class="task-pr-wrap"><button class="task-pill${pill.empty ? ' empty' : ''}"
-      data-action="toggleMenu" data-menu="${taskMenuKey(task.id)}" data-id="${
-    task.id
-  }" aria-haspopup="menu" aria-expanded="${open}"
-      ${open ? `aria-controls="${menuId}"` : ''} ${pill.empty ? '' : `aria-describedby="${detailsId}"`}
+  return `<span class="task-pr-wrap${
+    suppressedTaskCard === task.id ? ' card-suppressed' : ''
+  }"><button class="task-pill${pill.empty ? ' empty' : ''}"
+      data-action="taskActions" data-id="${task.id}" data-parent="${parentId}"
+      ${pill.empty ? '' : `aria-describedby="${detailsId}"`}
       ${pill.empty ? 'title="Create a branch or a pull request for this task"' : ''}
-      aria-label="${escapeHtml(pill.label)}">${content}</button>${renderTaskPillDetails(task, detailsId)}${
-    open ? renderTaskMenu(task, parentId) : ''
-  }</span>`;
+      aria-label="${escapeHtml(pill.label)}">${content}</button>${renderTaskPillDetails(
+    task,
+    detailsId,
+    parentId
+  )}</span>`;
 }
 
 /** "Szymon Kwasek EXT" -> "SK" */
@@ -893,7 +889,7 @@ function renderCard(item: WorkItemModel, children: TaskRow[], visibleIds: Set<nu
     ${renderParent(item, visibleIds)}
     ${renderAlerts(item)}
     ${renderPredecessors(item)}
-    ${renderBranchList(item, { openMenu })}
+    ${renderBranchList(item)}
     ${item.pullRequests.map((pr) => renderPullRequest(item, pr)).join('')}
     ${renderFixLinks(item)}
     ${renderActions(item)}
@@ -2042,47 +2038,57 @@ function renderFiltersToggle(current: ViewModel): void {
   }`;
 }
 
-const MENU_ITEMS = '.action-menu button.action-menu-item';
+/** Width of the detail card of a task pill */
+const TASK_CARD_WIDTH = 360;
+/** Margin that the popovers (coverage, task card) keep from the edges of the view */
+const VIEW_MARGIN = 8;
 
-/** The button that opens a menu (task pill or the ▾ of a branch row) */
-function menuTriggerOf(key: string): HTMLElement | null {
-  return (
-    Array.from(document.querySelectorAll<HTMLElement>('[data-action="toggleMenu"]')).find(
-      (trigger) => trigger.dataset.menu === key
-    ) ?? null
-  );
-}
-
-/** The notch on the top edge of the open menu points at the centre of the button that opened it (CSSOM: the CSP has no inline styles) */
-function pointMenuAtTrigger(): void {
-  const menu = document.querySelector<HTMLElement>('.action-menu');
-  const trigger = openMenu === undefined ? null : menuTriggerOf(openMenu);
-  if (!menu || !trigger) {
+/**
+ * The detail card hangs under the pill, aligned with its right edge when there is room, and shifted so that it never
+ * leaves the view (a margin on both sides): the pill is not at the end of the row (the state button follows it) and
+ * may be near the left edge of a narrow sidebar. The wrap is `display: contents`, so the position is measured and set
+ * as CSS variables
+ */
+function placeTaskCard(wrap: Element): void {
+  const pill = wrap.querySelector<HTMLElement>('.task-pill');
+  const pop = wrap.querySelector<HTMLElement>('.task-pr-pop');
+  const row = wrap.closest<HTMLElement>('.child');
+  if (!pill || !pop || !row) {
     return;
   }
-  const triggerBox = trigger.getBoundingClientRect();
-  const menuBox = menu.getBoundingClientRect();
-  const x = Math.min(Math.max(triggerBox.left + triggerBox.width / 2 - menuBox.left, 10), menuBox.width - 10);
-  menu.style.setProperty('--notch-x', `${Math.round(x)}px`);
+  const view = document.documentElement.clientWidth;
+  const width = Math.min(TASK_CARD_WIDTH, view - 2 * VIEW_MARGIN);
+  const right = Math.max(width + VIEW_MARGIN, Math.min(pill.getBoundingClientRect().right, view - VIEW_MARGIN));
+  pop.style.setProperty('--pop-width', `${width}px`);
+  pop.style.setProperty('--pop-right', `${Math.round(row.getBoundingClientRect().right - right)}px`);
 }
 
-/** Where the focus is in the open menu, to put it back after the page is rendered again */
-function captureMenuFocus(): () => void {
-  const active = document.activeElement;
-  if (openMenu === undefined || !(active instanceof HTMLElement)) {
-    return () => undefined;
-  }
-  const items = Array.from(document.querySelectorAll<HTMLElement>(MENU_ITEMS));
-  const index = items.indexOf(active);
-  const onTrigger = active.dataset.action === 'toggleMenu';
-  const key = openMenu;
-  return () => {
-    if (index >= 0) {
-      document.querySelectorAll<HTMLElement>(MENU_ITEMS)[index]?.focus({ preventScroll: true });
-    } else if (onTrigger) {
-      menuTriggerOf(key)?.focus({ preventScroll: true });
+/** After a render: the card of the pill under the pointer or with the keyboard focus was drawn again */
+function placeHoveredTaskCard(): void {
+  const active = document.activeElement instanceof Element ? document.activeElement.closest('.task-pr-wrap') : null;
+  const hovered = document.querySelector('.task-pr-wrap:hover');
+  for (const wrap of new Set([active, hovered])) {
+    if (wrap) {
+      placeTaskCard(wrap);
     }
-  };
+  }
+}
+
+/** The pointer is over (or left) something: places the card of the pill it enters, and ends the wait after a click */
+function onTaskCardPointer(target: EventTarget | null): void {
+  const wrap = target instanceof Element ? target.closest('.task-pr-wrap') : null;
+  if (wrap) {
+    placeTaskCard(wrap);
+  }
+  if (suppressedTaskCard === undefined) {
+    return;
+  }
+  const suppressed = document.querySelector('.task-pr-wrap.card-suppressed');
+  if (!wrap || wrap !== suppressed) {
+    // No render: only the class of the wrap (the next render takes it from the variable)
+    suppressedTaskCard = undefined;
+    suppressed?.classList.remove('card-suppressed');
+  }
 }
 
 function render(): void {
@@ -2115,6 +2121,8 @@ function render(): void {
   for (const style of HOVER_STYLES) {
     app.classList.toggle(hoverStyleClass(style), style === model.hoverStyle);
   }
+  // Delay of the detail card of the task pills (a CSS variable: strict CSP, no inline styles)
+  app.style.setProperty('--task-card-delay', `${model.hoverCardDelay}ms`);
   // Same for the look of the counts on the bar of the Tasks header
   for (const style of TASK_COUNT_STYLES) {
     app.classList.toggle(taskCountStyleClass(style), style === model.tasksCountStyle);
@@ -2124,7 +2132,6 @@ function render(): void {
   scopeElement.textContent = scope.text;
   scopeElement.title = scope.tooltip;
   (app.querySelector('.progress') as HTMLElement).hidden = model.status !== 'loading';
-  const restoreMenuFocus = captureMenuFocus();
   (document.getElementById('filters') as HTMLElement).innerHTML =
     filtersExpanded && cardItems(model).length ? renderFilters(model) : '';
   renderFiltersToggle(model);
@@ -2142,69 +2149,9 @@ function render(): void {
   pulseChangedReviews(model);
   sizeTaskBars();
   placeRunningLights();
-  // The row of an open menu may be gone (folded list, filtered out, nothing left to do): no orphan state
-  if (openMenu !== undefined && !document.querySelector('.action-menu')) {
-    openMenu = undefined;
-  }
-  pointMenuAtTrigger();
-  restoreMenuFocus();
+  placeHoveredTaskCard();
   if (revealPending()) {
     render();
-  }
-}
-
-function closeMenu(focusTrigger: boolean): void {
-  const key = openMenu;
-  if (key === undefined) {
-    return;
-  }
-  openMenu = undefined;
-  render();
-  if (focusTrigger) {
-    // The detail card would show again because the pill has the focus: it waits for the pointer to move
-    document.body.classList.add('no-popovers');
-    menuTriggerOf(key)?.focus({ preventScroll: true });
-  }
-}
-
-function toggleMenu(key: string): void {
-  const wasOpen = openMenu === key;
-  openMenu = wasOpen ? undefined : key;
-  ignoreScrollUntil = Date.now() + MENU_SCROLL_GRACE_MS;
-  render();
-  if (wasOpen) {
-    menuTriggerOf(key)?.focus({ preventScroll: true });
-  } else {
-    document.querySelector<HTMLElement>(MENU_ITEMS)?.focus({ preventScroll: true });
-    document.querySelector<HTMLElement>('.action-menu')?.scrollIntoView({ block: 'nearest' });
-  }
-}
-
-/** Arrow keys, Home and End move between the items of the open menu; Escape closes it and Tab leaves it */
-function onMenuKey(event: KeyboardEvent): void {
-  if (openMenu === undefined) {
-    return;
-  }
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    closeMenu(true);
-    return;
-  }
-  if (event.key === 'Tab') {
-    closeMenu(false);
-    return;
-  }
-  const items = Array.from(document.querySelectorAll<HTMLElement>(MENU_ITEMS));
-  const current = items.indexOf(document.activeElement as HTMLElement);
-  const moves: Record<string, number> = {
-    ArrowDown: (current + 1) % items.length,
-    ArrowUp: (current - 1 + items.length) % items.length,
-    Home: 0,
-    End: items.length - 1,
-  };
-  if (event.key in moves && items.length) {
-    event.preventDefault();
-    items[moves[event.key]].focus();
   }
 }
 
@@ -2392,7 +2339,6 @@ function setTasksExpanded(expanded: boolean): void {
 
 /** Width of the coverage popover, as in the CSS */
 const COVERAGE_POPOVER_WIDTH = 300;
-const VIEW_MARGIN = 8;
 
 /** Keeps the coverage popover inside the view: it opens below the badge, shifted left when it would overflow */
 function placeCoveragePopover(event: Event): void {
@@ -2435,19 +2381,70 @@ document.addEventListener('keydown', (event) => {
   }
 });
 document.addEventListener('pointermove', () => document.body.classList.remove('no-popovers'));
-document.addEventListener('keydown', onMenuKey);
-// Scrolling the list moves the row away from the menu (capture: scroll does not bubble)
-document.addEventListener(
-  'scroll',
-  (event) => {
-    const target = event.target as Node;
-    const inMenu = target instanceof Element && target.closest('.action-menu');
-    if (openMenu !== undefined && !inMenu && Date.now() > ignoreScrollUntil) {
-      closeMenu(false);
-    }
-  },
-  true
-);
+document.addEventListener('pointerover', (event) => onTaskCardPointer(event.target));
+// The pointer left the view: the card may show again when it comes back
+document.addEventListener('pointerout', (event) => {
+  if (!event.relatedTarget) {
+    onTaskCardPointer(null);
+  }
+});
+document.addEventListener('focusin', (event) => {
+  const wrap = event.target instanceof Element ? event.target.closest('.task-pr-wrap') : null;
+  if (wrap) {
+    placeTaskCard(wrap);
+  }
+});
+/** Asks the extension for the native picker of a trigger; nothing happens when there is nothing to choose */
+function showActions(request: ActionsRequest | undefined): void {
+  if (request) {
+    post({ type: 'showActions', ...request });
+  }
+}
+
+/** Click on the pill of a task row */
+function showTaskActions(taskId: number, parentId: number, byPointer: boolean): void {
+  if (!model) {
+    return;
+  }
+  if (byPointer) {
+    // The card that the pill shows on hover would stay under the picker: it waits until the pointer leaves
+    suppressedTaskCard = taskId;
+    document
+      .querySelector(`button.task-pill[data-id="${taskId}"]`)
+      ?.closest('.task-pr-wrap')
+      ?.classList.add('card-suppressed');
+  }
+  const parent = model.workItems.find((item) => item.id === parentId);
+  const children = model.workItems.filter((child) => child.parentId === parentId);
+  const task = parent && taskRowsOf(children, parent, model.stateOrder).find((row) => row.id === taskId);
+  if (task) {
+    showActions(taskActionsRequest(task, parentId));
+  }
+}
+
+/** Click on the ... of a Checkout / Open worktree button: the branch of a card, a branch row, or a PR */
+function showCheckoutActions(kind: CheckoutKind, id: number, branch: string | undefined): void {
+  if (!model) {
+    return;
+  }
+  const requests: Record<CheckoutKind, () => ActionsRequest | undefined> = {
+    workItem: () => {
+      const card = model?.workItems.find((item) => item.id === id);
+      return card && workItemActionsRequest(card, branch);
+    },
+    review: () => {
+      const request = model?.reviews.requests.find((candidate) => candidate.id === id);
+      return request && pullRequestActionsRequest('review', request);
+    },
+    myPullRequest: () => {
+      const pr = model?.pullRequests.items.find((candidate) => candidate.id === id);
+      return pr && pullRequestActionsRequest('myPullRequest', pr);
+    },
+    // The icons of a task row open the pill's picker, not a Checkout button
+    task: () => undefined,
+  };
+  showActions(requests[kind]());
+}
 
 document.addEventListener('click', (event) => {
   const file = (event.target as HTMLElement).closest<HTMLElement>('[data-action="openFile"]');
@@ -2456,42 +2453,21 @@ document.addEventListener('click', (event) => {
     return;
   }
   const target = (event.target as HTMLElement).closest<HTMLElement>('[data-action], [data-filter]');
-  if (openMenu !== undefined && !(event.target as HTMLElement).closest('.action-menu, [data-action="toggleMenu"]')) {
-    // Outside click: closes the menu, and the click still does what it was for
-    closeMenu(false);
-  }
   // The text of a popover is not the row behind it: clicking it must not fold the row
   const popover = '.pred-pop, .task-pr-pop';
   if (!target || ((event.target as HTMLElement).closest(popover) && !target.closest(popover))) {
     return;
   }
-  const { action, filter, value, id, pr, run, url, path, tests, kind, layout, branch, panel, task, menu } =
+  const { action, filter, value, id, pr, run, url, path, tests, kind, layout, branch, panel, task, parent } =
     target.dataset;
-  if (action === 'toggleMenu' && menu) {
-    toggleMenu(menu);
-    return;
-  }
-  if (target.classList.contains('action-menu-item')) {
-    // An item was chosen: the menu closes, the focus goes back to its trigger, and the item does its action below
-    const key = openMenu;
-    openMenu = undefined;
-    render();
-    document.body.classList.add('no-popovers');
-    if (key !== undefined) {
-      menuTriggerOf(key)?.focus({ preventScroll: true });
-    }
-  }
   if (filter && value !== undefined) {
     toggleFilter(filter as FilterKind, value);
-  } else if (
-    (action === 'checkoutMenu' ||
-      action === 'checkoutHere' ||
-      action === 'openWorktree' ||
-      action === 'removeWorktree' ||
-      action === 'worktreeMenu') &&
-    kind &&
-    id
-  ) {
+  } else if (action === 'taskActions' && id) {
+    // detail 0: the click comes from the keyboard (Enter, Space): the card of the pill is not in the way then
+    showTaskActions(Number(id), Number(parent), event.detail > 0);
+  } else if ((action === 'checkoutMenu' || action === 'worktreeMenu') && kind && id) {
+    showCheckoutActions(kind as CheckoutKind, Number(id), branch);
+  } else if ((action === 'checkoutHere' || action === 'openWorktree' || action === 'removeWorktree') && kind && id) {
     post({ type: action, kind: kind as CheckoutKind, id: Number(id), branch });
   } else if (action === 'refresh') {
     post({ type: 'refresh' });

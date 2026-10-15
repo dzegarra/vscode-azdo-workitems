@@ -1,7 +1,5 @@
 /** Rows of the branch list of a work item, shared by the sidebar and the details panel. No "vscode" import */
-import { renderActionMenu, actionMenuId } from './actionMenuHtml';
 import { branchBadge } from './branchBadge';
-import { branchMenuSections } from './branchMenu';
 import { checkoutButton } from './checkoutButtons';
 import { escapeHtml } from './html';
 import { icon } from './icons';
@@ -13,20 +11,10 @@ import { branchTooltip } from './workItemBranches';
 export interface BranchRowOptions {
   /** Id of the work item */
   id: number;
-  /** A small Checkout button (with its ▾ worktree menu) for the branches of this repository that are not checked out */
+  /** A small Checkout button (with its ... actions picker) for the branches of this repository that are not checked out */
   showCheckout: boolean;
   /** The PR is merged and the branch still exists: "not deleted" instead of where it is, and a Delete branch button */
   deletable?: boolean;
-  /**
-   * Sidebar: the ▾ of the Checkout button opens the in-card actions menu (the same as the task pill's) instead of a
-   * QuickPick. `openMenu` is the key of the menu that is open (see branchMenuKey)
-   */
-  popover?: { openMenu?: string };
-}
-
-/** Key of the menu of a branch row: the trigger and the open state find each other by it */
-export function branchMenuKey(id: number, branch: string): string {
-  return `branch-${id}-${branch}`;
 }
 
 // Rules BRANCH-ROW-1, BRANCH-ROW-2, BRANCH-ROW-4
@@ -35,14 +23,12 @@ export function branchMenuKey(id: number, branch: string): string {
  * other repositories are dimmed like the PRs of other repositories and cannot be checked out
  */
 export function renderBranchRow(branch: BranchModel, options: BranchRowOptions): string {
-  const { id, showCheckout, deletable, popover } = options;
+  const { id, showCheckout, deletable } = options;
   const tooltip = branchTooltip(branch);
   const badge = branchBadge(branch, !!deletable, mergedBranchHint());
   const pill = `<span class="pill tone-${badge.tone}" title="${escapeHtml(badge.title)}">${escapeHtml(
     badge.text
   )}</span>`;
-  const key = branchMenuKey(id, branch.name);
-  const open = !!popover && popover.openMenu === key;
   const checkout =
     showCheckout && !branch.otherRepository && !branch.isCurrent
       ? checkoutButton({
@@ -54,7 +40,6 @@ export function renderBranchRow(branch: BranchModel, options: BranchRowOptions):
           small: true,
           branch: branch.name,
           iconOnly: true,
-          menu: popover && { key, open, controls: actionMenuId(key) },
         })
       : '';
   const remove = deletable
@@ -68,15 +53,7 @@ export function renderBranchRow(branch: BranchModel, options: BranchRowOptions):
     branch.otherRepository ? ` title="${escapeHtml(tooltip)}"` : ''
   }>${icon('branch')}<code title="${escapeHtml(branch.otherRepository ? tooltip : branch.name)}">${escapeHtml(
     branch.name
-  )}</code><span class="branch-meta">${pill}${checkout}${remove}${
-    open && checkout
-      ? renderActionMenu(
-          branchMenuSections(branch, { id, deletable: !!deletable, checkout: showCheckout }),
-          key,
-          `Actions for branch ${branch.name}`
-        )
-      : ''
-  }</span></div>`;
+  )}</code><span class="branch-meta">${pill}${checkout}${remove}</span></div>`;
 }
 
 // Rule BRANCH-ROW-3
@@ -91,8 +68,7 @@ function isListedWhenFinished(branch: BranchModel, card: Pick<WorkItemModel, 'de
  * when there is none; a finished work item without a branch to show says so
  */
 export function renderBranchList(
-  card: Pick<WorkItemModel, 'branch' | 'branches' | 'id' | 'deletableBranches' | 'state'>,
-  popover?: BranchRowOptions['popover']
+  card: Pick<WorkItemModel, 'branch' | 'branches' | 'id' | 'deletableBranches' | 'state'>
 ): string {
   const finished = isClosedState(card.state);
   const muted = (text: string) => `<div class="row muted">${icon('branch')}<span>${text}</span></div>`;
@@ -102,7 +78,6 @@ export function renderBranchList(
       id: card.id,
       showCheckout: !finished && card.branches.length > 1,
       deletable: !branch.otherRepository && !!card.deletableBranches?.includes(branch.name),
-      popover,
     })
   );
   if (finished && card.branch && !rows.length) {
