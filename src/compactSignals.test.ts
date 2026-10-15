@@ -116,9 +116,19 @@ describe('compactSignals', () => {
   });
 
   it('counts the tasks but the removed ones', () => {
-    const tasks = [{ state: 'Done' }, { state: 'To Do' }, { state: 'Removed' }];
+    const tasks = ['To Do', 'To Do', 'In Progress', 'Done', 'Done', 'Done', 'Removed'].map((state) => ({ state }));
     const [signal] = compactSignals(item(), tasks, NOW);
-    expect(signal).toEqual({ kind: 'tasks', label: '1/2', title: '1 of 2 tasks done', tone: 'neutral' });
+    expect(signal).toEqual({
+      kind: 'tasks',
+      label: '2/1/3',
+      title: '2 to do, 1 in progress, 3 done (to do/in progress/done)',
+      tone: 'neutral',
+      counts: [
+        { category: 'proposed', count: 2 },
+        { category: 'in-progress', count: 1 },
+        { category: 'done', count: 3 },
+      ],
+    });
     expect(compactSignals(item(), [{ state: 'Done' }, { state: 'Removed' }], NOW)[0].tone).toBe('approved');
     expect(compactSignals(item(), [{ state: 'Removed' }], NOW)).toEqual([]);
   });

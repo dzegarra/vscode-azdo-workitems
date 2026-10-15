@@ -7,7 +7,7 @@ import { runTooltip } from './runDetails';
 import { severityLevel, severityName } from './priority';
 import { isClosedState } from './states';
 import { branchTooltip } from './workItemBranches';
-import { taskProgress } from './taskProgress';
+import { taskCounts, taskProgress, taskProgressTooltip, type TaskCount } from './taskProgress';
 import type { WorkItemModel } from './viewModel';
 import { workingOnBadge } from './workingOn';
 
@@ -39,6 +39,8 @@ export interface CompactSignal {
   tone: string;
   /** The PR (or the branches) is in another repository: shown dimmed */
   otherRepository?: boolean;
+  /** Tasks only: the numbers of the label with their state category, so each one gets the colour of its state */
+  counts?: TaskCount[];
 }
 
 /** Worst state first: the one run that matters most stands for the rest. Canceled runs say nothing useful */
@@ -216,13 +218,15 @@ export function compactSignals(
   if (ci) {
     signals.push(ci);
   }
-  const { done, total } = taskProgress(children);
-  if (total) {
+  const progress = taskProgress(children);
+  if (progress.total) {
+    const { toDo, inProgress, done } = progress;
     signals.push({
       kind: 'tasks',
-      label: `${done}/${total}`,
-      title: `${done} of ${total} tasks done`,
-      tone: done === total ? 'approved' : 'neutral',
+      label: `${toDo}/${inProgress}/${done}`,
+      counts: taskCounts(progress),
+      title: `${taskProgressTooltip(progress)} (to do/in progress/done)`,
+      tone: done === progress.total ? 'approved' : 'neutral',
     });
   }
   if (item.alerts.length) {

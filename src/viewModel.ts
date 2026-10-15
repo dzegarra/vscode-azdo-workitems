@@ -16,6 +16,7 @@ import type { TaskPullRequestModel } from './taskPullRequests';
 import { isClosedState } from './states';
 import type { PullRequestTone } from './workItemLinks';
 import type { HoverStyle } from './hoverStyle';
+import type { TaskCountStyle } from './taskCountStyle';
 import type { WorkingOnAnimation, WorkingOnLevel } from './workingOn';
 
 export interface PullRequestModel {
@@ -163,6 +164,8 @@ export interface ViewModel {
   layout: Layout;
   /** How the cards and PR tiles react to the pointer (totalflowx.hoverStyle) */
   hoverStyle: HoverStyle;
+  /** How the counts on the bar of the Tasks header look (totalflowx.tasks.countStyle) */
+  tasksCountStyle: TaskCountStyle;
   coverage: CoverageViewModel;
   workingOn: WorkingOnViewModel;
 }

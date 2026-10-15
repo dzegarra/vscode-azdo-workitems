@@ -2,19 +2,68 @@
 import type { AlertRule } from './alerts';
 import { stateCategory } from './states';
 
+export type TaskSegmentCategory = 'done' | 'in-progress' | 'proposed';
+
+export interface TaskSegment {
+  category: TaskSegmentCategory;
+  count: number;
+  /** Share of the active tasks, from 0 to 1 */
+  share: number;
+}
+
+/** One number of the `to do/in progress/done` label and the state category that colours it */
+export interface TaskCount {
+  category: TaskSegmentCategory;
+  count: number;
+}
+
 export interface TaskProgress {
   /** Tasks in a done state (Done, Ready to Test, Closed…) */
   done: number;
+  /** Tasks being worked on */
+  inProgress: number;
+  /** Tasks not started (New, Approved, To Do…) */
+  toDo: number;
   /** All the tasks but the removed ones: a removed task never keeps the work item from being complete */
   total: number;
-  /** Share of done tasks, from 0 to 1. A work item without active tasks has 0 */
-  ratio: number;
+  /** Bar segments in workflow order (To do, In progress, Done); categories without tasks are left out */
+  segments: TaskSegment[];
 }
+
+const SEGMENT_ORDER: TaskSegmentCategory[] = ['proposed', 'in-progress', 'done'];
 
 export function taskProgress(tasks: { state: string }[]): TaskProgress {
   const categories = tasks.map((task) => stateCategory(task.state)).filter((category) => category !== 'removed');
-  const done = categories.filter((category) => category === 'done').length;
-  return { done, total: categories.length, ratio: categories.length ? done / categories.length : 0 };
+  const count = (wanted: TaskSegmentCategory): number => categories.filter((category) => category === wanted).length;
+  const total = categories.length;
+  const segments = SEGMENT_ORDER.map((category) => ({
+    category,
+    count: count(category),
+    share: count(category) / total,
+  })).filter((segment) => segment.count > 0);
+  return { done: count('done'), inProgress: count('in-progress'), toDo: count('proposed'), total, segments };
+}
+
+/** Counts in the order of the compact label: To do, In progress, Done. Zeros are kept so the positions mean something */
+export function taskCounts(progress: TaskProgress): TaskCount[] {
+  return [
+    { category: 'proposed', count: progress.toDo },
+    { category: 'in-progress', count: progress.inProgress },
+    { category: 'done', count: progress.done },
+  ];
+}
+
+/** Plain-text breakdown ("2 to do, 1 in progress, 3 done"), so the colours are not the only cue */
+export function taskProgressTooltip(progress: TaskProgress): string {
+  if (progress.total && progress.done === progress.total) {
+    return `All ${progress.total} ${progress.total === 1 ? 'task' : 'tasks'} done`;
+  }
+  const parts = [
+    progress.toDo ? `${progress.toDo} to do` : '',
+    progress.inProgress ? `${progress.inProgress} in progress` : '',
+    progress.done ? `${progress.done} done` : '',
+  ];
+  return parts.filter(Boolean).join(', ');
 }
 
 /** Alerts about the tasks: their list opens by itself so the problem stays visible */

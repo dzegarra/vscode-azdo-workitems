@@ -28,13 +28,21 @@ import { myPullRequestCompactSignals, PrSignal, reviewCompactSignals } from '../
 import { countLate } from '../reviewRequests';
 import type { ReviewRequestModel, ReviewUrgency } from '../reviewRequests';
 import type { ReviewedDetails, ReviewedPeriod, ReviewedRequest } from '../reviewedRequests';
-import { hasTaskAlerts, isTaskListOpen, taskProgress } from '../taskProgress';
+import {
+  hasTaskAlerts,
+  isTaskListOpen,
+  taskProgress,
+  taskProgressTooltip,
+  type TaskCount,
+  type TaskProgress,
+} from '../taskProgress';
 import { pullRequestTooltip } from '../pullRequestModel';
 import { describeTaskBranch, TaskBranchModel } from '../taskBranches';
 import { TaskPullRequestModel } from '../taskPullRequests';
 import { actionMenuId, renderActionMenu } from '../actionMenuHtml';
 import { taskMenuSections, taskPill, TaskPill } from '../taskMenu';
 import { HOVER_STYLES, hoverStyleClass } from '../hoverStyle';
+import { TASK_COUNT_STYLES, taskCountStyleClass } from '../taskCountStyle';
 import { splitWorkingOn, WorkingOnLevel, workingOnAnimationClasses, workingOnBadge } from '../workingOn';
 import type { CompletedPeriod } from '../myPullRequests';
 import type {
@@ -810,18 +818,29 @@ function renderParent(item: WorkItemModel, visibleIds: Set<number>): string {
   }</span><span class="parent-title">${title}</span></button>`;
 }
 
+/** Bar segments in workflow order (To do, In progress, Done), each with its count inside; widths are set through CSSOM (sizeTaskBars) */
+function renderTaskSegments(progress: TaskProgress): string {
+  return progress.segments
+    .map(
+      (s) =>
+        `<span class="tasks-bar-seg state-${s.category}" data-share="${s.share}"><span class="tasks-bar-count">${s.count}</span></span>`
+    )
+    .join('');
+}
+
 /** Task list with a header to open / close it. Cards without tasks show nothing */
 function renderTasks(item: WorkItemModel, children: TaskRow[]): string {
   if (!children.length) {
     return '';
   }
   const open = isTasksOpen(item);
-  const { done, total, ratio } = taskProgress(children);
+  const progress = taskProgress(children);
+  const summary = taskProgressTooltip(progress);
   return `<section class="tasks${open ? '' : ' collapsed'}">
     <button class="tasks-toggle" data-action="toggleTasks" data-id="${item.id}" aria-expanded="${open}"
-      title="${done} of ${total} tasks done">
-      ${icon('chevron', 'chevron')}<span class="tasks-title">Tasks</span><span class="count">${done}/${total}</span>
-      <span class="tasks-bar" aria-hidden="true"><span class="tasks-bar-fill" data-progress="${ratio}"></span></span>
+      title="${summary}" aria-label="Tasks: ${summary}">
+      ${icon('chevron', 'chevron')}<span class="tasks-title">Tasks</span>
+      <span class="tasks-bar" aria-hidden="true">${renderTaskSegments(progress)}</span>
     </button>
     ${open ? `<ul class="children">${children.map((child) => renderChild(child, item.id)).join('')}</ul>` : ''}
   </section>`;
@@ -911,6 +930,12 @@ function signalMarker(signal: CompactSignal, item: WorkItemModel): string {
   }
 }
 
+/** Counts of the tasks signal, each in the colour of its state, the slashes muted */
+function renderSignalCounts(counts: TaskCount[]): string {
+  const spans = counts.map(({ category, count }) => `<span class="state-${category}">${count}</span>`);
+  return `<span class="signal-counts">${spans.join('<span class="count-sep">/</span>')}</span>`;
+}
+
 function renderSignal(signal: CompactSignal, item: WorkItemModel): string {
   const title = escapeHtml(signal.title);
   const label = signal.label ? `<span>${escapeHtml(signal.label)}</span>` : '';
@@ -925,13 +950,16 @@ function renderSignal(signal: CompactSignal, item: WorkItemModel): string {
       return renderPredecessorTrigger(item, true);
     case 'ci':
       return `<span class="signal signal-ci run-${signal.tone}" title="${title}">${signalMarker(signal, item)}</span>`;
+    case 'tasks':
+      return `<span class="signal signal-tasks tone-${signal.tone}" title="${title}">${signalMarker(signal, item)}${
+        signal.counts ? renderSignalCounts(signal.counts) : label
+      }</span>`;
     case 'alerts':
     case 'branch':
     case 'fixedBy':
     case 'fixesBugs':
     case 'pullRequest':
     case 'ready':
-    case 'tasks':
     case 'workingOn':
       return `<span class="signal signal-${signal.kind} tone-${signal.tone}${
         signal.otherRepository ? ' other-repo' : ''
@@ -1884,8 +1912,8 @@ function placeRunningLights(): void {
 
 /** Same for the progress of the tasks */
 function sizeTaskBars(): void {
-  document.querySelectorAll<HTMLElement>('.tasks-bar-fill').forEach((fill) => {
-    fill.style.width = `${Math.round(Number(fill.dataset.progress) * 100)}%`;
+  document.querySelectorAll<HTMLElement>('.tasks-bar-seg').forEach((segment) => {
+    segment.style.flexGrow = String(Number(segment.dataset.share));
   });
 }
 
@@ -2086,6 +2114,10 @@ function render(): void {
   // Hover style of the cards and PR tiles, switched by a class (strict CSP: no inline styles)
   for (const style of HOVER_STYLES) {
     app.classList.toggle(hoverStyleClass(style), style === model.hoverStyle);
+  }
+  // Same for the look of the counts on the bar of the Tasks header
+  for (const style of TASK_COUNT_STYLES) {
+    app.classList.toggle(taskCountStyleClass(style), style === model.tasksCountStyle);
   }
   const scope = describeScope(model.iterations);
   const scopeElement = document.getElementById('scope') as HTMLElement;

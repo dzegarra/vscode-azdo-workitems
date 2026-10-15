@@ -178,6 +178,20 @@ button {
   text-align: center;
 }
 
+.tasks-bar-seg.state-proposed {
+  --seg-bg: var(--grey);
+}
+.tasks-bar-seg.state-in-progress {
+  --seg-bg: var(--blue);
+}
+.tasks-bar-seg.state-done {
+  --seg-bg: var(--green);
+}
+
+.signal-counts .count-sep {
+  color: var(--muted);
+}
+
 /* "N work items hidden by filters": opens the filters */
 .link-button {
   padding: 0;
@@ -1105,10 +1119,6 @@ button {
   outline-offset: 1px;
 }
 
-.tasks-toggle .count {
-  color: var(--muted);
-}
-
 .tasks-toggle .chevron {
   transition: transform 0.15s;
   transform: rotate(90deg);
@@ -1118,20 +1128,90 @@ button {
   transform: none;
 }
 
+/*
+ * A slim line with one segment per state; each count is a small circle ON the bar, centred on its segment (a marker
+ * on a track). Nothing is clipped: the circles are taller than the line, the rounded ends come from the first and
+ * last segment. The circle is in the flow of its segment (zero extra height, centred by the flex alignment), so the
+ * minimum width of the segment is the width of the circle and two circles never overlap.
+ *
+ * Filled circles (default, #app.task-counts-filled): the number has a fixed colour pair per theme kind, like the
+ * solid pills: the circles keep the theme colours of the states, and a text colour that follows the theme could
+ * vanish on them. Dark: #1f1f1f (4.8 to 9.0 on the default colours). Light: #000000 (4.9 to 9.4; white would give
+ * 4.3 on green and 3.6 on blue). Outlined circles (#app.task-counts-outlined) use the colours of the compact row's
+ * counts on the card background
+ */
 .tasks-bar {
+  --seg-fg: #1f1f1f;
+  display: flex;
   flex: 1;
-  height: 3px;
-  overflow: hidden;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--vscode-charts-green, #3fb950) 20%, transparent);
+  gap: 1px;
+  height: 4px;
 }
 
-.tasks-bar-fill {
-  display: block;
-  width: 0;
+body.vscode-light .tasks-bar,
+body.vscode-high-contrast-light .tasks-bar,
+body.vscode-high-contrast:not(.vscode-high-contrast-light) .tasks-bar {
+  --seg-fg: #000000;
+}
+
+.tasks-bar-seg {
+  position: relative;
+  display: flex;
+  flex: 0 1 0;
+  align-items: center;
+  justify-content: center;
   height: 100%;
-  border-radius: 2px;
-  background: var(--vscode-charts-green, #3fb950);
+  padding: 0 1px;
+  box-sizing: border-box;
+  /* Opaque even when the theme colour has an alpha (the grey): drawn over the card background */
+  background: linear-gradient(var(--seg-bg), var(--seg-bg)), var(--card-bg);
+}
+
+.tasks-bar-seg:first-child {
+  border-top-left-radius: 2px;
+  border-bottom-left-radius: 2px;
+}
+
+.tasks-bar-seg:last-child {
+  border-top-right-radius: 2px;
+  border-bottom-right-radius: 2px;
+}
+
+body.vscode-high-contrast .tasks-bar-seg {
+  outline: 1px solid var(--vscode-contrastBorder, currentColor);
+}
+
+.tasks-bar-count {
+  flex: none;
+  box-sizing: border-box;
+  min-width: 14px;
+  padding: 0 3px;
+  border: 1.5px solid transparent;
+  border-radius: 7px;
+  background: linear-gradient(var(--seg-bg), var(--seg-bg)), var(--card-bg);
+  color: var(--seg-fg);
+  /* The size of the compact row's counts */
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 11px;
+  text-align: center;
+}
+
+.task-counts-outlined .tasks-bar-count {
+  border-color: var(--seg-bg);
+  background: var(--card-bg);
+  color: var(--seg-bg);
+}
+
+/*
+ * Light themes: the state colours are too pale as text on the card (grey 2.1, blue 3.4, green 4.1), so the ring and
+ * the number are darkened toward black (grey 5.4, blue and green above 7 on the default colours)
+ */
+body.vscode-light .task-counts-outlined .tasks-bar-count,
+body.vscode-high-contrast-light .task-counts-outlined .tasks-bar-count {
+  border-color: color-mix(in srgb, var(--seg-bg) 60%, #000000);
+  color: color-mix(in srgb, var(--seg-bg) 60%, #000000);
 }
 
 .children {

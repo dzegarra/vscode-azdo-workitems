@@ -414,6 +414,19 @@
           "default": "border",
           "markdownDescription": "How the work item cards and the PR tiles react to the pointer (and to the keyboard focus). The default does not touch the background, because the list hover colour of many themes is close to the text colours and makes them harder to read."
         },
+        "totalflowx.tasks.countStyle": {
+          "type": "string",
+          "enum": [
+            "filled",
+            "outlined"
+          ],
+          "enumDescriptions": [
+            "Each count is a circle filled with the colour of its state, with a fixed dark text colour that keeps the contrast in any theme.",
+            "Each count is a circle with the card background, a ring in the colour of its state and the number in that colour."
+          ],
+          "default": "filled",
+          "markdownDescription": "How the counts look on the bar of the `Tasks` header of a large card: a circle on each segment of the bar (To do, In progress, Done). The default fills the circle, which guarantees the text contrast."
+        },
         "totalflowx.filter.alwaysShowAlerts": {
           "type": "boolean",
           "default": false,

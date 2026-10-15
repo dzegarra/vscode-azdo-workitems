@@ -9,6 +9,7 @@ import { DEFAULT_COMPLETED_STATES } from './predecessors';
 import { DEFAULT_STATE_ORDER } from './states';
 import { parseWorkingDays } from './workingTime';
 import { normalizeHoverStyle } from './hoverStyle';
+import { normalizeTaskCountStyle } from './taskCountStyle';
 import { normalizeWorkingOnAnimation } from './workingOn';
 
 export const SECTION = 'totalflowx';
@@ -47,6 +48,7 @@ export function settings() {
       suffix: config.get<string>('integrationBuild.suffix', '+'),
     },
     hoverStyle: normalizeHoverStyle(config.get<string>('hoverStyle', 'border')),
+    tasksCountStyle: normalizeTaskCountStyle(config.get<string>('tasks.countStyle', 'filled')),
     workingOn: {
       showWorktrees: config.get<boolean>('workingOn.showWorktrees', true),
       includeLinkedWorkItems: config.get<boolean>('workingOn.includeLinkedWorkItems', true),
