@@ -7,8 +7,11 @@ export const MAX_LISTED_TESTS = 5;
 const MAX_ERROR_LENGTH = 140;
 /** Failed tests named in a notification */
 const MAX_NAMED_TESTS = 2;
-/** Azure DevOps view of a build with its tests */
-const TESTS_VIEW = 'view=ms.vss-test-web.build-test-results-tab';
+/** Azure DevOps tabs of a build page */
+const VIEWS = { tests: 'ms.vss-test-web.build-test-results-tab', coverage: 'codecoverage-tab' } as const;
+
+/** A tab of the page of a run, other than its summary */
+export type RunView = keyof typeof VIEWS;
 
 /* Colour codes: with or without the escape character (Azure DevOps replaces it with a space) */
 // The escape character is what the colour codes start with
@@ -93,9 +96,14 @@ export function failedStepOf(records: RawTimelineRecord[]): string | undefined {
 
 /* ---------- Texts ---------- */
 
+/** Page of a run in Azure DevOps, on one of its tabs */
+export function runViewUrl(runUrl: string, view: RunView): string {
+  return `${runUrl}${runUrl.includes('?') ? '&' : '?'}view=${VIEWS[view]}`;
+}
+
 /** Page of the tests of a run in Azure DevOps */
 export function testsUrl(runUrl: string): string {
-  return `${runUrl}${runUrl.includes('?') ? '&' : '?'}${TESTS_VIEW}`;
+  return runViewUrl(runUrl, 'tests');
 }
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;

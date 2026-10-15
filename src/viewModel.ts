@@ -10,6 +10,7 @@ import { priorityFilterValue } from './priority';
 import type { CoverageThresholds } from './coverage';
 import type { CompletedPeriod, MyPullRequestModel } from './myPullRequests';
 import type { RunModel } from './pipelines';
+import type { RunView } from './runDetails';
 import type { ReviewRequestModel } from './reviewRequests';
 import type { ReviewedPeriod, ReviewedRequest } from './reviewedRequests';
 import type { TaskBranchModel } from './taskBranches';
@@ -247,8 +248,8 @@ export type WebviewMessage =
       id: number;
       pullRequestId?: number;
       runId?: number;
-      /** openRun: show the tests of the run instead of the run */
-      tests?: boolean;
+      /** openRun: show this tab of the run (its tests, its coverage) instead of its summary */
+      view?: RunView;
       /** checkout: a branch of the work item other than its main one; linkTaskBranch: the branch of a task to link */
       branch?: string;
       /** createBranch / createPullRequest from a task row: `id` is the parent work item, this the task */

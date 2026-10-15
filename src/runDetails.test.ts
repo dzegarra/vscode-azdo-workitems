@@ -10,6 +10,7 @@ import {
   runTooltip,
   stripAnsi,
   summarizeTests,
+  runViewUrl,
   testsUrl,
 } from './runDetails';
 
@@ -139,6 +140,14 @@ describe('testsUrl', () => {
   it('opens the tests tab of the build', () => {
     expect(testsUrl('https://dev.azure.com/o/p/_build/results?buildId=1')).toBe(
       'https://dev.azure.com/o/p/_build/results?buildId=1&view=ms.vss-test-web.build-test-results-tab'
+    );
+  });
+});
+
+describe('runViewUrl', () => {
+  it('opens the code coverage tab of the build', () => {
+    expect(runViewUrl('https://dev.azure.com/o/p/_build/results?buildId=1', 'coverage')).toBe(
+      'https://dev.azure.com/o/p/_build/results?buildId=1&view=codecoverage-tab'
     );
   });
 });

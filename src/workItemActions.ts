@@ -1,7 +1,7 @@
 import { withFeature } from './requestContext';
 import * as vscode from 'vscode';
 import { resolveContext } from './config';
-import { testsUrl } from './runDetails';
+import { runViewUrl } from './runDetails';
 import { WorkItemActionMessage } from './viewModel';
 import { WorkItemsStore } from './workItemsStore';
 
@@ -37,7 +37,7 @@ async function runAction(store: WorkItemsStore, message: WorkItemAction): Promis
     case 'openRun': {
       const run = message.runId === undefined ? undefined : store.findRun(message.runId);
       if (run) {
-        await vscode.env.openExternal(vscode.Uri.parse(message.tests ? testsUrl(run.url) : run.url));
+        await vscode.env.openExternal(vscode.Uri.parse(message.view ? runViewUrl(run.url, message.view) : run.url));
       }
       return;
     }

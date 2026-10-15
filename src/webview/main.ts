@@ -21,7 +21,7 @@ import {
   formatPercent,
 } from '../coverage';
 import { RunModel, RunState } from '../pipelines';
-import { runLabel, runTooltip, testsUrl } from '../runDetails';
+import { runLabel, runTooltip, RunView, runViewUrl } from '../runDetails';
 import { fixesBugsText, type FixLink } from '../fixLinks';
 import { isReadyToStart, NONE_OPEN, OPEN_PREDECESSORS, predecessorFilterValue } from '../predecessors';
 import { RISK_DESCRIPTIONS } from '../schedule';
@@ -340,8 +340,11 @@ function renderFileList(coverage: CoverageSummary, target: number): string {
     <ul class="cov-files">${items.join('')}</ul>`;
 }
 
-/** Badge with the coverage of a successful run. Its popover lists the files below the target, to open them */
-function renderCoverage(run: RunModel): string {
+/**
+ * Badge with the coverage of a successful run: clicking it opens the coverage report of the run. Its popover lists the
+ * files below the target, to open them
+ */
+function renderCoverage(run: RunModel, open: string): string {
   const { coverage } = run;
   if (!coverage) {
     return '';
@@ -360,22 +363,30 @@ function renderCoverage(run: RunModel): string {
     records ? `<p class="cov-records">${escapeHtml(records)}</p>` : '',
     renderFileList(coverage, thresholds.target),
   ];
-  return `<span class="cov-wrap popover-anchor" data-popover-width="300" data-popover-align="start"><button class="cov cov-${level}" aria-label="${escapeHtml(
-    `Coverage ${percent}${delta ? `, ${delta.text}` : ''}: details`
+  return `<span class="cov-wrap popover-anchor" data-popover-width="300" data-popover-align="start"><button class="cov cov-${level}" ${open} aria-label="${escapeHtml(
+    `Coverage ${percent}${delta ? `, ${delta.text}` : ''}: open the coverage report`
   )}">${icon('shield')}<span>${percent}</span>${trophy}${deltaBadge}</button>
     <div class="cov-pop popover" role="group" aria-label="Coverage details">${details.join('')}</div></span>`;
 }
 
-/** A CI run: its state, and the coverage when it succeeded. `open` and `openTests` are the attributes of the click */
-function renderRun(run: RunModel, open: string, openTests: string): string {
+/**
+ * A CI run: its state, and the coverage when it succeeded. `open` gives the attributes of the click that opens the run,
+ * on one of its tabs (the failed tests from the pill, the coverage report from the coverage badge)
+ */
+function renderRun(run: RunModel, open: (view?: RunView) => string): string {
   const now = new Date();
   const label = runLabel(run, now);
-  const pill = `<button class="run run-${run.state}" ${label.opensTests ? openTests : open}
+  const pill = `<button class="run run-${run.state}" ${open(label.opensTests ? 'tests' : undefined)}
       title="${escapeHtml(runTooltip(run, now))}">
       ${icon(RUN_ICONS[run.state], run.state === 'running' ? 'spin' : '')}<span>${escapeHtml(label.text)}</span>
     </button>`;
-  const coverage = run.state === 'succeeded' ? renderCoverage(run) : '';
+  const coverage = run.state === 'succeeded' ? renderCoverage(run, open('coverage')) : '';
   return coverage ? `<span class="run-group">${pill}${coverage}</span>` : pill;
+}
+
+/** Click of a run of a work item or task card: the extension finds the run by its ID and opens it on the tab */
+function openRunAttributes(id: number, run: RunModel, view: RunView | undefined): string {
+  return `data-action="openRun" data-id="${id}" data-run="${run.id}"${view ? ` data-view="${view}"` : ''}`;
 }
 
 /** Last CI run of each pipeline validating the PR. Clicking one opens it in Azure DevOps */
@@ -384,8 +395,7 @@ function renderRuns(item: WorkItemModel, pr: PullRequestModel): string {
     return '';
   }
   const runs = pr.runs.map((run) => {
-    const open = `data-action="openRun" data-id="${item.id}" data-run="${run.id}"`;
-    return renderRun(run, open, `${open} data-tests="true"`);
+    return renderRun(run, (view) => openRunAttributes(item.id, run, view));
   });
   return `<div class="runs">${runs.join('')}</div>`;
 }
@@ -609,8 +619,7 @@ function renderTaskPullRequestRuns(task: TaskRow, pr: TaskPullRequestModel): str
     return '';
   }
   const runs = pr.runs.map((run) => {
-    const open = `data-action="openRun" data-id="${task.id}" data-run="${run.id}"`;
-    return renderRun(run, open, `${open} data-tests="true"`);
+    return renderRun(run, (view) => openRunAttributes(task.id, run, view));
   });
   return `<div class="runs">${runs.join('')}</div>`;
 }
@@ -1121,8 +1130,8 @@ function renderSignals(pr: SignalsData, extra = ''): string {
       .map((run) =>
         renderRun(
           run,
-          `data-action="openMyPullRequest" data-url="${escapeHtml(run.url)}"`,
-          `data-action="openMyPullRequest" data-url="${escapeHtml(testsUrl(run.url))}"`
+          (view) =>
+            `data-action="openMyPullRequest" data-url="${escapeHtml(view ? runViewUrl(run.url, view) : run.url)}"`
         )
       )
       .join(''),
@@ -2476,7 +2485,7 @@ document.addEventListener('click', (event) => {
   if (!target || ((event.target as HTMLElement).closest(popover) && !target.closest(popover))) {
     return;
   }
-  const { action, filter, value, id, pr, run, url, path, tests, kind, layout, branch, panel, task, parent } =
+  const { action, filter, value, id, pr, run, url, path, view, kind, layout, branch, panel, task, parent } =
     target.dataset;
   if (filter && value !== undefined) {
     toggleFilter(filter as FilterKind, value);
@@ -2568,7 +2577,7 @@ document.addEventListener('click', (event) => {
       id: Number(id),
       pullRequestId: pr ? Number(pr) : undefined,
       runId: run ? Number(run) : undefined,
-      tests: tests === 'true' ? true : undefined,
+      view: view === 'tests' || view === 'coverage' ? view : undefined,
       branch,
       taskId: task ? Number(task) : undefined,
     });

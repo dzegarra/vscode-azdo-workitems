@@ -220,6 +220,7 @@ Successful runs show how many tests ran and the coverage of the code tested by t
 
 - coloured by level: red below 60%, orange below 80%, green from 80%, gold with a trophy from 95% (`totalflowx.coverage.minimum` / `.target` / `.excellent`);
 - `▲` in green when the coverage went up since the previous run of the PR; a decrease is shown without red;
+- click it to open the **Code Coverage** report of the run in Azure DevOps;
 - hover (or focus) it to see the files below the target, least covered first; click one to open it and add the missing tests;
 - your **personal best** and your **streak** of PRs at or above the target are kept, and celebrated in the notification when a run of your PRs ends ("PR 13713 passed: 95 tests, coverage 100% 🏆 · New personal best!").
 
