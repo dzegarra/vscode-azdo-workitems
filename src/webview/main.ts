@@ -1,4 +1,5 @@
 import { compactSignals, CompactSignal } from '../compactSignals';
+import { placePopover } from '../popoverPlacement';
 import { renderBranchList } from '../branchRows';
 import { checkoutButton, worktreePill } from '../checkoutButtons';
 import {
@@ -359,10 +360,10 @@ function renderCoverage(run: RunModel): string {
     records ? `<p class="cov-records">${escapeHtml(records)}</p>` : '',
     renderFileList(coverage, thresholds.target),
   ];
-  return `<span class="cov-wrap"><button class="cov cov-${level}" aria-label="${escapeHtml(
+  return `<span class="cov-wrap popover-anchor" data-popover-width="300" data-popover-align="start"><button class="cov cov-${level}" aria-label="${escapeHtml(
     `Coverage ${percent}${delta ? `, ${delta.text}` : ''}: details`
   )}">${icon('shield')}<span>${percent}</span>${trophy}${deltaBadge}</button>
-    <div class="cov-pop" role="group" aria-label="Coverage details">${details.join('')}</div></span>`;
+    <div class="cov-pop popover" role="group" aria-label="Coverage details">${details.join('')}</div></span>`;
 }
 
 /** A CI run: its state, and the coverage when it succeeded. `open` and `openTests` are the attributes of the click */
@@ -418,7 +419,7 @@ function renderPredecessorList(item: WorkItemModel, id: string): string {
       ${risk ? `<div class="pred-risk risk-${risk}">${escapeHtml(RISK_DESCRIPTIONS[risk])}</div>` : ''}
     </li>`;
   });
-  return `<div class="pred-pop" id="${id}" role="group" aria-label="Open predecessors of ${item.id}">
+  return `<div class="pred-pop popover" id="${id}" role="group" aria-label="Open predecessors of ${item.id}">
     <div class="pred-card">
       <p class="pred-intro">Agree with their owners before starting.</p>
       <ol class="pred-list">${rows.join('')}</ol>
@@ -440,7 +441,7 @@ function renderPredecessorTrigger(item: WorkItemModel, compact: boolean): string
     : `<button class="pill tone-caution pred-pill" data-action="showPredecessors" aria-describedby="${id}">${icon(
         'link'
       )}${count} open predecessor${count === 1 ? '' : 's'}</button>`;
-  return `<span class="pred-wrap">${trigger}${renderPredecessorList(item, id)}</span>`;
+  return `<span class="pred-wrap popover-anchor">${trigger}${renderPredecessorList(item, id)}</span>`;
 }
 
 /** Large card: the caution with open predecessors, or the hint that the work item is ready to start */
@@ -681,7 +682,7 @@ function renderTaskPillDetails(task: TaskRow, id: string, parentId: number): str
     ...task.taskPullRequests.map((pr) => renderTaskPullRequestCard(task, pr)),
   ];
   return entries.length
-    ? `<div class="task-pr-pop" id="${id}" role="tooltip"><div class="task-pr-card">${entries
+    ? `<div class="task-pr-pop popover" id="${id}" role="tooltip"><div class="task-pr-card">${entries
         .map((entry) => `<div class="task-pr-entry">${entry}</div>`)
         .join('')}${
         taskHasActions(task, parentId) ? '<div class="task-pr-hint">Click for actions</div>' : ''
@@ -700,9 +701,9 @@ function renderTaskPill(task: TaskRow, parentId: number): string {
   }
   const detailsId = `task-pill-pop-${task.id}`;
   const content = pill.empty ? '+' : `${renderPillBranches(pill)}${renderPillPullRequests(pill)}`;
-  return `<span class="task-pr-wrap${
+  return `<span class="task-pr-wrap popover-anchor${
     suppressedTaskCard === task.id ? ' card-suppressed' : ''
-  }"><button class="task-pill${pill.empty ? ' empty' : ''}"
+  }" data-popover-width="360" data-popover-align="end"><button class="task-pill${pill.empty ? ' empty' : ''}"
       data-action="taskActions" data-id="${task.id}" data-parent="${parentId}"
       ${pill.empty ? '' : `aria-describedby="${detailsId}"`}
       ${pill.empty ? 'title="Create a branch or a pull request for this task"' : ''}
@@ -1145,7 +1146,7 @@ function renderTimeline(id: string, timeline: MyPullRequestModel['timeline']): s
   if (earlier) {
     rows.push(`<li class="timeline-earlier">… ${earlier} earlier event${earlier === 1 ? '' : 's'}</li>`);
   }
-  return `<div class="timeline" id="${id}" role="tooltip"><ol class="timeline-card" aria-label="Events of the pull request">${rows.join(
+  return `<div class="timeline popover" id="${id}" role="tooltip"><ol class="timeline-card" aria-label="Events of the pull request">${rows.join(
     ''
   )}</ol></div>`;
 }
@@ -1153,7 +1154,7 @@ function renderTimeline(id: string, timeline: MyPullRequestModel['timeline']): s
 /** The age (or time left) of a PR; hovering or focusing it shows what happened */
 function renderTimeText(id: string, text: string, timeline: MyPullRequestModel['timeline'], className = ''): string {
   // Its own (no-op) action: clicking the time or the history must not fold the card around it
-  return `<span class="mypr-time-wrap" data-action="timeline"><button class="mypr-time${className}" aria-describedby="${id}">${escapeHtml(
+  return `<span class="mypr-time-wrap popover-anchor" data-action="timeline"><button class="mypr-time${className}" aria-describedby="${id}">${escapeHtml(
     text
   )}</button>${renderTimeline(id, timeline)}</span>`;
 }
@@ -2038,48 +2039,79 @@ function renderFiltersToggle(current: ViewModel): void {
   }`;
 }
 
-/** Width of the detail card of a task pill */
-const TASK_CARD_WIDTH = 360;
-/** Margin that the popovers (coverage, task card) keep from the edges of the view */
+/** Margin that the popovers keep from the edges of the view */
 const VIEW_MARGIN = 8;
 
+interface PlacedPopover {
+  popover: HTMLElement;
+  left: number;
+  width: number;
+}
+
 /**
- * The detail card hangs under the pill, aligned with its right edge when there is room, and shifted so that it never
- * leaves the view (a margin on both sides): the pill is not at the end of the row (the state button follows it) and
- * may be near the left edge of a narrow sidebar. The wrap is `display: contents`, so the position is measured and set
- * as CSS variables
+ * Where a popover goes: `data-popover-width` and `data-popover-align` of its anchor say how wide it wants to be and
+ * which edge of the first element of the anchor (the button) it follows; the pure placePopover keeps it inside the
+ * view (documentElement.clientWidth: innerWidth and 100vw include the scrollbar). The left is relative to the
+ * containing block of the popover (offsetParent: the anchor, or the row for the anchor that is `display: contents`)
  */
-function placeTaskCard(wrap: Element): void {
-  const pill = wrap.querySelector<HTMLElement>('.task-pill');
-  const pop = wrap.querySelector<HTMLElement>('.task-pr-pop');
-  const row = wrap.closest<HTMLElement>('.child');
-  if (!pill || !pop || !row) {
-    return;
+function measurePopover(anchor: HTMLElement): PlacedPopover | undefined {
+  const preferredWidth = Number(anchor.dataset.popoverWidth);
+  const popover = anchor.querySelector<HTMLElement>(':scope > .popover');
+  const trigger = anchor.firstElementChild;
+  const block = popover?.offsetParent;
+  if (!popover || !trigger || !block || !(preferredWidth > 0)) {
+    return undefined;
   }
-  const view = document.documentElement.clientWidth;
-  const width = Math.min(TASK_CARD_WIDTH, view - 2 * VIEW_MARGIN);
-  const right = Math.max(width + VIEW_MARGIN, Math.min(pill.getBoundingClientRect().right, view - VIEW_MARGIN));
-  pop.style.setProperty('--pop-width', `${width}px`);
-  pop.style.setProperty('--pop-right', `${Math.round(row.getBoundingClientRect().right - right)}px`);
+  const rect = trigger.getBoundingClientRect();
+  const { width, left } = placePopover({
+    anchorLeft: rect.left,
+    anchorRight: rect.right,
+    viewWidth: document.documentElement.clientWidth,
+    preferredWidth,
+    margin: VIEW_MARGIN,
+    align: anchor.dataset.popoverAlign === 'end' ? 'end' : 'start',
+  });
+  return { popover, width, left: left - block.getBoundingClientRect().left - block.clientLeft };
 }
 
-/** After a render: the card of the pill under the pointer or with the keyboard focus was drawn again */
-function placeHoveredTaskCard(): void {
-  const active = document.activeElement instanceof Element ? document.activeElement.closest('.task-pr-wrap') : null;
-  const hovered = document.querySelector('.task-pr-wrap:hover');
-  for (const wrap of new Set([active, hovered])) {
-    if (wrap) {
-      placeTaskCard(wrap);
-    }
+/** Measures them all, then writes (no layout thrash) */
+function placePopovers(anchors: Element[]): void {
+  const placed = anchors
+    .filter((anchor): anchor is HTMLElement => anchor instanceof HTMLElement)
+    .map(measurePopover)
+    .filter((item): item is PlacedPopover => item !== undefined);
+  for (const { popover, left, width } of placed) {
+    popover.style.setProperty('--popover-left', `${left}px`);
+    popover.style.setProperty('--popover-width', `${width}px`);
   }
 }
 
-/** The pointer is over (or left) something: places the card of the pill it enters, and ends the wait after a click */
+/**
+ * After a render and when the view is resized: every popover that needs a place, hidden or not (a hidden popover
+ * still counts for the scroll width of the view). The outer ones first: a badge inside the card of a pill moves with it
+ */
+function placeAllPopovers(): void {
+  const anchors = Array.from(document.querySelectorAll('.popover-anchor[data-popover-width]'));
+  placePopovers(anchors.filter((anchor) => !anchor.closest('.popover')));
+  placePopovers(anchors.filter((anchor) => anchor.closest('.popover')));
+}
+
+/** The pointer or the focus enters an anchor: its popover (and the ones around it) is placed again before it shows */
+function placePopoversAround(target: EventTarget | null): void {
+  const chain: Element[] = [];
+  let anchor = target instanceof Element ? target.closest('.popover-anchor') : null;
+  while (anchor) {
+    chain.unshift(anchor);
+    anchor = anchor.parentElement?.closest('.popover-anchor') ?? null;
+  }
+  for (const item of chain) {
+    placePopovers([item]);
+  }
+}
+
+/** The pointer is over (or left) something: ends the wait after a click on a pill */
 function onTaskCardPointer(target: EventTarget | null): void {
   const wrap = target instanceof Element ? target.closest('.task-pr-wrap') : null;
-  if (wrap) {
-    placeTaskCard(wrap);
-  }
   if (suppressedTaskCard === undefined) {
     return;
   }
@@ -2121,8 +2153,8 @@ function render(): void {
   for (const style of HOVER_STYLES) {
     app.classList.toggle(hoverStyleClass(style), style === model.hoverStyle);
   }
-  // Delay of the detail card of the task pills (a CSS variable: strict CSP, no inline styles)
-  app.style.setProperty('--task-card-delay', `${model.hoverCardDelay}ms`);
+  // Delay of the popovers (a CSS variable: strict CSP, no inline styles)
+  app.style.setProperty('--popover-delay', `${model.popoverDelay}ms`);
   // Same for the look of the counts on the bar of the Tasks header
   for (const style of TASK_COUNT_STYLES) {
     app.classList.toggle(taskCountStyleClass(style), style === model.tasksCountStyle);
@@ -2149,7 +2181,7 @@ function render(): void {
   pulseChangedReviews(model);
   sizeTaskBars();
   placeRunningLights();
-  placeHoveredTaskCard();
+  placeAllPopovers();
   if (revealPending()) {
     render();
   }
@@ -2337,24 +2369,9 @@ function setTasksExpanded(expanded: boolean): void {
   renderMorphing();
 }
 
-/** Width of the coverage popover, as in the CSS */
-const COVERAGE_POPOVER_WIDTH = 300;
-
-/** Keeps the coverage popover inside the view: it opens below the badge, shifted left when it would overflow */
-function placeCoveragePopover(event: Event): void {
-  const wrap = (event.target as HTMLElement).closest<HTMLElement>('.cov-wrap');
-  const popover = wrap?.querySelector<HTMLElement>('.cov-pop');
-  if (!wrap || !popover) {
-    return;
-  }
-  const width = Math.min(COVERAGE_POPOVER_WIDTH, window.innerWidth - 2 * VIEW_MARGIN);
-  const overflow = wrap.getBoundingClientRect().left + width - (window.innerWidth - VIEW_MARGIN);
-  popover.style.left = `${-Math.max(0, overflow)}px`;
-}
-
-document.addEventListener('pointerover', placeCoveragePopover);
-document.addEventListener('focusin', placeCoveragePopover);
-// Escape closes the popover (WCAG 1.4.13): it only shows while the badge or something inside it has the focus or the pointer
+document.addEventListener('pointerover', (event) => placePopoversAround(event.target));
+document.addEventListener('focusin', (event) => placePopoversAround(event.target));
+window.addEventListener('resize', placeAllPopovers);
 document.addEventListener('change', (event) => {
   const select = event.target;
   if (!(select instanceof HTMLSelectElement)) {
@@ -2373,25 +2390,26 @@ document.addEventListener('change', (event) => {
   }
 });
 
+// Escape closes the popovers (WCAG 1.4.13): they only show while the pointer or the focus is on the anchor, until it moves
 document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') {
+    return;
+  }
   const active = document.activeElement;
-  if (event.key === 'Escape' && active instanceof HTMLElement && active.closest('.cov-wrap, .pred-wrap')) {
-    active.blur();
+  const focused = active instanceof HTMLElement && active.closest('.popover-anchor') ? active : undefined;
+  if (focused || document.querySelector('.popover-anchor:hover')) {
+    focused?.blur();
     document.body.classList.add('no-popovers');
   }
 });
+// Esc holds the popovers closed until the pointer moves or the focus goes to something else
 document.addEventListener('pointermove', () => document.body.classList.remove('no-popovers'));
+document.addEventListener('focusin', () => document.body.classList.remove('no-popovers'));
 document.addEventListener('pointerover', (event) => onTaskCardPointer(event.target));
 // The pointer left the view: the card may show again when it comes back
 document.addEventListener('pointerout', (event) => {
   if (!event.relatedTarget) {
     onTaskCardPointer(null);
-  }
-});
-document.addEventListener('focusin', (event) => {
-  const wrap = event.target instanceof Element ? event.target.closest('.task-pr-wrap') : null;
-  if (wrap) {
-    placeTaskCard(wrap);
   }
 });
 /** Asks the extension for the native picker of a trigger; nothing happens when there is nothing to choose */
@@ -2454,7 +2472,7 @@ document.addEventListener('click', (event) => {
   }
   const target = (event.target as HTMLElement).closest<HTMLElement>('[data-action], [data-filter]');
   // The text of a popover is not the row behind it: clicking it must not fold the row
-  const popover = '.pred-pop, .task-pr-pop';
+  const popover = '.popover';
   if (!target || ((event.target as HTMLElement).closest(popover) && !target.closest(popover))) {
     return;
   }

@@ -427,12 +427,21 @@
           "default": "filled",
           "markdownDescription": "How the counts look on the bar of the `Tasks` header of a large card: a circle on each segment of the bar (To do, In progress, Done). The default fills the circle, which guarantees the text contrast."
         },
+        "totalflowx.popovers.hoverDelay": {
+          "type": "number",
+          "default": 500,
+          "minimum": 0,
+          "maximum": 3000,
+          "description": "Delay before the popovers (task details, coverage, predecessors, PR history) appear on hover (milliseconds). 0 shows them at once; keyboard focus shows them at once."
+        },
         "totalflowx.tasks.hoverCardDelay": {
           "type": "number",
           "default": 500,
           "minimum": 0,
           "maximum": 3000,
-          "description": "Delay before the details card of a task's branches and pull requests appears on hover (milliseconds). 0 shows it at once."
+          "deprecationMessage": "Deprecated: use totalflowx.popovers.hoverDelay (it applies to every popover). This value is only read while the new setting is not set.",
+          "markdownDeprecationMessage": "**Deprecated**: use `#totalflowx.popovers.hoverDelay#` (it applies to every popover). This value is only read while the new setting is not set.",
+          "description": "Deprecated: use totalflowx.popovers.hoverDelay."
         },
         "totalflowx.filter.alwaysShowAlerts": {
           "type": "boolean",

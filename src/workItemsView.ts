@@ -97,7 +97,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       alwaysShowAlerts: vscode.workspace.getConfiguration(SECTION).get<boolean>('filter.alwaysShowAlerts', false),
       layout: layoutSetting(),
       hoverStyle: settings().hoverStyle,
-      hoverCardDelay: settings().hoverCardDelay,
+      popoverDelay: settings().popoverDelay,
       tasksCountStyle: settings().tasksCountStyle,
       workingOn: workingOnSettings(),
       coverage: this.coverageModel(),

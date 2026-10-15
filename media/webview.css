@@ -2057,15 +2057,9 @@ button.state:focus-visible {
   top: 100%;
   right: 0;
   left: 0;
-  display: none;
   padding-top: 4px;
   color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
   font-size: 11.5px;
-}
-
-.mypr-time-wrap:hover .timeline,
-.mypr-time-wrap:focus-within .timeline {
-  display: block;
 }
 
 .timeline-card {
@@ -2426,6 +2420,43 @@ button.state:focus-visible {
   min-width: 0;
 }
 
+/*
+ * Popovers (coverage, predecessors, PR history, task card): ONE behaviour. The anchor (.popover-anchor) holds the
+ * trigger and its popover (.popover, a direct child); each popover keeps its own look and position. Hidden with
+ * opacity and visibility (not display) so that showing can wait: on hover it fades in after --popover-delay
+ * (totalflowx.popovers.hoverDelay) and fades out in 0.12 s (visibility only flips at the end of it: when the Tab key
+ * moves the focus from the trigger into the popover, the trigger loses it first, and a popover that were hidden at that
+ * instant could not receive it). Keyboard focus on the trigger or inside the popover (so
+ * that its buttons can be reached with Tab) shows it at once; a mouse click focuses a button but is not
+ * :focus-visible, so it does not keep the popover open after the pointer leaves. Esc (.no-popovers on the body) and
+ * a click on the task pill (.card-suppressed, set by the webview) hide it until the pointer moves / leaves.
+ * The popovers that need a place are measured by the webview (see placePopover)
+ */
+.popover {
+  opacity: 0;
+  transition: opacity 0.12s ease, visibility 0s linear 0.12s;
+  visibility: hidden;
+}
+
+.popover-anchor:hover > .popover {
+  opacity: 1;
+  transition-delay: var(--popover-delay, 500ms);
+  visibility: visible;
+}
+
+.popover-anchor:has(:focus-visible) > .popover {
+  opacity: 1;
+  transition-delay: 0s;
+  visibility: visible;
+}
+
+.popover-anchor.card-suppressed > .popover,
+.no-popovers .popover {
+  opacity: 0 !important;
+  transition: none !important;
+  visibility: hidden !important;
+}
+
 .cov-wrap {
   position: relative;
   display: inline-flex;
@@ -2487,28 +2518,17 @@ button.state:focus-visible {
   color: var(--muted);
 }
 
-/* Below the badge. The padding keeps the hover while moving to the popover; the script shifts it into the view */
+/* Below the badge. The padding keeps the hover while moving to the popover; the script (--popover-left, --popover-width) keeps it inside the view */
 .cov-pop {
   position: absolute;
   z-index: 30;
   top: 100%;
-  left: 0;
-  display: none;
-  width: 300px;
-  max-width: calc(100vw - 16px);
+  left: var(--popover-left, 0);
+  width: var(--popover-width, 300px);
   padding-top: 4px;
   color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
   font-size: 11.5px;
   line-height: 1.35;
-}
-
-.cov-wrap:hover .cov-pop,
-.cov-wrap:focus-within .cov-pop {
-  display: block;
-}
-
-.no-popovers .cov-pop {
-  display: none !important;
 }
 
 .cov-pop > * {
@@ -3033,21 +3053,11 @@ button.signal-predecessors:focus-visible {
   top: 100%;
   right: 0;
   left: 0;
-  display: none;
   padding-top: 4px;
   color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
   font-size: 11.5px;
   font-weight: 400;
   white-space: normal;
-}
-
-.pred-wrap:hover .pred-pop,
-.pred-wrap:focus-within .pred-pop {
-  display: block;
-}
-
-.no-popovers .pred-pop {
-  display: none !important;
 }
 
 .pred-card {
@@ -3160,52 +3170,21 @@ button.signal-predecessors:focus-visible {
 }
 
 /*
- * The card hangs under the pill, right-aligned to it when there is room (--pop-right, set by the webview: it measures
- * the pill and the view, and shifts the card so that it never leaves the view). Wide enough for the titles of the PRs,
- * like a tooltip. The padding keeps the hover while the pointer moves from the pill to the card. Hidden with
- * visibility, so that it can wait: it appears after --task-card-delay (totalflowx.tasks.hoverCardDelay) and goes away
- * at once
+ * The card hangs under the pill, right-aligned to it when there is room (--popover-left and --popover-width, set by the
+ * webview: it measures the pill and the view, and shifts the card so that it never leaves the view). Wide enough for
+ * the titles of the PRs, like a tooltip. The padding keeps the hover while the pointer moves from the pill to the card.
+ * Showing and hiding: see .popover
  */
 .task-pr-pop {
   position: absolute;
   z-index: 30;
   top: 100%;
-  right: var(--pop-right, 0);
-  left: auto;
-  width: var(--pop-width, min(360px, calc(100vw - 16px)));
+  left: var(--popover-left, 0);
+  width: var(--popover-width, 100%);
   padding-top: 4px;
   color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
   font-size: 11.5px;
-  opacity: 0;
-  transition: opacity 0.12s ease, visibility 0s linear;
-  visibility: hidden;
   white-space: normal;
-}
-
-.task-pr-wrap:hover .task-pr-pop {
-  opacity: 1;
-  transition-delay: var(--task-card-delay, 500ms);
-  visibility: visible;
-}
-
-/* Keyboard focus: no wait. A click focuses the pill too, but that is not :focus-visible */
-.task-pr-wrap:has(:focus-visible) .task-pr-pop {
-  opacity: 1;
-  transition-delay: 0s;
-  visibility: visible;
-}
-
-/* After a click on the pill the card stays away until the pointer leaves it (class set from the webview) */
-.task-pr-wrap.card-suppressed .task-pr-pop {
-  opacity: 0 !important;
-  transition: none !important;
-  visibility: hidden !important;
-}
-
-.no-popovers .task-pr-pop {
-  opacity: 0 !important;
-  transition: none !important;
-  visibility: hidden !important;
 }
 
 .task-pr-card {

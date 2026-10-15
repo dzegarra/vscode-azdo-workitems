@@ -8,7 +8,7 @@ import { parseCheckoutMode } from './worktrees';
 import { DEFAULT_COMPLETED_STATES } from './predecessors';
 import { DEFAULT_STATE_ORDER } from './states';
 import { parseWorkingDays } from './workingTime';
-import { normalizeHoverCardDelay } from './hoverCardDelay';
+import { resolvePopoverDelay } from './popoverDelay';
 import { normalizeHoverStyle } from './hoverStyle';
 import { normalizeTaskCountStyle } from './taskCountStyle';
 import { normalizeWorkingOnAnimation } from './workingOn';
@@ -17,6 +17,12 @@ export const SECTION = 'totalflowx';
 
 /** Recognizes the PR task by its title: "PR", "Create PR", "Pull Request review"… */
 export const DEFAULT_PULL_REQUEST_TASK_PATTERN = /\b(PR|pull request)\b/i;
+
+/** What the user set explicitly (folder, workspace or user), `undefined` when the setting still has its default */
+function explicitSetting<T>(config: vscode.WorkspaceConfiguration, key: string): T | undefined {
+  const info = config.inspect<T>(key);
+  return info?.workspaceFolderValue ?? info?.workspaceValue ?? info?.globalValue;
+}
 
 export function settings() {
   const config = vscode.workspace.getConfiguration(SECTION);
@@ -49,7 +55,10 @@ export function settings() {
       suffix: config.get<string>('integrationBuild.suffix', '+'),
     },
     hoverStyle: normalizeHoverStyle(config.get<string>('hoverStyle', 'border')),
-    hoverCardDelay: normalizeHoverCardDelay(config.get<number>('tasks.hoverCardDelay', 500)),
+    popoverDelay: resolvePopoverDelay(
+      explicitSetting<number>(config, 'popovers.hoverDelay'),
+      explicitSetting<number>(config, 'tasks.hoverCardDelay')
+    ),
     tasksCountStyle: normalizeTaskCountStyle(config.get<string>('tasks.countStyle', 'filled')),
     workingOn: {
       showWorktrees: config.get<boolean>('workingOn.showWorktrees', true),

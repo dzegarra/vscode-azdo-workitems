@@ -165,8 +165,8 @@ export interface ViewModel {
   layout: Layout;
   /** How the cards and PR tiles react to the pointer (totalflowx.hoverStyle) */
   hoverStyle: HoverStyle;
-  /** Milliseconds before the details card of a task pill appears on hover (totalflowx.tasks.hoverCardDelay) */
-  hoverCardDelay: number;
+  /** Milliseconds before the popovers (task details, coverage, predecessors, PR history) appear on hover (totalflowx.popovers.hoverDelay) */
+  popoverDelay: number;
   /** How the counts on the bar of the Tasks header look (totalflowx.tasks.countStyle) */
   tasksCountStyle: TaskCountStyle;
   coverage: CoverageViewModel;
