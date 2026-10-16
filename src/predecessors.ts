@@ -4,7 +4,7 @@
  * Pure, so no "vscode" import
  */
 import { DependencyRisk, dependencyRisk, ScheduledIteration } from './schedule';
-import { isNotStartedState, normalizeState } from './states';
+import { normalizeState } from './states';
 
 export const DEFAULT_COMPLETED_STATES = ['Done', 'Ready to Test', 'Closed', 'Removed'];
 
@@ -90,27 +90,4 @@ export function predecessorFilterValue(item: { openPredecessors?: unknown[] }): 
     return undefined;
   }
   return item.openPredecessors.length ? OPEN_PREDECESSORS : NONE_OPEN;
-}
-
-// Rule DEP-3
-/** Not started and nothing open before it. Unknown predecessors give no hint */
-export function isReadyToStart(item: { state: string; openPredecessors?: unknown[] }): boolean {
-  return isNotStartedState(item.state) && item.openPredecessors?.length === 0;
-}
-
-const MAX_LISTED = 5;
-
-/** Question asked before starting a work item that has open predecessors */
-export function startCheckMessage(
-  item: { id: number; type: string },
-  predecessors: Pick<OpenPredecessor, 'assignedTo' | 'id' | 'state'>[]
-): string {
-  const listed = predecessors
-    .slice(0, MAX_LISTED)
-    .map(({ id, state, assignedTo }) => `${id} (${state}, ${assignedTo ?? 'unassigned'})`);
-  const more = predecessors.length - listed.length;
-  const noun = predecessors.length === 1 ? 'predecessor' : 'predecessors';
-  return `${item.type} ${item.id} has ${predecessors.length} ${noun} not completed: ${listed.join(', ')}${
-    more > 0 ? ` and ${more} more` : ''
-  }. Agree with their owners before starting.`;
 }

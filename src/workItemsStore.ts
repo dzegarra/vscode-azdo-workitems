@@ -7,7 +7,8 @@ import { GitAPI, pickRepository, Ref, REF_TYPE_HEAD, Repository } from './git';
 import { TeamIteration } from './iterations';
 import { branchBelongsToWorkItem } from './naming';
 import { collectBranches, EntryBranch, toBranchModels, unknownRepositoryIds } from './workItemBranches';
-import { stateCategory } from './states';
+import { isClosedState, stateCategory } from './states';
+import { completionIssues, type CompletionIssues } from './completionIssues';
 import { branchesToCheckRemotely, deletableBranches, isProtectedBranch } from './deletableBranches';
 import { fixLinks } from './fixLinks';
 import { openPredecessors } from './predecessors';
@@ -46,6 +47,8 @@ export interface WorkItemEntry {
   taskBranches: string[];
   /** PR links (with project and repository) of its child tasks: the ones the quick fix of an unlinked PR may add */
   taskPullRequestLinks: { id: number; projectId: string; repositoryId: string }[];
+  /** Blocking tags and empty fields that keep it from being completed (COMPLETE-2..4); undefined without alert rules */
+  completion?: CompletionIssues;
   /** Work items that must be done before this one; undefined when they could not be loaded */
   predecessors?: WorkItem[];
   /** Work items that depend on this one; undefined when they could not be loaded */
@@ -297,6 +300,19 @@ function alertsOf(
       rules
     ),
     rules.integrationBuildField
+  );
+}
+
+/** Blocking tags and empty fields of the work item, from the same rules as the alerts */
+function completionIssuesOf(workItem: WorkItem, rules: AlertRules): CompletionIssues {
+  return completionIssues(
+    {
+      type: workItem.type,
+      state: workItem.state,
+      tags: parseTags(workItem.fields['System.Tags']),
+      fields: workItem.fields,
+    },
+    rules
   );
 }
 
@@ -648,6 +664,7 @@ export class WorkItemsStore {
         inReview: isInReview(workItem.state, taskRefsOf(workItem, related, azdoRepository.id), pullRequestTaskPattern),
         taskBranches: taskBranchNamesOf(workItem, related, azdoRepository.id),
         taskPullRequestLinks,
+        completion: rules && completionIssuesOf(workItem, rules),
         predecessors: dependencies.predecessors.get(workItem.id),
         successors: dependencies.successors.get(workItem.id),
       };
@@ -855,6 +872,7 @@ export class WorkItemsStore {
       predecessors,
       successors,
       otherTasks,
+      completion,
     }: WorkItemEntry,
     currentBranch: string | undefined,
     completedStates: string[],
@@ -892,7 +910,12 @@ export class WorkItemsStore {
       pullRequests: pullRequests
         .map((pr) => toPullRequestModel(pr, this.runs.get(pr.pullRequestId) ?? [], this.repositoryId))
         .sort((a, b) => Number(b.isActive) - Number(a.isActive) || b.id - a.id),
-      openPredecessors: predecessors && openPredecessors(workItem, predecessors, completedStates, this.schedule),
+      // Rule COMPLETE-1: a closed work item has nothing left to complete
+      openPredecessors: isClosedState(workItem.state)
+        ? predecessors && []
+        : predecessors && openPredecessors(workItem, predecessors, completedStates, this.schedule),
+      blockingTags: completion?.blockingTags,
+      missingFields: completion?.missingFields,
       ...fixLinks(workItem, predecessors, successors),
       taskPullRequests: workItem.type === 'Task' ? this.taskPullRequests(pullRequests) : [],
       taskBranches,

@@ -1,6 +1,6 @@
 /** What the compact work item rows show under the title. Pure, so no "vscode" import */
+import { completionIssueCount, completionIssueLines } from './completionIssues';
 import { fixesBugsText, fixLinksTooltip } from './fixLinks';
-import { isReadyToStart } from './predecessors';
 import { pullRequestTooltip } from './pullRequestModel';
 import type { RunModel, RunState } from './pipelines';
 import { runTooltip } from './runDetails';
@@ -15,12 +15,11 @@ export type SignalKind =
   | 'alerts'
   | 'branch'
   | 'ci'
+  | 'completion'
   | 'fixedBy'
   | 'fixesBugs'
-  | 'predecessors'
   | 'priority'
   | 'pullRequest'
-  | 'ready'
   | 'severity'
   | 'tasks'
   | 'workingOn';
@@ -33,7 +32,7 @@ export interface CompactSignal {
   title: string;
   /**
    * Colour: "urgency-N" / "urgency-none" (priority, severity), a branch or PR tone, the run state (ci),
-   * "neutral" or "approved" (tasks), "rejected" (alerts), "caution" (open predecessors), "approved" (ready to start),
+   * "neutral" or "approved" (tasks), "rejected" (alerts), "caution" (completion issues),
    * "working-here" / "working-worktree" (working on), "bug" (fixes bugs, red) / "backlog" (fixed by, blue)
    */
   tone: string;
@@ -73,19 +72,17 @@ function urgencySignals(item: WorkItemModel): CompactSignal[] {
   return signals;
 }
 
-/** Open predecessors: a caution, not an alert. Ready to start: not started and nothing open before it */
-function predecessorSignal(item: WorkItemModel): CompactSignal | undefined {
-  const count = item.openPredecessors?.length ?? 0;
-  if (count) {
-    return {
-      kind: 'predecessors',
-      label: String(count),
-      title: `${count} open predecessor${count === 1 ? '' : 's'}: agree with their owners before starting`,
-      tone: 'caution',
-    };
-  }
-  return isReadyToStart(item)
-    ? { kind: 'ready', label: 'ready', title: 'Ready to start: no open predecessors', tone: 'approved' }
+// Rule SIGNAL-3
+/** What keeps the work item from being completed (open predecessors, blocking tags, empty fields): a caution, not an alert */
+function completionSignal(item: WorkItemModel): CompactSignal | undefined {
+  const count = completionIssueCount(item);
+  return count
+    ? {
+        kind: 'completion',
+        label: String(count),
+        title: `Cannot be completed yet: ${completionIssueLines(item).join(' · ')}`,
+        tone: 'caution',
+      }
     : undefined;
 }
 
@@ -192,9 +189,9 @@ export function compactSignals(
     signals.push({ kind: 'workingOn', label: badge.label, title: badge.title, tone: `working-${item.workingOn}` });
   }
   signals.push(...urgencySignals(item));
-  const predecessors = predecessorSignal(item);
-  if (predecessors) {
-    signals.push(predecessors);
+  const completion = completionSignal(item);
+  if (completion) {
+    signals.push(completion);
   }
   const fix = fixLinkSignal(item);
   if (fix) {

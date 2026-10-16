@@ -182,12 +182,10 @@ The feed, package, suffix, field and states can be changed in the `totalflowx.in
 
 ## Dependencies
 
-Starting a work item whose predecessors are not completed should be avoided (unless agreed with whoever works on them). The cards make it visible:
+Completing a work item whose predecessors are not completed should be avoided (unless agreed with whoever works on them). Starting it is always allowed. The cards make it visible:
 
-- **`⛓ N open predecessors`** (amber): hover or focus it to see each predecessor, its state, **who it is assigned to** (to agree with them) and its iteration, the riskiest first (planned after this one, not scheduled, same iteration). Click one to open its Work Item Details panel, or open the dependency map.
-- **`✓ ready to start`** (green): New / Approved / To Do work items with no open predecessors.
+- **`⛓ N open predecessors`** / **`⚠ N issues before completion`** (amber, only on open work items): everything that would keep the item from being completed. Hover or focus it for the details: each open predecessor with its state, **who it is assigned to** (to agree with them) and its iteration, the riskiest first (planned after this one, not scheduled, same iteration) and a link to the dependency map; the tags listed in `totalflowx.alerts.blockingTags` (e.g. Blocked); and, for Backlog Items, the empty **Acceptance criteria** and the empty fields of `totalflowx.alerts.requiredFields` (e.g. Effort, Effort in days). Click a predecessor or a missing field to open its Work Item Details panel. Work items without issues show nothing.
 - The **Deps** filter row (**Incomplete predecessors** / **Complete predecessors**) shows or hides each group.
-- Moving a work item to a started state, or creating its branch, asks first when it has open predecessors: **Start anyway**, **Open dependency map** or Cancel (`totalflowx.dependencies.confirmBeforeStart`).
 
 A predecessor is completed when it is Done, Ready to Test, Closed or Removed (`totalflowx.dependencies.completedStates`).
 
@@ -319,7 +317,7 @@ Only the PRs where you are a reviewer yourself are listed: when a group (e.g. a 
 | `totalflowx.popovers.hoverDelay`                       | Delay of the popovers (task card, coverage, predecessors, PR history) on hover (ms, 0-3000, 500); replaces `tasks.hoverCardDelay`                                                                            |
 | `totalflowx.myPullRequests.*`                          | My pull requests: show drafts, refresh interval, status bar, `attentionEffect` (effect of the tiles that need you: `pulse` by default, `none`, `static`, `waves`, `shimmer`, `ripple`, `rainbow`, `breathe`) |
 | `totalflowx.statusBar.currentWorkItem`                 | Show the work item of the current branch in the status bar                                                                                                                                                   |
-| `totalflowx.dependencies.*`                            | Completed states of predecessors, confirmation before starting                                                                                                                                               |
+| `totalflowx.dependencies.*`                            | Completed states of predecessors                                                                                                                                                                             |
 | `totalflowx.coverage.*`                                | Coverage levels: minimum (60), target (80), excellent (95)                                                                                                                                                   |
 | `totalflowx.pipelines.*`                               | CI runs: refresh interval, notifications, status bar                                                                                                                                                         |
 | `totalflowx.reviews.*`                                 | PRs to review: maximum wait, due soon, reminders, status bar                                                                                                                                                 |

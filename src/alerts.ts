@@ -86,8 +86,38 @@ function isClosed(state: string): boolean {
   return ['done', 'removed'].includes(stateCategory(state));
 }
 
-function isEmpty(value: unknown): boolean {
+/** A field without value (undefined, null or blank text). Shared with src/completionIssues.ts */
+export function isEmpty(value: unknown): boolean {
   return value === undefined || value === null || (typeof value === 'string' && !value.trim());
+}
+
+/** The tags that are in the blocking list (trimmed, case-insensitive), as the work item writes them */
+export function matchBlockingTags(tags: string[], blockingTags: string[]): string[] {
+  const normalize = (tag: string) => tag.trim().toLowerCase();
+  const blocking = new Set(blockingTags.map(normalize));
+  return tags.filter((tag) => blocking.has(normalize(tag)));
+}
+
+/** The required fields (with a known reference name) that apply to the type and state */
+export function requiredFieldsFor(
+  requiredFields: RequiredFieldsRule[],
+  type: string,
+  state: string
+): { name: string; referenceName: string }[] {
+  return requiredFields
+    .filter((rule) => rule.types.includes(type) && (!rule.states?.length || isOneOf(state, rule.states)))
+    .flatMap((rule) => rule.fields)
+    .flatMap((field) => (field.referenceName ? [{ name: field.name, referenceName: field.referenceName }] : []));
+}
+
+/** The required fields of the type and state that have no value */
+export function emptyRequiredFields(
+  requiredFields: RequiredFieldsRule[],
+  input: { type: string; state: string; fields: Record<string, unknown> }
+): { name: string; referenceName: string }[] {
+  return requiredFieldsFor(requiredFields, input.type, input.state).filter((field) =>
+    isEmpty(input.fields[field.referenceName])
+  );
 }
 
 function describeTasks(tasks: AlertTask[]): string {
@@ -222,9 +252,7 @@ function tagAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {
   if (stateCategory(input.state) === 'proposed') {
     return [];
   }
-  const normalize = (tag: string) => tag.trim().toLowerCase();
-  const blocking = new Set(rules.blockingTags.map(normalize));
-  const found = input.tags.filter((tag) => blocking.has(normalize(tag)));
+  const found = matchBlockingTags(input.tags, rules.blockingTags);
   return found.length
     ? [
         {
@@ -237,15 +265,11 @@ function tagAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {
 
 // Rule ALERT-7
 function fieldAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {
-  return rules.requiredFields
-    .filter((rule) => rule.types.includes(input.type) && (!rule.states?.length || isOneOf(input.state, rule.states)))
-    .flatMap((rule) => rule.fields)
-    .filter((field) => field.referenceName && isEmpty(input.fields[field.referenceName]))
-    .map((field) => ({
-      rule: 'missingField' as const,
-      message: `"${field.name}" is empty`,
-      field: field.referenceName,
-    }));
+  return emptyRequiredFields(rules.requiredFields, input).map((field) => ({
+    rule: 'missingField' as const,
+    message: `"${field.name}" is empty`,
+    field: field.referenceName,
+  }));
 }
 
 // Rule ALERT-GATE-2

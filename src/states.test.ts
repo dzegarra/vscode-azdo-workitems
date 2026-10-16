@@ -3,6 +3,7 @@ import { canHaveTasks, sanitizeHtml, stateButton } from './html';
 import {
   DEFAULT_STATE_ORDER,
   isClosedState,
+  isNotStartedState,
   normalizeState,
   sortByState,
   stateAfterBranchCreated,
@@ -110,5 +111,16 @@ describe('derived In review state', () => {
   it('uses the shown state when the item has one', () => {
     expect(shownStateOf({ state: 'Committed', displayState: 'In review' })).toBe('In review');
     expect(shownStateOf({ state: 'Committed' })).toBe('Committed');
+  });
+});
+
+describe('isNotStartedState', () => {
+  it('is true for New, Approved and To Do only', () => {
+    for (const state of ['New', 'Approved', 'To Do']) {
+      expect(isNotStartedState(state)).toBe(true);
+    }
+    for (const state of ['Committed', 'In Progress', 'Done']) {
+      expect(isNotStartedState(state)).toBe(false);
+    }
   });
 });

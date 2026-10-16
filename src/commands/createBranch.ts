@@ -12,7 +12,6 @@ import { offerBranchActions } from './checkoutBranch';
 import { resolveWorkItemEntry } from './pickWorkItem';
 import { findChildTaskWorkItem } from './pullRequestTask';
 import { pickBaseBranch } from './pickBaseBranch';
-import { confirmStart } from './startCheck';
 
 /** Moves the work item to "Committed" (or the configured state) when work on it starts */
 async function moveToStartedState(repository: Repository, workItem: WorkItem): Promise<void> {
@@ -188,12 +187,6 @@ export async function createBranch(
     if (choice !== 'Create Another') {
       return;
     }
-  }
-
-  // Rule FLOW-BRANCH-3
-  // Creating the branch starts the work (and usually moves the work item to a started state): asked once, here
-  if (!(await confirmStart(store, workItem))) {
-    return;
   }
 
   const asked = await askBranchName(repository, target, (task ?? workItem).title);

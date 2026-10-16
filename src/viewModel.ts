@@ -118,6 +118,10 @@ export interface WorkItemModel {
    * loaded), so nothing is said about them
    */
   openPredecessors?: OpenPredecessor[];
+  /** Tags of the work item that are in `alerts.blockingTags`. Empty for closed work items */
+  blockingTags?: string[];
+  /** Display names of the empty fields that keep a Backlog Item from being completed. Empty for closed work items */
+  missingFields?: string[];
   /** Backlog Items only: the bugs they fix (successors of type Bug). Undefined: not applicable or unknown */
   fixesBugs?: FixLink[];
   /** Bugs only: the Backlog Items that fix them (predecessors). Undefined: not applicable or unknown */

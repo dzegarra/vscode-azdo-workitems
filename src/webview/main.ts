@@ -23,7 +23,8 @@ import {
 import { RunModel, RunState } from '../pipelines';
 import { runLabel, runTooltip, RunView, runViewUrl } from '../runDetails';
 import { fixesBugsText, type FixLink } from '../fixLinks';
-import { isReadyToStart, NONE_OPEN, OPEN_PREDECESSORS, predecessorFilterValue } from '../predecessors';
+import { completionIssueCount, completionIssueLines } from '../completionIssues';
+import { NONE_OPEN, OPEN_PREDECESSORS, predecessorFilterValue, type OpenPredecessor } from '../predecessors';
 import { RISK_DESCRIPTIONS } from '../schedule';
 import { NO_PRIORITY, priorityFilterValue, severityLevel, severityName, sortWorkItems } from '../priority';
 import { shownStateOf, stateCategory, stateRank } from '../states';
@@ -412,60 +413,99 @@ function renderPullRequest(item: WorkItemModel, pr: PullRequestModel): string {
   </div>`;
 }
 
-/** The predecessors not completed, the riskiest first: what a developer needs to agree with their owners */
-function renderPredecessorList(item: WorkItemModel, id: string): string {
-  const rows = (item.openPredecessors ?? []).map((predecessor) => {
-    const risk = predecessor.risk;
-    const details = [
-      `<span class="pred-state state-${stateCategory(predecessor.state)}">${escapeHtml(predecessor.state)}</span>`,
-      escapeHtml(predecessor.assignedTo ?? 'unassigned'),
-      predecessor.iterationName ? escapeHtml(predecessor.iterationName) : '',
-    ].filter(Boolean);
-    return `<li class="pred-item">
+/** One open predecessor: ID, title, state, owner, iteration and risk */
+function renderPredecessorRow(predecessor: OpenPredecessor): string {
+  const risk = predecessor.risk;
+  const details = [
+    `<span class="pred-state state-${stateCategory(predecessor.state)}">${escapeHtml(predecessor.state)}</span>`,
+    escapeHtml(predecessor.assignedTo ?? 'unassigned'),
+    predecessor.iterationName ? escapeHtml(predecessor.iterationName) : '',
+  ].filter(Boolean);
+  return `<li class="pred-item">
       <div class="pred-line">${typeIcon(predecessor.type)}
         <button class="link id${typeIdClass(predecessor.type)}" data-action="openDetails" data-id="${
-      predecessor.id
-    }" title="Open the Work Item Details panel">${predecessor.id}</button>
+    predecessor.id
+  }" title="Open the Work Item Details panel">${predecessor.id}</button>
         <span class="pred-title" title="${escapeHtml(predecessor.title)}">${escapeHtml(predecessor.title)}</span></div>
       <div class="pred-meta">${details.join(' · ')}</div>
       ${risk ? `<div class="pred-risk risk-${risk}">${escapeHtml(RISK_DESCRIPTIONS[risk])}</div>` : ''}
     </li>`;
-  });
-  return `<div class="pred-pop popover" id="${id}" role="group" aria-label="Open predecessors of ${item.id}">
-    <div class="pred-card">
-      <p class="pred-intro">Agree with their owners before starting.</p>
-      <ol class="pred-list">${rows.join('')}</ol>
-      <button class="link pred-map" data-action="openDependencyMap" data-id="${item.id}">Open dependency map</button>
-    </div></div>`;
+}
+
+/** Section of the popover: heading and list. Empty when there is nothing to list */
+function renderCompletionSection(heading: string, rows: string[], extra = ''): string {
+  return rows.length
+    ? `<section class="pred-section"><h4 class="pred-heading">${heading}</h4>
+      <ol class="pred-list">${rows.join('')}</ol>${extra}</section>`
+    : '';
+}
+
+/** A tag or an empty field: plain row; the empty fields open the Work Item Details panel, where they are edited */
+function renderIssueRow(item: WorkItemModel, text: string, editable: boolean): string {
+  return `<li class="pred-item pred-issue">${
+    editable
+      ? `<button class="link" data-action="openDetails" data-id="${
+          item.id
+        }" title="Open the Work Item Details panel to fill it">${escapeHtml(text)}</button>`
+      : `<span>${escapeHtml(text)}</span>`
+  }</li>`;
 }
 
 /**
- * Amber caution (never red: it is a team rule that can be agreed with the owners, not an error) with the
- * predecessors in a popover, shown on hover or focus. The button has an action without ID, so clicking it
- * does not fold the compact row
+ * Everything that keeps the work item from being completed: the predecessors not completed (the riskiest first),
+ * the blocking tags and the empty fields. Starting it is allowed
  */
-function renderPredecessorTrigger(item: WorkItemModel, compact: boolean): string {
-  const count = item.openPredecessors?.length ?? 0;
-  const id = `pred-${item.id}`;
-  const trigger = compact
-    ? `<button class="signal signal-predecessors tone-caution" data-action="showPredecessors" aria-describedby="${id}"
-      title="${count} open predecessor${count === 1 ? '' : 's'}">${icon('link')}<span>${count}</span></button>`
-    : `<button class="pill tone-caution pred-pill" data-action="showPredecessors" aria-describedby="${id}">${icon(
-        'link'
-      )}${count} open predecessor${count === 1 ? '' : 's'}</button>`;
-  return `<span class="pred-wrap popover-anchor">${trigger}${renderPredecessorList(item, id)}</span>`;
+function renderCompletionList(item: WorkItemModel, id: string): string {
+  const predecessors = renderCompletionSection(
+    'Open predecessors',
+    (item.openPredecessors ?? []).map(renderPredecessorRow),
+    `<button class="link pred-map" data-action="openDependencyMap" data-id="${item.id}">Open dependency map</button>`
+  );
+  const tags = renderCompletionSection(
+    'Tags',
+    (item.blockingTags ?? []).map((tag) => renderIssueRow(item, tag, false))
+  );
+  const missing = renderCompletionSection(
+    'Missing',
+    (item.missingFields ?? []).map((field) => renderIssueRow(item, field, true))
+  );
+  return `<div class="pred-pop popover" id="${id}" role="group" aria-label="Issues that keep ${item.id} from being completed">
+    <div class="pred-card">
+      <p class="pred-intro">Can be started, but it cannot be completed until these are solved.</p>
+      ${predecessors}${tags}${missing}
+    </div></div>`;
 }
 
-/** Large card: the caution with open predecessors, or the hint that the work item is ready to start */
-function renderPredecessors(item: WorkItemModel): string {
-  if (item.openPredecessors?.length) {
-    return `<div class="row pred-row">${renderPredecessorTrigger(item, false)}</div>`;
-  }
-  return isReadyToStart(item)
-    ? `<div class="row"><span class="pill ready-pill" title="No open predecessors">${icon(
-        'check'
-      )}ready to start</span></div>`
-    : '';
+/** Text of the large pill: only predecessors keep their wording, otherwise the number of issues */
+function completionPillText(item: WorkItemModel, count: number): string {
+  return count === item.openPredecessors?.length
+    ? `${count} open predecessor${count === 1 ? '' : 's'}`
+    : `${count} issue${count === 1 ? '' : 's'} before completion`;
+}
+
+/**
+ * Amber caution (never red: it is a team rule that can be agreed with the owners, not an error) with the issues
+ * in a popover, shown on hover or focus. The button has an action without ID, so clicking it does not fold the
+ * compact row. Link icon when only predecessors, warning icon otherwise
+ */
+function renderCompletionTrigger(item: WorkItemModel, compact: boolean): string {
+  const count = completionIssueCount(item);
+  const id = `pred-${item.id}`;
+  const glyph = icon(count === item.openPredecessors?.length ? 'link' : 'warning');
+  const title = `Cannot be completed yet: ${completionIssueLines(item).join(' · ')}`;
+  const trigger = compact
+    ? `<button class="signal signal-completion tone-caution" data-action="showCompletion" aria-describedby="${id}"
+      title="${escapeHtml(title)}">${glyph}<span>${count}</span></button>`
+    : `<button class="pill tone-caution pred-pill" data-action="showCompletion" aria-describedby="${id}">${glyph}${completionPillText(
+        item,
+        count
+      )}</button>`;
+  return `<span class="pred-wrap popover-anchor">${trigger}${renderCompletionList(item, id)}</span>`;
+}
+
+/** Large card: the caution with what keeps the work item from being completed; nothing when there is nothing */
+function renderCompletion(item: WorkItemModel): string {
+  return completionIssueCount(item) ? `<div class="row pred-row">${renderCompletionTrigger(item, false)}</div>` : '';
 }
 
 function fixLinkClass(link: FixLink): string {
@@ -902,7 +942,7 @@ function renderCard(item: WorkItemModel, children: TaskRow[], visibleIds: Set<nu
     <div class="title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
     ${renderParent(item, visibleIds)}
     ${renderAlerts(item)}
-    ${renderPredecessors(item)}
+    ${renderCompletion(item)}
     ${renderBranchList(item)}
     ${item.pullRequests.map((pr) => renderPullRequest(item, pr)).join('')}
     ${renderFixLinks(item)}
@@ -922,14 +962,12 @@ function signalMarker(signal: CompactSignal, item: WorkItemModel): string {
       return icon('task');
     case 'alerts':
       return icon('warning');
-    case 'predecessors':
-      return icon('link');
+    case 'completion':
+      return icon('warning');
     case 'fixesBugs':
       return icon('bug');
     case 'fixedBy':
       return icon('book');
-    case 'ready':
-      return icon('check');
     case 'workingOn':
       return `<span class="working-glyph" aria-hidden="true">${workingOnBadge(item.workingOn ?? 'here').glyph}</span>`;
     case 'pullRequest':
@@ -956,8 +994,8 @@ function renderSignal(signal: CompactSignal, item: WorkItemModel): string {
       return `<span class="urgency"><span class="pill ${signal.tone}" title="${title}">${escapeHtml(
         signal.label
       )}</span></span>`;
-    case 'predecessors':
-      return renderPredecessorTrigger(item, true);
+    case 'completion':
+      return renderCompletionTrigger(item, true);
     case 'ci':
       return `<span class="signal signal-ci run-${signal.tone}" title="${title}">${signalMarker(signal, item)}</span>`;
     case 'tasks':
@@ -969,7 +1007,6 @@ function renderSignal(signal: CompactSignal, item: WorkItemModel): string {
     case 'fixedBy':
     case 'fixesBugs':
     case 'pullRequest':
-    case 'ready':
     case 'workingOn':
       return `<span class="signal signal-${signal.kind} tone-${signal.tone}${
         signal.otherRepository ? ' other-repo' : ''

@@ -53,7 +53,6 @@ export function settings() {
     showInReviewState: config.get<boolean>('showInReviewState', true),
     dependencies: {
       completedStates: config.get<string[]>('dependencies.completedStates', DEFAULT_COMPLETED_STATES),
-      confirmBeforeStart: config.get<boolean>('dependencies.confirmBeforeStart', true),
     },
     integrationBuild: {
       field: config.get<string>('integrationBuild.field', 'Integrated in Build'),

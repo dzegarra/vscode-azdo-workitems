@@ -233,7 +233,7 @@ describe('compactSignals', () => {
     expect(kinds(signals)).toEqual([
       'priority',
       'severity',
-      'predecessors',
+      'completion',
       'branch',
       'pullRequest',
       'ci',
@@ -246,20 +246,37 @@ describe('compactSignals', () => {
     const open = (id: number) => ({ id, title: 'T', type: 'Bug', state: 'New' });
     expect(compactSignals(item({ openPredecessors: [open(5), open(6)] }), [], NOW)).toEqual([
       {
-        kind: 'predecessors',
+        kind: 'completion',
         label: '2',
-        title: '2 open predecessors: agree with their owners before starting',
+        title: 'Cannot be completed yet: 2 open predecessors',
         tone: 'caution',
       },
     ]);
-    expect(compactSignals(item({ openPredecessors: [open(5)] }), [], NOW)[0].title).toContain('1 open predecessor:');
+    expect(compactSignals(item({ openPredecessors: [open(5)] }), [], NOW)[0].title).toContain('1 open predecessor');
   });
 
-  it('hints that a not started work item without open predecessors is ready to start', () => {
-    expect(kinds(compactSignals(item({ state: 'New', openPredecessors: [] }), [], NOW))).toEqual(['ready']);
-    // Started, or unknown predecessors: no hint
-    expect(compactSignals(item({ state: 'Committed', openPredecessors: [] }), [], NOW)).toEqual([]);
+  it('counts blocking tags and missing fields with the open predecessors', () => {
+    const open = { id: 5, title: 'T', type: 'Bug', state: 'New' };
+    expect(
+      compactSignals(
+        item({ openPredecessors: [open], blockingTags: ['Blocked'], missingFields: ['Acceptance criteria', 'Effort'] }),
+        [],
+        NOW
+      )
+    ).toEqual([
+      {
+        kind: 'completion',
+        label: '4',
+        title: 'Cannot be completed yet: 1 open predecessor · Tagged Blocked · Missing Acceptance criteria, Effort',
+        tone: 'caution',
+      },
+    ]);
+  });
+
+  it('has no hint without issues, whatever the state', () => {
+    expect(compactSignals(item({ state: 'New', openPredecessors: [] }), [], NOW)).toEqual([]);
     expect(compactSignals(item({ state: 'New' }), [], NOW)).toEqual([]);
+    expect(compactSignals(item({ state: 'Committed', openPredecessors: [], blockingTags: [] }), [], NOW)).toEqual([]);
   });
   it('signals the bugs a Backlog Item fixes and the Backlog Item that fixes a Bug', () => {
     const link = (id: number, state = 'New') => ({ id, title: `t${id}`, state, stateCategory: 'proposed' as const });

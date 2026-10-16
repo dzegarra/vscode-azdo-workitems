@@ -384,12 +384,7 @@
             "Closed",
             "Removed"
           ],
-          "description": "States in which a predecessor counts as completed. Work items with predecessors in any other state show an \"open predecessors\" caution: the team avoids starting them before their predecessors are completed, unless agreed with their owners."
-        },
-        "totalflowx.dependencies.confirmBeforeStart": {
-          "type": "boolean",
-          "default": true,
-          "description": "Ask for confirmation before moving a work item to a started state (Committed, In Progress, Active) or creating its branch when some of its predecessors are not completed."
+          "description": "States in which a predecessor counts as completed. Work items with predecessors in any other state show an \"open predecessors\" caution: the team avoids completing them before their predecessors are completed."
         },
         "totalflowx.layout": {
           "type": "string",
