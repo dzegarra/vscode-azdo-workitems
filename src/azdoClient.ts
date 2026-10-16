@@ -502,6 +502,29 @@ export class AzdoClient {
     });
   }
 
+  /** Adds the PR to the "Development" section of the work item */
+  async linkPullRequestToWorkItem(
+    workItemId: number,
+    link: { id: number; projectId: string; repositoryId: string }
+  ): Promise<void> {
+    const artifactId = encodeURIComponent(`${link.projectId}/${link.repositoryId}/${link.id}`);
+    await this.request(this.url(`wit/workitems/${workItemId}`), {
+      method: 'PATCH',
+      contentType: 'application/json-patch+json',
+      body: JSON.stringify([
+        {
+          op: 'add',
+          path: '/relations/-',
+          value: {
+            rel: 'ArtifactLink',
+            url: `vstfs:///Git/PullRequestId/${artifactId}`,
+            attributes: { name: 'Pull Request' },
+          },
+        },
+      ]),
+    });
+  }
+
   private pullRequestWebUrlByName(repositoryName: string, id: number): string {
     return `${BASE_URL}/${encodeURIComponent(this.organization)}/${encodeURIComponent(
       this.project

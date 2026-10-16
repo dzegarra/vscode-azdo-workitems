@@ -8,6 +8,7 @@ export type AlertRule =
   | 'pullRequestTaskNotDone'
   | 'pullRequestTaskNotInProgress'
   | 'taskBranchNotLinked'
+  | 'taskPullRequestNotLinked'
   | 'tasksNotDone';
 
 export interface WorkItemAlert {
@@ -15,12 +16,12 @@ export interface WorkItemAlert {
   message: string;
   /** Work item the alert is about, when it is not the work item itself (e.g. its PR task) */
   relatedId?: number;
-  /** PR the alert is about, for the PR task rules */
+  /** PR the alert is about, for the PR task rules and "taskPullRequestNotLinked" */
   pullRequestId?: number;
   /** Reference name of the empty field, for "missingField" alerts */
   field?: string;
   /** Quick fix offered next to the alert */
-  action?: 'fillIntegrationBuild' | 'linkTaskBranch';
+  action?: 'fillIntegrationBuild' | 'linkTaskBranch' | 'linkTaskPullRequest';
   /** Branch the alert is about, for "taskBranchNotLinked" */
   branch?: string;
 }
@@ -51,6 +52,10 @@ export interface AlertInput {
   pullRequests: AlertPullRequest[];
   /** Names of the branches of this repository linked to the work item itself (Development section) */
   branches: string[];
+  /** Ids of the PRs linked to the work item itself (raw links, whether or not they could be fetched) */
+  linkedPullRequestIds: number[];
+  /** Ids of the abandoned PRs among the ones of its tasks */
+  abandonedPullRequestIds?: number[];
 }
 
 export interface RequiredFieldsRule {
@@ -126,6 +131,27 @@ function taskBranchAlerts(input: AlertInput): WorkItemAlert[] {
           branch,
         }))
     );
+}
+
+// Rule ALERT-8
+/** The PR of a task (any repository) that the work item does not link: the developer forgot to link it */
+function taskPullRequestAlerts(input: AlertInput): WorkItemAlert[] {
+  if (isOneOf(input.state, FINISHED_STATES) || isClosed(input.state)) {
+    return [];
+  }
+  const skipped = new Set([...input.linkedPullRequestIds, ...(input.abandonedPullRequestIds ?? [])]);
+  // First task of each PR, so a PR shared by two tasks is reported once
+  const taskOf = new Map<number, number>();
+  for (const task of input.tasks.filter((candidate) => !isClosed(candidate.state))) {
+    task.pullRequestIds.filter((id) => !skipped.has(id) && !taskOf.has(id)).forEach((id) => taskOf.set(id, task.id));
+  }
+  return [...taskOf].map(([id, taskId]) => ({
+    rule: 'taskPullRequestNotLinked' as const,
+    message: `PR ${id} of task ${taskId} is not linked to this work item`,
+    relatedId: taskId,
+    pullRequestId: id,
+    action: 'linkTaskPullRequest' as const,
+  }));
 }
 
 interface PullRequestWithTasks {
@@ -230,6 +256,7 @@ export function findAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[
   return [
     ...taskAlerts(input),
     ...taskBranchAlerts(input),
+    ...taskPullRequestAlerts(input),
     ...pullRequestAlerts(input, rules),
     ...tagAlerts(input, rules),
     ...fieldAlerts(input, rules),

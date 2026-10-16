@@ -245,6 +245,7 @@ export type WebviewMessage =
         | 'deleteBranch'
         | 'fillIntegrationBuild'
         | 'linkTaskBranch'
+        | 'linkTaskPullRequest'
         | 'openDependencyMap'
         | 'openDetails'
         | 'openPullRequest'

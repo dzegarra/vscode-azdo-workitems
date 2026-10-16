@@ -29,6 +29,7 @@ const rules: AlertRules = {
   ),
 };
 
+/** By default the work item links the PRs it lists (the ones of its tasks only when told so) */
 const pbi = (overrides: Partial<AlertInput> = {}): AlertInput => ({
   type: 'Product Backlog Item',
   state: 'Committed',
@@ -37,6 +38,7 @@ const pbi = (overrides: Partial<AlertInput> = {}): AlertInput => ({
   tasks: [],
   pullRequests: [],
   branches: [],
+  linkedPullRequestIds: (overrides.pullRequests ?? []).map((pr) => pr.id),
   ...overrides,
 });
 const task = (id: number, title: string, state: string, pullRequestIds: number[] = [], branches: string[] = []) => ({
@@ -235,6 +237,57 @@ describe('task branches not linked to the work item', () => {
 
   it('ignores the types that are not checked', () => {
     const tasks = [task(1, 'A', 'To Do', [], [BRANCH])];
+    expect(findAlerts(pbi({ type: 'Feature', tasks }), rules)).toEqual([]);
+  });
+});
+
+describe('task PRs not linked to the work item', () => {
+  it('alerts about the PR of a task that the work item does not link', () => {
+    const tasks = [task(1, 'Widget', 'In Progress', [7])];
+    expect(findAlerts(pbi({ tasks }), rules).filter((alert) => alert.rule === 'taskPullRequestNotLinked')).toEqual([
+      {
+        rule: 'taskPullRequestNotLinked',
+        message: 'PR 7 of task 1 is not linked to this work item',
+        relatedId: 1,
+        pullRequestId: 7,
+        action: 'linkTaskPullRequest',
+      },
+    ]);
+  });
+
+  it('does not alert when the work item links the PR', () => {
+    const tasks = [task(1, 'Widget', 'In Progress', [7])];
+    expect(rulesOf(pbi({ tasks, linkedPullRequestIds: [7] }))).not.toContain('taskPullRequestNotLinked');
+  });
+
+  it('alerts once per PR, even when two tasks share it', () => {
+    const tasks = [task(1, 'A', 'To Do', [7, 7]), task(2, 'B', 'To Do', [7, 8])];
+    const alerts = findAlerts(pbi({ tasks }), rules).filter((alert) => alert.rule === 'taskPullRequestNotLinked');
+    expect(alerts.map((alert) => [alert.pullRequestId, alert.relatedId])).toEqual([
+      [7, 1],
+      [8, 2],
+    ]);
+  });
+
+  it('ignores Done and Removed tasks', () => {
+    const tasks = [task(1, 'A', 'Done', [7]), task(2, 'B', 'Removed', [8])];
+    expect(rulesOf(pbi({ tasks }))).not.toContain('taskPullRequestNotLinked');
+  });
+
+  it('ignores finished work items', () => {
+    const tasks = [task(1, 'A', 'To Do', [7])];
+    expect(rulesOf(pbi({ state: 'Done', tasks }))).not.toContain('taskPullRequestNotLinked');
+    expect(rulesOf(pbi({ state: 'Ready to Test', tasks }))).not.toContain('taskPullRequestNotLinked');
+    expect(rulesOf(pbi({ state: 'Removed', tasks }))).not.toContain('taskPullRequestNotLinked');
+  });
+
+  it('ignores abandoned PRs', () => {
+    const tasks = [task(1, 'A', 'To Do', [7])];
+    expect(rulesOf(pbi({ tasks, abandonedPullRequestIds: [7] }))).not.toContain('taskPullRequestNotLinked');
+  });
+
+  it('ignores the types that are not checked', () => {
+    const tasks = [task(1, 'A', 'To Do', [7])];
     expect(findAlerts(pbi({ type: 'Feature', tasks }), rules)).toEqual([]);
   });
 });

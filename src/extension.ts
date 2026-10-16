@@ -18,6 +18,7 @@ import { getGitApi, pickRepository, Repository } from './git';
 import { resolveWorkItemEntry } from './commands/pickWorkItem';
 import { fillIntegrationBuild } from './commands/integrationBuild';
 import { linkTaskBranch } from './commands/linkTaskBranch';
+import { linkTaskPullRequest } from './commands/linkTaskPullRequest';
 import { addTask, changeState } from './commands/workItemEdits';
 import { registerDiagnostics } from './diagnostics';
 import { withFeature } from './requestContext';
@@ -380,6 +381,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     command('totalflowx.linkTaskBranch', async (id?: number, branch?: string) => {
       if (id !== undefined && branch) {
         await linkTaskBranch(store, id, branch);
+      }
+    }),
+    command('totalflowx.linkTaskPullRequest', async (id?: number, pullRequestId?: number) => {
+      if (id !== undefined && pullRequestId !== undefined) {
+        await linkTaskPullRequest(store, id, pullRequestId);
       }
     }),
     command('totalflowx.openDependencyMap', (id?: number) => dependencyMap.open(id)),

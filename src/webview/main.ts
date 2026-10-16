@@ -787,7 +787,7 @@ function renderUrgency(item: WorkItemModel): string {
   return `<span class="urgency" title="${escapeHtml(item.type)}">${pills.join('')}</span>`;
 }
 
-// Rules ALERT-FIX-1..4, ALERT-SHOW-1
+// Rules ALERT-FIX-1..5, ALERT-SHOW-1
 /** Problems the developers must fix ASAP */
 function renderAlerts(item: WorkItemModel): string {
   if (!item.alerts.length) {
@@ -799,6 +799,8 @@ function renderAlerts(item: WorkItemModel): string {
       fix = ` <button class="link" data-action="linkTaskBranch" data-id="${item.id}" data-branch="${escapeHtml(
         alert.branch
       )}" title="Add ${escapeHtml(alert.branch)} to the Development section of ${item.id}">Link branch</button>`;
+    } else if (alert.action === 'linkTaskPullRequest' && alert.pullRequestId) {
+      fix = ` <button class="link" data-action="linkTaskPullRequest" data-id="${item.id}" data-pr="${alert.pullRequestId}" title="Add PR ${alert.pullRequestId} to the links of ${item.id}">Link PR</button>`;
     } else if (alert.action === 'fillIntegrationBuild') {
       fix = ` <button class="link" data-action="fillIntegrationBuild" data-id="${item.id}" title="Use the last release of the deploy image">Fill</button>`;
     } else if (alert.relatedId) {

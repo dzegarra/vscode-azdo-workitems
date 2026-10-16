@@ -157,18 +157,19 @@ Backlog Items and Bugs with problems the team agreed to avoid are flagged in red
 
 The filters apply to work items with alerts too: when they hide some, the banner tells how many ("2 work items need attention (1 hidden by filters)"), and **Show only these** shows every work item with alerts, whatever the State, PR and Priority filters. To always show them instead, turn on `totalflowx.filter.alwaysShowAlerts`.
 
-| Problem                                                                                                                            | Applies to             |
-| ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
-| Done / Ready to Test with tasks not done                                                                                           | Backlog Items and Bugs |
-| A published PR (not abandoned) has no PR task (each PR has its own, linked to it)                                                  | Backlog Items and Bugs |
-| The PR is published (active, not draft) but the PR task is not In Progress                                                         | Backlog Items and Bugs |
-| The PR is completed but the PR task is not Done                                                                                    | Backlog Items and Bugs |
-| Started while tagged Needs refinement, Requirements, UX feedback required, Missing REST API, Blocked or PT Feedback Required       | Backlog Items and Bugs |
-| Effort or Effort in days is empty                                                                                                  | Backlog Items          |
-| Integrated in Build is empty while Ready to Test                                                                                   | Bugs                   |
-| The branch of an open task (this repository) is not linked to the work item ("Branch … of task … is not linked to this work item") | Backlog Items and Bugs |
+| Problem                                                                                                                             | Applies to             |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| Done / Ready to Test with tasks not done                                                                                            | Backlog Items and Bugs |
+| A published PR (not abandoned) has no PR task (each PR has its own, linked to it)                                                   | Backlog Items and Bugs |
+| The PR is published (active, not draft) but the PR task is not In Progress                                                          | Backlog Items and Bugs |
+| The PR is completed but the PR task is not Done                                                                                     | Backlog Items and Bugs |
+| Started while tagged Needs refinement, Requirements, UX feedback required, Missing REST API, Blocked or PT Feedback Required        | Backlog Items and Bugs |
+| Effort or Effort in days is empty                                                                                                   | Backlog Items          |
+| Integrated in Build is empty while Ready to Test                                                                                    | Bugs                   |
+| The branch of an open task (this repository) is not linked to the work item ("Branch … of task … is not linked to this work item")  | Backlog Items and Bugs |
+| The PR of an open task is not linked to the work item ("PR … of task … is not linked to this work item"; abandoned PRs are ignored) | Backlog Items and Bugs |
 
-The PR task of a PR is the child task linked to that PR, whatever its title (completed PRs without a task are not reported: they are history; drafts are not checked). Only for PRs without any linked task, an unlinked task whose title contains "PR" or "Pull Request" is used, once (work items from before the tasks were linked). **Fix** next to an alert about a single task opens its state picker. **Link branch** next to a "branch not linked" alert asks for confirmation and adds that branch to the Development section of the work item (the alert covers every branch of every open task of the work item, not only the checked-out one; finished work items and Done / Removed tasks are not checked; Create branch for a task already links both, so it appears for branches linked by hand). Tags, required fields, the work item types and the PR task pattern can be changed in the `totalflowx.alerts.*` settings.
+The PR task of a PR is the child task linked to that PR, whatever its title (completed PRs without a task are not reported: they are history; drafts are not checked). Only for PRs without any linked task, an unlinked task whose title contains "PR" or "Pull Request" is used, once (work items from before the tasks were linked). **Fix** next to an alert about a single task opens its state picker. **Link branch** next to a "branch not linked" alert asks for confirmation and adds that branch to the Development section of the work item (the alert covers every branch of every open task of the work item, not only the checked-out one; finished work items and Done / Removed tasks are not checked; Create branch for a task already links both, so it appears for branches linked by hand). **Link PR** next to a "PR not linked" alert does the same for the PR of a task (any repository; Create PR already links both, so it appears for PRs linked by hand). Tags, required fields, the work item types and the PR task pattern can be changed in the `totalflowx.alerts.*` settings.
 
 ### Integrated in Build
 

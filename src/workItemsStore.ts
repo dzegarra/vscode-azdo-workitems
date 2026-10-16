@@ -44,6 +44,8 @@ export interface WorkItemEntry {
   otherTasks: OtherTaskEntry[];
   /** Names of the branches (this repository) linked to its child tasks: they also mark the work item as "working on" */
   taskBranches: string[];
+  /** PR links (with project and repository) of its child tasks: the ones the quick fix of an unlinked PR may add */
+  taskPullRequestLinks: { id: number; projectId: string; repositoryId: string }[];
   /** Work items that must be done before this one; undefined when they could not be loaded */
   predecessors?: WorkItem[];
   /** Work items that depend on this one; undefined when they could not be loaded */
@@ -239,6 +241,22 @@ function taskBranchNamesOf(
   ];
 }
 
+/** PR links of the child tasks of a work item (the ones of other people included), once per PR */
+function taskPullRequestLinksOf(
+  workItem: WorkItem,
+  related: Map<number, WorkItem>
+): { id: number; projectId: string; repositoryId: string }[] {
+  const links = workItem.links.childIds
+    .map((id) => related.get(id))
+    .filter((child): child is WorkItem => child?.type === 'Task')
+    .flatMap((child) => child.links.pullRequests);
+  return [...new Map(links.map((link) => [link.id, link])).values()].map(({ id, projectId, repositoryId }) => ({
+    id,
+    projectId,
+    repositoryId,
+  }));
+}
+
 /** Child tasks of the work item (Removed ones included) with their PRs and branches */
 function taskRefsOf(workItem: WorkItem, related: Map<number, WorkItem>, repositoryId: string) {
   return workItem.links.childIds
@@ -259,7 +277,8 @@ function alertsOf(
   related: Map<number, WorkItem>,
   pullRequests: PullRequestDetails[],
   rules: AlertRules & { integrationBuildField?: string },
-  repositoryId: string
+  repositoryId: string,
+  abandonedPullRequestIds: number[]
 ): WorkItemAlert[] {
   const tasks = taskRefsOf(workItem, related, repositoryId);
   return withQuickFixes(
@@ -272,6 +291,8 @@ function alertsOf(
         tasks,
         pullRequests: pullRequests.map((pr) => ({ id: pr.pullRequestId, status: pr.status, isDraft: pr.isDraft })),
         branches: branchNamesOf(workItem.links.branches, repositoryId),
+        linkedPullRequestIds: workItem.links.pullRequests.map((link) => link.id),
+        abandonedPullRequestIds,
       },
       rules
     ),
@@ -599,6 +620,10 @@ export class WorkItemsStore {
     const entries: WorkItemEntry[] = workItems.map((workItem) => {
       const parent = workItem.links.parentId === undefined ? undefined : related.get(workItem.links.parentId);
       const itemPullRequests = pullRequestsOf(workItem);
+      const taskPullRequestLinks = taskPullRequestLinksOf(workItem, related);
+      const abandonedTaskPullRequestIds = taskPullRequestLinks
+        .filter((link) => pullRequests.get(link.id)?.status === 'abandoned')
+        .map((link) => link.id);
       return {
         workItem,
         otherTasks: otherTasksOf(workItem, related, listed).map((task) => ({
@@ -617,9 +642,12 @@ export class WorkItemsStore {
         }),
         pullRequests: itemPullRequests,
         deletableBranches: [],
-        alerts: rules ? alertsOf(workItem, related, itemPullRequests, rules, azdoRepository.id) : [],
+        alerts: rules
+          ? alertsOf(workItem, related, itemPullRequests, rules, azdoRepository.id, abandonedTaskPullRequestIds)
+          : [],
         inReview: isInReview(workItem.state, taskRefsOf(workItem, related, azdoRepository.id), pullRequestTaskPattern),
         taskBranches: taskBranchNamesOf(workItem, related, azdoRepository.id),
+        taskPullRequestLinks,
         predecessors: dependencies.predecessors.get(workItem.id),
         successors: dependencies.successors.get(workItem.id),
       };
