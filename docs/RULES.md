@@ -672,6 +672,15 @@ Branch signal. Order: **first match wins**.
 | PRSIGNAL-4 | No unresolved comments / no runs  | Those signals are omitted                                                                                                            | same                                            | prCompactSignals.test.ts › says nothing about CI and comments when there is none…                                 |
 | PRSIGNAL-5 | Any warning of the PR is an error | The warnings signal is red (`error`), else `warning`                                                                                 | same                                            | prCompactSignals.test.ts › shows the warnings as a warning when none is an error                                  |
 
+### PANEL-TONE: colour of the PR boxes
+
+Source: the models the boxes already show (no extra request). Pure: `panelTone.ts`; the colours are CSS (`.panel-tone-*` in `media/webview.css`). Completed PRs and the Reviewed list never count.
+
+| ID           | Condition                                                                                                                            | Result                                                                                                                                | Code                                 | Test                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | -------------------------------------------------------------- |
+| PANEL-TONE-1 | Reviews box: a shown required request is overdue (REVIEW-URG-4) / any other request is waiting / none                                | `alert` (red) / `attention` (orange) / `none` (neutral). Optional overdue alone is `attention`; the Reviewed list is never read       | panelTone.ts:reviewsPanelTone        | panelTone.test.ts › is alert when a required review is overdue |
+| PANEL-TONE-2 | My Pull Requests box, completed PRs skipped: an active PR needs attention (MYPR-PULSE-1..3) / any active PR (drafts included) / none | `attention` (orange) / `info` (blue) / `none` (neutral). Only completed PRs, or a completed PR that would need attention, give `none` | panelTone.ts:myPullRequestsPanelTone | panelTone.test.ts › ignores completed PRs next to active ones  |
+
 ### FILTER and SORT: which cards show and in which order
 
 Order of FILTER rows: **all apply** (an item must pass every row).

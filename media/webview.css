@@ -590,7 +590,9 @@ button {
   /*
    * C: a light runs around the border at a constant speed: a short comet (.run-track > span, added by the webview with
    * its duration from the card's perimeter) moves along the border (offset-path) inside a ring that covers the card's
-   * border exactly (mask), so it is as thick as the 5px left border when it runs down that side
+   * border exactly (mask), so it is as thick as the 5px left border when it runs down that side. The mask only hides
+   * the comet; overflow: hidden keeps its box from widening the page when it turns a corner (it sticks out by half its
+   * length), which flashed the horizontal scrollbar once per lap
    */
   .list.anim-runningBorder .card.working-here > .run-track {
     position: absolute;
@@ -601,6 +603,7 @@ button {
     padding-left: 5px;
     border-radius: var(--radius);
     mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+    overflow: hidden;
     pointer-events: none;
   }
 
@@ -1466,19 +1469,35 @@ button.state:focus-visible {
 
 /*
  * Boxes above the work items ("Waiting for your review", "My Pull Requests"). Framed and rounded, with a bold
- * title, a count badge and a chevron: they must not look like the plain uppercase headers of the iterations
+ * title, a count badge and a chevron: they must not look like the plain uppercase headers of the iterations.
+ * Their colour (panelTone.ts) tells whether they need the user, even collapsed: red (alert), orange (attention),
+ * blue (info). Without a tone the box is neutral: plain frame, card background, muted icon and badge. No thick left
+ * bar: that one is the state bar of the tiles
  */
 .panel {
-  --panel-accent: var(--blue);
+  /* Icon and count badge; the tones below replace it */
+  --panel-accent: var(--muted);
   margin: 8px 12px 0;
-  border: 1px solid color-mix(in srgb, var(--panel-accent) 55%, transparent);
-  border-left: 4px solid var(--panel-accent);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--panel-accent) 9%, var(--card-bg));
+  background: var(--card-bg);
 }
 
-.reviews {
-  --panel-accent: var(--review-accent);
+.panel-tone-alert {
+  --panel-accent: var(--red);
+}
+
+.panel-tone-attention {
+  --panel-accent: var(--waiting);
+}
+
+.panel-tone-info {
+  --panel-accent: var(--blue);
+}
+
+.panel:is(.panel-tone-alert, .panel-tone-attention, .panel-tone-info) {
+  border-color: color-mix(in srgb, var(--panel-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--panel-accent) 9%, var(--card-bg));
 }
 
 .panel-head {

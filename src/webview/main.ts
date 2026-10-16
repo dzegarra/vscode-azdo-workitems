@@ -49,6 +49,7 @@ import { describeTaskBranch, TaskBranchModel } from '../taskBranches';
 import { TaskPullRequestModel } from '../taskPullRequests';
 import { taskHasActions, taskPill, TaskPill } from '../taskMenu';
 import { needsAttention } from '../myPullRequestsAttention';
+import { myPullRequestsPanelTone, reviewsPanelTone } from '../panelTone';
 import { ATTENTION_EFFECTS, attentionEffectClass } from '../attentionEffect';
 import { HOVER_STYLES, hoverStyleClass } from '../hoverStyle';
 import { TASK_COUNT_STYLES, taskCountStyleClass } from '../taskCountStyle';
@@ -1650,7 +1651,7 @@ function renderReviews(current: ViewModel): string {
     dueSoon ? `<span class="pill reviews-pill urgency-dueSoon">${dueSoon} due soon</span>` : '',
   ].join('');
   return renderPanel({
-    className: `reviews urgency-${required?.urgency ?? 'fresh'}`,
+    className: `reviews urgency-${required?.urgency ?? 'fresh'} panel-tone-${reviewsPanelTone(requests)}`,
     collapsed: reviewsCollapsed,
     toggle: 'toggleReviews',
     title: 'Waiting for your review',
@@ -1833,7 +1834,7 @@ function renderMyPullRequests(current: ViewModel): string {
   return (
     failure +
     renderPanel({
-      className: 'mine',
+      className: `mine panel-tone-${myPullRequestsPanelTone(items)}`,
       collapsed: myPullRequestsCollapsed,
       toggle: 'toggleMyPullRequests',
       title: 'My Pull Requests',
