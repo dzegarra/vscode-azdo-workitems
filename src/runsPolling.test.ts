@@ -45,8 +45,8 @@ describe('RunsTracker', () => {
     const tracker = new RunsTracker();
     let release: (value: Map<number, RunModel[]>) => void = () => undefined;
     const slow = tracker.refresh([1], () => new Promise((resolve) => (release = resolve)));
-    expect(await tracker.refresh([1], () => Promise.resolve(new Map()))).toBeUndefined();
-    release(new Map());
+    expect(await tracker.refresh([1], () => Promise.resolve(new Map<number, RunModel[]>()))).toBeUndefined();
+    release(new Map<number, RunModel[]>());
     expect(await slow).toEqual([]);
   });
 
@@ -73,7 +73,7 @@ describe('RunsTracker', () => {
     );
     expect(finished).toEqual([{ pullRequestId: 1, run: run(10, 'succeeded') }]);
     // A PR no longer followed is dropped
-    await tracker.refresh([2], () => Promise.resolve(new Map()));
+    await tracker.refresh([2], () => Promise.resolve(new Map<number, RunModel[]>()));
     expect([...tracker.runs.keys()]).toEqual([2]);
   });
 });

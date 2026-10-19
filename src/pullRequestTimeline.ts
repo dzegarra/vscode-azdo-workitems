@@ -51,7 +51,10 @@ function threadType(thread: ThreadResponse): string | undefined {
   return typeof type === 'string' ? type : undefined;
 }
 
-const property = (thread: ThreadResponse, name: string): string => String(thread.properties?.[name]?.$value ?? '');
+function property(thread: ThreadResponse, name: string): string {
+  const value = thread.properties?.[name]?.$value;
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
+}
 
 /** Draft updates, oldest first. "0" in CodeReviewIsDraftNowSet means published, "1" back to draft */
 function draftUpdates(threads: ThreadResponse[]): ThreadResponse[] {
@@ -116,7 +119,7 @@ function excerpt(content: string): string {
 }
 
 function commentText(thread: ThreadResponse): string | undefined {
-  const [first] = thread.comments ?? [];
+  const first = (thread.comments ?? []).at(0);
   if (!first || first.isDeleted || first.commentType !== 'text') {
     return undefined;
   }
@@ -157,7 +160,7 @@ function threadText(thread: ThreadResponse): string | undefined {
 
 /** True when the PR was a draft from the start: its first draft update is a publication */
 function createdAsDraft(pr: TimelineSource, threads: ThreadResponse[]): boolean {
-  const [first] = draftUpdates(threads);
+  const first = draftUpdates(threads).at(0);
   return first ? property(first, 'CodeReviewIsDraftNowSet') === '0' : pr.isDraft;
 }
 

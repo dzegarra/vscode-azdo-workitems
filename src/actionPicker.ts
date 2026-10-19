@@ -41,7 +41,7 @@ function isName(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
-function isOptional<T>(value: unknown, guard: (v: unknown) => v is T): boolean {
+function isOptional(value: unknown, guard: (v: unknown) => boolean): boolean {
   return value === undefined || guard(value);
 }
 

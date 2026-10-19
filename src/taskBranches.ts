@@ -71,7 +71,7 @@ function pullRequestOf(
   );
   const pr =
     matches.find((candidate) => candidate.status === 'active') ??
-    matches.sort((a, b) => b.pullRequestId - a.pullRequestId)[0];
+    matches.sort((a, b) => b.pullRequestId - a.pullRequestId).at(0);
   if (!pr) {
     return undefined;
   }

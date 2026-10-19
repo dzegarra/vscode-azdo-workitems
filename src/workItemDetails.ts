@@ -95,7 +95,9 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
   }
 
   dispose(): void {
-    this.subscriptions.forEach((subscription) => subscription.dispose());
+    for (const subscription of this.subscriptions) {
+      subscription.dispose();
+    }
     for (const { panel } of this.panels.values()) {
       panel.dispose();
     }

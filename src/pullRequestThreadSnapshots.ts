@@ -65,9 +65,12 @@ export function snapshotThreads(threads: ThreadResponse[]): ThreadSnapshots {
   const comments: CommentSnapshot[] = [];
   const textThreads: ThreadSnapshot[] = [];
   for (const thread of threads) {
-    const [first] = thread.comments ?? [];
+    const first = (thread.comments ?? []).at(0);
+    if (!first) {
+      continue;
+    }
     const filePath = thread.threadContext?.filePath ?? undefined;
-    if (first && first.commentType === 'text' && !first.isDeleted) {
+    if (first.commentType === 'text' && !first.isDeleted) {
       textThreads.push({
         id: thread.id,
         status: thread.status ?? 'active',

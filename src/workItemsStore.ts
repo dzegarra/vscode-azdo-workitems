@@ -737,9 +737,14 @@ export class WorkItemsStore {
   /** Every branch to delete of the work items in the list, once each, with the work item it was found on */
   deletableBranchList(): { name: string; entry: WorkItemEntry }[] {
     const seen = new Set<string>();
-    return this.entries.flatMap((entry) =>
-      entry.deletableBranches.filter((name) => !seen.has(name) && seen.add(name)).map((name) => ({ name, entry }))
-    );
+    const firstTime = (name: string): boolean => {
+      if (seen.has(name)) {
+        return false;
+      }
+      seen.add(name);
+      return true;
+    };
+    return this.entries.flatMap((entry) => entry.deletableBranches.filter(firstTime).map((name) => ({ name, entry })));
   }
 
   /**

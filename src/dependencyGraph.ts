@@ -153,7 +153,7 @@ function buildColumns(nodes: GraphNode[], schedule: ScheduledIteration[], today:
       },
     }));
   const columns: GraphColumn[] = [];
-  ordered.forEach(({ releases, ...slot }, index) => {
+  ordered.forEach(({ releases: _releases, ...slot }, index) => {
     columns.push(slot);
     columns.push(...releaseColumns.filter(({ anchor }) => anchor === index).map(({ column }) => column));
   });

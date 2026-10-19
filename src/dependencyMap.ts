@@ -61,6 +61,11 @@ export class DependencyMapPanel implements vscode.Disposable {
     this.panel?.dispose();
   }
 
+  /** Not inlined in `open`: the panel can be closed while it awaits, which narrowing there would hide */
+  private postMessage(message: DependencyMapUpdate): void {
+    void this.panel?.webview.postMessage(message);
+  }
+
   async open(focusId?: number): Promise<void> {
     this.focusId = focusId;
     if (this.panel) {
@@ -89,9 +94,9 @@ export class DependencyMapPanel implements vscode.Disposable {
     await this.load();
     if (focusId !== undefined) {
       // Also when the map was already open on it: the user expects to see it
-      void this.panel?.webview.postMessage({ type: 'focus', id: focusId } satisfies DependencyMapUpdate);
+      this.postMessage({ type: 'focus', id: focusId });
     } else {
-      void this.panel?.webview.postMessage({ type: 'showCurrent' } satisfies DependencyMapUpdate);
+      this.postMessage({ type: 'showCurrent' });
     }
   }
 

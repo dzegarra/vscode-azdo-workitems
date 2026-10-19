@@ -140,7 +140,7 @@ function branchSignal(item: WorkItemModel): CompactSignal | undefined {
   }
   if (!item.branch) {
     // Only branches of other repositories
-    const [other] = item.branches;
+    const other = item.branches.at(0);
     return other && !isClosedState(item.state)
       ? { kind: 'branch', label: '', title: branchTooltip(other), tone: 'remote', otherRepository: true }
       : undefined;

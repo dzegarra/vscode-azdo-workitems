@@ -76,7 +76,9 @@ export class CurrentWorkItemStatusBar implements vscode.Disposable {
   dispose(): void {
     clearTimeout(this.debounce);
     this.item.dispose();
-    this.subscriptions.forEach((subscription) => subscription.dispose());
+    for (const subscription of this.subscriptions) {
+      subscription.dispose();
+    }
   }
 
   /** Looks at the branch shortly after the last change: git reports many changes in a row */

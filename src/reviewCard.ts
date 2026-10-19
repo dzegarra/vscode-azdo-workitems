@@ -167,7 +167,9 @@ export function toReviewDetails(
 ): ReviewDetails {
   const { label, tone } = pullRequestStatus(pr);
   const target = stripHeads(pr.targetRefName);
-  const [autoCompleteError] = autoCompleteWarnings(pr, extras).filter(({ severity }) => severity === 'error');
+  const autoCompleteError = autoCompleteWarnings(pr, extras)
+    .filter(({ severity }) => severity === 'error')
+    .at(0);
   const open = summarizeOpenObservations(myObservations(extras.threads ?? [], myId), myId);
   let autoCompleteNote: PullRequestWarning | undefined;
   if (pr.autoCompleteSetBy) {

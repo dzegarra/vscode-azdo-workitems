@@ -150,7 +150,7 @@ const OPEN_THREAD_STATUSES = ['active', 'pending'];
 /** Text threads (not the system ones) whose status is active or pending */
 export function countUnresolvedThreads(threads: ThreadResponse[]): number {
   return threads.filter((thread) => {
-    const [first] = thread.comments ?? [];
+    const first = (thread.comments ?? []).at(0);
     return first?.commentType === 'text' && !first.isDeleted && OPEN_THREAD_STATUSES.includes(thread.status ?? '');
   }).length;
 }

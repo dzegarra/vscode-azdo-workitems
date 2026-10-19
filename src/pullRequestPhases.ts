@@ -65,7 +65,10 @@ const VOTE_APPROVED = 5;
 const VOTE_WAITING = -5;
 const VOTE_REJECTED = -10;
 
-const property = (thread: ThreadResponse, name: string): string => String(thread.properties?.[name]?.$value ?? '');
+function property(thread: ThreadResponse, name: string): string {
+  const value = thread.properties?.[name]?.$value;
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
+}
 
 function voterName(thread: ThreadResponse): string | undefined {
   const key = property(thread, 'CodeReviewVotedByIdentity');
@@ -259,7 +262,7 @@ export function pullRequestPhases(
     .map((transition, index) => ({ kind: transition.kind, from: transition.at, to: list[index + 1]?.at ?? end }))
     .filter(({ kind, from, to }) => to > from || kind === 'merge')
     .reduce<{ kind: PhaseKind; from: number; to: number }[]>((merged, item) => {
-      const last = merged[merged.length - 1];
+      const last = merged.at(-1);
       if (last && last.kind === item.kind) {
         last.to = item.to;
       } else {

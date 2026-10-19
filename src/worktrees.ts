@@ -209,7 +209,7 @@ export function worktreesRoot(mainWorktreePath: string): string {
 
 /** The main working tree is the first entry that `git worktree list` prints */
 export function isMainWorktree(worktrees: Worktree[], target: Worktree): boolean {
-  const main = worktrees[0];
+  const main = worktrees.at(0);
   return !!main && samePath(main.path, target.path);
 }
 

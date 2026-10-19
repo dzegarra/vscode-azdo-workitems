@@ -163,7 +163,7 @@ function detectReopened(
 
 /** Fallback for the reviewers without any "ReviewersUpdate" thread: the changes are told by the list alone */
 function diffReviewers(
-  stored: NonNullable<StoredPullRequest['reviewers']>,
+  stored: Partial<NonNullable<StoredPullRequest['reviewers']>>,
   reviewers: ReviewerSnapshot[],
   touched: Set<string>,
   myId: string
@@ -187,7 +187,7 @@ function diffReviewers(
   }
   const present = new Set(reviewers.map((reviewer) => reviewer.id));
   for (const [id, was] of Object.entries(stored)) {
-    if (!present.has(id) && !touched.has(id) && id !== myId) {
+    if (was && !present.has(id) && !touched.has(id) && id !== myId) {
       changes.push({ kind: 'removed', target: { id, name: was.name } });
     }
   }

@@ -58,7 +58,9 @@ export class SummaryView implements vscode.TreeDataProvider<SummaryRow>, vscode.
   }
 
   dispose(): void {
-    this.subscriptions.forEach((subscription) => subscription.dispose());
+    for (const subscription of this.subscriptions) {
+      subscription.dispose();
+    }
   }
 
   /** Re-reads the sources: the rows and the badge */

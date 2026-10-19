@@ -53,7 +53,7 @@ export function collectBranches({
   const found = new Map<string, EntryBranch>();
   const add = (name: string, branchRepositoryId: string | undefined, repositoryName?: string) => {
     const otherRepository = !!branchRepositoryId && isOtherRepository(branchRepositoryId, repositoryId);
-    const key = `${otherRepository ? branchRepositoryId?.toLowerCase() : ''}\n${name}`;
+    const key = `${otherRepository ? branchRepositoryId.toLowerCase() : ''}\n${name}`;
     if (found.has(key)) {
       return;
     }
@@ -63,7 +63,7 @@ export function collectBranches({
       location,
       otherRepository,
       repository: otherRepository
-        ? repositoryName ?? repositoryNames?.get(branchRepositoryId?.toLowerCase() ?? '')
+        ? repositoryName ?? repositoryNames?.get(branchRepositoryId.toLowerCase())
         : undefined,
     });
   };

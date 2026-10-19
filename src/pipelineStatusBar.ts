@@ -30,7 +30,9 @@ export class PipelineStatusBar implements vscode.Disposable {
 
   dispose(): void {
     this.item.dispose();
-    this.subscriptions.forEach((subscription) => subscription.dispose());
+    for (const subscription of this.subscriptions) {
+      subscription.dispose();
+    }
   }
 
   private update(): void {

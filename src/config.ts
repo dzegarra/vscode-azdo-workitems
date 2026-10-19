@@ -28,8 +28,8 @@ export function compilePullRequestTaskPattern(source: string): RegExp {
 }
 
 /** What the user set explicitly (folder, workspace or user), `undefined` when the setting still has its default */
-function explicitSetting<T>(config: vscode.WorkspaceConfiguration, key: string): T | undefined {
-  const info = config.inspect<T>(key);
+function explicitSetting(config: vscode.WorkspaceConfiguration, key: string): unknown {
+  const info = config.inspect(key);
   return info?.workspaceFolderValue ?? info?.workspaceValue ?? info?.globalValue;
 }
 
@@ -65,8 +65,8 @@ export function settings() {
     },
     hoverStyle: normalizeHoverStyle(config.get<string>('hoverStyle', 'border')),
     popoverDelay: resolvePopoverDelay(
-      explicitSetting<number>(config, 'popovers.hoverDelay'),
-      explicitSetting<number>(config, 'tasks.hoverCardDelay')
+      explicitSetting(config, 'popovers.hoverDelay'),
+      explicitSetting(config, 'tasks.hoverCardDelay')
     ),
     tasksCountStyle: normalizeTaskCountStyle(config.get<string>('tasks.countStyle', 'filled')),
     workingOn: {

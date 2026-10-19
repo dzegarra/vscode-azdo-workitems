@@ -472,7 +472,7 @@ export class AzdoClient {
         ]),
       }
     );
-    const [update] = result.value;
+    const update = result.value.at(0);
     if (!update?.success) {
       throw new Error(
         `Unable to delete the branch ${branch} in Azure DevOps: ${

@@ -44,7 +44,7 @@ export interface Observation {
 export function myObservations(threads: ThreadResponse[], myId: string): Observation[] {
   return threads.flatMap((thread) => {
     const comments = (thread.comments ?? []).filter((comment) => comment.commentType === 'text' && !comment.isDeleted);
-    const [first] = thread.comments ?? [];
+    const first = (thread.comments ?? []).at(0);
     if (!first || first.isDeleted || first.commentType !== 'text' || first.author.id !== myId) {
       return [];
     }

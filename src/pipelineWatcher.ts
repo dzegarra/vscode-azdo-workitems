@@ -61,7 +61,9 @@ export class PipelineWatcher implements vscode.Disposable {
 
   dispose(): void {
     this.poller.dispose();
-    this.subscriptions.forEach((subscription) => subscription.dispose());
+    for (const subscription of this.subscriptions) {
+      subscription.dispose();
+    }
   }
 
   private async onFinished(finished: FinishedRun[]): Promise<void> {
