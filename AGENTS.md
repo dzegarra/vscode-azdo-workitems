@@ -12,21 +12,21 @@ VS Code extension (ID `abb-totalflowx.vscode-azdo-workitems`, display name "Tota
 - Organization `ABB-PAMA-BVL`, project `Flow Digital Architecture`, main repository `User_Interface` (others exist, e.g. `Common_Translations`, `Communication-Interface`). Organization / project / repository are detected from the `origin` remote; settings can override them.
 - The team works in Scrum, 2-week sprints, several teams in parallel (Platform, Measurement Apps, Interface Apps, Automation Apps, UX…). Iterations are `<Project>\<Release>\<Sprint>`, e.g. `Flow Digital Architecture\MVP R3\Platform Sprint 122`.
 - Team rules enforced by the extension are listed in [docs/DECISIONS.md](docs/DECISIONS.md#team-rules).
-- Today the project lives in an Nx monorepo (`tools/vscode-azdo-workitems`); it may move to its own repository. Keep everything it needs inside this folder.
+- The project lives in its own repository; it was extracted (with its history) from the `User_Interface` Nx monorepo, where it was `tools/vscode-azdo-workitems`.
 
 ## Commands
 
-From the monorepo root (prefix Nx with the package manager):
+From the repository root:
 
 ```sh
-npm exec nx -- run-many -p vscode-azdo-workitems -t typecheck,test,build,lint   # must pass, 0 lint errors (warnings tolerated)
-npm exec nx -- run vscode-azdo-workitems:package                                  # builds vscode-azdo-workitems-0.1.0.vsix
-npx prettier --write tools/vscode-azdo-workitems/src tools/vscode-azdo-workitems/media
+npm run check     # typecheck, test, build, lint: must pass with 0 lint problems
+npm run package   # builds vscode-azdo-workitems-0.1.0.vsix
+npm run format    # prettier on src and media
 ```
 
-- Targets (`project.json`): `build` (esbuild, 3 bundles: `dist/extension.js` for Node, `dist/webview.js` for the sidebar, `dist/dependencies.js` for the dependency map), `watch`, `typecheck` (`tsc --noEmit`), `test` (vitest, `vitest.config.mts`), `package` (`vsce package --no-dependencies …`). `lint` comes from the monorepo's `@nx/eslint` plugin: if the project moves out, bring an ESLint config with the same rules (see Conventions).
-- Debug: launch configuration **Run Azure Work Items Extension** (F5) in the monorepo's `.vscode/launch.json` (`--extensionDevelopmentPath=${workspaceFolder}/tools/vscode-azdo-workitems`).
-- Install: `code --install-extension tools/vscode-azdo-workitems/vscode-azdo-workitems-0.1.0.vsix`, then reload the window.
+- Scripts (`package.json`): `build` (esbuild, 3 bundles: `dist/extension.js` for Node, `dist/webview.js` for the sidebar, `dist/dependencies.js` for the dependency map), `watch`, `typecheck` (`tsc --noEmit`), `test` (vitest, `vitest.config.mts`), `package` (`vsce package --no-dependencies …`), `lint` (ESLint, `eslint.config.mjs`: `typescript-eslint` strict type-checked rules plus the conventions below; import resolution is left to `tsc`, formatting to Prettier), `format` (Prettier, `.prettierrc`).
+- Debug: launch configuration **Run Azure Work Items Extension** (F5) in `.vscode/launch.json` (builds first via the `npm: build` task).
+- Install: `code --install-extension vscode-azdo-workitems-0.1.0.vsix`, then reload the window.
 
 ## Architecture
 
@@ -66,7 +66,7 @@ media/*.css               styles of the webviews (webview.css shared by the side
 
 - **Strict webview CSP**: no inline `style="…"`, no inline event handlers. Dynamic sizes/positions are set through CSSOM after rendering (`data-box` + `applyBoxes`, `sizeReviewBars`, `data-elapsed`/`data-progress`). `src/webview/csp.test.ts` fails on inline styles. The details panel allows `'unsafe-inline'` styles and `img-src https: data:` only because it embeds work item rich text.
 - **Pure logic + tests**: vitest; in new test files import `describe/it/expect/vi` explicitly from `vitest` (globals will be disabled).
-- **Lint rules that bite**: `no-use-before-define` (define functions before using them), switch exhaustiveness, no nested ternaries, max-statements (extract helpers). Magic-number warnings are tolerated.
+- **Lint rules that bite** (all errors, no warnings: fix them, do not disable them): `no-use-before-define` (define functions before using them), switch exhaustiveness, no nested ternaries, `eqeqeq`, no `any` leaking out (`no-unsafe-*`), no unnecessary conditions, numbers/booleans only in template literals. `tsconfig` has no `noUncheckedIndexedAccess`, so `const [first] = list` is typed as always defined: write `list.at(0)` (or `.at(-1)`) when the array can be empty. Unused names must start with `_`. Test files may use `expect.any(...)` matchers and `!`.
 - **Naming**: settings and commands are `totalflowx.*` (declare them in `package.json`; read them through `SECTION` in `src/config.ts`); command category "Totalflow X". User-facing name of the per-work-item tab: **Work Item Details panel**.
 - **Requests**: always through `AzdoClient` → `recordedFetch`. Wrap new entry points (pollers, panels, commands) in `withFeature(...)` so the usage report attributes them. Keep the request budget low (batch, cache by immutable keys such as build id or last pushed commit; never poll faster than needed).
 - **Theme-friendly colours**: use VS Code theme variables and the tokens of `media/webview.css`; check dark and light. Solid pills with fixed colour pairs (priority, due soon) are deliberate for contrast.
@@ -75,7 +75,7 @@ media/*.css               styles of the webviews (webview.css shared by the side
 ## Verifying changes
 
 1. `typecheck,test,build,lint` (above) and `package`.
-2. **Rendering**: the webviews can be rendered without VS Code. Build, then load `dist/webview.js` (or `dist/dependencies.js`) and `media/*.css` in a static HTML page with the same CSP meta, a stub of `acquireVsCodeApi` (records `postMessage`), CSS variables for the VS Code theme tokens, and a script that posts a `{ type: 'state', model }` (or `{ type: 'graph', graph }`) message. Drive it with Playwright (installed in the monorepo) in dark and light, at 260–340 px for the sidebar, and look at the screenshots.
+2. **Rendering**: the webviews can be rendered without VS Code. Build, then load `dist/webview.js` (or `dist/dependencies.js`) and `media/*.css` in a static HTML page with the same CSP meta, a stub of `acquireVsCodeApi` (records `postMessage`), CSS variables for the VS Code theme tokens, and a script that posts a `{ type: 'state', model }` (or `{ type: 'graph', graph }`) message. Drive it with Playwright (not a dependency of this repo: use `npx playwright`) in dark and light, at 260–340 px for the sidebar, and look at the screenshots.
 3. **Real data, read-only**: `az rest --resource 499b84ac-1321-427f-aa17-267ca6975798 --url "<GET url>"` (the Azure DevOps resource id), or an Azure DevOps MCP server's read tools. Bundle the pure modules with esbuild into a small Node script to run them on real responses.
 4. Things that need a real VS Code (dialogs, QuickPicks, notifications, status bar, git API calls, new windows) must be tried with F5 or the installed `.vsix` before calling a feature done.
 

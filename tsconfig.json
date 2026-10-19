@@ -1,11 +1,22 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
     "lib": ["ES2022", "DOM"],
-    "types": ["node", "vscode"],
-    "jsx": "preserve",
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "noEmit": true,
-    "incremental": false
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ESNext",
+    "types": ["node", "vscode"],
+    "verbatimModuleSyntax": false
   },
   "include": ["src/**/*.ts", "vitest.config.mts"]
 }

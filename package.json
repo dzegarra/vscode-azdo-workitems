@@ -6,12 +6,9 @@
   "publisher": "abb-totalflowx",
   "private": true,
   "license": "UNLICENSED",
-  "repository": {
-    "type": "git",
-    "url": "https://dev.azure.com/ABB-PAMA-BVL/Flow%20Digital%20Architecture/_git/User_Interface"
-  },
   "engines": {
-    "vscode": "^1.95.0"
+    "vscode": "^1.95.0",
+    "node": ">=22.16.0"
   },
   "categories": [
     "Other"
@@ -1103,8 +1100,30 @@
       }
     }
   },
+  "scripts": {
+    "build": "npm run build:extension && npm run build:webview && npm run build:dependencies",
+    "build:extension": "esbuild src/extension.ts --bundle --platform=node --target=node20 --format=cjs --external:vscode --sourcemap --outfile=dist/extension.js",
+    "build:webview": "esbuild src/webview/main.ts --bundle --platform=browser --target=es2022 --format=iife --sourcemap --outfile=dist/webview.js",
+    "build:dependencies": "esbuild src/webview/dependencies.ts --bundle --platform=browser --target=es2022 --format=iife --sourcemap --outfile=dist/dependencies.js",
+    "watch": "npm run build:extension -- --watch & npm run build:webview -- --watch & npm run build:dependencies -- --watch & wait",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --config vitest.config.mts",
+    "lint": "eslint .",
+    "format": "prettier --write src media",
+    "check": "npm run typecheck && npm run test && npm run build && npm run lint",
+    "package": "npm run build && vsce package --no-dependencies --allow-missing-repository --skip-license --no-rewrite-relative-links"
+  },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@types/node": "22.16.0",
     "@types/vscode": "~1.95.0",
-    "@vscode/vsce": "^3.6.0"
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "0.27.3",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "10.1.8",
+    "prettier": "2.8.4",
+    "typescript": "5.5.2",
+    "typescript-eslint": "8.54.0",
+    "vitest": "4.1.10"
   }
 }

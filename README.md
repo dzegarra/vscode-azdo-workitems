@@ -23,11 +23,12 @@ Brings the Azure DevOps work of the current sprint into VS Code: your Backlog It
 ## Install
 
 ```sh
-npx nx run vscode-azdo-workitems:package
-code --install-extension tools/vscode-azdo-workitems/vscode-azdo-workitems-0.1.0.vsix
+npm install
+npm run package
+code --install-extension vscode-azdo-workitems-0.1.0.vsix
 ```
 
-To debug it, run the launch configuration **Run Totalflow X Extension** (F5).
+To debug it, run the launch configuration **Run Azure Work Items Extension** (F5).
 
 ## Usage
 
