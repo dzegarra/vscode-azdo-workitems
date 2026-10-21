@@ -26,6 +26,8 @@ const COVERAGE_API_VERSION = '7.1-preview.1';
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 /** Runs fetched per pull request: enough to find the last run of each pipeline */
 const MAX_BUILDS = 10;
+/** Manual or push runs of the repository in the time window: the team merges about 10 PRs a day */
+const MAX_BRANCH_BUILDS = 50;
 /** Azure Artifacts has its own host */
 const FEEDS_URL = 'https://feeds.dev.azure.com';
 const NOT_FOUND = 404;
@@ -33,6 +35,11 @@ const NOT_FOUND = 404;
 const MAX_IDS_PER_REQUEST = 200;
 /** A ref update to this object ID (40 zeros) deletes the branch */
 const DELETED_OBJECT_ID_LENGTH = 40;
+
+/** Builds of one Azure Repos repository (without it, the pipelines of the other repositories come too) */
+function repositoryFilter(repositoryId: string): string {
+  return `repositoryId=${repositoryId}&repositoryType=TfsGit`;
+}
 
 export interface WorkItem {
   id: number;
@@ -340,13 +347,35 @@ export class AzdoClient {
     return this.toWorkItem(created);
   }
 
-  /** CI runs validating a pull request, newest first */
-  async getPullRequestBuilds(pullRequestId: number): Promise<BuildRun[]> {
-    const branch = encodeURIComponent(pullRequestBranch(pullRequestId));
+  private async getBuilds(query: string): Promise<BuildRun[]> {
     const result = await this.request<{
       value: (Omit<BuildRun, 'webUrl'> & { _links: { web: { href: string } } })[];
-    }>(this.url(`build/builds?branchName=${branch}&$top=${MAX_BUILDS}&queryOrder=queueTimeDescending`));
+    }>(this.url(`build/builds?${query}&queryOrder=queueTimeDescending`));
     return result.value.map(({ _links: links, ...build }) => ({ ...build, webUrl: links.web.href }));
+  }
+
+  /** CI runs validating a pull request, newest first */
+  getPullRequestBuilds(pullRequestId: number): Promise<BuildRun[]> {
+    const branch = encodeURIComponent(pullRequestBranch(pullRequestId));
+    return this.getBuilds(`branchName=${branch}&$top=${MAX_BUILDS}`);
+  }
+
+  /** Runs of the repository queued by hand by the user since the given time, newest first */
+  getManualBuilds(userId: string, repositoryId: string, since: Date): Promise<BuildRun[]> {
+    return this.getBuilds(
+      `requestedFor=${userId}&${repositoryFilter(
+        repositoryId
+      )}&reasonFilter=manual&minTime=${since.toISOString()}&$top=${MAX_BRANCH_BUILDS}`
+    );
+  }
+
+  /** Runs of the repository queued by pushes (the merges of the PRs among them) since the given time, newest first */
+  getPushBuilds(repositoryId: string, since: Date): Promise<BuildRun[]> {
+    return this.getBuilds(
+      `${repositoryFilter(
+        repositoryId
+      )}&reasonFilter=individualCI,batchedCI&minTime=${since.toISOString()}&$top=${MAX_BRANCH_BUILDS}`
+    );
   }
 
   /** Test runs published by a build (one per results file) */

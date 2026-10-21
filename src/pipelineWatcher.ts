@@ -5,7 +5,7 @@ import { CoverageResult, currentStreak, isNewBest } from './coverageRecords';
 import { CoverageRecordsStore } from './coverageRecordsStore';
 import { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import { RunModel } from './pipelines';
-import { finishedRunMessage, testsUrl } from './runDetails';
+import { finishedRunMessage, finishedRunSubject, testsUrl } from './runDetails';
 import { FinishedRun, RunsPoller } from './runsPolling';
 import { WorkItemsStore } from './workItemsStore';
 
@@ -68,10 +68,12 @@ export class PipelineWatcher implements vscode.Disposable {
 
   private async onFinished(finished: FinishedRun[]): Promise<void> {
     const notify = pipelineSettings().notifyOnFinish;
-    for (const { pullRequestId, run } of finished) {
-      const records = await this.syncRecords(this.myPullRequests.isMine(pullRequestId) ? [run] : []);
+    for (const entry of finished) {
+      // Coverage records: only the runs validating the user's own PRs
+      const own = entry.kind === 'pullRequest' && this.myPullRequests.isMine(entry.pullRequestId);
+      const records = await this.syncRecords(own ? [entry.run] : []);
       if (notify) {
-        void this.notify(pullRequestId, run, records);
+        void this.notify(entry, records);
       }
     }
   }
@@ -109,13 +111,13 @@ export class PipelineWatcher implements vscode.Disposable {
   }
 
   private async notify(
-    pullRequestId: number,
-    run: RunModel,
+    finished: FinishedRun,
     records: { newBest: boolean; streak: number } | undefined
   ): Promise<void> {
+    const { run } = finished;
     const thresholds = coverageThresholds();
     const { text, warning, hasFailedTests } = finishedRunMessage(run, {
-      pullRequestId,
+      subject: finishedRunSubject(finished),
       newBest: records?.newBest,
       streak: records?.streak,
       target: thresholds.target,

@@ -21,6 +21,48 @@
     "workspaceContains:.git"
   ],
   "contributes": {
+    "colors": [
+      {
+        "id": "totalflowx.ci.runningForeground",
+        "description": "Text of the CI status bar item while a run of the checked out branch is running.",
+        "defaults": {
+          "dark": "#75BEFF",
+          "light": "#B3DCFF",
+          "highContrast": "statusBarItem.foreground",
+          "highContrastLight": "statusBarItem.foreground"
+        }
+      },
+      {
+        "id": "totalflowx.ci.queuedForeground",
+        "description": "Text of the CI status bar item while a run of the checked out branch is queued.",
+        "defaults": {
+          "dark": "#A8D8FF",
+          "light": "#E0F0FF",
+          "highContrast": "statusBarItem.foreground",
+          "highContrastLight": "statusBarItem.foreground"
+        }
+      },
+      {
+        "id": "totalflowx.ci.succeededForeground",
+        "description": "Text of the CI status bar item when the last runs of the checked out branch succeeded.",
+        "defaults": {
+          "dark": "#89D185",
+          "light": "#B5F5B0",
+          "highContrast": "statusBarItem.foreground",
+          "highContrastLight": "statusBarItem.foreground"
+        }
+      },
+      {
+        "id": "totalflowx.ci.canceledForeground",
+        "description": "Text of the CI status bar item when the last runs of the checked out branch were canceled.",
+        "defaults": {
+          "dark": "#A0A0A0",
+          "light": "#D0D0D0",
+          "highContrast": "statusBarItem.foreground",
+          "highContrastLight": "statusBarItem.foreground"
+        }
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {
@@ -867,6 +909,12 @@
           "type": "boolean",
           "default": true,
           "description": "Show a notification when a CI run of your pull requests finishes."
+        },
+        "totalflowx.pipelines.branchRunsHours": {
+          "type": "number",
+          "default": 24,
+          "minimum": 0,
+          "description": "Besides the runs of your pull requests, the CI status bar item shows the runs you queued by hand and the runs started by the merge of your pull requests, from the last N hours. 0 disables them."
         },
         "totalflowx.pipelines.showInStatusBar": {
           "type": "boolean",

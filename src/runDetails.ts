@@ -1,6 +1,7 @@
 /** Why a CI run failed, and how runs are described with their tests and coverage. Pure, so no "vscode" import */
 import { describeCoverage } from './coverage';
 import { describeRun, FailedTest, RunModel, TestSummary } from './pipelines';
+import type { FinishedRun } from './runsPolling';
 
 /** Failed tests listed in the tooltips */
 export const MAX_LISTED_TESTS = 5;
@@ -179,8 +180,21 @@ export function runTooltip(run: RunModel, now: Date): string {
 
 /* ---------- Notification of a finished run ---------- */
 
+/** What a finished run validated, to start its notification */
+export function finishedRunSubject(finished: FinishedRun): string {
+  switch (finished.kind) {
+    case 'pullRequest':
+      return `PR ${String(finished.pullRequestId)}`;
+    case 'merge':
+      return `Merge of PR ${String(finished.pullRequestId)} into ${finished.targetBranch}`;
+    case 'branch':
+      return `Run on ${finished.branch}`;
+  }
+}
+
 export interface FinishedRunContext {
-  pullRequestId: number;
+  /** What the run validated: "PR 13713", "Merge of PR 13837 into develop", "Run on exp/x" */
+  subject: string;
   /** The coverage of this run is the best of the user */
   newBest?: boolean;
   /** PRs of the user in a row at or above the target; the coverage target */
@@ -212,7 +226,7 @@ function failureReason(run: RunModel): string {
 
 /** "PR 13713 passed: 95 tests, coverage 87% ▲ +3.2% 🏆" / "PR 13770 failed: 1 test failed (Name)" */
 export function finishedRunMessage(run: RunModel, context: FinishedRunContext, now = new Date()): FinishedRunMessage {
-  const pr = `PR ${context.pullRequestId}`;
+  const pr = context.subject;
   if (run.state === 'succeeded') {
     const details = [
       run.tests ? plural(run.tests.total, 'test') : undefined,

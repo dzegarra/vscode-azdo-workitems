@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunModel } from './pipelines';
-import { followedPullRequestIds, nextRunsPollDelay, RunsPoller, RunsTracker } from './runsPolling';
+import { followedPullRequestIds, nextRunsPollDelay, RunsPoller, RunsSnapshot, RunsTracker } from './runsPolling';
 
 const run = (id: number, state: RunModel['state']): RunModel => ({
   id,
@@ -8,6 +8,9 @@ const run = (id: number, state: RunModel['state']): RunModel => ({
   state,
   url: `https://build/${id}`,
 });
+
+const snapshot = (entries: [number, RunModel[]][], others: Omit<RunsSnapshot, 'pullRequests'> = {}) =>
+  Promise.resolve<RunsSnapshot>({ pullRequests: new Map(entries), ...others });
 
 describe('nextRunsPollDelay', () => {
   it('is fast while a run is active', () => {
@@ -43,38 +46,61 @@ describe('RunsTracker', () => {
 
   it('skips a refresh while another is in progress', async () => {
     const tracker = new RunsTracker();
-    let release: (value: Map<number, RunModel[]>) => void = () => undefined;
+    let release: (value: RunsSnapshot) => void = () => undefined;
     const slow = tracker.refresh([1], () => new Promise((resolve) => (release = resolve)));
-    expect(await tracker.refresh([1], () => Promise.resolve(new Map<number, RunModel[]>()))).toBeUndefined();
-    release(new Map<number, RunModel[]>());
+    expect(await tracker.refresh([1], () => snapshot([]))).toBeUndefined();
+    release({ pullRequests: new Map<number, RunModel[]>() });
     expect(await slow).toEqual([]);
   });
 
   it('keeps the runs of a PR whose fetch failed, and still reports the run finishing after the outage', async () => {
     const tracker = new RunsTracker();
     await tracker.refresh([1, 2], () =>
-      Promise.resolve(
-        new Map([
-          [1, [run(10, 'running')]],
-          [2, [run(20, 'running')]],
-        ])
-      )
+      snapshot([
+        [1, [run(10, 'running')]],
+        [2, [run(20, 'running')]],
+      ])
     );
     // PR 1 cannot be fetched this time: its running run stays
-    await tracker.refresh([1, 2], () => Promise.resolve(new Map([[2, [run(20, 'running')]]])));
+    await tracker.refresh([1, 2], () => snapshot([[2, [run(20, 'running')]]]));
     expect(tracker.runs.get(1)).toEqual([run(10, 'running')]);
     const finished = await tracker.refresh([1, 2], () =>
-      Promise.resolve(
-        new Map([
-          [1, [run(10, 'succeeded')]],
-          [2, [run(20, 'running')]],
-        ])
-      )
+      snapshot([
+        [1, [run(10, 'succeeded')]],
+        [2, [run(20, 'running')]],
+      ])
     );
-    expect(finished).toEqual([{ pullRequestId: 1, run: run(10, 'succeeded') }]);
+    expect(finished).toEqual([{ kind: 'pullRequest', pullRequestId: 1, run: run(10, 'succeeded') }]);
     // A PR no longer followed is dropped
-    await tracker.refresh([2], () => Promise.resolve(new Map<number, RunModel[]>()));
+    await tracker.refresh([2], () => snapshot([]));
     expect([...tracker.runs.keys()]).toEqual([2]);
+  });
+
+  it('follows the completed PRs of the user for their merge runs', () => {
+    const tracker = new RunsTracker();
+    expect(tracker.follow([{ id: 1, title: 'A', sourceRefName: 'refs/heads/a' }])).toBe(true);
+    expect(tracker.follow([{ id: 1, title: 'A' }], [{ id: 5, title: 'Merged' }])).toBe(true);
+    expect(tracker.extraIds).toEqual([1]);
+    expect(tracker.ownIds).toEqual([1, 5]);
+    expect(tracker.titleOf(5)).toBe('Merged');
+  });
+
+  it('reports the manual and merge runs that finished, and keeps them when they could not be fetched', async () => {
+    const tracker = new RunsTracker();
+    const branch = (state: RunModel['state']) => ({ branch: 'exp/x', run: run(30, state) });
+    const merge = (state: RunModel['state']) => ({ pullRequestId: 5, targetBranch: 'develop', run: run(40, state) });
+    await tracker.refresh([], () => snapshot([], { branchRuns: [branch('running')], mergeRuns: [merge('queued')] }));
+    // Not fetched this time: kept
+    await tracker.refresh([], () => snapshot([]));
+    expect(tracker.branchRuns).toEqual([branch('running')]);
+    expect(tracker.mergeRuns).toEqual([merge('queued')]);
+    const finished = await tracker.refresh([], () =>
+      snapshot([], { branchRuns: [branch('failed')], mergeRuns: [merge('succeeded')] })
+    );
+    expect(finished).toEqual([
+      { kind: 'merge', ...merge('succeeded') },
+      { kind: 'branch', ...branch('failed') },
+    ]);
   });
 });
 
@@ -85,7 +111,7 @@ describe('RunsPoller with a fake builds API', () => {
   it('keeps checking when idle, speeds up for a new run and reports it once when it finishes', async () => {
     const tracker = new RunsTracker();
     let builds: RunModel[] = [run(1, 'succeeded')];
-    const api = vi.fn(() => Promise.resolve(new Map([[7, builds]])));
+    const api = vi.fn(() => snapshot([[7, builds]]));
     const onFinished = vi.fn(() => Promise.resolve());
     const poller = new RunsPoller({
       settings: () => ({ fastSeconds: 15, idleSeconds: 60 }),
@@ -117,7 +143,7 @@ describe('RunsPoller with a fake builds API', () => {
     builds = [run(2, 'succeeded')];
     await vi.advanceTimersByTimeAsync(15_000);
     expect(onFinished).toHaveBeenCalledTimes(1);
-    expect(onFinished).toHaveBeenCalledWith([{ pullRequestId: 7, run: run(2, 'succeeded') }]);
+    expect(onFinished).toHaveBeenCalledWith([{ kind: 'pullRequest', pullRequestId: 7, run: run(2, 'succeeded') }]);
     await vi.advanceTimersByTimeAsync(60_000);
     expect(onFinished).toHaveBeenCalledTimes(1);
 

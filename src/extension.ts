@@ -106,7 +106,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const notifier = new PullRequestNotifier(context.globalState, store);
   const pullRequestTaskStarter = new PullRequestTaskStarter(store);
   const dependencyMap = new DependencyMapPanel(context.extensionUri, store);
-  const pipelineStatusBar = new PipelineStatusBar(store);
+  const pipelineStatusBar = new PipelineStatusBar(git, store);
   const currentWorkItemStatusBar = new CurrentWorkItemStatusBar(git, store);
   // One loader for both PR boxes: they share what it caches
   const pullRequestExtras = new PullRequestExtrasLoader(store);

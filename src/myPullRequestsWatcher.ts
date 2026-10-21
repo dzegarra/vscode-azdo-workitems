@@ -202,12 +202,18 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
       );
       this.status = 'ready';
       this.error = undefined;
-      // The store keeps the runs of these PRs fresh (every few seconds while one is running)
-      this.store.followPullRequests(
+      // The store keeps the runs of these PRs fresh (every few seconds while one is running), and the runs
+      // queued by the merge of the completed ones
+      const followed = (status: string) =>
         this.data
-          .filter(({ pr }) => pr.status === 'active')
-          .map(({ pr }) => ({ id: pr.pullRequestId, title: pr.title }))
-      );
+          .filter(({ pr }) => pr.status === status)
+          .map(({ pr }) => ({
+            id: pr.pullRequestId,
+            title: pr.title,
+            sourceRefName: pr.sourceRefName,
+            webUrl: pr.webUrl,
+          }));
+      this.store.followPullRequests(followed('active'), followed('completed'));
     } catch (error) {
       this.myId = undefined;
       this.status = 'error';

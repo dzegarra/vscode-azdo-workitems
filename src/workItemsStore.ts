@@ -18,8 +18,8 @@ import { branchesToVerify, TaskBranchModel, toTaskBranchModels } from './taskBra
 import { sortTaskPullRequests, TaskPullRequestModel, toTaskPullRequestModel } from './taskPullRequests';
 import { FilterModel, ViewModel, WorkItemModel } from './viewModel';
 import { runDetailsLoader } from './runDetailsLoader';
-import { isActive, latestRuns, RunModel } from './pipelines';
-import { followedPullRequestIds, RunsTracker } from './runsPolling';
+import { BranchRun, isActive, latestBranchRuns, latestRuns, MergeRun, mergeRuns, RunModel } from './pipelines';
+import { FinishedRun, FollowedPullRequest, followedPullRequestIds, RunsSnapshot, RunsTracker } from './runsPolling';
 import { isOtherRepository, toPullRequestModel } from './pullRequestModel';
 import { listWorktrees } from './worktreeGit';
 import { findWorktree, otherWorktreeBranches, Worktree } from './worktrees';
@@ -95,6 +95,9 @@ const REMOTE_REF_TYPE = 1;
 // Rule DELETABLE-3: existence is cached this long
 /** How long a branch found (or not found) in Azure DevOps is trusted before asking again */
 const BRANCH_EXISTENCE_TTL_MS = 10 * 60 * 1000;
+const MS_PER_HOUR = 60 * 60 * 1000;
+/** The manual and post-merge runs are fetched at most this often while none of them is active */
+const BRANCH_RUNS_MIN_INTERVAL_MS = 60 * 1000;
 
 async function listBranches(repository: Repository | undefined, remoteName: string): Promise<BranchCandidates> {
   if (!repository) {
@@ -395,7 +398,7 @@ async function alertRules(client: AzdoClient): Promise<(AlertRules & { integrati
 }
 
 /** Last CI run of each pipeline of the given PRs. PRs whose runs cannot be fetched are skipped */
-async function fetchRuns(client: AzdoClient, pullRequestIds: number[]): Promise<Map<number, RunModel[]>> {
+async function fetchPullRequestRuns(client: AzdoClient, pullRequestIds: number[]): Promise<Map<number, RunModel[]>> {
   const results = await Promise.allSettled(
     pullRequestIds.map(
       async (id) =>
@@ -403,6 +406,38 @@ async function fetchRuns(client: AzdoClient, pullRequestIds: number[]): Promise<
     )
   );
   return new Map(results.filter((result) => result.status === 'fulfilled').map((result) => result.value));
+}
+
+interface BranchRunsSource {
+  userId: string;
+  repositoryId: string;
+  /** The user's PRs, active and completed */
+  ownPullRequestIds: number[];
+  since: Date;
+}
+
+/** Runs queued by hand by the user, and runs queued by the merge of the user's PRs. Undefined when not fetched */
+async function fetchBranchRuns(
+  client: AzdoClient,
+  source: BranchRunsSource
+): Promise<Pick<RunsSnapshot, 'branchRuns' | 'mergeRuns'>> {
+  const [manual, pushes] = await Promise.allSettled([
+    client.getManualBuilds(source.userId, source.repositoryId, source.since),
+    // Without own PRs no merge can match: no request
+    source.ownPullRequestIds.length ? client.getPushBuilds(source.repositoryId, source.since) : Promise.resolve([]),
+  ]);
+  const enrich = async <T extends { run: RunModel }>(entries: T[]): Promise<T[]> => {
+    const runs = await runDetailsLoader.enrich(
+      client,
+      entries.map(({ run }) => run)
+    );
+    return entries.map((entry, index) => ({ ...entry, run: runs[index] }));
+  };
+  return {
+    branchRuns: manual.status === 'fulfilled' ? await enrich(latestBranchRuns(manual.value)) : undefined,
+    mergeRuns:
+      pushes.status === 'fulfilled' ? await enrich(mergeRuns(pushes.value, source.ownPullRequestIds)) : undefined,
+  };
 }
 
 /** Loads and keeps the work items of the current iterations with their branches and pull requests */
@@ -473,30 +508,65 @@ export class WorkItemsStore {
     return followedPullRequestIds(linked, this.tracker.extraIds);
   }
 
-  /** Also follows the CI runs of these PRs (e.g. the active ones of the user), replacing the previous ones */
-  followPullRequests(pullRequests: { id: number; title: string }[]): void {
-    if (this.tracker.follow(pullRequests)) {
+  /**
+   * Also follows the CI runs of these PRs (the active ones of the user), replacing the previous ones. The completed
+   * ones give the runs queued by their merge
+   */
+  followPullRequests(pullRequests: FollowedPullRequest[], completed: FollowedPullRequest[] = []): void {
+    if (this.tracker.follow(pullRequests, completed)) {
       this.followEmitter.fire();
     }
   }
 
-  /** True while a CI run of an active PR is queued or running */
+  /** True while a CI run is queued or running */
   get hasActiveRuns(): boolean {
-    return [...this.runs.values()].some((runs) => runs.some((run) => isActive(run.state)));
+    return this.allRuns().some((run) => isActive(run.state));
+  }
+
+  private allRuns(): RunModel[] {
+    return [
+      ...[...this.runs.values()].flat(),
+      ...this.tracker.branchRuns.map(({ run }) => run),
+      ...this.tracker.mergeRuns.map(({ run }) => run),
+    ];
+  }
+
+  /** A PR linked to the work items or followed, with its title, source branch and page */
+  private pullRequestInfo(pullRequestId: number): { title: string; sourceRefName?: string; webUrl?: string } {
+    const linked = this.findPullRequest(pullRequestId);
+    const followed = this.tracker.pullRequestOf(pullRequestId);
+    return {
+      title: linked?.title ?? followed?.title ?? '',
+      sourceRefName: linked?.sourceRefName ?? followed?.sourceRefName,
+      webUrl: linked?.webUrl ?? followed?.webUrl,
+    };
   }
 
   /** CI runs of the active PRs with the PR they validate */
-  get pullRequestRuns(): { pullRequestId: number; title: string; run: RunModel }[] {
-    const titles = new Map(
-      this.entries.flatMap((entry) => entry.pullRequests).map((pr) => [pr.pullRequestId, pr.title])
-    );
-    return [...this.runs].flatMap(([pullRequestId, runs]) =>
-      runs.map((run) => ({
-        pullRequestId,
-        title: titles.get(pullRequestId) ?? this.tracker.titleOf(pullRequestId) ?? '',
-        run,
-      }))
-    );
+  get pullRequestRuns(): {
+    pullRequestId: number;
+    title: string;
+    sourceRefName?: string;
+    webUrl?: string;
+    run: RunModel;
+  }[] {
+    return [...this.runs].flatMap(([pullRequestId, runs]) => {
+      const info = this.pullRequestInfo(pullRequestId);
+      return runs.map((run) => ({ pullRequestId, ...info, run }));
+    });
+  }
+
+  /** Runs queued by hand by the user on a branch (no PR) */
+  get branchRuns(): BranchRun[] {
+    return this.tracker.branchRuns;
+  }
+
+  /** Runs queued by the merge of the user's PRs, with the title and page of the PR */
+  get mergeRuns(): (MergeRun & { title: string; webUrl?: string })[] {
+    return this.tracker.mergeRuns.map((entry) => {
+      const { title, webUrl } = this.pullRequestInfo(entry.pullRequestId);
+      return { ...entry, title, webUrl };
+    });
   }
 
   /** CI runs of a followed PR; undefined when the store does not follow it (yet) */
@@ -505,25 +575,69 @@ export class WorkItemsStore {
   }
 
   findRun(runId: number): RunModel | undefined {
-    return [...this.runs.values()].flat().find((run) => run.id === runId);
+    return this.allRuns().find((run) => run.id === runId);
   }
 
   /**
    * Reloads only the CI runs (much cheaper than a full refresh).
    * Returns the runs that finished since the previous check, with their PR; undefined when another reload is in progress
    */
-  refreshRuns(): Promise<{ pullRequestId: number; run: RunModel }[] | undefined> {
+  refreshRuns(): Promise<FinishedRun[] | undefined> {
     return withFeature('ci', () => this.runRefreshRuns());
   }
 
-  private async runRefreshRuns(): Promise<{ pullRequestId: number; run: RunModel }[] | undefined> {
+  private async runRefreshRuns(): Promise<FinishedRun[] | undefined> {
     await this.whenRepositoryReady();
     const client = resolveContext(this.repository()).client;
-    const finished = await this.tracker.refresh(this.activePullRequestIds(), (ids) => fetchRuns(client, ids));
+    const finished = await this.tracker.refresh(this.activePullRequestIds(), async (ids) => {
+      const [pullRequests, branchRuns] = await Promise.all([
+        fetchPullRequestRuns(client, ids),
+        this.fetchBranchRuns(client),
+      ]);
+      return { pullRequests, ...branchRuns };
+    });
     if (finished) {
       this.changeEmitter.fire();
     }
     return finished;
+  }
+
+  private myId?: Promise<string>;
+  /** When the manual and post-merge runs were last fetched */
+  private branchRunsFetchedAt = 0;
+
+  /**
+   * Manual and post-merge runs, unless turned off or the repository is not known yet (empty: cleared). While only PR
+   * runs are active they are fetched at the idle pace, not on every fast tick ({}: the last known ones are kept)
+   */
+  private async fetchBranchRuns(
+    client: AzdoClient,
+    force = false
+  ): Promise<Pick<RunsSnapshot, 'branchRuns' | 'mergeRuns'>> {
+    const hours = settings().branchRunsHours;
+    const repositoryId = this.repositoryId;
+    if (!hours) {
+      return { branchRuns: [], mergeRuns: [] };
+    }
+    const active = [...this.tracker.branchRuns, ...this.tracker.mergeRuns].some(({ run }) => isActive(run.state));
+    if (!repositoryId || (!force && !active && Date.now() - this.branchRunsFetchedAt < BRANCH_RUNS_MIN_INTERVAL_MS)) {
+      return {};
+    }
+    this.branchRunsFetchedAt = Date.now();
+    try {
+      this.myId ??= client.getMyId();
+      const userId = await this.myId;
+      const since = new Date(Date.now() - hours * MS_PER_HOUR);
+      return await fetchBranchRuns(client, {
+        userId,
+        repositoryId,
+        ownPullRequestIds: this.tracker.ownIds,
+        since,
+      });
+    } catch {
+      this.myId = undefined;
+      return {};
+    }
   }
 
   /** Work items with problems the developers must fix ASAP */
@@ -632,7 +746,13 @@ export class WorkItemsStore {
       await this.whenRepositoryReady();
       await this.refreshWorktrees();
       this.entries = await this.fetch();
-      this.tracker.runs = await fetchRuns(resolveContext(this.repository()).client, this.activePullRequestIds());
+      const client = resolveContext(this.repository()).client;
+      const [runs, branchRuns] = await withFeature('ci', () =>
+        Promise.all([fetchPullRequestRuns(client, this.activePullRequestIds()), this.fetchBranchRuns(client, true)])
+      );
+      this.tracker.runs = runs;
+      this.tracker.branchRuns = branchRuns.branchRuns ?? this.tracker.branchRuns;
+      this.tracker.mergeRuns = branchRuns.mergeRuns ?? this.tracker.mergeRuns;
       this.status = 'ready';
       this.error = undefined;
       this.loadEmitter.fire();

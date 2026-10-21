@@ -214,7 +214,16 @@ Next to the state of each active pull request, the card shows the last run of ea
 
 The runs of the PRs of your work items and of all your pull requests are followed. While a run is queued or running, only the runs are refreshed every 15 seconds (`totalflowx.pipelines.pollIntervalSeconds`); when none is, new runs (re-runs, new pushes) are looked for every minute (`totalflowx.pipelines.idlePollIntervalSeconds`, 0 to turn it off). A notification tells you when a run finishes (`totalflowx.pipelines.notifyOnFinish`).
 
-The status bar summarizes the runs of your pull requests even when the view is closed, as `CI` followed by a count per state by severity, e.g. `CI  ✗ 1  ↻ 1  ✓ 2` (red when a run failed; order: failed, partially succeeded, running, queued, succeeded). Canceled runs only show in the tooltip (unless they are all there is). Hover it to see the totals and each run with its PR, pipeline and duration; click it to pick a run and open it (`totalflowx.pipelines.showInStatusBar`).
+The status bar summarizes the runs of your pull requests even when the view is closed, as `CI` followed by a count per state by severity, e.g. `CI  ❌ 1  ↻ 1  ✅ 2` (order: failed, partially succeeded, running, queued, succeeded).
+
+The colour of the item tells how the **checked out branch** is doing (its pull request's last runs, or the runs you queued by hand on it): red background when failed, orange when partially succeeded, and the text in blue while running, light blue while queued, green when succeeded, grey when canceled. A branch without runs (e.g. develop) leaves the item uncoloured; the tooltip says it (`Current branch: ❌ failed`). The text colours can be changed with `workbench.colorCustomizations` (`totalflowx.ci.runningForeground`, `queuedForeground`, `succeededForeground`, `canceledForeground`). Canceled runs only show in the tooltip (unless they are all there is). Hover it to see the totals and one block per pull request: its link and title, then each run indented below it with its pipeline and result (failed tests or coverage under the run). The pull request of the checked out branch comes first, marked ★ **Current branch**. The same colour icons are used in the item, the tooltip and the picker: ❌ failed, ⚠️ partially succeeded, a spinner while running, ⏳ queued, ✅ succeeded, 🚫 canceled. Click it to pick a run and open it (`totalflowx.pipelines.showInStatusBar`).
+
+Besides your pull requests, the item also follows, from the last 24 hours (`totalflowx.pipelines.branchRunsHours`, 0 to turn it off):
+
+- **AFTER MERGE**: the runs started on the target branch (e.g. develop) by the merge of one of your pull requests, whoever completed it;
+- **RUNS WITHOUT A PULL REQUEST**: the runs you queued by hand on a branch, by branch.
+
+They have their own sections at the end of the tooltip and count in the item, and you are notified when they finish ("Merge of PR 13837 into develop failed: …", "Run on exp/x passed").
 
 ### Why a run failed
 

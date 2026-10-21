@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   BuildRun,
-  ciHasFailures,
+  ciItemColors,
   ciStatusText,
   ciTooltipTitle,
   countRunStates,
   describeRun,
   finishedRuns,
   formatDuration,
+  latestBranchRuns,
   latestRuns,
+  mergedPullRequestId,
+  mergeRuns,
   pullRequestBranch,
   runState,
 } from './pipelines';
@@ -50,6 +53,52 @@ describe('pipelines', () => {
     expect(runs.map((run) => [run.pipeline, run.id, run.state])).toEqual([
       ['Docs', 4, 'succeeded'],
       ['User-Interface-PR-Pipeline', 3, 'running'],
+    ]);
+  });
+
+  it('keeps the last run of each pipeline on each branch', () => {
+    // Rule STATUSBAR-CI-6
+    const runs = latestBranchRuns([
+      build(1, { sourceBranch: 'refs/heads/exp/a', result: 'failed' }),
+      build(2, { sourceBranch: 'refs/heads/exp/a' }),
+      build(3, { sourceBranch: 'refs/heads/exp/b', status: 'inProgress', result: undefined }),
+      build(4, { sourceBranch: 'refs/heads/exp/a', definition: { id: 2, name: 'Docs' } }),
+    ]);
+    expect(runs.map(({ branch, run }) => [branch, run.pipeline, run.id, run.state])).toEqual([
+      ['exp/a', 'Docs', 4, 'succeeded'],
+      ['exp/a', 'User-Interface-PR-Pipeline', 2, 'succeeded'],
+      ['exp/b', 'User-Interface-PR-Pipeline', 3, 'running'],
+    ]);
+  });
+
+  it('reads the PR of a merge from the trigger message', () => {
+    expect(mergedPullRequestId({ triggerInfo: { 'ci.message': 'Merged PR 13837: [66068] FUI Common: x' } })).toBe(
+      13837
+    );
+    expect(mergedPullRequestId({ triggerInfo: { 'ci.message': 'Fix the build' } })).toBeUndefined();
+    expect(mergedPullRequestId({ triggerInfo: {} })).toBeUndefined();
+    expect(mergedPullRequestId({})).toBeUndefined();
+  });
+
+  it('keeps the runs queued by the merge of my PRs only, the last one per PR and pipeline', () => {
+    // Rule STATUSBAR-CI-8
+    const merge = (id: number, pr: number, overrides: Partial<BuildRun> = {}) =>
+      build(id, {
+        sourceBranch: 'refs/heads/develop',
+        triggerInfo: { 'ci.message': `Merged PR ${String(pr)}: Title` },
+        ...overrides,
+      });
+    const runs = mergeRuns(
+      [
+        merge(1, 13837, { result: 'failed' }),
+        merge(2, 13837),
+        merge(3, 13900),
+        build(4, { sourceBranch: 'refs/heads/develop', triggerInfo: { 'ci.message': 'Direct push' } }),
+      ],
+      [13837, 13001]
+    );
+    expect(runs).toEqual([
+      { pullRequestId: 13837, targetBranch: 'develop', run: expect.objectContaining({ id: 2, state: 'succeeded' }) },
     ]);
   });
 
@@ -96,31 +145,40 @@ describe('pipelines', () => {
     it('labels the item CI and orders the states by severity', () => {
       // Rule STATUSBAR-CI-1
       expect(ciStatusText(counts('succeeded', 'queued', 'running', 'partial', 'failed', 'succeeded'))).toBe(
-        'CI  $(error) 1  $(warning) 1  $(sync~spin) 1  $(clock) 1  $(check) 2'
+        'CI  ❌ 1  ⚠️ 1  $(sync~spin) 1  ⏳ 1  ✅ 2'
       );
-      expect(ciStatusText(counts('succeeded', 'succeeded', 'succeeded', 'queued'))).toBe('CI  $(clock) 1  $(check) 3');
+      expect(ciStatusText(counts('succeeded', 'succeeded', 'succeeded', 'queued'))).toBe('CI  ⏳ 1  ✅ 3');
     });
 
     it('leaves the canceled runs out of the text', () => {
       // Rule STATUSBAR-CI-1
-      expect(ciStatusText(counts('canceled', 'succeeded', 'canceled'))).toBe('CI  $(check) 1');
+      expect(ciStatusText(counts('canceled', 'succeeded', 'canceled'))).toBe('CI  ✅ 1');
     });
 
     it('shows the canceled runs when they are the only ones', () => {
       // Rule STATUSBAR-CI-2
-      expect(ciStatusText(counts('canceled', 'canceled'))).toBe('CI  $(circle-slash) 2');
+      expect(ciStatusText(counts('canceled', 'canceled'))).toBe('CI  🚫 2');
     });
 
-    it('is red only when a run failed', () => {
+    it('fills the item red when the branch failed and orange when it partially succeeded', () => {
       // Rule STATUSBAR-CI-3
-      expect(ciHasFailures(counts('failed', 'succeeded'))).toBe(true);
-      expect(ciHasFailures(counts('partial', 'succeeded'))).toBe(false);
+      expect(ciItemColors('failed')).toEqual({ background: 'statusBarItem.errorBackground' });
+      expect(ciItemColors('partial')).toEqual({ background: 'statusBarItem.warningBackground' });
+    });
+
+    it('tints the text for the other states, and leaves the item alone without runs', () => {
+      // Rule STATUSBAR-CI-9
+      expect(ciItemColors('running')).toEqual({ foreground: 'totalflowx.ci.runningForeground' });
+      expect(ciItemColors('queued')).toEqual({ foreground: 'totalflowx.ci.queuedForeground' });
+      expect(ciItemColors('succeeded')).toEqual({ foreground: 'totalflowx.ci.succeededForeground' });
+      expect(ciItemColors('canceled')).toEqual({ foreground: 'totalflowx.ci.canceledForeground' });
+      expect(ciItemColors(undefined)).toEqual({});
     });
 
     it('totals every state, canceled included, in the tooltip title', () => {
       // Rule STATUSBAR-CI-4
       expect(ciTooltipTitle(counts('failed', 'succeeded', 'succeeded', 'canceled'))).toBe(
-        'CI runs of my pull requests: 1 failed · 2 succeeded · 1 canceled'
+        'CI runs: 1 failed · 2 succeeded · 1 canceled'
       );
     });
   });

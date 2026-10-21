@@ -210,7 +210,7 @@ describe('tooltips', () => {
 });
 
 describe('finishedRunMessage', () => {
-  const context = { pullRequestId: 13713, target: 80 };
+  const context = { subject: 'PR 13713', target: 80 };
   const ok = run({
     state: 'succeeded',
     tests: { total: 95, failed: 0, failedTests: [] },
@@ -241,7 +241,7 @@ describe('finishedRunMessage', () => {
   });
 
   it('names the failed test', () => {
-    expect(finishedRunMessage(run({ tests: failedTests(1) }), { ...context, pullRequestId: 13770 }, NOW)).toEqual({
+    expect(finishedRunMessage(run({ tests: failedTests(1) }), { ...context, subject: 'PR 13770' }, NOW)).toEqual({
       text: 'PR 13770 failed: 1 test failed (Other User Without Changes Sees Snackbar)',
       warning: true,
       hasFailedTests: true,

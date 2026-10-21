@@ -53,6 +53,8 @@ export function settings() {
     stateOnBranchCreated: config.get<Partial<Record<string, string>>>('stateOnBranchCreated', {}),
     stateOrder: config.get<string[]>('stateOrder', DEFAULT_STATE_ORDER),
     showInReviewState: config.get<boolean>('showInReviewState', true),
+    /** Hours back to look for the manual and post-merge runs (Rules STATUSBAR-CI-6, STATUSBAR-CI-8); 0: off */
+    branchRunsHours: Math.max(0, config.get<number>('pipelines.branchRunsHours', 24)),
     dependencies: {
       completedStates: config.get<string[]>('dependencies.completedStates', DEFAULT_COMPLETED_STATES),
     },

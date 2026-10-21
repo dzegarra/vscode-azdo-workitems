@@ -11,6 +11,12 @@ export interface BuildRun {
   startTime?: string;
   finishTime?: string;
   webUrl: string;
+  /** E.g. "refs/heads/develop", "refs/pull/13713/merge" */
+  sourceBranch?: string;
+  /** What queued it: "pullRequest", "manual", "individualCI", "batchedCI"… */
+  reason?: string;
+  /** "ci.message" of the runs queued by a push: the commit message, "Merged PR 13837: …" after a merge */
+  triggerInfo?: Record<string, string>;
 }
 
 export interface FailedTest {
@@ -75,6 +81,24 @@ export function isActive(state: RunState): boolean {
   return state === 'queued' || state === 'running';
 }
 
+const HEADS_PREFIX = 'refs/heads/';
+
+/** "develop" from "refs/heads/develop" */
+export function shortBranchName(refName: string): string {
+  return refName.startsWith(HEADS_PREFIX) ? refName.slice(HEADS_PREFIX.length) : refName;
+}
+
+function toRunModel(build: BuildRun): RunModel {
+  return {
+    id: build.id,
+    pipeline: build.definition.name,
+    state: runState(build),
+    url: build.webUrl,
+    startTime: build.startTime,
+    finishTime: build.finishTime,
+  };
+}
+
 /** The last run of each pipeline: older runs were replaced by a new push */
 export function latestRuns(builds: BuildRun[]): RunModel[] {
   const latest = new Map<number, BuildRun>();
@@ -84,16 +108,71 @@ export function latestRuns(builds: BuildRun[]): RunModel[] {
       latest.set(build.definition.id, build);
     }
   }
-  return [...latest.values()]
-    .sort((a, b) => a.definition.name.localeCompare(b.definition.name))
-    .map((build) => ({
-      id: build.id,
-      pipeline: build.definition.name,
-      state: runState(build),
-      url: build.webUrl,
-      startTime: build.startTime,
-      finishTime: build.finishTime,
-    }));
+  return [...latest.values()].sort((a, b) => a.definition.name.localeCompare(b.definition.name)).map(toRunModel);
+}
+
+/** Last run of a pipeline on a branch, queued by hand (no pull request) */
+export interface BranchRun {
+  /** Without "refs/heads/" */
+  branch: string;
+  run: RunModel;
+}
+
+/** Last run of a pipeline on the target branch after a pull request was merged */
+export interface MergeRun {
+  pullRequestId: number;
+  /** Without "refs/heads/", e.g. "develop" */
+  targetBranch: string;
+  run: RunModel;
+}
+
+/** Newest entry per key (by the queue time of its build), sorted by key */
+function newestBy<T extends { build: BuildRun }>(entries: T[], key: (entry: T) => string): T[] {
+  const latest = new Map<string, T>();
+  for (const entry of entries) {
+    const current = latest.get(key(entry));
+    if (!current || (entry.build.queueTime ?? '') > (current.build.queueTime ?? '')) {
+      latest.set(key(entry), entry);
+    }
+  }
+  return [...latest.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, entry]) => entry);
+}
+
+/** Rule STATUSBAR-CI-6: the last run of each pipeline on each branch (a branch must not hide another) */
+export function latestBranchRuns(builds: BuildRun[]): BranchRun[] {
+  // Rule STATUSBAR-CI-6
+  return newestBy(
+    builds.flatMap((build) => (build.sourceBranch ? [{ build, branch: shortBranchName(build.sourceBranch) }] : [])),
+    ({ build, branch }) => `${branch}\n${build.definition.name}`
+  ).map(({ build, branch }) => ({ branch, run: toRunModel(build) }));
+}
+
+const MERGED_PULL_REQUEST = /^Merged PR (\d+):/;
+
+/** PR whose merge queued the build ("Merged PR 13837: …" in its trigger message); undefined for other pushes */
+export function mergedPullRequestId(build: Pick<BuildRun, 'triggerInfo'>): number | undefined {
+  const match = MERGED_PULL_REQUEST.exec(build.triggerInfo?.['ci.message'] ?? '');
+  return match ? Number(match[1]) : undefined;
+}
+
+/**
+ * Rule STATUSBAR-CI-8: the runs queued by the merge of one of the given PRs, the last one per PR and pipeline.
+ * Matched by the PR number of the merge message: the build is requested for whoever completed the PR
+ */
+export function mergeRuns(builds: BuildRun[], pullRequestIds: Iterable<number>): MergeRun[] {
+  const mine = new Set(pullRequestIds);
+  // Rule STATUSBAR-CI-8
+  const merges = builds.flatMap((build) => {
+    const pullRequestId = mergedPullRequestId(build);
+    return pullRequestId !== undefined && mine.has(pullRequestId) ? [{ pullRequestId, build }] : [];
+  });
+  return newestBy(merges, ({ pullRequestId, build }) => `${String(pullRequestId)}\n${build.definition.name}`).map(
+    ({ pullRequestId, build }) => ({
+      pullRequestId,
+      targetBranch: shortBranchName(build.sourceBranch ?? ''),
+      run: toRunModel(build),
+    })
+  );
 }
 
 const SECOND = 1000;
@@ -154,18 +233,21 @@ export function countRunStates(states: RunState[]): { state: RunState; count: nu
 
 export type RunCount = { state: RunState; count: number };
 
-/** Codicons of each state; "~spin" animates the icon in the status bar */
+/**
+ * Icon of each state in the status bar item, its tooltip and its picker. Emojis carry their own colour (the status
+ * bar cannot colour one codicon), so a failure stands out from a success; running keeps the animated codicon
+ */
 export const STATE_ICONS: Record<RunState, string> = {
-  failed: '$(error)',
-  partial: '$(warning)',
+  failed: '❌',
+  partial: '⚠️',
   running: '$(sync~spin)',
-  queued: '$(clock)',
-  canceled: '$(circle-slash)',
-  succeeded: '$(check)',
+  queued: '⏳',
+  canceled: '🚫',
+  succeeded: '✅',
 };
 
 /**
- * Text of the CI status bar item: "CI  $(error) 1  $(check) 3". Rule STATUSBAR-CI-1: the states go by severity
+ * Text of the CI status bar item: "CI  ❌ 1  ✅ 3". Rule STATUSBAR-CI-1: the states go by severity
  * (as countRunStates returns them) and the canceled runs are left out, since they need nothing from the user.
  * Rule STATUSBAR-CI-2: when only canceled runs exist they are shown, so the item is not empty
  */
@@ -177,15 +259,47 @@ export function ciStatusText(counts: RunCount[]): string {
   return `CI  ${entries.map(({ state, count }) => `${STATE_ICONS[state]} ${count}`).join('  ')}`;
 }
 
+/** "failed", "partially succeeded"… */
+export function runStateLabel(state: RunState): string {
+  return STATE_LABELS[state].toLowerCase();
+}
+
 /** Title line of the CI tooltip: the totals per state, canceled included */
 export function ciTooltipTitle(counts: RunCount[]): string {
   // Rule STATUSBAR-CI-4
-  const totals = counts.map(({ state, count }) => `${count} ${STATE_LABELS[state].toLowerCase()}`).join(' · ');
-  return `CI runs of my pull requests: ${totals}`;
+  const totals = counts.map(({ state, count }) => `${count} ${runStateLabel(state)}`).join(' · ');
+  return `CI runs: ${totals}`;
 }
 
-/** Whether the CI item gets the error background: some run failed (partial ones do not) */
-export function ciHasFailures(counts: RunCount[]): boolean {
-  // Rule STATUSBAR-CI-3
-  return counts.some(({ state }) => state === 'failed');
+/** Colours of the CI item. Only these two backgrounds exist for status bar items; the text takes any theme colour */
+export interface CiItemColors {
+  background?: 'statusBarItem.errorBackground' | 'statusBarItem.warningBackground';
+  /** Id of a colour contributed in package.json */
+  foreground?: string;
+}
+
+/**
+ * Colours of the CI item from the state of the runs of the checked out branch; undefined (no run): none.
+ * Rule STATUSBAR-CI-3: failed and partially succeeded fill the item (red, orange).
+ * Rule STATUSBAR-CI-9: the other states tint its text
+ */
+export function ciItemColors(state: RunState | undefined): CiItemColors {
+  switch (state) {
+    case undefined:
+      return {};
+    // Rule STATUSBAR-CI-3
+    case 'failed':
+      return { background: 'statusBarItem.errorBackground' };
+    case 'partial':
+      return { background: 'statusBarItem.warningBackground' };
+    // Rule STATUSBAR-CI-9
+    case 'running':
+      return { foreground: 'totalflowx.ci.runningForeground' };
+    case 'queued':
+      return { foreground: 'totalflowx.ci.queuedForeground' };
+    case 'succeeded':
+      return { foreground: 'totalflowx.ci.succeededForeground' };
+    case 'canceled':
+      return { foreground: 'totalflowx.ci.canceledForeground' };
+  }
 }
