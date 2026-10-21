@@ -110,14 +110,26 @@ export class PipelineWatcher implements vscode.Disposable {
     };
   }
 
+  /** The links of the PR as Azure DevOps lists them for the user's PRs, else the work items of the list */
+  private workItemIdsOf(pullRequestId: number): number[] {
+    const own = this.myPullRequests.workItemIdsOf(pullRequestId);
+    return own?.length ? own : this.store.workItemIdsOfPullRequest(pullRequestId);
+  }
+
   private async notify(
     finished: FinishedRun,
     records: { newBest: boolean; streak: number } | undefined
   ): Promise<void> {
     const { run } = finished;
     const thresholds = coverageThresholds();
+    const pullRequestId = finished.kind === 'branch' ? undefined : finished.pullRequestId;
+    const title =
+      pullRequestId === undefined
+        ? undefined
+        : this.store.pullRequestTitle(pullRequestId) ?? this.myPullRequests.find(pullRequestId)?.title;
     const { text, warning, hasFailedTests } = finishedRunMessage(run, {
-      subject: finishedRunSubject(finished),
+      subject: finishedRunSubject(finished, title),
+      workItemIds: pullRequestId === undefined ? undefined : this.workItemIdsOf(pullRequestId),
       newBest: records?.newBest,
       streak: records?.streak,
       target: thresholds.target,

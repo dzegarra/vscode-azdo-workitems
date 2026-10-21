@@ -212,7 +212,7 @@ The details of a work item list its **Predecessors** (work items it depends on) 
 
 Next to the state of each active pull request, the card shows the last run of each pipeline validating it (the builds of `refs/pull/<id>/merge`): queued, running with its elapsed time, succeeded, failed or canceled. Clicking a run opens it in Azure DevOps.
 
-The runs of the PRs of your work items and of all your pull requests are followed. While a run is queued or running, only the runs are refreshed every 15 seconds (`totalflowx.pipelines.pollIntervalSeconds`); when none is, new runs (re-runs, new pushes) are looked for every minute (`totalflowx.pipelines.idlePollIntervalSeconds`, 0 to turn it off). A notification tells you when a run finishes (`totalflowx.pipelines.notifyOnFinish`).
+The runs of the PRs of your work items and of all your pull requests are followed. While a run is queued or running, only the runs are refreshed every 15 seconds (`totalflowx.pipelines.pollIntervalSeconds`); when none is, new runs (re-runs, new pushes) are looked for every minute (`totalflowx.pipelines.idlePollIntervalSeconds`, 0 to turn it off). A notification tells you when a run finishes (`totalflowx.pipelines.notifyOnFinish`). It names the pull request by its id and title and ends with the work items linked to it (`Work items: #1234, #5678`); click one to open its Work Item Details panel.
 
 The status bar summarizes the runs of your pull requests even when the view is closed, as `CI` followed by a count per state by severity, e.g. `CI  ❌ 1  ↻ 1  ✅ 2` (order: failed, partially succeeded, running, queued, succeeded).
 
@@ -223,7 +223,7 @@ Besides your pull requests, the item also follows, from the last 24 hours (`tota
 - **AFTER MERGE**: the runs started on the target branch (e.g. develop) by the merge of one of your pull requests, whoever completed it;
 - **RUNS WITHOUT A PULL REQUEST**: the runs you queued by hand on a branch, by branch.
 
-They have their own sections at the end of the tooltip and count in the item, and you are notified when they finish ("Merge of PR 13837 into develop failed: …", "Run on exp/x passed").
+They have their own sections at the end of the tooltip and count in the item, and you are notified when they finish ("Merge of PR 13837 "Fix login" into develop failed: …", "Run on exp/x passed").
 
 ### Why a run failed
 
@@ -237,9 +237,9 @@ Successful runs show how many tests ran and the coverage of the code tested by t
 - `▲` in green when the coverage went up since the previous run of the PR; a decrease is shown without red;
 - click it to open the **Code Coverage** report of the run in Azure DevOps;
 - hover (or focus) it to see the files below the target, least covered first; click one to open it and add the missing tests;
-- your **personal best** and your **streak** of PRs at or above the target are kept, and celebrated in the notification when a run of your PRs ends ("PR 13713 passed: 95 tests, coverage 100% 🏆 · New personal best!").
+- your **personal best** and your **streak** of PRs at or above the target are kept, and celebrated in the notification when a run of your PRs ends ("PR 13713 "Fix login" passed: 95 tests, coverage 100% 🏆. New personal best!").
 
-When a run fails, the notification says why ("PR 13770 failed: 1 test failed (Other User Without Changes Sees Snackbar)").
+When a run fails, the notification says why ("PR 13770 "Fix login" failed: 1 test failed (Other User Without Changes Sees Snackbar)").
 
 ## Pull request notifications
 

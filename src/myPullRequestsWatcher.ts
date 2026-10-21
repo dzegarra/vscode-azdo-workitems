@@ -148,6 +148,14 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
       }));
   }
 
+  /** Work items linked to one of the user's PRs; undefined when the PR or its links are not known */
+  workItemIdsOf(pullRequestId: number): number[] | undefined {
+    return this.data
+      .find(({ pr }) => pr.pullRequestId === pullRequestId)
+      ?.extras.workItems?.map(({ id }) => id)
+      .sort((a, b) => a - b);
+  }
+
   /** The PR as it was in the last check, to act on it */
   find(pullRequestId: number): AuthoredPullRequest | undefined {
     return this.data.find(({ pr }) => pr.pullRequestId === pullRequestId)?.pr;

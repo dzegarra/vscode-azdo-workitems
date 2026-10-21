@@ -3,7 +3,9 @@ import { RunModel } from './pipelines';
 import {
   failedStepOf,
   finishedRunMessage,
+  finishedRunSubject,
   firstErrorLine,
+  openDetailsLink,
   runExtraLines,
   runLabel,
   runText,
@@ -262,9 +264,58 @@ describe('finishedRunMessage', () => {
     });
   });
 
+  it('ends with links to the details of the work items of the PR', () => {
+    expect(finishedRunMessage(ok, { ...context, workItemIds: [1234, 5678] }, NOW).text).toBe(
+      'PR 13713 passed: 95 tests, coverage 87% ▲ +3.2%. Work items: ' +
+        '[#1234](command:totalflowx.openDetails?%5B1234%5D), [#5678](command:totalflowx.openDetails?%5B5678%5D)'
+    );
+    expect(finishedRunMessage(run({ failedStep: 'Lint' }), { ...context, workItemIds: [1234] }, NOW).text).toBe(
+      'PR 13713 failed at Lint. Work items: [#1234](command:totalflowx.openDetails?%5B1234%5D)'
+    );
+  });
+
+  it('does not add a period after the personal records', () => {
+    const { text } = finishedRunMessage(ok, { ...context, newBest: true, workItemIds: [1] }, NOW);
+    expect(text).toContain('New personal best! Work items: ');
+  });
+
+  it('keeps the message as it is without work items', () => {
+    expect(finishedRunMessage(ok, { ...context, workItemIds: [] }, NOW).text).toBe(
+      'PR 13713 passed: 95 tests, coverage 87% ▲ +3.2%.'
+    );
+  });
+
   it('keeps the old message for the other states', () => {
     expect(finishedRunMessage(run({ state: 'canceled' }), context, NOW).text).toBe(
       'PR 13713: User-Interface-PR-Pipeline — Canceled in 34m'
     );
+  });
+});
+
+describe('finishedRunSubject', () => {
+  const ok = run({ state: 'succeeded' });
+
+  it('adds the title of the PR when known', () => {
+    expect(finishedRunSubject({ kind: 'pullRequest', pullRequestId: 13713, run: ok }, 'Fix login')).toBe(
+      'PR 13713 "Fix login"'
+    );
+    expect(finishedRunSubject({ kind: 'pullRequest', pullRequestId: 13713, run: ok })).toBe('PR 13713');
+  });
+
+  it('names the PR of a merge and the target branch', () => {
+    const merge = { kind: 'merge', pullRequestId: 13837, targetBranch: 'develop', run: ok } as const;
+    expect(finishedRunSubject(merge, 'Fix login')).toBe('Merge of PR 13837 "Fix login" into develop');
+    expect(finishedRunSubject(merge)).toBe('Merge of PR 13837 into develop');
+  });
+
+  it('names the branch of a manual run', () => {
+    expect(finishedRunSubject({ kind: 'branch', branch: 'exp/x', run: ok }, 'ignored')).toBe('Run on exp/x');
+  });
+});
+
+describe('openDetailsLink', () => {
+  it('passes the id to the command as a JSON array', () => {
+    const href = /\((.+)\)$/.exec(openDetailsLink(42))?.[1] ?? '';
+    expect(JSON.parse(decodeURIComponent(href.split('?')[1]))).toEqual([42]);
   });
 });

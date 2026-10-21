@@ -180,16 +180,34 @@ export function runTooltip(run: RunModel, now: Date): string {
 
 /* ---------- Notification of a finished run ---------- */
 
-/** What a finished run validated, to start its notification */
-export function finishedRunSubject(finished: FinishedRun): string {
+/** Command that opens the Work Item Details panel; registered in extension.ts */
+const OPEN_DETAILS_COMMAND = 'totalflowx.openDetails';
+
+/**
+ * What a finished run validated, to start its notification. The title of the PR is added when known: the id
+ * alone does not tell which PR it is
+ */
+export function finishedRunSubject(finished: FinishedRun, title?: string): string {
   switch (finished.kind) {
     case 'pullRequest':
-      return `PR ${String(finished.pullRequestId)}`;
-    case 'merge':
-      return `Merge of PR ${String(finished.pullRequestId)} into ${finished.targetBranch}`;
+    case 'merge': {
+      const pr = `PR ${String(finished.pullRequestId)}${title ? ` "${title}"` : ''}`;
+      return finished.kind === 'merge' ? `Merge of ${pr} into ${finished.targetBranch}` : pr;
+    }
     case 'branch':
       return `Run on ${finished.branch}`;
   }
+}
+
+/** Link of a notification that opens the Work Item Details panel of a work item: "[#1234](command:…)" */
+export function openDetailsLink(id: number): string {
+  const args = encodeURIComponent(JSON.stringify([id]));
+  return `[#${String(id)}](command:${OPEN_DETAILS_COMMAND}?${args})`;
+}
+
+/** "Work items: #1234, #5678" with links to their details; empty without work items */
+export function workItemLinks(ids: number[]): string {
+  return ids.length ? `Work items: ${ids.map(openDetailsLink).join(', ')}` : '';
 }
 
 export interface FinishedRunContext {
@@ -202,6 +220,8 @@ export interface FinishedRunContext {
   target: number;
   /** The coverage is at the excellent level */
   excellent?: boolean;
+  /** Work items linked to the PR, listed as links to their details */
+  workItemIds?: number[];
 }
 
 export interface FinishedRunMessage {
@@ -224,8 +244,17 @@ function failureReason(run: RunModel): string {
   return run.failedStep ? `failed at ${run.failedStep}` : 'failed';
 }
 
-/** "PR 13713 passed: 95 tests, coverage 87% ▲ +3.2% 🏆" / "PR 13770 failed: 1 test failed (Name)" */
-export function finishedRunMessage(run: RunModel, context: FinishedRunContext, now = new Date()): FinishedRunMessage {
+/** The message, then the links to the work items of the PR as a last sentence */
+function withWorkItemLinks(message: FinishedRunMessage, ids: number[] | undefined): FinishedRunMessage {
+  const links = workItemLinks(ids ?? []);
+  if (!links) {
+    return message;
+  }
+  const text = /[.!?]$/.test(message.text) ? message.text : `${message.text}.`;
+  return { ...message, text: `${text} ${links}` };
+}
+
+function finishedRunText(run: RunModel, context: FinishedRunContext, now: Date): FinishedRunMessage {
   const pr = context.subject;
   if (run.state === 'succeeded') {
     const details = [
@@ -249,4 +278,12 @@ export function finishedRunMessage(run: RunModel, context: FinishedRunContext, n
     warning: run.state === 'partial',
     hasFailedTests: false,
   };
+}
+
+/**
+ * "PR 13713 "Title" passed: 95 tests, coverage 87% ▲ +3.2% 🏆. Work items: #1234" /
+ * "PR 13770 "Title" failed: 1 test failed (Name). Work items: #1234"
+ */
+export function finishedRunMessage(run: RunModel, context: FinishedRunContext, now = new Date()): FinishedRunMessage {
+  return withWorkItemLinks(finishedRunText(run, context, now), context.workItemIds);
 }

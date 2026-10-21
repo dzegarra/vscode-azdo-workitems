@@ -655,6 +655,20 @@ export class WorkItemsStore {
     return entry && shownState(entry.workItem.state, entry.inReview, settings().showInReviewState);
   }
 
+  /** Title of a PR linked to the work items or followed; undefined when it is not known */
+  pullRequestTitle(pullRequestId: number): string | undefined {
+    return this.pullRequestInfo(pullRequestId).title || undefined;
+  }
+
+  /** Work items of the list and their tasks that are linked to a PR, by id */
+  workItemIdsOfPullRequest(pullRequestId: number): number[] {
+    const ids = this.entries
+      .flatMap((entry) => [entry.workItem, ...entry.otherTasks.map((task) => task.workItem)])
+      .filter((item) => item.links.pullRequests.some((link) => link.id === pullRequestId))
+      .map((item) => item.id);
+    return [...new Set(ids)].sort((a, b) => a - b);
+  }
+
   /** A PR linked to a work item of the list or to one of their tasks, e.g. the ones assigned to other developers */
   findPullRequest(pullRequestId: number): PullRequestDetails | undefined {
     return this.entries
