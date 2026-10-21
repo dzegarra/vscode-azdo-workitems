@@ -10,7 +10,8 @@ export interface ActionMenuAction {
     | 'deleteBranch'
     | 'openPullRequest'
     | 'createBranch'
-    | 'createPullRequest';
+    | 'createPullRequest'
+    | 'linkBranch';
   /** Id sent as `id`: the task or work item, or the parent work item for the create actions */
   id: number;
   /** What the extension resolves the branch from: a task or work item, or the PR of a Checkout button */
@@ -47,6 +48,7 @@ const ACTION_ICONS: Record<ActionMenuAction['action'], { codicon: string; tone: 
   deleteBranch: { codicon: 'trash', tone: 'red' },
   openPullRequest: { codicon: 'git-pull-request', tone: 'green' },
   createPullRequest: { codicon: 'git-pull-request-create', tone: 'green' },
+  linkBranch: { codicon: 'link', tone: 'yellow' },
 };
 
 /** Codicon and colour of an item: by its action; the items that only inform get a grey branch */

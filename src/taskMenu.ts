@@ -14,6 +14,8 @@ export interface TaskMenuTask {
   taskPullRequests: TaskPullRequestModel[];
   canCreateBranch?: boolean;
   canCreatePullRequest?: boolean;
+  /** "Link …" items are offered (see canLinkBranchForTask) */
+  canLinkBranch?: boolean;
 }
 
 export type TaskMenuAction = ActionMenuAction;
@@ -33,8 +35,29 @@ function createPullRequestItems(task: TaskMenuTask, parentId: number): TaskMenuI
   }));
 }
 
-// Rules TASK-MENU-1..5
-export function taskMenuSections(task: TaskMenuTask, parentId: number): TaskMenuSection[] {
+// Rule TASK-MENU-6
+/** "Link to <branch>" per branch of the parent that the task does not have yet, then "Link another branch…" */
+function linkBranchItems(task: TaskMenuTask, parentId: number, parentBranches: string[]): TaskMenuItem[] {
+  if (!task.canLinkBranch) {
+    return [];
+  }
+  const own = new Set(task.taskBranches.map((branch) => branch.name));
+  const act = { action: 'linkBranch' as const, id: parentId, task: task.id };
+  return [
+    ...[...new Set(parentBranches)]
+      .filter((branch) => !own.has(branch))
+      .map((branch) => ({ label: `Link to ${branch}`, detail: `Branch of ${parentId}`, act: { ...act, branch } })),
+    { label: 'Link another branch…', detail: 'A branch of the remote', act },
+  ];
+}
+
+// Rules TASK-MENU-1..6
+/** `parentBranches`: the branches of the parent work item in this repository, the ones the task can be linked to */
+export function taskMenuSections(
+  task: TaskMenuTask,
+  parentId: number,
+  parentBranches: string[] = []
+): TaskMenuSection[] {
   const branchItems = task.taskBranches.flatMap((branch): TaskMenuItem[] => {
     const remove: TaskMenuItem[] = branch.deletable
       ? [
@@ -82,6 +105,7 @@ export function taskMenuSections(task: TaskMenuTask, parentId: number): TaskMenu
     { title: 'Branches', items: branchItems },
     { title: 'Pull requests', items: prItems },
     { title: 'Create', items: createItems },
+    { title: 'Link', items: linkBranchItems(task, parentId, parentBranches) },
   ].filter((section) => section.items.length);
 }
 
@@ -150,7 +174,7 @@ function describePill(task: TaskMenuTask, pr: TaskPullRequestModel | undefined):
 /** The pill of a task row; undefined when there is nothing to show and nothing to do */
 export function taskPill(task: TaskMenuTask): TaskPill | undefined {
   const linked = task.taskBranches.length + task.taskPullRequests.length > 0;
-  if (!linked && !task.canCreateBranch && !task.canCreatePullRequest) {
+  if (!linked && !task.canCreateBranch && !task.canCreatePullRequest && !task.canLinkBranch) {
     return undefined;
   }
   const pullRequest = mostRelevantPullRequest(task.taskPullRequests);

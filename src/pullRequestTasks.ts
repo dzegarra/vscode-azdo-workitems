@@ -174,6 +174,17 @@ export function canCreatePullRequestForTask(input: {
     : !input.pullRequests.some((pr) => pr.status === 'active');
 }
 
+// Rule TASK-ACT-3
+/** "Link …" items of the task pill: open task and its work item known and not finished (a task may get several branches) */
+export function canLinkBranchForTask(input: { taskState: string; parentState: string | undefined }): boolean {
+  return (
+    input.parentState !== undefined &&
+    stateCategory(input.parentState) !== 'done' &&
+    stateCategory(input.parentState) !== 'removed' &&
+    !isTaskClosed(input.taskState)
+  );
+}
+
 // Rule TASK-ACT-1
 /** The "Create branch" button of a task row: open task without branch, and its work item not finished */
 export function canCreateBranchForTask(input: {
@@ -182,13 +193,7 @@ export function canCreateBranchForTask(input: {
   /** Branches linked to the task */
   branches: unknown[];
 }): boolean {
-  return (
-    input.parentState !== undefined &&
-    stateCategory(input.parentState) !== 'done' &&
-    stateCategory(input.parentState) !== 'removed' &&
-    !isTaskClosed(input.taskState) &&
-    input.branches.length === 0
-  );
+  return canLinkBranchForTask(input) && input.branches.length === 0;
 }
 
 // Rule TASK-PR-6

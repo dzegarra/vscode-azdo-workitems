@@ -25,6 +25,9 @@ async function runAction(store: WorkItemsStore, message: WorkItemAction): Promis
       // These work with any work item, including parents / children not assigned to the user
       await vscode.commands.executeCommand(`totalflowx.${message.type}`, message.id);
       return;
+    case 'linkBranchToTask':
+      await vscode.commands.executeCommand('totalflowx.linkBranchToTask', message.id, message.taskId, message.branch);
+      return;
     case 'linkTaskBranch':
       await vscode.commands.executeCommand('totalflowx.linkTaskBranch', message.id, message.branch);
       return;

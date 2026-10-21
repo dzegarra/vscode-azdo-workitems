@@ -131,6 +131,11 @@
         "category": "Totalflow X"
       },
       {
+        "command": "totalflowx.linkBranchToTask",
+        "title": "Link a Branch to a Task",
+        "category": "Totalflow X"
+      },
+      {
         "command": "totalflowx.linkTaskBranch",
         "title": "Link the Branch of a Task to Its Work Item",
         "category": "Totalflow X"

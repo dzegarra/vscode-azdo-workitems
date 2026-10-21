@@ -5,6 +5,7 @@ import {
   TaskBranchContext,
   TaskBranchPullRequest,
   toTaskBranchModels,
+  workItemsMissingBranchLink,
 } from './taskBranches';
 
 const REPO = 'repo-1';
@@ -112,5 +113,21 @@ describe('branchesToVerify', () => {
     expect(
       branchesToVerify([link('a'), link('a'), link('b'), link('c', 'OTHER')], REPO, (name) => name === 'b')
     ).toEqual(['a']);
+  });
+});
+
+describe('workItemsMissingBranchLink', () => {
+  it('lists the task and the work item that do not link the branch of this repository', () => {
+    const task = { id: 11, branches: [link('feature/1-other')] };
+    const parent = { id: 5, branches: [link('feature/1-x')] };
+    expect(workItemsMissingBranchLink('feature/1-x', REPO, [task, parent])).toEqual([11]);
+    expect(workItemsMissingBranchLink('feature/1-y', REPO, [task, parent])).toEqual([11, 5]);
+    expect(workItemsMissingBranchLink('feature/1-other', REPO, [task, parent])).toEqual([5]);
+  });
+
+  it('ignores the links to a branch of the same name in another repository, and compares the ids ignoring case', () => {
+    const parent = { id: 5, branches: [link('feature/1-x', 'repo-2')] };
+    expect(workItemsMissingBranchLink('feature/1-x', REPO, [parent])).toEqual([5]);
+    expect(workItemsMissingBranchLink('feature/1-x', 'REPO-2', [parent])).toEqual([]);
   });
 });

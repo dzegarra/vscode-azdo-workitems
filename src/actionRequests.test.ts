@@ -14,7 +14,7 @@ describe('taskActionsRequest', () => {
   it('is titled with the task and offers its actions', () => {
     const request = taskActionsRequest(
       { id: 11, title: 'Fix it', taskBranches: [], taskPullRequests: [], canCreateBranch: true },
-      5
+      { id: 5, branches: [] }
     );
     expect(request?.title).toBe('Task 11 · Fix it');
     expect(request?.sections).toEqual([
@@ -26,7 +26,9 @@ describe('taskActionsRequest', () => {
   });
 
   it('is nothing when there is nothing to choose', () => {
-    expect(taskActionsRequest({ id: 11, title: 'Fix it', taskBranches: [], taskPullRequests: [] }, 5)).toBeUndefined();
+    expect(
+      taskActionsRequest({ id: 11, title: 'Fix it', taskBranches: [], taskPullRequests: [] }, { id: 5, branches: [] })
+    ).toBeUndefined();
   });
 });
 

@@ -25,7 +25,13 @@ import { listWorktrees } from './worktreeGit';
 import { findWorktree, otherWorktreeBranches, Worktree } from './worktrees';
 import { taskWorkingOn, WorkingOnLevel, workingOnLevels } from './workingOn';
 import { realpathSync } from 'node:fs';
-import { canCreateBranchForTask, canCreatePullRequestForTask, isInReview, shownState } from './pullRequestTasks';
+import {
+  canCreateBranchForTask,
+  canCreatePullRequestForTask,
+  canLinkBranchForTask,
+  isInReview,
+  shownState,
+} from './pullRequestTasks';
 import { parsePriority, PRIORITY_FIELD, SEVERITY_FIELD } from './priority';
 import {
   AlertDuplicate,
@@ -1003,6 +1009,9 @@ export class WorkItemsStore {
           pullRequests,
           branches: taskBranches,
         }),
+      canLinkBranch:
+        workItem.type === 'Task' &&
+        canLinkBranchForTask({ taskState: workItem.state, parentState: this.parentState(workItem) }),
       otherTasks: otherTasks.map(({ workItem: task, pullRequests: taskPullRequests }) => {
         const otherBranches = this.taskBranches(task, taskPullRequests, currentBranch);
         return {
@@ -1025,6 +1034,7 @@ export class WorkItemsStore {
             pullRequests: taskPullRequests,
             branches: otherBranches,
           }),
+          canLinkBranch: canLinkBranchForTask({ taskState: task.state, parentState: workItem.state }),
         };
       }),
     };

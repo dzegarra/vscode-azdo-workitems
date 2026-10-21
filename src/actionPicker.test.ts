@@ -49,6 +49,22 @@ describe('actionToMessage', () => {
     expect(actionToMessage(act({ action: 'createPullRequest' }))).toEqual({ type: 'createPullRequest', id: 7 });
   });
 
+  it('links a branch to a task, named or to pick, never without the task', () => {
+    expect(actionToMessage(act({ action: 'linkBranch', task: 9, branch: 'b' }))).toEqual({
+      type: 'linkBranchToTask',
+      id: 7,
+      taskId: 9,
+      branch: 'b',
+    });
+    expect(actionToMessage(act({ action: 'linkBranch', task: 9 }))).toEqual({
+      type: 'linkBranchToTask',
+      id: 7,
+      taskId: 9,
+    });
+    expect(actionToMessage(act({ action: 'linkBranch', branch: 'b' }))).toBeUndefined();
+    expect(actionToMessage({ action: 'linkBranch', id: 7, task: 9, branch: 3 })).toBeUndefined();
+  });
+
   it('ignores actions that are not on the list', () => {
     for (const action of ['refresh', 'openFile', 'checkout', 'setFilter', 'constructor', '', undefined, 3]) {
       expect(actionToMessage({ action, id: 7, kind: 'workItem', branch: 'b', pr: 3 })).toBeUndefined();

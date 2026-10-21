@@ -19,12 +19,13 @@ function withActions(title: string, sections: ActionMenuSection[]): ActionsReque
   return hasPickerActions(sections) ? { title, sections } : undefined;
 }
 
-/** The pill of a task row */
+/** The pill of a task row; `parent`: its card, whose branches of this repository the task can be linked to */
 export function taskActionsRequest(
   task: TaskMenuTask & { title: string },
-  parentId: number
+  parent: Pick<WorkItemModel, 'id' | 'branches'>
 ): ActionsRequest | undefined {
-  return withActions(`Task ${task.id} · ${task.title}`, taskMenuSections(task, parentId));
+  const parentBranches = parent.branches.filter((branch) => !branch.otherRepository).map((branch) => branch.name);
+  return withActions(`Task ${task.id} · ${task.title}`, taskMenuSections(task, parent.id, parentBranches));
 }
 
 type BranchesOfCard = Pick<WorkItemModel, 'id' | 'branch' | 'branches' | 'worktree' | 'deletableBranches'>;

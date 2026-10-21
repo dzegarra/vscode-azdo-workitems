@@ -121,11 +121,41 @@ describe('taskMenuSections', () => {
   it('is empty for a finished task', () => {
     expect(taskMenuSections(task(), 5)).toEqual([]);
   });
+
+  it('links to the branches of the work item that the task does not have, then to another branch, last', () => {
+    const open = task({
+      canLinkBranch: true,
+      canCreateBranch: true,
+      taskBranches: [branch({ name: 'feature/1-own' })],
+    });
+    const sections = taskMenuSections(open, 5, ['feature/1-x', 'feature/1-own', 'feature/1-x']);
+    expect(sections.map((section) => section.title)).toEqual(['Branches', 'Create', 'Link']);
+    expect(sections.at(-1)?.items).toEqual([
+      {
+        label: 'Link to feature/1-x',
+        detail: 'Branch of 5',
+        act: { action: 'linkBranch', id: 5, task: 11, branch: 'feature/1-x' },
+      },
+      {
+        label: 'Link another branch…',
+        detail: 'A branch of the remote',
+        act: { action: 'linkBranch', id: 5, task: 11 },
+      },
+    ]);
+  });
+
+  it('offers no link for a task that cannot get one', () => {
+    expect(taskMenuSections(task(), 5, ['feature/1-x'])).toEqual([]);
+  });
 });
 
 describe('taskPill', () => {
   it('has no pill when nothing is linked and nothing can be created', () => {
     expect(taskPill(task())).toBeUndefined();
+  });
+
+  it('is the dim "+" pill of an empty task that can only be linked', () => {
+    expect(taskPill(task({ canLinkBranch: true }))).toMatchObject({ empty: true, branches: 0 });
   });
 
   it('is the dim "+" pill of an empty task that can get a branch', () => {

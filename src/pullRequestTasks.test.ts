@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canCreatePullRequestForTask,
   canCreateBranchForTask,
+  canLinkBranchForTask,
   chooseTaskBranch,
   isInReview,
   shownState,
@@ -201,6 +202,23 @@ describe('canCreateBranchForTask', () => {
     expect(canCreateBranchForTask({ ...base, taskState: 'Removed' })).toBe(false);
     expect(canCreateBranchForTask({ ...base, parentState: 'Done' })).toBe(false);
     expect(canCreateBranchForTask({ ...base, parentState: undefined })).toBe(false);
+  });
+});
+
+describe('canLinkBranchForTask', () => {
+  const base = { taskState: 'In Progress', parentState: 'Committed' };
+
+  it('is offered for open tasks of open work items', () => {
+    expect(canLinkBranchForTask(base)).toBe(true);
+    expect(canLinkBranchForTask({ ...base, taskState: 'To Do' })).toBe(true);
+  });
+
+  it('is not offered for closed tasks or finished or unknown work items', () => {
+    expect(canLinkBranchForTask({ ...base, taskState: 'Done' })).toBe(false);
+    expect(canLinkBranchForTask({ ...base, taskState: 'Removed' })).toBe(false);
+    expect(canLinkBranchForTask({ ...base, parentState: 'Done' })).toBe(false);
+    expect(canLinkBranchForTask({ ...base, parentState: 'Removed' })).toBe(false);
+    expect(canLinkBranchForTask({ ...base, parentState: undefined })).toBe(false);
   });
 });
 

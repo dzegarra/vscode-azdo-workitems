@@ -52,6 +52,8 @@ export interface OtherTaskModel {
   canCreateBranch?: boolean;
   /** The "Create PR" button of the task row is offered (see canCreatePullRequestForTask) */
   canCreatePullRequest?: boolean;
+  /** The "Link …" items of the task pill are offered (see canLinkBranchForTask) */
+  canLinkBranch?: boolean;
 }
 
 /** A git branch of a work item (see workItemBranches.ts) */
@@ -109,6 +111,8 @@ export interface WorkItemModel {
   canCreateBranch?: boolean;
   /** Tasks only: the "Create PR" button of the task row is offered (see canCreatePullRequestForTask) */
   canCreatePullRequest?: boolean;
+  /** Tasks only: the "Link …" items of the task pill are offered (see canLinkBranchForTask) */
+  canLinkBranch?: boolean;
   /**
    * Tasks under the work item that are not in the list (assigned to other developers or in other iterations),
    * shown with the tasks of the list
@@ -255,6 +259,7 @@ export type WebviewMessage =
         | 'createPullRequest'
         | 'deleteBranch'
         | 'fillIntegrationBuild'
+        | 'linkBranchToTask'
         | 'linkTaskBranch'
         | 'linkTaskPullRequest'
         | 'openDependencyMap'
@@ -267,9 +272,12 @@ export type WebviewMessage =
       runId?: number;
       /** openRun: show this tab of the run (its tests, its coverage) instead of its summary */
       view?: RunView;
-      /** checkout: a branch of the work item other than its main one; linkTaskBranch: the branch of a task to link */
+      /**
+       * checkout: a branch of the work item other than its main one; linkTaskBranch: the branch of a task to link;
+       * linkBranchToTask: the branch to link to the task (none: the user picks one)
+       */
       branch?: string;
-      /** createBranch / createPullRequest from a task row: `id` is the parent work item, this the task */
+      /** createBranch / createPullRequest / linkBranchToTask from a task row: `id` is the parent work item, this the task */
       taskId?: number;
     }
   | { type: 'openFile'; path: string }

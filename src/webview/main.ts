@@ -2551,7 +2551,7 @@ function showTaskActions(taskId: number, parentId: number, byPointer: boolean): 
   const children = model.workItems.filter((child) => child.parentId === parentId);
   const task = parent && taskRowsOf(children, parent, model.stateOrder).find((row) => row.id === taskId);
   if (task) {
-    showActions(taskActionsRequest(task, parentId));
+    showActions(taskActionsRequest(task, parent));
   }
 }
 

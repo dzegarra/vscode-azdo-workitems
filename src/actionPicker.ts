@@ -82,6 +82,9 @@ export function actionToMessage(act: unknown): WebviewMessage | undefined {
       return { type: 'createBranch', id, ...optionalFields(act) };
     case 'createPullRequest':
       return { type: 'createPullRequest', id, ...optionalFields(act) };
+    case 'linkBranch':
+      // Always from a task row: the task is the one to link
+      return isId(act.task) ? { type: 'linkBranchToTask', id, ...optionalFields(act) } : undefined;
     default:
       return undefined;
   }

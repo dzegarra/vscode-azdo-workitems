@@ -160,3 +160,21 @@ export function describeTaskBranch(branch: Pick<TaskBranchModel, 'state' | 'wher
       return `in another repository${branch.repository ? ` (${branch.repository})` : ''}`;
   }
 }
+
+// Rule TASK-LINK-1
+/**
+ * Work items that do not link the branch yet, among the task and its parent: a branch linked to a task is linked to its
+ * work item too, so the alert "Branch … of task … is not linked to this work item" (ALERT-2) never follows
+ */
+export function workItemsMissingBranchLink(
+  branch: string,
+  repositoryId: string,
+  workItems: { id: number; branches: TaskBranchLink[] }[]
+): number[] {
+  return workItems
+    .filter(
+      (workItem) =>
+        !workItem.branches.some((link) => link.name === branch && !isOtherRepository(link.repositoryId, repositoryId))
+    )
+    .map((workItem) => workItem.id);
+}
