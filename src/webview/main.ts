@@ -23,6 +23,7 @@ import {
 import { RunModel, RunState } from '../pipelines';
 import { runLabel, runTooltip, RunView, runViewUrl } from '../runDetails';
 import { fixesBugsText, type FixLink } from '../fixLinks';
+import { DUPLICATES, duplicateFilterValue, type DuplicateLink } from '../duplicates';
 import { completionIssueCount, completionIssueLines } from '../completionIssues';
 import { NONE_OPEN, OPEN_PREDECESSORS, predecessorFilterValue, type OpenPredecessor } from '../predecessors';
 import { RISK_DESCRIPTIONS } from '../schedule';
@@ -110,7 +111,7 @@ interface SavedState {
 }
 declare function acquireVsCodeApi(): VsCodeApi;
 
-type FilterKind = 'predecessor' | 'priority' | 'pullRequest' | 'state' | 'type';
+type FilterKind = 'duplicate' | 'predecessor' | 'priority' | 'pullRequest' | 'state' | 'type';
 
 const vscode = acquireVsCodeApi();
 /** Toggling several chips quickly saves the filter only once */
@@ -240,6 +241,7 @@ function renderFilters(current: ViewModel): string {
     workItems.filter((item) => predecessorFilterValue(item) !== undefined),
     (item) => predecessorFilterValue(item) ?? NONE_OPEN
   );
+  const duplicates = workItems.filter((item) => duplicateFilterValue(item) !== undefined).length;
   // P1 … P4, then the work items without priority
   const sortedPriorities = [...priorities.keys()].sort(
     (a, b) => Number(a === NO_PRIORITY) - Number(b === NO_PRIORITY) || a.localeCompare(b)
@@ -305,6 +307,15 @@ function renderFilters(current: ViewModel): string {
               )
             )
         )
+      : '',
+    // Only when some work item is a duplicate: hiding them is the only choice
+    duplicates
+      ? filterRow('Dups', [
+          chip('duplicate', DUPLICATES, duplicates, !filter.hiddenDuplicates.includes(DUPLICATES), {
+            marker: icon('duplicate'),
+            colorClass: 'chip-duplicate',
+          }),
+        ])
       : '',
   ].join('');
 }
@@ -543,6 +554,39 @@ function renderFixLinks(item: WorkItemModel): string {
     )}<span class="fix-text">Fixed by</span>${backlogItems.join('')}</div>`;
   }
   return '';
+}
+
+/** A duplicate link: its ID (opening its details), a dot with its state and, in the tooltip, its iteration */
+function duplicateLinkItem(link: DuplicateLink): string {
+  return `<span class="fix-item${fixLinkClass(link)}"><button class="link id${typeIdClass(
+    link.type
+  )}" data-action="openDetails" data-id="${link.id}" title="${escapeHtml(
+    `#${link.id} ${link.state} · ${link.iterationName ?? 'not planned'} · ${link.title}`
+  )}">#${link.id}</button><span class="fix-dot state-${link.stateCategory}" title="${escapeHtml(
+    link.state
+  )}" role="img" aria-label="${escapeHtml(link.state)}"></span></span>`;
+}
+
+/** Large card: a duplicate shows its original, an original the work items duplicating it */
+function renderDuplicateLinks(item: WorkItemModel): string {
+  if (item.duplicateOf?.length) {
+    return `<div class="row fix-row dup-row">${icon(
+      'duplicate'
+    )}<span class="fix-text">Duplicate of</span>${item.duplicateOf.map(duplicateLinkItem).join('')}</div>`;
+  }
+  if (item.duplicates?.length) {
+    return `<div class="row fix-row dup-row">${icon(
+      'duplicate'
+    )}<span class="fix-text">Duplicated by</span>${item.duplicates.map(duplicateLinkItem).join('')}</div>`;
+  }
+  return '';
+}
+
+/**
+ * Duplicates are toned down (the work is tracked on the original), unless they break a rule: alerts must stand out
+ */
+function duplicateClass(item: WorkItemModel): string {
+  return item.duplicateOf?.length && !item.alerts.length ? 'is-duplicate' : '';
 }
 
 const BRANCH_ACTION_BUTTONS: Record<BranchAction, { label: string; className: string; title: string }> = {
@@ -842,6 +886,9 @@ function renderAlerts(item: WorkItemModel): string {
       )}" title="Add ${escapeHtml(alert.branch)} to the Development section of ${item.id}">Link branch</button>`;
     } else if (alert.action === 'linkTaskPullRequest' && alert.pullRequestId) {
       fix = ` <button class="link" data-action="linkTaskPullRequest" data-id="${item.id}" data-pr="${alert.pullRequestId}" title="Add PR ${alert.pullRequestId} to the links of ${item.id}">Link PR</button>`;
+    } else if (alert.duplicateId) {
+      // Rule ALERT-FIX-6: which side to change is the developers' call, so it only opens the other one
+      fix = ` <button class="link" data-action="openDetails" data-id="${alert.duplicateId}" title="Open the Work Item Details panel of ${alert.duplicateId}">Open</button>`;
     } else if (alert.action === 'fillIntegrationBuild') {
       fix = ` <button class="link" data-action="fillIntegrationBuild" data-id="${item.id}" title="Use the last release of the deploy image">Fill</button>`;
     } else if (alert.relatedId) {
@@ -923,6 +970,7 @@ function renderCard(item: WorkItemModel, children: TaskRow[], visibleIds: Set<nu
     `state-border-${stateCategory(item.displayState)}`,
     workingOnClass(item),
     item.alerts.length ? 'has-alerts' : '',
+    duplicateClass(item),
   ].join(' ');
   const fold = foldable
     ? `<button class="card-chevron" data-action="toggleCard" data-id="${item.id}" aria-expanded="true"
@@ -947,6 +995,7 @@ function renderCard(item: WorkItemModel, children: TaskRow[], visibleIds: Set<nu
     ${renderBranchList(item)}
     ${item.pullRequests.map((pr) => renderPullRequest(item, pr)).join('')}
     ${renderFixLinks(item)}
+    ${renderDuplicateLinks(item)}
     ${renderActions(item)}
     ${renderTasks(item, children)}
   </article>`;
@@ -969,6 +1018,9 @@ function signalMarker(signal: CompactSignal, item: WorkItemModel): string {
       return icon('bug');
     case 'fixedBy':
       return icon('book');
+    case 'duplicateOf':
+    case 'duplicates':
+      return icon('duplicate');
     case 'workingOn':
       return `<span class="working-glyph" aria-hidden="true">${workingOnBadge(item.workingOn ?? 'here').glyph}</span>`;
     case 'pullRequest':
@@ -1005,6 +1057,8 @@ function renderSignal(signal: CompactSignal, item: WorkItemModel): string {
       }</span>`;
     case 'alerts':
     case 'branch':
+    case 'duplicateOf':
+    case 'duplicates':
     case 'fixedBy':
     case 'fixesBugs':
     case 'pullRequest':
@@ -1025,6 +1079,7 @@ function renderCompactCard(item: WorkItemModel, children: TaskRow[]): string {
     `state-border-${stateCategory(item.displayState)}`,
     workingOnClass(item),
     item.alerts.length ? 'has-alerts' : '',
+    duplicateClass(item),
   ].join(' ');
   const signals = compactSignals(item, children).map((signal) => renderSignal(signal, item));
   return `<article class="${classes}" data-card="${item.id}" data-action="toggleCard" data-id="${item.id}">
@@ -2262,6 +2317,8 @@ function toggleFilter(kind: FilterKind, value: string): void {
     filter.hiddenPriorities = toggle(filter.hiddenPriorities, value);
   } else if (kind === 'predecessor') {
     filter.hiddenPredecessorStates = toggle(filter.hiddenPredecessorStates, value);
+  } else if (kind === 'duplicate') {
+    filter.hiddenDuplicates = toggle(filter.hiddenDuplicates, value);
   } else {
     filter.hiddenPullRequestStates = toggle(filter.hiddenPullRequestStates, value);
   }

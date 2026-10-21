@@ -8,6 +8,7 @@ const NONE: FilterModel = {
   hiddenPullRequestStates: [],
   hiddenPriorities: [],
   hiddenPredecessorStates: [],
+  hiddenDuplicates: [],
 };
 
 const items = [
@@ -31,6 +32,12 @@ describe('activeFilterCount', () => {
     expect(activeFilterCount({ ...NONE, hiddenPullRequestStates: [NO_PULL_REQUEST] }, items)).toBe(1);
     expect(activeFilterCount({ ...NONE, hiddenPriorities: ['P1', NO_PRIORITY] }, items)).toBe(2);
     expect(activeFilterCount({ ...NONE, hiddenPredecessorStates: ['Incomplete predecessors'] }, items)).toBe(1);
+  });
+
+  it('counts the hidden duplicates only when some work item is a duplicate', () => {
+    const hidden = { ...NONE, hiddenDuplicates: ['Duplicates'] };
+    expect(activeFilterCount(hidden, items)).toBe(0);
+    expect(activeFilterCount(hidden, [...items, { ...items[0], duplicateOf: [{}] }])).toBe(1);
   });
 
   it('adds up all the kinds', () => {

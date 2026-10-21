@@ -81,6 +81,46 @@ export function tasksToStart(tasks: PullRequestTaskRef[], pullRequestId: number)
   );
 }
 
+export interface LinkedPullRequest {
+  id: number;
+  status: string;
+  isDraft: boolean;
+  /** Azure DevOps id of the person who created it */
+  authorId?: string;
+}
+
+/** Key of a task moved (or tried) because of a PR */
+export function startedTaskKey(taskId: number, pullRequestId: number): string {
+  return `${taskId}:${pullRequestId}`;
+}
+
+// Rule TASK-PR-8
+/**
+ * Tasks to move to In Progress because a PR of the user they are linked to is published (active, not draft), however
+ * it was published (in Azure DevOps too, or created published elsewhere). Done / Removed tasks are left to the alert
+ * (ALERT-4). Each task once, with its first such PR; `tried`: the "<task>:<PR>" pairs already moved or attempted
+ */
+export function tasksOfPublishedPullRequests(
+  tasks: PullRequestTaskRef[],
+  pullRequests: LinkedPullRequest[],
+  myId: string,
+  tried: ReadonlySet<string> = new Set()
+): { pullRequestId: number; tasks: PullRequestTaskRef[] }[] {
+  const published = pullRequests.filter(
+    (pr) => pr.status === 'active' && !pr.isDraft && pr.authorId?.toLowerCase() === myId.toLowerCase()
+  );
+  const taken = new Set<number>();
+  return published
+    .map((pr) => {
+      const toStart = tasksToStart(tasks, pr.id).filter(
+        (task) => !taken.has(task.id) && !tried.has(startedTaskKey(task.id, pr.id))
+      );
+      toStart.forEach((task) => taken.add(task.id));
+      return { pullRequestId: pr.id, tasks: toStart };
+    })
+    .filter((entry) => entry.tasks.length);
+}
+
 // Rule TASK-PR-5
 /** Tasks of the PR to offer to set Done once the PR is completed */
 export function tasksToComplete(tasks: PullRequestTaskRef[], pullRequestId: number): PullRequestTaskRef[] {
@@ -202,6 +242,12 @@ export function completedPullRequestPrompt(pullRequestId: number, tasks: { id: n
   }
   const question = `PR ${pullRequestId} completed. Set its ${listTasks(tasks)} to ${TASK_DONE}?`;
   return branch ? `${question} The branch ${branch} can be deleted.` : question;
+}
+
+/** Info message once the tasks of PRs published elsewhere were moved */
+export function startedTasksMessage(started: { pullRequestId: number; tasks: { id: number }[] }[]): string {
+  const parts = started.map(({ pullRequestId, tasks }) => `${listTasks(tasks)} of PR ${pullRequestId}`);
+  return `PR published: ${parts.join(', ')} moved to ${TASK_IN_PROGRESS}.`;
 }
 
 /** Info message after publishing */

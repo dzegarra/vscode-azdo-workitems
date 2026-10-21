@@ -2,7 +2,8 @@
 import { normalizeState, stateCategory } from './states';
 
 export type AlertRule =
-  | 'blockingTag'
+  | 'duplicateNotPlannedTogether'
+  | 'duplicateStateNotInSync'
   | 'missingField'
   | 'noPullRequestTask'
   | 'pullRequestTaskNotDone'
@@ -24,6 +25,8 @@ export interface WorkItemAlert {
   action?: 'fillIntegrationBuild' | 'linkTaskBranch' | 'linkTaskPullRequest';
   /** Branch the alert is about, for "taskBranchNotLinked" */
   branch?: string;
+  /** The original or the duplicate the alert is about, for the duplicate rules (offers to open it) */
+  duplicateId?: number;
 }
 
 export interface AlertTask {
@@ -34,6 +37,21 @@ export interface AlertTask {
   pullRequestIds: number[];
   /** Names of the branches of this repository linked to the task */
   branches?: string[];
+}
+
+/** Iteration of a work item: its path, and the name to show (undefined: not planned) */
+export interface AlertIteration {
+  path: string;
+  name?: string;
+}
+
+/** An original of the work item, or a work item duplicating it */
+export interface AlertDuplicate {
+  id: number;
+  state: string;
+  iteration: AlertIteration;
+  /** "original": the work item is a duplicate of this one; "duplicate": this one duplicates the work item */
+  role: 'duplicate' | 'original';
 }
 
 export interface AlertPullRequest {
@@ -56,6 +74,9 @@ export interface AlertInput {
   linkedPullRequestIds: number[];
   /** Ids of the abandoned PRs among the ones of its tasks */
   abandonedPullRequestIds?: number[];
+  iteration?: AlertIteration;
+  /** Its originals and its duplicates that could be loaded (the unknown ones say nothing) */
+  duplicates?: AlertDuplicate[];
 }
 
 export interface RequiredFieldsRule {
@@ -247,22 +268,6 @@ function pullRequestAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[
     .filter((alert): alert is WorkItemAlert => !!alert);
 }
 
-// Rule ALERT-6
-function tagAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {
-  if (stateCategory(input.state) === 'proposed') {
-    return [];
-  }
-  const found = matchBlockingTags(input.tags, rules.blockingTags);
-  return found.length
-    ? [
-        {
-          rule: 'blockingTag',
-          message: `Started while tagged ${found.map((tag) => `"${tag}"`).join(', ')}`,
-        },
-      ]
-    : [];
-}
-
 // Rule ALERT-7
 function fieldAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {
   return emptyRequiredFields(rules.requiredFields, input).map((field) => ({
@@ -270,6 +275,38 @@ function fieldAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {
     message: `"${field.name}" is empty`,
     field: field.referenceName,
   }));
+}
+
+function whereIs(iteration: AlertIteration): string {
+  return iteration.name ? `in ${iteration.name}` : 'not planned';
+}
+
+// Rules ALERT-9, ALERT-10
+/**
+ * A duplicate and its original are planned in the same iteration and are in the same state (compared like STATE-1,
+ * the real state, not the "In review" shown one). Each side of the pair gets the alert
+ */
+function duplicateAlerts(input: AlertInput): WorkItemAlert[] {
+  const { iteration } = input;
+  return (input.duplicates ?? []).flatMap((other) => {
+    const label = `its ${other.role} #${other.id}`;
+    const alerts: WorkItemAlert[] = [];
+    if (iteration && other.iteration.path !== iteration.path) {
+      alerts.push({
+        rule: 'duplicateNotPlannedTogether',
+        message: `Not planned with ${label}: it is ${whereIs(other.iteration)}, this one ${whereIs(iteration)}`,
+        duplicateId: other.id,
+      });
+    }
+    if (normalizeState(other.state) !== normalizeState(input.state)) {
+      alerts.push({
+        rule: 'duplicateStateNotInSync',
+        message: `Is ${input.state} but ${label} is ${other.state} (should be the same state)`,
+        duplicateId: other.id,
+      });
+    }
+    return alerts;
+  });
 }
 
 // Rule ALERT-GATE-2
@@ -282,8 +319,8 @@ export function findAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[
     ...taskBranchAlerts(input),
     ...taskPullRequestAlerts(input),
     ...pullRequestAlerts(input, rules),
-    ...tagAlerts(input, rules),
     ...fieldAlerts(input, rules),
+    ...duplicateAlerts(input),
   ];
 }
 

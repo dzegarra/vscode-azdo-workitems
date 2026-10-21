@@ -4,6 +4,7 @@
  */
 import type { ActionMenuSection } from './actionMenu';
 import type { WorkItemAlert } from './alerts';
+import { duplicateFilterValue, type DuplicateLink } from './duplicates';
 import type { FixLink } from './fixLinks';
 import { OpenPredecessor, predecessorFilterValue } from './predecessors';
 import { priorityFilterValue } from './priority';
@@ -126,6 +127,10 @@ export interface WorkItemModel {
   fixesBugs?: FixLink[];
   /** Bugs only: the Backlog Items that fix them (predecessors). Undefined: not applicable or unknown */
   fixedBy?: FixLink[];
+  /** The original it duplicates ("Duplicate Of"). Undefined: unknown */
+  duplicateOf?: DuplicateLink[];
+  /** The work items duplicating it. Undefined: unknown */
+  duplicates?: DuplicateLink[];
 }
 
 /** "task": a branch linked to a task, from the icons of its row (`id` is the task) */
@@ -148,6 +153,8 @@ export interface FilterModel {
   hiddenPriorities: string[];
   /** Predecessor states hidden: "Incomplete predecessors" or "Complete predecessors" */
   hiddenPredecessorStates: string[];
+  /** "Duplicates": the work items that duplicate another one are hidden */
+  hiddenDuplicates: string[];
 }
 
 /** totalflowx.layout: compact rows (2 lines) or the large cards */
@@ -345,7 +352,14 @@ function sameValues(a: string[], b: string[]): boolean {
 /** Keys of the filter whose values differ (the order of the values does not matter) */
 export function changedFilterKeys(a: FilterModel, b: FilterModel): (keyof FilterModel)[] {
   return (
-    ['types', 'hiddenStates', 'hiddenPullRequestStates', 'hiddenPriorities', 'hiddenPredecessorStates'] as const
+    [
+      'types',
+      'hiddenStates',
+      'hiddenPullRequestStates',
+      'hiddenPriorities',
+      'hiddenPredecessorStates',
+      'hiddenDuplicates',
+    ] as const
   ).filter((key) => !sameValues(a[key], b[key]));
 }
 
@@ -362,10 +376,10 @@ export function pullRequestFilterValue(item: Pick<WorkItemModel, 'pullRequests'>
   return item.pullRequests.at(0)?.status ?? NO_PULL_REQUEST;
 }
 
-// Rules FILTER-1..6, ALERT-SHOW-3, WORKON-4
+// Rules FILTER-1..6, FILTER-8, ALERT-SHOW-3, WORKON-4
 /**
- * True when the work item passes the type / state / PR / priority / predecessors filters and matches the search text.
- * With "alwaysShowAlerts", work items with alerts skip the state / PR / priority / predecessors filters: they must be fixed
+ * True when the work item passes the type / state / PR / priority / predecessors / duplicates filters and matches the
+ * search text. With "alwaysShowAlerts", work items with alerts skip the state / PR / priority / predecessors / duplicates filters: they must be fixed
  * ASAP, e.g. a "Done" work item with open tasks would be hidden by the default "Done" filter. With "workingOnIgnoresFilters",
  * so do the ones being worked on (workingOn.ignoreFilters)
  */
@@ -376,6 +390,7 @@ export function isVisible(
     workingOn?: WorkingOnLevel;
     priority?: number;
     openPredecessors?: unknown[];
+    duplicateOf?: unknown[];
   },
   filter: FilterModel,
   text = '',
@@ -400,6 +415,10 @@ export function isVisible(
   if (!hasAlerts && predecessors !== undefined && filter.hiddenPredecessorStates.includes(predecessors)) {
     return false;
   }
+  const duplicate = duplicateFilterValue(item);
+  if (!hasAlerts && duplicate !== undefined && filter.hiddenDuplicates.includes(duplicate)) {
+    return false;
+  }
   const query = text.trim().toLowerCase();
   return (
     !query || [String(item.id), item.title, item.branch ?? ''].some((value) => value.toLowerCase().includes(query))
@@ -409,12 +428,13 @@ export function isVisible(
 type FilterableItem = Pick<WorkItemModel, 'pullRequests' | 'state' | 'type'> & { displayState?: string } & {
   priority?: number;
   openPredecessors?: unknown[];
+  duplicateOf?: unknown[];
 };
 
 // Rule FILTER-7
 /**
- * Filter values hiding something among the given work items: types left out, and states, PR states, priorities and
- * predecessor states hidden. Values no work item has are not counted: they have no chip to switch back on
+ * Filter values hiding something among the given work items: types left out, and states, PR states, priorities,
+ * predecessor states and duplicates hidden. Values no work item has are not counted: they have no chip to switch back on
  */
 export function activeFilterCount(filter: FilterModel, workItems: FilterableItem[]): number {
   const present = (key: (item: FilterableItem) => string | undefined): Set<string> => {
@@ -435,7 +455,8 @@ export function activeFilterCount(filter: FilterModel, workItems: FilterableItem
     hiddenAmong(present(shownStateOf), filter.hiddenStates) +
     hiddenAmong(present(pullRequestFilterValue), filter.hiddenPullRequestStates) +
     hiddenAmong(present(priorityFilterValue), filter.hiddenPriorities) +
-    hiddenAmong(present(predecessorFilterValue), filter.hiddenPredecessorStates)
+    hiddenAmong(present(predecessorFilterValue), filter.hiddenPredecessorStates) +
+    hiddenAmong(present(duplicateFilterValue), filter.hiddenDuplicates)
   );
 }
 

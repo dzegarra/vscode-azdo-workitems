@@ -224,6 +224,7 @@ describe('compactSignals', () => {
         severity: '3 - Medium',
         branch: 'f',
         openPredecessors: [{ id: 5, title: 'T', type: 'Bug', state: 'New' }],
+        duplicateOf: [{ id: 9, title: 'O', type: 'Bug', state: 'New', stateCategory: 'proposed' }],
         pullRequests: [pr([run('running')])],
         alerts: [{ rule: 'missingField', message: 'x' }] as WorkItemModel['alerts'],
       }),
@@ -234,6 +235,7 @@ describe('compactSignals', () => {
       'priority',
       'severity',
       'completion',
+      'duplicateOf',
       'branch',
       'pullRequest',
       'ci',
@@ -288,6 +290,34 @@ describe('compactSignals', () => {
     ]);
     expect(compactSignals(item({ type: 'Bug', fixedBy: [link(1), link(2)] }), [], NOW)[0].label).toBe('2');
     expect(compactSignals(item({ fixesBugs: [], fixedBy: [] }), [], NOW)).toEqual([]);
+  });
+
+  it('signals the original of a duplicate and the duplicates of an original', () => {
+    const link = (id: number, iterationName?: string) => ({
+      id,
+      title: `t${id}`,
+      type: 'Bug',
+      state: 'New',
+      stateCategory: 'proposed' as const,
+      iterationName,
+    });
+    expect(compactSignals(item({ duplicateOf: [link(66120, 'Sprint 122')] }), [], NOW)).toEqual([
+      {
+        kind: 'duplicateOf',
+        label: '66120',
+        title: 'Duplicate of\n#66120 New · Sprint 122 · t66120',
+        tone: 'duplicate',
+      },
+    ]);
+    expect(compactSignals(item({ duplicates: [link(1, 'Sprint 122'), link(2)] }), [], NOW)).toEqual([
+      {
+        kind: 'duplicates',
+        label: '2',
+        title: 'Duplicated by 2 work items\n#1 New · Sprint 122 · t1\n#2 New · not planned · t2',
+        tone: 'duplicate',
+      },
+    ]);
+    expect(compactSignals(item({ duplicateOf: [], duplicates: [] }), [], NOW)).toEqual([]);
   });
 
   it('shows the working on badge first', () => {

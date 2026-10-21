@@ -18,6 +18,10 @@ export interface WorkItemLinks {
   predecessorIds: number[];
   /** Work items that depend on this one */
   successorIds: number[];
+  /** "Duplicate Of": the original work items this one duplicates (the link type is a tree: at most one) */
+  duplicateOfIds: number[];
+  /** "Duplicate": the work items that duplicate this one */
+  duplicateIds: number[];
   branches: (ArtifactRef & { name: string })[];
   pullRequests: (ArtifactRef & { id: number })[];
 }
@@ -26,6 +30,9 @@ const CHILD_REL = 'System.LinkTypes.Hierarchy-Forward';
 const PARENT_REL = 'System.LinkTypes.Hierarchy-Reverse';
 const PREDECESSOR_REL = 'System.LinkTypes.Dependency-Reverse';
 const SUCCESSOR_REL = 'System.LinkTypes.Dependency-Forward';
+/** "Duplicate Of" (reverse end): the work item holding it is the duplicate */
+const DUPLICATE_OF_REL = 'System.LinkTypes.Duplicate-Reverse';
+const DUPLICATE_REL = 'System.LinkTypes.Duplicate-Forward';
 const BRANCH_PREFIX = 'vstfs:///Git/Ref/';
 const PULL_REQUEST_PREFIX = 'vstfs:///Git/PullRequestId/';
 const BRANCH_REF_PREFIX = 'GB';
@@ -48,12 +55,25 @@ function parseArtifact(url: string, prefix: string): (ArtifactRef & { rest: stri
 }
 
 export function parseRelations(relations: WorkItemRelation[] | undefined): WorkItemLinks {
-  const links: WorkItemLinks = { childIds: [], predecessorIds: [], successorIds: [], branches: [], pullRequests: [] };
+  const links: WorkItemLinks = {
+    childIds: [],
+    predecessorIds: [],
+    successorIds: [],
+    duplicateOfIds: [],
+    duplicateIds: [],
+    branches: [],
+    pullRequests: [],
+  };
   for (const relation of relations ?? []) {
     if (relation.rel === PREDECESSOR_REL || relation.rel === SUCCESSOR_REL) {
       const id = workItemIdFromUrl(relation.url);
       if (id !== undefined) {
         (relation.rel === PREDECESSOR_REL ? links.predecessorIds : links.successorIds).push(id);
+      }
+    } else if (relation.rel === DUPLICATE_OF_REL || relation.rel === DUPLICATE_REL) {
+      const id = workItemIdFromUrl(relation.url);
+      if (id !== undefined) {
+        (relation.rel === DUPLICATE_OF_REL ? links.duplicateOfIds : links.duplicateIds).push(id);
       }
     } else if (relation.rel === CHILD_REL || relation.rel === PARENT_REL) {
       const id = workItemIdFromUrl(relation.url);

@@ -21,12 +21,13 @@ From the repository root:
 ```sh
 npm run check     # typecheck, test, build, lint: must pass with 0 lint problems
 npm run package   # builds vscode-azdo-workitems-0.1.0.vsix
+npm run reinstall # package, then uninstall + install it in VS Code (scripts/reinstall-extension.mjs)
 npm run format    # prettier on src and media
 ```
 
 - Scripts (`package.json`): `build` (esbuild, 3 bundles: `dist/extension.js` for Node, `dist/webview.js` for the sidebar, `dist/dependencies.js` for the dependency map), `watch`, `typecheck` (`tsc --noEmit`), `test` (vitest, `vitest.config.mts`), `package` (`vsce package --no-dependencies …`), `lint` (ESLint, `eslint.config.mjs`: `typescript-eslint` strict type-checked rules plus the conventions below; import resolution is left to `tsc`, formatting to Prettier), `format` (Prettier, `.prettierrc`).
 - Debug: launch configuration **Run Azure Work Items Extension** (F5) in `.vscode/launch.json` (builds first via the `npm: build` task).
-- Install: `code --install-extension vscode-azdo-workitems-0.1.0.vsix`, then reload the window.
+- Install: `code --install-extension vscode-azdo-workitems-0.1.0.vsix`, then reload the window. `npm run reinstall` does rebuild + uninstall + install in one go (it does not run `npm run check`).
 
 ## Architecture
 
@@ -48,6 +49,7 @@ src/deletableBranches.ts   pure: when a branch is offered for deletion (complete
 src/workItemsStore.ts     work items of the current sprints + branches, PRs, CI runs, alerts, dependencies, worktrees
 src/*Watcher.ts           pollers: reviewRequestsWatcher (PRs to review), myPullRequestsWatcher (my PRs),
                           pipelineWatcher (CI runs, via src/runsPolling.ts), pullRequestNotifier (events on my PRs)
+src/pullRequestTaskStarter.ts  after each load, moves the tasks of my published PRs to In Progress (rule in src/pullRequestTasks.ts)
 src/summaryView.ts        native "Summary" tree view; owns the activity bar badge (rows/badge logic, pure: src/summaryRows.ts)
 src/workItemsView.ts      sidebar webview provider: builds the ViewModel (src/viewModel.ts) and handles messages
 src/webview/main.ts       sidebar webview (cards, PR boxes, filters); src/webview/dependencies.ts: dependency map
@@ -58,7 +60,7 @@ src/*StatusBar.ts         status bar items (CI runs, reviews, my PRs that need m
 media/*.css               styles of the webviews (webview.css shared by the sidebar and the details panel)
 ```
 
-- **Pure modules** (no `vscode` import) hold the logic and have a `*.test.ts` next to them: naming, alerts, reviews, PR shaping (`myPullRequests.ts`, `reviewCard.ts`, `prCompactSignals.ts`), timeline, coverage, runs, worktrees, schedule/graph, build notes, branches, working-on, fix links… The `vscode`-facing files are thin wrappers. Keep it that way: new logic goes into a pure module with tests.
+- **Pure modules** (no `vscode` import) hold the logic and have a `*.test.ts` next to them: naming, alerts, reviews, PR shaping (`myPullRequests.ts`, `reviewCard.ts`, `prCompactSignals.ts`), timeline, coverage, runs, worktrees, schedule/graph, build notes, branches, working-on, fix links, duplicates… The `vscode`-facing files are thin wrappers. Keep it that way: new logic goes into a pure module with tests.
 - The webviews receive a serialisable model (`ViewModel`, `DependencyMapUpdate`) and post back typed messages (`WebviewMessage`); the extension does all Azure DevOps and git work.
 - State: settings (`totalflowx.*`, user-level for personal choices like filters/layouts), `context.globalState` (notification baselines, coverage records — keys are internal, some keep the old `azdoWorkItems.` prefix on purpose), webview `getState/setState` (UI-only: collapsed boxes, expanded cards).
 

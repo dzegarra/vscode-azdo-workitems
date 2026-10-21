@@ -60,7 +60,7 @@ describe('taskProgressTooltip', () => {
 
 describe('hasTaskAlerts', () => {
   it('detects the alerts about tasks only', () => {
-    expect(hasTaskAlerts([{ rule: 'blockingTag' }, { rule: 'tasksNotDone' }])).toBe(true);
+    expect(hasTaskAlerts([{ rule: 'missingField' }, { rule: 'tasksNotDone' }])).toBe(true);
     expect(hasTaskAlerts([{ rule: 'pullRequestTaskNotDone' }])).toBe(true);
     expect(hasTaskAlerts([{ rule: 'missingField' }, { rule: 'noPullRequestTask' }])).toBe(false);
     expect(hasTaskAlerts([])).toBe(false);

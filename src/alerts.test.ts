@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { AlertInput, AlertRules, findAlerts, parseTags, resolveFieldName, resolveRequiredFields } from './alerts';
+import {
+  AlertInput,
+  AlertIteration,
+  AlertRules,
+  findAlerts,
+  parseTags,
+  resolveFieldName,
+  resolveRequiredFields,
+} from './alerts';
 
 const EFFORT = 'Microsoft.VSTS.Scheduling.Effort';
 const EFFORT_DAYS = 'Custom.EffortInDays';
@@ -145,12 +153,11 @@ describe('findAlerts', () => {
     ]);
   });
 
-  it('detects started work items with blocking tags', () => {
+  it('leaves blocking tags to the completion caution, started or not', () => {
     const tags = ['UX', 'missing rest api', 'Blocked'];
-    const [alert] = findAlerts(pbi({ state: 'In Progress', tags }), rules);
-    expect(alert.message).toBe('Started while tagged "missing rest api", "Blocked"');
-    expect(rulesOf(pbi({ state: 'New', tags }))).toEqual([]);
-    expect(rulesOf(pbi({ state: 'Approved', tags }))).toEqual([]);
+    for (const state of ['New', 'Approved', 'In Progress', 'Done']) {
+      expect(rulesOf(pbi({ state, tags }))).toEqual([]);
+    }
   });
 
   it('requires Effort and Effort in days in Backlog Items', () => {
@@ -289,5 +296,62 @@ describe('task PRs not linked to the work item', () => {
   it('ignores the types that are not checked', () => {
     const tasks = [task(1, 'A', 'To Do', [7])];
     expect(findAlerts(pbi({ type: 'Feature', tasks }), rules)).toEqual([]);
+  });
+});
+
+describe('duplicates out of sync', () => {
+  const S122 = { path: 'Flow\\R3\\Platform Sprint 122', name: 'Platform Sprint 122' };
+  const S123 = { path: 'Flow\\R3\\Platform Sprint 123', name: 'Platform Sprint 123' };
+  const original = (state: string, iteration: AlertIteration = S122) => ({
+    id: 9,
+    state,
+    iteration,
+    role: 'original' as const,
+  });
+
+  it('finds nothing when the duplicate and its original are planned together in the same state', () => {
+    expect(findAlerts(pbi({ iteration: S122, duplicates: [original('Committed')] }), rules)).toEqual([]);
+  });
+
+  it('expects the duplicate in the iteration of its original', () => {
+    expect(findAlerts(pbi({ iteration: S122, duplicates: [original('Committed', S123)] }), rules)).toEqual([
+      {
+        rule: 'duplicateNotPlannedTogether',
+        message: 'Not planned with its original #9: it is in Platform Sprint 123, this one in Platform Sprint 122',
+        duplicateId: 9,
+      },
+    ]);
+  });
+
+  it('says when one of them is not planned', () => {
+    const [alert] = findAlerts(pbi({ iteration: S122, duplicates: [original('Committed', { path: 'Flow' })] }), rules);
+    expect(alert.message).toBe('Not planned with its original #9: it is not planned, this one in Platform Sprint 122');
+  });
+
+  it('expects the same state, ignoring spelling differences', () => {
+    expect(rulesOf(pbi({ iteration: S122, duplicates: [original('commited')] }))).toEqual([]);
+    expect(findAlerts(pbi({ iteration: S122, duplicates: [original('Done')] }), rules)).toEqual([
+      {
+        rule: 'duplicateStateNotInSync',
+        message: 'Is Committed but its original #9 is Done (should be the same state)',
+        duplicateId: 9,
+      },
+    ]);
+  });
+
+  it('warns the original about each duplicate out of sync', () => {
+    const duplicates = [
+      { id: 10, state: 'New', iteration: S122, role: 'duplicate' as const },
+      { id: 11, state: 'Committed', iteration: S123, role: 'duplicate' as const },
+      { id: 12, state: 'Committed', iteration: S122, role: 'duplicate' as const },
+    ];
+    expect(findAlerts(pbi({ iteration: S122, duplicates }), rules).map((alert) => alert.message)).toEqual([
+      'Is Committed but its duplicate #10 is New (should be the same state)',
+      'Not planned with its duplicate #11: it is in Platform Sprint 123, this one in Platform Sprint 122',
+    ]);
+  });
+
+  it('says nothing when the related work items are unknown', () => {
+    expect(findAlerts(pbi({ iteration: S122 }), rules)).toEqual([]);
   });
 });

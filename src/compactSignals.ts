@@ -1,5 +1,6 @@
 /** What the compact work item rows show under the title. Pure, so no "vscode" import */
 import { completionIssueCount, completionIssueLines } from './completionIssues';
+import { duplicateLinksTooltip } from './duplicates';
 import { fixesBugsText, fixLinksTooltip } from './fixLinks';
 import { pullRequestTooltip } from './pullRequestModel';
 import type { RunModel, RunState } from './pipelines';
@@ -16,6 +17,8 @@ export type SignalKind =
   | 'branch'
   | 'ci'
   | 'completion'
+  | 'duplicateOf'
+  | 'duplicates'
   | 'fixedBy'
   | 'fixesBugs'
   | 'priority'
@@ -33,7 +36,8 @@ export interface CompactSignal {
   /**
    * Colour: "urgency-N" / "urgency-none" (priority, severity), a branch or PR tone, the run state (ci),
    * "neutral" or "approved" (tasks), "rejected" (alerts), "caution" (completion issues),
-   * "working-here" / "working-worktree" (working on), "bug" (fixes bugs, red) / "backlog" (fixed by, blue)
+   * "working-here" / "working-worktree" (working on), "bug" (fixes bugs, red) / "backlog" (fixed by, blue),
+   * "duplicate" (duplicate of, duplicated by)
    */
   tone: string;
   /** The PR (or the branches) is in another repository: shown dimmed */
@@ -109,6 +113,30 @@ function fixLinkSignal(item: WorkItemModel): CompactSignal | undefined {
   return undefined;
 }
 
+// Rule SIGNAL-11
+/** Duplicate: the ID of its original. Original: the number of its duplicates */
+function duplicateSignal(item: WorkItemModel): CompactSignal | undefined {
+  const original = item.duplicateOf?.at(0);
+  if (original && item.duplicateOf) {
+    return {
+      kind: 'duplicateOf',
+      label: String(original.id),
+      title: duplicateLinksTooltip('Duplicate of', item.duplicateOf),
+      tone: 'duplicate',
+    };
+  }
+  if (item.duplicates?.length) {
+    const count = item.duplicates.length;
+    return {
+      kind: 'duplicates',
+      label: String(count),
+      title: duplicateLinksTooltip(`Duplicated by ${count} work item${count === 1 ? '' : 's'}`, item.duplicates),
+      tone: 'duplicate',
+    };
+  }
+  return undefined;
+}
+
 /** Several branches: their count, and the list of them in the tooltip */
 function severalBranchesSignal(item: WorkItemModel): CompactSignal {
   const location = item.isCurrentBranch ? 'current' : item.branchLocation ?? 'remote';
@@ -175,7 +203,7 @@ function ciSignal(item: WorkItemModel, now: Date): CompactSignal | undefined {
 
 // Rules SIGNAL-1..10
 /**
- * Signals of a work item, in the order they are shown: working on, priority, severity, predecessors, fix links, branch, PR, CI of the PR, tasks, alerts.
+ * Signals of a work item, in the order they are shown: working on, priority, severity, predecessors, fix links, duplicates, branch, PR, CI of the PR, tasks, alerts.
  * Each one only when it applies. `children` are the tasks of the work item
  */
 export function compactSignals(
@@ -196,6 +224,10 @@ export function compactSignals(
   const fix = fixLinkSignal(item);
   if (fix) {
     signals.push(fix);
+  }
+  const duplicate = duplicateSignal(item);
+  if (duplicate) {
+    signals.push(duplicate);
   }
   const branch = branchSignal(item);
   if (branch) {

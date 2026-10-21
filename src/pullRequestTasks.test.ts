@@ -5,6 +5,8 @@ import {
   chooseTaskBranch,
   isInReview,
   shownState,
+  startedTaskKey,
+  startedTasksMessage,
   stateForNewBranchTask,
   completedPullRequestPrompt,
   publishedPullRequestMessage,
@@ -12,6 +14,7 @@ import {
   reusableTasks,
   stateForNewPullRequestTask,
   taskBranchesForNewPullRequest,
+  tasksOfPublishedPullRequests,
   tasksToComplete,
   tasksToStart,
 } from './pullRequestTasks';
@@ -53,6 +56,55 @@ describe('tasksToStart / tasksToComplete', () => {
   it('offers to close the open tasks of the PR', () => {
     expect(tasksToComplete(tasks, 7).map((t) => t.id)).toEqual([1, 2]);
     expect(tasksToComplete(tasks, 99)).toEqual([]);
+  });
+});
+
+describe('tasksOfPublishedPullRequests', () => {
+  const ME = 'ME-ID';
+  const pr = (id: number, overrides: { status?: string; isDraft?: boolean; authorId?: string } = {}) => ({
+    id,
+    status: 'active',
+    isDraft: false,
+    authorId: 'me-id',
+    ...overrides,
+  });
+
+  it('starts the open tasks of the published PRs of the user that are not in progress', () => {
+    const tasks = [task(1, 'To Do', [7]), task(2, 'In Progress', [7]), task(3, 'Done', [7]), task(4, 'Removed', [7])];
+    expect(tasksOfPublishedPullRequests(tasks, [pr(7)], ME)).toEqual([{ pullRequestId: 7, tasks: [tasks[0]] }]);
+  });
+
+  it('leaves drafts, completed and abandoned PRs alone', () => {
+    const tasks = [task(1, 'To Do', [7]), task(2, 'New', [8]), task(3, 'To Do', [9])];
+    const pullRequests = [pr(7, { isDraft: true }), pr(8, { status: 'completed' }), pr(9, { status: 'abandoned' })];
+    expect(tasksOfPublishedPullRequests(tasks, pullRequests, ME)).toEqual([]);
+  });
+
+  it('only acts on the PRs the user created', () => {
+    const tasks = [task(1, 'To Do', [7]), task(2, 'To Do', [8])];
+    expect(
+      tasksOfPublishedPullRequests(tasks, [pr(7, { authorId: 'someone' }), pr(8, { authorId: undefined })], ME)
+    ).toEqual([]);
+  });
+
+  it('moves each task once and never twice for the same PR', () => {
+    const tasks = [task(1, 'To Do', [7, 8]), task(2, 'To Do', [8])];
+    expect(tasksOfPublishedPullRequests(tasks, [pr(7), pr(8)], ME)).toEqual([
+      { pullRequestId: 7, tasks: [tasks[0]] },
+      { pullRequestId: 8, tasks: [tasks[1]] },
+    ]);
+    expect(tasksOfPublishedPullRequests(tasks, [pr(8)], ME, new Set([startedTaskKey(2, 8)]))).toEqual([
+      { pullRequestId: 8, tasks: [tasks[0]] },
+    ]);
+  });
+
+  it('tells which tasks moved', () => {
+    expect(
+      startedTasksMessage([
+        { pullRequestId: 7, tasks: [{ id: 1 }] },
+        { pullRequestId: 8, tasks: [{ id: 2 }, { id: 3 }] },
+      ])
+    ).toBe('PR published: task 1 of PR 7, tasks 2, 3 of PR 8 moved to In Progress.');
   });
 });
 

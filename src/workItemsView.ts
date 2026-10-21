@@ -38,6 +38,7 @@ export function filterSettings(): FilterModel {
     hiddenPullRequestStates: migratePullRequestStates(config.get<string[]>('filter.hiddenPullRequestStates', [])),
     hiddenPriorities: config.get<string[]>('filter.hiddenPriorities', []),
     hiddenPredecessorStates: migratePredecessorStates(config.get<string[]>('filter.hiddenPredecessorStates', [])),
+    hiddenDuplicates: config.get<string[]>('filter.hiddenDuplicates', []),
   };
 }
 

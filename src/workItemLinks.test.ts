@@ -23,6 +23,8 @@ describe('parseRelations', () => {
         { rel: 'System.LinkTypes.Dependency-Reverse', url: `${api}/400` },
         { rel: 'System.LinkTypes.Dependency-Forward', url: `${api}/500` },
         { rel: 'System.LinkTypes.Dependency-Forward', url: `${api}/501` },
+        { rel: 'System.LinkTypes.Duplicate-Reverse', url: `${api}/600` },
+        { rel: 'System.LinkTypes.Duplicate-Forward', url: `${api}/700` },
         {
           rel: 'ArtifactLink',
           url: 'vstfs:///Git/Ref/proj-id%2Frepo-id%2FGBfeature%2Ffui-admin%2F5641-network-restart',
@@ -40,6 +42,8 @@ describe('parseRelations', () => {
       childIds: [201, 202],
       predecessorIds: [400],
       successorIds: [500, 501],
+      duplicateOfIds: [600],
+      duplicateIds: [700],
       branches: [{ projectId: 'proj-id', repositoryId: 'repo-id', name: 'feature/fui-admin/5641-network-restart' }],
       pullRequests: [{ projectId: 'proj-id', repositoryId: 'repo-id', id: 13720 }],
     });
@@ -69,6 +73,8 @@ describe('parseRelations', () => {
       childIds: [],
       predecessorIds: [],
       successorIds: [],
+      duplicateOfIds: [],
+      duplicateIds: [],
       branches: [],
       pullRequests: [],
     });
@@ -110,6 +116,7 @@ describe('isVisible', () => {
     hiddenPullRequestStates: [],
     hiddenPriorities: [],
     hiddenPredecessorStates: [],
+    hiddenDuplicates: [],
   };
   const draftPr = {
     id: 1,
@@ -201,6 +208,24 @@ describe('isVisible', () => {
     expect(isVisible(item, both)).toBe(true);
   });
 
+  // Rule FILTER-8
+  it('applies the duplicates filter, never to the work items that are not known duplicates', () => {
+    const duplicate = { ...item, duplicateOf: [{ id: 1 }] };
+    const hide = { ...filter, hiddenDuplicates: ['Duplicates'] };
+    expect(isVisible(duplicate, hide)).toBe(false);
+    expect(isVisible(duplicate, filter)).toBe(true);
+    expect(isVisible(item, hide)).toBe(true);
+    expect(isVisible({ ...item, duplicateOf: [] }, hide)).toBe(true);
+  });
+
+  it('can always show duplicates with alerts', () => {
+    const alerts = [{ rule: 'duplicateStateNotInSync', message: 'x' }];
+    const duplicate = { ...item, duplicateOf: [{ id: 1 }], alerts };
+    const hide = { ...filter, hiddenDuplicates: ['Duplicates'] };
+    expect(isVisible(duplicate, hide)).toBe(false);
+    expect(isVisible(duplicate, hide, '', true)).toBe(true);
+  });
+
   it('can always show work items with alerts whatever their predecessors', () => {
     const alerts = [{ rule: 'tasksNotDone', message: 'x' }];
     const open = { ...item, openPredecessors: [{ id: 1 }], alerts };
@@ -224,10 +249,15 @@ describe('changedFilterKeys', () => {
     hiddenPullRequestStates: [],
     hiddenPriorities: [],
     hiddenPredecessorStates: [],
+    hiddenDuplicates: [],
   };
 
   it('ignores the order of the values', () => {
     expect(changedFilterKeys(filter, { ...filter, types: ['Product Backlog Item', 'Bug'] })).toEqual([]);
+  });
+
+  it('detects the duplicates filter', () => {
+    expect(changedFilterKeys(filter, { ...filter, hiddenDuplicates: ['Duplicates'] })).toEqual(['hiddenDuplicates']);
   });
 
   it('detects the predecessors filter', () => {
@@ -245,6 +275,7 @@ describe('changedFilterKeys', () => {
         hiddenPullRequestStates: ['Draft'],
         hiddenPriorities: [],
         hiddenPredecessorStates: [],
+        hiddenDuplicates: [],
       })
     ).toEqual(['types', 'hiddenStates', 'hiddenPullRequestStates']);
   });

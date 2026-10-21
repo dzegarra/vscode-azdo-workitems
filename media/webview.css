@@ -366,6 +366,9 @@ button {
 .chip-pred-none {
   --pill-color: var(--vscode-testing-iconPassed, var(--green));
 }
+.chip-duplicate {
+  --pill-color: var(--muted);
+}
 
 /* ---------- Iterations ---------- */
 
@@ -3163,6 +3166,9 @@ button.state:focus-visible {
 .signal.tone-backlog {
   --pill-color: var(--blue);
 }
+.signal.tone-duplicate {
+  --pill-color: var(--muted);
+}
 
 .row.fix-row {
   flex-wrap: wrap;
@@ -3189,6 +3195,25 @@ button.state:focus-visible {
   height: 7px;
   border-radius: 50%;
   background: currentColor;
+}
+
+/* ---------- Duplicates ---------- */
+
+/* A duplicate is toned down (its work is tracked on the original): dashed left bar and faded title. Only the title
+   fades, so the buttons and the popovers inside the card keep their contrast; hovering or focusing it restores it */
+.card.is-duplicate {
+  border-left-style: dashed;
+}
+.card.is-duplicate .title,
+.card.is-duplicate .compact-title {
+  opacity: 0.65;
+  transition: opacity 0.18s ease;
+}
+.card.is-duplicate:hover .title,
+.card.is-duplicate:hover .compact-title,
+.card.is-duplicate:focus-within .title,
+.card.is-duplicate:focus-within .compact-title {
+  opacity: 1;
 }
 
 /* ---------- Open predecessors ---------- */

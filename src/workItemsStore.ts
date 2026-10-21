@@ -10,6 +10,7 @@ import { collectBranches, EntryBranch, toBranchModels, unknownRepositoryIds } fr
 import { isClosedState, stateCategory } from './states';
 import { completionIssues, type CompletionIssues } from './completionIssues';
 import { branchesToCheckRemotely, deletableBranches, isProtectedBranch } from './deletableBranches';
+import { duplicateLinks, iterationLabel } from './duplicates';
 import { fixLinks } from './fixLinks';
 import { openPredecessors } from './predecessors';
 import { ScheduledIteration } from './schedule';
@@ -26,7 +27,16 @@ import { taskWorkingOn, WorkingOnLevel, workingOnLevels } from './workingOn';
 import { realpathSync } from 'node:fs';
 import { canCreateBranchForTask, canCreatePullRequestForTask, isInReview, shownState } from './pullRequestTasks';
 import { parsePriority, PRIORITY_FIELD, SEVERITY_FIELD } from './priority';
-import { AlertRules, findAlerts, parseTags, resolveFieldName, resolveRequiredFields, WorkItemAlert } from './alerts';
+import {
+  AlertDuplicate,
+  AlertIteration,
+  AlertRules,
+  findAlerts,
+  parseTags,
+  resolveFieldName,
+  resolveRequiredFields,
+  WorkItemAlert,
+} from './alerts';
 
 export interface WorkItemEntry {
   workItem: WorkItem;
@@ -53,6 +63,10 @@ export interface WorkItemEntry {
   predecessors?: WorkItem[];
   /** Work items that depend on this one; undefined when they could not be loaded */
   successors?: WorkItem[];
+  /** The originals it duplicates ("Duplicate Of"); undefined when they could not be loaded */
+  duplicateOf?: WorkItem[];
+  /** The work items duplicating it; undefined when they could not be loaded */
+  duplicates?: WorkItem[];
 }
 
 interface WorkingOnState {
@@ -172,18 +186,29 @@ interface Dependencies {
   predecessors: Map<number, WorkItem[] | undefined>;
   /** Successors of each work item; undefined when they cannot be told */
   successors: Map<number, WorkItem[] | undefined>;
+  /** Originals ("Duplicate Of") of each work item; undefined when they cannot be told */
+  duplicateOf: Map<number, WorkItem[] | undefined>;
+  /** Work items duplicating each work item; undefined when they cannot be told */
+  duplicates: Map<number, WorkItem[] | undefined>;
 }
 
 /**
- * Predecessors and successors of the work items (the ones in the list included), fetched in one batched request.
- * Each work item gets its own predecessors, or undefined when they cannot be told (the request failed or one is
- * not found): the cards then say nothing about them. The successors (for the "fixes bugs" links) are lenient:
- * the ones not found (deleted) are left out, and they are only unknown when the request failed
+ * Predecessors, successors and duplicates of the work items (the ones in the list included), fetched in one batched
+ * request. Each work item gets its own predecessors, or undefined when they cannot be told (the request failed or one
+ * is not found): the cards then say nothing about them. The successors (for the "fixes bugs" links) and the
+ * duplicates are lenient: the ones not found (deleted) are left out, and they are only unknown when the request failed
  */
 async function fetchDependencies(client: AzdoClient, workItems: WorkItem[]): Promise<Dependencies> {
   const byId = new Map(workItems.map((workItem) => [workItem.id, workItem]));
   const missing = [
-    ...new Set(workItems.flatMap((workItem) => [...workItem.links.predecessorIds, ...workItem.links.successorIds])),
+    ...new Set(
+      workItems.flatMap((workItem) => [
+        ...workItem.links.predecessorIds,
+        ...workItem.links.successorIds,
+        ...workItem.links.duplicateOfIds,
+        ...workItem.links.duplicateIds,
+      ])
+    ),
   ].filter((id) => !byId.has(id));
   let failed = false;
   try {
@@ -193,6 +218,14 @@ async function fetchDependencies(client: AzdoClient, workItems: WorkItem[]): Pro
     failed = true;
   }
   const found = (ids: number[]) => ids.map((id) => byId.get(id)).filter((related): related is WorkItem => !!related);
+  const lenient = (idsOf: (links: WorkItem['links']) => number[]) =>
+    new Map(
+      workItems.map((workItem) => {
+        const ids = idsOf(workItem.links);
+        const related = found(ids);
+        return [workItem.id, failed && related.length < ids.length ? undefined : related];
+      })
+    );
   return {
     predecessors: new Map(
       workItems.map((workItem) => {
@@ -201,13 +234,9 @@ async function fetchDependencies(client: AzdoClient, workItems: WorkItem[]): Pro
         return [workItem.id, related.length === ids.length ? related : undefined];
       })
     ),
-    successors: new Map(
-      workItems.map((workItem) => {
-        const ids = workItem.links.successorIds;
-        const related = found(ids);
-        return [workItem.id, failed && related.length < ids.length ? undefined : related];
-      })
-    ),
+    successors: lenient((links) => links.successorIds),
+    duplicateOf: lenient((links) => links.duplicateOfIds),
+    duplicates: lenient((links) => links.duplicateIds),
   };
 }
 
@@ -275,13 +304,38 @@ function taskRefsOf(workItem: WorkItem, related: Map<number, WorkItem>, reposito
 }
 
 /** Problems of the work item, from its child tasks, PRs, tags and fields */
+/** Iteration of a work item for the alerts: its path and the name to show */
+function alertIteration(workItem: WorkItem, schedule: ScheduledIteration[] | undefined): AlertIteration {
+  return { path: workItem.iterationPath, name: iterationLabel(workItem.iterationPath, schedule) };
+}
+
+/** The originals and the duplicates of the work item that could be loaded, for Rules ALERT-9, ALERT-10 */
+function alertDuplicates(
+  workItem: WorkItem,
+  dependencies: Dependencies,
+  schedule: ScheduledIteration[] | undefined
+): AlertDuplicate[] {
+  const refs = (items: WorkItem[] | undefined, role: AlertDuplicate['role']) =>
+    (items ?? []).map((item) => ({
+      id: item.id,
+      state: item.state,
+      iteration: alertIteration(item, schedule),
+      role,
+    }));
+  return [
+    ...refs(dependencies.duplicateOf.get(workItem.id), 'original'),
+    ...refs(dependencies.duplicates.get(workItem.id), 'duplicate'),
+  ];
+}
+
 function alertsOf(
   workItem: WorkItem,
   related: Map<number, WorkItem>,
   pullRequests: PullRequestDetails[],
   rules: AlertRules & { integrationBuildField?: string },
   repositoryId: string,
-  abandonedPullRequestIds: number[]
+  abandonedPullRequestIds: number[],
+  planning: { iteration: AlertIteration; duplicates: AlertDuplicate[] }
 ): WorkItemAlert[] {
   const tasks = taskRefsOf(workItem, related, repositoryId);
   return withQuickFixes(
@@ -296,6 +350,7 @@ function alertsOf(
         branches: branchNamesOf(workItem.links.branches, repositoryId),
         linkedPullRequestIds: workItem.links.pullRequests.map((link) => link.id),
         abandonedPullRequestIds,
+        ...planning,
       },
       rules
     ),
@@ -659,7 +714,10 @@ export class WorkItemsStore {
         pullRequests: itemPullRequests,
         deletableBranches: [],
         alerts: rules
-          ? alertsOf(workItem, related, itemPullRequests, rules, azdoRepository.id, abandonedTaskPullRequestIds)
+          ? alertsOf(workItem, related, itemPullRequests, rules, azdoRepository.id, abandonedTaskPullRequestIds, {
+              iteration: alertIteration(workItem, schedule),
+              duplicates: alertDuplicates(workItem, dependencies, schedule),
+            })
           : [],
         inReview: isInReview(workItem.state, taskRefsOf(workItem, related, azdoRepository.id), pullRequestTaskPattern),
         taskBranches: taskBranchNamesOf(workItem, related, azdoRepository.id),
@@ -667,6 +725,8 @@ export class WorkItemsStore {
         completion: rules && completionIssuesOf(workItem, rules),
         predecessors: dependencies.predecessors.get(workItem.id),
         successors: dependencies.successors.get(workItem.id),
+        duplicateOf: dependencies.duplicateOf.get(workItem.id),
+        duplicates: dependencies.duplicates.get(workItem.id),
       };
     });
     await this.findDeletableBranches(client, azdoRepository.id, entries, [...pullRequests.values()]);
@@ -876,6 +936,8 @@ export class WorkItemsStore {
       pullRequests,
       predecessors,
       successors,
+      duplicateOf,
+      duplicates,
       otherTasks,
       completion,
     }: WorkItemEntry,
@@ -922,6 +984,7 @@ export class WorkItemsStore {
       blockingTags: completion?.blockingTags,
       missingFields: completion?.missingFields,
       ...fixLinks(workItem, predecessors, successors),
+      ...duplicateLinks(duplicateOf, duplicates, this.schedule),
       taskPullRequests: workItem.type === 'Task' ? this.taskPullRequests(pullRequests) : [],
       taskBranches,
       taskWorkingOn: workItem.type === 'Task' ? taskLevel(workItem) : undefined,

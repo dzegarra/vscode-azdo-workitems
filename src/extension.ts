@@ -36,6 +36,7 @@ import { MyPullRequestsStatusBar } from './myPullRequestsStatusBar';
 import { PipelineStatusBar } from './pipelineStatusBar';
 import { PipelineWatcher } from './pipelineWatcher';
 import { PullRequestNotifier } from './pullRequestNotifier';
+import { PullRequestTaskStarter } from './pullRequestTaskStarter';
 import { ReviewStatusBar } from './reviewStatusBar';
 import { SummaryView } from './summaryView';
 import { PullRequestExtrasLoader } from './pullRequestExtras';
@@ -102,6 +103,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const store = new WorkItemsStore(git);
   const details = new WorkItemDetailsPanels(context.extensionUri, store);
   const notifier = new PullRequestNotifier(context.globalState, store);
+  const pullRequestTaskStarter = new PullRequestTaskStarter(store);
   const dependencyMap = new DependencyMapPanel(context.extensionUri, store);
   const pipelineStatusBar = new PipelineStatusBar(store);
   const currentWorkItemStatusBar = new CurrentWorkItemStatusBar(git, store);
@@ -232,6 +234,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     command('totalflowx.collapseTasks', () => view.setTasksExpanded(false)),
     details,
     notifier,
+    pullRequestTaskStarter,
     dependencyMap,
     pipelineWatcher,
     pipelineStatusBar,
