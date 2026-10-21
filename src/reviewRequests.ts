@@ -303,6 +303,26 @@ export function describeReviews(requests: Pick<ReviewRequestModel, 'urgency'>[])
   return `${waiting} for your review${details.length ? `: ${details.join(', ')}` : ''}`;
 }
 
+/**
+ * Status bar text, without the icon: "3 to review · 2 overdue · 1 due soon", "3 to review · 1 due soon · 4 h left".
+ * The counts are the late required ones (REVIEW-URG-4); the time left is the one of the most urgent request (the
+ * first), left out when it is overdue (the tooltip tells by how much)
+ */
+export function describeReviewStatusBar(
+  requests: Pick<ReviewRequestModel, 'isRequired' | 'urgency' | 'timeLeft'>[]
+): string {
+  const first = requests.at(0);
+  if (!first) {
+    return '';
+  }
+  const late = countLate(requests);
+  const counts = [late.overdue && `${late.overdue} overdue`, late.dueSoon && `${late.dueSoon} due soon`].filter(
+    Boolean
+  );
+  const timeLeft = first.urgency === 'overdue' ? [] : [first.timeLeft];
+  return [`${requests.length} to review`, ...counts, ...timeLeft].join(' · ');
+}
+
 /** What is remembered between checks, so each notification is shown once */
 export interface StoredReviewRequests {
   known: number[];

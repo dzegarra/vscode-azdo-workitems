@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { SECTION } from './config';
-import { describeReviews, ReviewUrgency } from './reviewRequests';
+import { describeReviews, describeReviewStatusBar, ReviewUrgency } from './reviewRequests';
 import { reviewSettings, ReviewRequestsWatcher } from './reviewRequestsWatcher';
 
 const URGENCY_ICONS: Record<ReviewUrgency, string> = {
@@ -45,7 +45,7 @@ export class ReviewStatusBar implements vscode.Disposable {
     }
     // Oldest first: the first one is the most urgent
     const [first] = models;
-    this.item.text = `${URGENCY_ICONS[first.urgency]} ${models.length} to review · ${first.timeLeft}`;
+    this.item.text = `${URGENCY_ICONS[first.urgency]} ${describeReviewStatusBar(models)}`;
     const background: Partial<Record<ReviewUrgency, string>> = {
       overdue: 'statusBarItem.errorBackground',
       dueSoon: 'statusBarItem.warningBackground',

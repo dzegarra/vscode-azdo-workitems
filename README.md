@@ -276,7 +276,7 @@ Click the title to open the PR in Azure DevOps, or **Checkout** to review it loc
 
 The section takes the colour of the most urgent PR and counts the overdue and due soon ones. It can be collapsed; it opens again when a new PR arrives. The badge of the activity bar icon (carried by the [Summary view](#summary-view)) counts these PRs, together with the work items that need attention.
 
-**In the status bar** (reviews), e.g. `2 to review · 4 h left` (the time left of the most urgent PR), in yellow when one is due soon and in red when one is overdue. Hover it to see each PR; click it to show the list (`totalflowx.reviews.showInStatusBar`).
+**In the status bar** (reviews), e.g. `2 to review · 4 h left` or `3 to review · 2 overdue · 1 due soon` (how many required reviews are overdue / due soon, then the time left of the most urgent PR when it is not overdue; hover to see by how much each one is overdue), in yellow when one is due soon and in red when one is overdue. Hover it to see each PR; click it to show the list (`totalflowx.reviews.showInStatusBar`).
 
 **Notifications** (`totalflowx.reviews.notifications`):
 

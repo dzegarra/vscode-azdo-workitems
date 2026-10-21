@@ -7,6 +7,7 @@ import {
   PullRequestThread,
   countLate,
   describeReviews,
+  describeReviewStatusBar,
   reviewUrgency,
   ReviewRules,
   toReviewModels,
@@ -164,6 +165,26 @@ describe('review requests', () => {
     ]);
     expect(describeReviews(models)).toBe('3 pull requests are waiting for your review: 1 overdue, 1 due soon');
     expect(describeReviews(models.slice(2))).toBe('1 pull request is waiting for your review');
+  });
+
+  it('counts the overdue and due soon reviews in the status bar text, with the time left of the most urgent unless overdue', () => {
+    const now = new Date('2026-10-06T10:00:00Z');
+    const rules = { maxWaitHours: 24, workingDays: WEEK, dueSoonHours: 6, remindOverdueEveryHours: 4 };
+    const models = toReviewModels(
+      [
+        request(1, '2026-10-05T05:00:00Z'),
+        request(2, '2026-10-05T07:00:00Z'),
+        request(3, '2026-10-05T15:00:00Z'),
+        request(4, '2026-10-06T04:00:00Z'),
+      ],
+      now,
+      rules
+    );
+    expect(describeReviewStatusBar(models)).toBe('4 to review · 2 overdue · 1 due soon');
+    expect(describeReviewStatusBar(models.slice(2))).toBe('2 to review · 1 due soon · 5 h left');
+    expect(describeReviewStatusBar(models.slice(3))).toBe('1 to review · 18 h left');
+    expect(describeReviewStatusBar([{ ...models[0], isRequired: false }])).toBe('1 to review');
+    expect(describeReviewStatusBar([])).toBe('');
   });
 });
 
