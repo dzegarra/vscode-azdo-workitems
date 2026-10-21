@@ -1,19 +1,23 @@
 /**
- * Team rule: a PR with changes testers should know about explains them in the build notes file; any other PR
- * carries a tag (label) saying so. Pure helpers, so no "vscode" import
+ * Team rule: a PR with changes testers should know about explains them in one of the build notes files (one per
+ * feature, e.g. "build-notes/pid-notes.md"); any other PR carries a tag (label) saying so. Pure helpers, so no
+ * "vscode" import
  */
 
 export interface BuildNotesOptions {
   enabled: boolean;
-  /** Repository-relative, e.g. "build-notes/developer-notes.md" */
-  path: string;
+  /** Repository-relative folder of the notes files, e.g. "build-notes" */
+  directory: string;
+  /** End of the name of the notes files, e.g. "-notes.md" (so "_template.md" is not one) */
+  fileSuffix: string;
   /** Azure DevOps PR tag of the PRs without changes for testers, e.g. "no-build-notes" */
   skipTag: string;
 }
 
 export const DEFAULT_BUILD_NOTES_OPTIONS: BuildNotesOptions = {
   enabled: true,
-  path: 'build-notes/developer-notes.md',
+  directory: 'build-notes',
+  fileSuffix: '-notes.md',
   skipTag: 'no-build-notes',
 };
 
@@ -38,7 +42,28 @@ export function normalizeRepoPath(path: string): string {
   return path
     .trim()
     .replace(/\\/g, '/')
-    .replace(/^(\.?\/)+/, '');
+    .replace(/^(\.?\/)+/, '')
+    .replace(/\/+$/, '');
+}
+
+/** The notes files, as the texts show them: "build-notes/*-notes.md" */
+export function notesFilesPattern(options: Pick<BuildNotesOptions, 'directory' | 'fileSuffix'>): string {
+  return `${options.directory}/*${options.fileSuffix}`;
+}
+
+/**
+ * Whether the path is a notes file: directly in the folder (the build notes tool does not look into subfolders) and
+ * ending with the suffix. Case-insensitive, any path style
+ */
+export function isNotesFile(path: string, options: Pick<BuildNotesOptions, 'directory' | 'fileSuffix'>): boolean {
+  const file = normalizeRepoPath(path).toLowerCase();
+  const folder = `${normalizeRepoPath(options.directory).toLowerCase()}/`;
+  const suffix = options.fileSuffix.trim().toLowerCase();
+  if (!file.startsWith(folder)) {
+    return false;
+  }
+  const name = file.slice(folder.length);
+  return !name.includes('/') && name.length > suffix.length && name.endsWith(suffix);
 }
 
 // Rule BUILDNOTES-2
@@ -58,14 +83,14 @@ export interface CommitsDiff {
 
 // Rule BUILDNOTES-3
 /**
- * Whether the diff touches the file. Undefined (unknown) when the file is not in the list and the list is not
+ * Whether the diff touches any notes file. Undefined (unknown) when none is in the list and the list is not
  * complete
  */
-export function diffChangesFile(diff: CommitsDiff, path: string): boolean | undefined {
-  const wanted = normalizeRepoPath(path).toLowerCase();
-  const touched = (diff.changes ?? []).some(
-    (change) => normalizeRepoPath(change.item?.path ?? '').toLowerCase() === wanted
-  );
+export function diffChangesNotes(
+  diff: CommitsDiff,
+  options: Pick<BuildNotesOptions, 'directory' | 'fileSuffix'>
+): boolean | undefined {
+  const touched = (diff.changes ?? []).some((change) => isNotesFile(change.item?.path ?? '', options));
   if (touched) {
     return true;
   }
@@ -80,41 +105,54 @@ export function parseChangedFiles(output: string): string[] {
     .filter(Boolean);
 }
 
-export function localDiffChangesFile(output: string, path: string): boolean {
-  const wanted = normalizeRepoPath(path);
-  return parseChangedFiles(output).some((file) => normalizeRepoPath(file) === wanted);
+export function localDiffChangesNotes(
+  output: string,
+  options: Pick<BuildNotesOptions, 'directory' | 'fileSuffix'>
+): boolean {
+  return parseChangedFiles(output).some((file) => isNotesFile(file, options));
+}
+
+/** Names of the notes files among the entries of the notes folder, sorted */
+export function notesFileNames(
+  names: string[],
+  options: Pick<BuildNotesOptions, 'directory' | 'fileSuffix'>
+): string[] {
+  return names.filter((name) => isNotesFile(`${options.directory}/${name}`, options)).sort();
 }
 
 /** Where the PR stands regarding the rule, as far as it is known */
 export interface BuildNotesStatus {
   /** The PR belongs to the repository open in VS Code */
   localRepo: boolean;
-  /** The notes file exists in the local repository */
-  fileExists: boolean;
-  /** The PR changes the notes file. Undefined: not known */
+  /** The notes folder exists in the local repository */
+  folderExists: boolean;
+  /** The PR changes a notes file. Undefined: not known */
   changed?: boolean;
 }
 
 // Rule BUILDNOTES-1
-/** Whether the rule applies to the PR at all: published, active, enabled, local repository with the file */
+/** Whether the rule applies to the PR at all: published, active, enabled, local repository with the notes folder */
 export function ruleApplies(
   pr: Pick<BuildNotesPullRequest, 'isDraft' | 'status'>,
-  status: Pick<BuildNotesStatus, 'fileExists' | 'localRepo'>,
+  status: Pick<BuildNotesStatus, 'folderExists' | 'localRepo'>,
   options: Pick<BuildNotesOptions, 'enabled'>
 ): boolean {
-  return options.enabled && !pr.isDraft && pr.status === 'active' && status.localRepo && status.fileExists;
+  return options.enabled && !pr.isDraft && pr.status === 'active' && status.localRepo && status.folderExists;
 }
 
-/** Key of the cache of diffs: the result only changes with a new push (or another file to look for) */
-export function diffCacheKey(pr: BuildNotesPullRequest, path: string): string | undefined {
+/** Key of the cache of diffs: the result only changes with a new push (or other files to look for) */
+export function diffCacheKey(
+  pr: BuildNotesPullRequest,
+  options: Pick<BuildNotesOptions, 'directory' | 'fileSuffix'>
+): string | undefined {
   const commit = pr.lastMergeSourceCommit?.commitId;
-  return commit ? `${pr.pullRequestId}:${commit}:${normalizeRepoPath(path).toLowerCase()}` : undefined;
+  return commit ? `${pr.pullRequestId}:${commit}:${notesFilesPattern(options).toLowerCase()}` : undefined;
 }
 
 /** The diff request is only worth it when the rule applies, the PR is not tagged and the commits are known */
 export function needsDiffRequest(
   pr: BuildNotesPullRequest,
-  status: Pick<BuildNotesStatus, 'fileExists' | 'localRepo'>,
+  status: Pick<BuildNotesStatus, 'folderExists' | 'localRepo'>,
   options: BuildNotesOptions
 ): boolean {
   return (
@@ -125,12 +163,14 @@ export function needsDiffRequest(
   );
 }
 
-export function buildNotesWarningText(options: Pick<BuildNotesOptions, 'path' | 'skipTag'>): string {
-  return `Explain the changes for testers in ${options.path}, or tag the PR "${options.skipTag}"`;
+export function buildNotesWarningText(
+  options: Pick<BuildNotesOptions, 'directory' | 'fileSuffix' | 'skipTag'>
+): string {
+  return `Explain the changes for testers in ${notesFilesPattern(options)}, or tag the PR "${options.skipTag}"`;
 }
 
 // Rule BUILDNOTES-3
-/** The PR should explain its changes: the rule applies, it is not tagged, and it surely does not change the file */
+/** The PR should explain its changes: the rule applies, it is not tagged, and it surely changes no notes file */
 export function needsBuildNotesWarning(
   pr: BuildNotesPullRequest,
   status: BuildNotesStatus | undefined,
@@ -147,7 +187,7 @@ const FAILURE_RETRY_MINUTES = 10;
 const FAILURE_RETRY_MS = FAILURE_RETRY_MINUTES * MS_PER_MINUTE;
 
 /**
- * Remembers whether each PR changes the notes file, by head commit: a PR is asked about again only after a push.
+ * Remembers whether each PR changes a notes file, by head commit: a PR is asked about again only after a push.
  * Failures are retried after a while, not on every poll. Unknown results (incomplete list) are remembered too
  */
 export class BuildNotesDiffCache {
@@ -191,17 +231,17 @@ export class BuildNotesDiffCache {
 }
 
 /**
- * Whether the PR changes the notes file, asking at most once per head commit. `fetchDiff` is called only when
+ * Whether the PR changes a notes file, asking at most once per head commit. `fetchDiff` is called only when
  * needed; its failure leaves the result unknown
  */
 export async function checkPullRequestNotes(
   pr: BuildNotesPullRequest,
-  status: Pick<BuildNotesStatus, 'fileExists' | 'localRepo'>,
+  status: Pick<BuildNotesStatus, 'folderExists' | 'localRepo'>,
   options: BuildNotesOptions,
   cache: BuildNotesDiffCache,
   fetchDiff: (base: string, target: string) => Promise<CommitsDiff>
 ): Promise<boolean | undefined> {
-  const key = diffCacheKey(pr, options.path);
+  const key = diffCacheKey(pr, options);
   if (!key || !needsDiffRequest(pr, status, options)) {
     return undefined;
   }
@@ -211,7 +251,7 @@ export async function checkPullRequestNotes(
   }
   try {
     const diff = await fetchDiff(pr.lastMergeTargetCommit?.commitId ?? '', pr.lastMergeSourceCommit?.commitId ?? '');
-    const changed = diffChangesFile(diff, options.path);
+    const changed = diffChangesNotes(diff, options);
     cache.store(key, changed);
     return changed;
   } catch {

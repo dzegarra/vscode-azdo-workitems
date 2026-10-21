@@ -98,7 +98,8 @@ export function buildNotesSettings(): BuildNotesOptions {
   const config = vscode.workspace.getConfiguration(`${SECTION}.buildNotes`);
   return {
     enabled: config.get<boolean>('enabled', DEFAULT_BUILD_NOTES_OPTIONS.enabled),
-    path: normalizeRepoPath(config.get<string>('path', '')) || DEFAULT_BUILD_NOTES_OPTIONS.path,
+    directory: normalizeRepoPath(config.get<string>('directory', '')) || DEFAULT_BUILD_NOTES_OPTIONS.directory,
+    fileSuffix: config.get<string>('fileSuffix', '').trim() || DEFAULT_BUILD_NOTES_OPTIONS.fileSuffix,
     skipTag: config.get<string>('skipTag', '').trim() || DEFAULT_BUILD_NOTES_OPTIONS.skipTag,
   };
 }

@@ -38,7 +38,7 @@ interface NotesContext {
   repositoryName?: string;
 }
 
-async function fileExistsIn(root: string, relativePath: string): Promise<boolean> {
+async function pathExistsIn(root: string, relativePath: string): Promise<boolean> {
   try {
     await access(path.join(root, relativePath));
     return true;
@@ -253,8 +253,8 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
     { options, root, repositoryName }: NotesContext
   ): Promise<BuildNotesStatus> {
     const localRepo = !!root && pr.repository.name.toLowerCase() === repositoryName?.toLowerCase();
-    const fileExists = localRepo && !!root && (await fileExistsIn(root, options.path));
-    const status = { localRepo, fileExists };
+    const folderExists = localRepo && !!root && (await pathExistsIn(root, options.directory));
+    const status = { localRepo, folderExists };
     const changed = await checkPullRequestNotes(pr, status, options, this.buildNotesCache, (base, target) =>
       client.getCommitsDiff(pr.repository.id, base, target)
     );

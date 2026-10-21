@@ -6,19 +6,26 @@ import {
   buildNotesWarningText,
   checkPullRequestNotes,
   diffCacheKey,
-  diffChangesFile,
+  diffChangesNotes,
   hasSkipTag,
-  localDiffChangesFile,
+  isNotesFile,
+  localDiffChangesNotes,
   needsBuildNotesWarning,
   needsDiffRequest,
   normalizeRepoPath,
+  notesFileNames,
   parseChangedFiles,
 } from './buildNotes';
 
-const OPTIONS: BuildNotesOptions = { enabled: true, path: 'build-notes/developer-notes.md', skipTag: 'no-build-notes' };
+const OPTIONS: BuildNotesOptions = {
+  enabled: true,
+  directory: 'build-notes',
+  fileSuffix: '-notes.md',
+  skipTag: 'no-build-notes',
+};
 const ONE_MINUTE = 60_000;
 const ELEVEN_MINUTES = 11 * ONE_MINUTE;
-const LOCAL = { localRepo: true, fileExists: true };
+const LOCAL = { localRepo: true, folderExists: true };
 
 function pr(overrides: Partial<BuildNotesPullRequest> = {}): BuildNotesPullRequest {
   return {
@@ -41,21 +48,52 @@ describe('hasSkipTag', () => {
   });
 });
 
-describe('diffChangesFile', () => {
-  const touched = { changes: [{ item: { path: '/build-notes/developer-notes.md' } }], allChangesIncluded: true };
-  it('is true when the file is listed', () => {
-    expect(diffChangesFile(touched, OPTIONS.path)).toBe(true);
-    expect(diffChangesFile({ ...touched, allChangesIncluded: false }, OPTIONS.path)).toBe(true);
+describe('isNotesFile', () => {
+  it.each([
+    ['/build-notes/pid-notes.md', true],
+    ['build-notes/PID-Notes.md', true],
+    ['build-notes/developer-notes.md', true],
+    ['\\build-notes\\admin-notes.md', true],
+    ['build-notes/_template.md', false],
+    ['build-notes/-notes.md', false],
+    ['build-notes/sub/x-notes.md', false],
+    ['/build-notes', false],
+    ['other/build-notes/x-notes.md', false],
+    ['build-notes-old/x-notes.md', false],
+    ['src/pid-notes.md', false],
+  ])('%s → %s', (path, expected) => {
+    expect(isNotesFile(path, OPTIONS)).toBe(expected);
   });
-  it('is false when the complete list lacks the file', () => {
-    expect(diffChangesFile({ changes: [{ item: { path: '/a.ts' } }], allChangesIncluded: true }, OPTIONS.path)).toBe(
-      false
-    );
-    expect(diffChangesFile({ changes: [] }, OPTIONS.path)).toBe(false);
+  it('accepts a folder written with slashes', () => {
+    expect(isNotesFile('docs/notes/a-notes.md', { directory: './docs/notes/', fileSuffix: '-notes.md' })).toBe(true);
   });
-  it('is unknown when the list is incomplete and lacks the file', () => {
+});
+
+describe('diffChangesNotes', () => {
+  const touched = { changes: [{ item: { path: '/build-notes/pid-notes.md' } }], allChangesIncluded: true };
+  it('is true when a notes file is listed', () => {
+    expect(diffChangesNotes(touched, OPTIONS)).toBe(true);
+    expect(diffChangesNotes({ ...touched, allChangesIncluded: false }, OPTIONS)).toBe(true);
+  });
+  it('is false when the complete list lacks notes files', () => {
     expect(
-      diffChangesFile({ changes: [{ item: { path: '/a.ts' } }], allChangesIncluded: false }, OPTIONS.path)
+      diffChangesNotes(
+        {
+          changes: [
+            { item: { path: '/a.ts' } },
+            { item: { path: '/build-notes' } },
+            { item: { path: '/build-notes/_template.md' } },
+          ],
+          allChangesIncluded: true,
+        },
+        OPTIONS
+      )
+    ).toBe(false);
+    expect(diffChangesNotes({ changes: [] }, OPTIONS)).toBe(false);
+  });
+  it('is unknown when the list is incomplete and lacks notes files', () => {
+    expect(
+      diffChangesNotes({ changes: [{ item: { path: '/a.ts' } }], allChangesIncluded: false }, OPTIONS)
     ).toBeUndefined();
   });
 });
@@ -68,14 +106,20 @@ describe('local diff', () => {
     ]);
     expect(parseChangedFiles('')).toEqual([]);
   });
-  it('tells whether the file is among them', () => {
-    expect(localDiffChangesFile('a.ts\nbuild-notes/developer-notes.md\n', './build-notes/developer-notes.md')).toBe(
-      true
-    );
-    expect(localDiffChangesFile('a.ts\n', OPTIONS.path)).toBe(false);
+  it('tells whether a notes file is among them', () => {
+    expect(localDiffChangesNotes('a.ts\nbuild-notes/tfio-notes.md\n', OPTIONS)).toBe(true);
+    expect(localDiffChangesNotes('a.ts\nbuild-notes/_template.md\n', OPTIONS)).toBe(false);
+    expect(localDiffChangesNotes('a.ts\n', OPTIONS)).toBe(false);
   });
   it('normalizes paths', () => {
     expect(normalizeRepoPath('\\build-notes\\x.md')).toBe('build-notes/x.md');
+    expect(normalizeRepoPath('./build-notes/')).toBe('build-notes');
+  });
+  it('lists the notes files of the folder, sorted', () => {
+    expect(notesFileNames(['tfio-notes.md', '_template.md', 'admin-notes.md', 'readme.txt'], OPTIONS)).toEqual([
+      'admin-notes.md',
+      'tfio-notes.md',
+    ]);
   });
 });
 
@@ -87,8 +131,8 @@ describe('needsDiffRequest', () => {
     ['draft', pr({ isDraft: true }), LOCAL, OPTIONS],
     ['completed', pr({ status: 'completed' }), LOCAL, OPTIONS],
     ['tagged', pr({ labels: [{ name: 'no-build-notes', active: true }] }), LOCAL, OPTIONS],
-    ['other repository', pr(), { localRepo: false, fileExists: true }, OPTIONS],
-    ['no file', pr(), { localRepo: true, fileExists: false }, OPTIONS],
+    ['other repository', pr(), { localRepo: false, folderExists: true }, OPTIONS],
+    ['no folder', pr(), { localRepo: true, folderExists: false }, OPTIONS],
     ['disabled', pr(), LOCAL, { ...OPTIONS, enabled: false }],
     ['no source commit', pr({ lastMergeSourceCommit: undefined }), LOCAL, OPTIONS],
     ['no target commit', pr({ lastMergeTargetCommit: undefined }), LOCAL, OPTIONS],
@@ -99,34 +143,34 @@ describe('needsDiffRequest', () => {
 
 describe('needsBuildNotesWarning', () => {
   const status = (changed?: boolean) => ({ ...LOCAL, changed });
-  it('warns only when the file surely is not changed', () => {
+  it('warns only when the notes files surely are not changed', () => {
     expect(needsBuildNotesWarning(pr(), status(false), OPTIONS)).toBe(true);
     expect(needsBuildNotesWarning(pr(), status(true), OPTIONS)).toBe(false);
     expect(needsBuildNotesWarning(pr(), status(undefined), OPTIONS)).toBe(false);
     expect(needsBuildNotesWarning(pr(), undefined, OPTIONS)).toBe(false);
   });
-  it('does not warn for tagged, draft, other-repo, missing-file or disabled cases', () => {
+  it('does not warn for tagged, draft, other-repo, missing-folder or disabled cases', () => {
     expect(needsBuildNotesWarning(pr({ labels: [{ name: 'NO-BUILD-NOTES' }] }), status(false), OPTIONS)).toBe(false);
     expect(needsBuildNotesWarning(pr({ isDraft: true }), status(false), OPTIONS)).toBe(false);
     expect(needsBuildNotesWarning(pr({ status: 'completed' }), status(false), OPTIONS)).toBe(false);
-    expect(needsBuildNotesWarning(pr(), { localRepo: false, fileExists: true, changed: false }, OPTIONS)).toBe(false);
-    expect(needsBuildNotesWarning(pr(), { localRepo: true, fileExists: false, changed: false }, OPTIONS)).toBe(false);
+    expect(needsBuildNotesWarning(pr(), { localRepo: false, folderExists: true, changed: false }, OPTIONS)).toBe(false);
+    expect(needsBuildNotesWarning(pr(), { localRepo: true, folderExists: false, changed: false }, OPTIONS)).toBe(false);
     expect(needsBuildNotesWarning(pr(), status(false), { ...OPTIONS, enabled: false })).toBe(false);
   });
   it('writes the text with the configured path and tag', () => {
     expect(buildNotesWarningText(OPTIONS)).toBe(
-      'Explain the changes for testers in build-notes/developer-notes.md, or tag the PR "no-build-notes"'
+      'Explain the changes for testers in build-notes/*-notes.md, or tag the PR "no-build-notes"'
     );
   });
 });
 
 describe('diffCacheKey', () => {
-  it('depends on the PR, its head commit and the file', () => {
-    expect(diffCacheKey(pr(), OPTIONS.path)).toBe('7:src1:build-notes/developer-notes.md');
-    expect(diffCacheKey(pr({ lastMergeSourceCommit: { commitId: 'src2' } }), OPTIONS.path)).not.toBe(
-      diffCacheKey(pr(), OPTIONS.path)
+  it('depends on the PR, its head commit and the notes files', () => {
+    expect(diffCacheKey(pr(), OPTIONS)).toBe('7:src1:build-notes/*-notes.md');
+    expect(diffCacheKey(pr({ lastMergeSourceCommit: { commitId: 'src2' } }), OPTIONS)).not.toBe(
+      diffCacheKey(pr(), OPTIONS)
     );
-    expect(diffCacheKey(pr({ lastMergeSourceCommit: undefined }), OPTIONS.path)).toBeUndefined();
+    expect(diffCacheKey(pr({ lastMergeSourceCommit: undefined }), OPTIONS)).toBeUndefined();
   });
 });
 
@@ -149,7 +193,7 @@ describe('checkPullRequestNotes', () => {
     const cache = new BuildNotesDiffCache();
     await checkPullRequestNotes(pr({ isDraft: true }), LOCAL, OPTIONS, cache, fetchDiff);
     await checkPullRequestNotes(pr({ labels: [{ name: 'no-build-notes' }] }), LOCAL, OPTIONS, cache, fetchDiff);
-    await checkPullRequestNotes(pr(), { localRepo: false, fileExists: true }, OPTIONS, cache, fetchDiff);
+    await checkPullRequestNotes(pr(), { localRepo: false, folderExists: true }, OPTIONS, cache, fetchDiff);
     expect(fetchDiff).not.toHaveBeenCalled();
   });
 

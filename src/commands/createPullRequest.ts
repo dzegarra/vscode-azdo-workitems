@@ -1,10 +1,10 @@
-import { access } from 'node:fs/promises';
+import { access, readdir, readFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { AzdoClient, GitRepository } from '../azdoClient';
 import { pickFromCatalog } from '../catalog';
 import { buildNotesSettings, resolveContext, settings } from '../config';
-import { localDiffChangesFile } from '../buildNotes';
+import { BuildNotesOptions, localDiffChangesNotes, notesFileNames, notesFilesPattern } from '../buildNotes';
 import { baseConfigKey, usableStoredBase } from '../baseBranch';
 import { GitAPI, pickRepository, REF_TYPE_HEAD, Repository } from '../git';
 import { buildPrDescription, buildPrTitle, parseBranchName } from '../naming';
@@ -169,9 +169,39 @@ async function resolveTarget(
 
 const WRITE_NOTES = "Yes, I'll write the notes";
 
+/** First "# " heading of a notes file: the feature name the build notes tool uses */
+async function notesHeading(file: string): Promise<string | undefined> {
+  try {
+    return /^#\s+(.+)$/m.exec(await readFile(file, 'utf8'))?.[1]?.trim();
+  } catch {
+    return undefined;
+  }
+}
+
+/** Opens the notes file the user picks (one per feature); with none, shows the folder */
+async function openNotesFile(root: string, notes: BuildNotesOptions): Promise<void> {
+  const folder = path.join(root, notes.directory);
+  const names = notesFileNames(await readdir(folder).catch(() => []), notes);
+  if (!names.length) {
+    await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(folder));
+    return;
+  }
+  const items = await Promise.all(
+    names.map(async (name) => ({ label: name, description: await notesHeading(path.join(folder, name)) }))
+  );
+  const picked = await vscode.window.showQuickPick(items, {
+    title: 'Build notes',
+    placeHolder: 'Notes file of the feature (new features: copy _template.md)',
+    matchOnDescription: true,
+  });
+  if (picked) {
+    await vscode.window.showTextDocument(vscode.Uri.file(path.join(folder, picked.label)));
+  }
+}
+
 // Rule FLOW-PR-5
 /**
- * Team rule: the branch explains its changes for testers in the build notes file or the PR is tagged. Checked
+ * Team rule: the branch explains its changes for testers in a build notes file or the PR is tagged. Checked
  * locally (no request), before any other question: stopping to write the notes loses no answer. Returns the tags
  * to put on the PR, or undefined when the user wants to stop
  */
@@ -182,10 +212,10 @@ async function checkBuildNotes(root: string, base: string, head: string): Promis
   }
   let changed: boolean;
   try {
-    await access(path.join(root, notes.path));
-    changed = localDiffChangesFile(await runGit(root, ['diff', '--name-only', `${base}...${head}`]), notes.path);
+    await access(path.join(root, notes.directory));
+    changed = localDiffChangesNotes(await runGit(root, ['diff', '--name-only', `${base}...${head}`]), notes);
   } catch {
-    // No notes file in this repository, or the base branch is not available locally: nothing to check
+    // No notes folder in this repository, or the base branch is not available locally: nothing to check
     return [];
   }
   if (changed) {
@@ -193,13 +223,15 @@ async function checkBuildNotes(root: string, base: string, head: string): Promis
   }
   const tagChoice = `No, tag the PR "${notes.skipTag}"`;
   const choice = await vscode.window.showWarningMessage(
-    `This branch does not change ${notes.path}. Does it have changes testers should know about?`,
+    `This branch changes none of the build notes (${notesFilesPattern(
+      notes
+    )}). Does it have changes testers should know about?`,
     { modal: true },
     WRITE_NOTES,
     tagChoice
   );
   if (choice === WRITE_NOTES) {
-    await vscode.window.showTextDocument(vscode.Uri.file(path.join(root, notes.path)));
+    await openNotesFile(root, notes);
     return undefined;
   }
   return choice === tagChoice ? [notes.skipTag] : undefined;

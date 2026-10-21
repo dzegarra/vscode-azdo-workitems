@@ -44,7 +44,7 @@ When you use a new endpoint or find that something here is wrong, update this fi
 
 - **`refs?filter=heads/<branch>` matches by prefix** (`heads/feature/a` also returns `heads/feature/ab`): compare names exactly. Each ref has `objectId` and `creator` (the branch owner).
 - Delete a remote branch: `POST git/repositories/{repo}/refs` `[{ name, oldObjectId, newObjectId: "0000…0000" }]` (refused if someone pushed since `oldObjectId`).
-- **Did a PR change a file?** `GET git/repositories/{repo}/diffs/commits?baseVersion={lastMergeTargetCommit}&baseVersionType=commit&targetVersion={lastMergeSourceCommit}&targetVersionType=commit&diffCommonCommit=true&$top=2000` → `changes[].item.path`, `allChangesIncluded`. The "commits by itemPath" API gave false positives: do not use it.
+- **Did a PR change a file?** `GET git/repositories/{repo}/diffs/commits?baseVersion={lastMergeTargetCommit}&baseVersionType=commit&targetVersion={lastMergeSourceCommit}&targetVersionType=commit&diffCommonCommit=true&$top=2000` → `changes[].item.path`, `allChangesIncluded`. The "commits by itemPath" API gave false positives: do not use it. Paths start with `/`, and the list also has entries for the **folders** of the changed files (e.g. `/build-notes` next to `/build-notes/pid-notes.md`), so match files by name, not by prefix alone.
 - Repository by id: `GET git/repositories/{id}` (names of other repositories, cached).
 
 ## Builds, tests, coverage

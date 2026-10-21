@@ -1075,12 +1075,17 @@
         "totalflowx.buildNotes.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Team rule: a pull request with changes testers should know about explains them in the build notes file; any other one is tagged. Warns in My Pull Requests when neither is done, and asks before creating a PR whose branch does not change the file."
+          "description": "Team rule: a pull request with changes testers should know about explains them in one of the build notes files; any other one is tagged. Warns in My Pull Requests when neither is done, and asks before creating a PR whose branch changes none of them."
         },
-        "totalflowx.buildNotes.path": {
+        "totalflowx.buildNotes.directory": {
           "type": "string",
-          "default": "build-notes/developer-notes.md",
-          "description": "Build notes file, relative to the repository root. The rule only applies to the repository open in VS Code, and when the file exists in it."
+          "default": "build-notes",
+          "description": "Folder of the build notes files (one per feature), relative to the repository root. The rule only applies to the repository open in VS Code, and when the folder exists in it."
+        },
+        "totalflowx.buildNotes.fileSuffix": {
+          "type": "string",
+          "default": "-notes.md",
+          "description": "End of the name of the build notes files in that folder (e.g. pid-notes.md). Changing any of them counts as writing the notes; other files (e.g. _template.md) do not."
         },
         "totalflowx.buildNotes.skipTag": {
           "type": "string",

@@ -798,14 +798,14 @@ describe('helpers', () => {
 });
 
 describe('build notes warning', () => {
-  const buildNotes = { enabled: true, path: 'build-notes/developer-notes.md', skipTag: 'no-build-notes' };
+  const buildNotes = { enabled: true, directory: 'build-notes', fileSuffix: '-notes.md', skipTag: 'no-build-notes' };
   const options = { minimumRequiredReviewers: 0, buildNotes };
-  const extras = { buildNotes: { localRepo: true, fileExists: true, changed: false } };
+  const extras = { buildNotes: { localRepo: true, folderExists: true, changed: false } };
 
   it('comes last, with the quick fix', () => {
     const warnings = pullRequestWarnings(pr({ description: '' }), extras, options);
     expect(warnings.at(-1)).toEqual({
-      text: 'Explain the changes for testers in build-notes/developer-notes.md, or tag the PR "no-build-notes"',
+      text: 'Explain the changes for testers in build-notes/*-notes.md, or tag the PR "no-build-notes"',
       severity: 'warning',
       action: 'addSkipTag',
       actionLabel: 'Add tag no-build-notes',
