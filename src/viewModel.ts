@@ -264,6 +264,7 @@ export type WebviewMessage =
         | 'addTask'
         | 'changeState'
         | 'checkout'
+        | 'clearIntegrationBuild'
         | 'createBranch'
         | 'createPullRequest'
         | 'deleteBranch'

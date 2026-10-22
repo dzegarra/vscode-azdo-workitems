@@ -35,6 +35,12 @@ const rules: AlertRules = {
       { name: 'Integration Build', referenceName: INTEGRATION_BUILD },
     ]
   ),
+  integrationBuild: {
+    name: 'Integrated in Build',
+    referenceName: INTEGRATION_BUILD,
+    workItemTypes: ['Bug'],
+    states: ['Ready to Test'],
+  },
 };
 
 /** By default the work item links the PRs it lists (the ones of its tasks only when told so) */
@@ -353,5 +359,39 @@ describe('duplicates out of sync', () => {
 
   it('says nothing when the related work items are unknown', () => {
     expect(findAlerts(pbi({ iteration: S122 }), rules)).toEqual([]);
+  });
+});
+
+describe('Integrated in Build of a reopened Bug', () => {
+  const bug = (state: string, value: unknown = '0.24.63+') =>
+    pbi({ type: 'Bug', state, fields: { [INTEGRATION_BUILD]: value } });
+
+  it('alerts when a Bug that is not Ready to Test nor closed has a value', () => {
+    expect(findAlerts(bug('Committed'), rules)).toEqual([
+      {
+        rule: 'staleIntegrationBuild',
+        message:
+          'Is Committed but "Integrated in Build" is still 0.24.63+ (reopened? a new build is set when it is Ready to Test again)',
+        field: INTEGRATION_BUILD,
+        action: 'clearIntegrationBuild',
+      },
+    ]);
+    expect(rulesOf(bug('New'))).toEqual(['staleIntegrationBuild']);
+    expect(rulesOf(bug('Approved'))).toEqual(['staleIntegrationBuild']);
+  });
+
+  it('accepts a value while Ready to Test (any spelling) or closed', () => {
+    expect(rulesOf(bug('Ready to Test'))).toEqual([]);
+    expect(rulesOf(bug('Ready-to-Test'))).toEqual([]);
+    expect(rulesOf(bug('Done'))).toEqual([]);
+    expect(rulesOf(bug('Removed'))).toEqual([]);
+  });
+
+  it('ignores empty values, other types and a field that does not exist', () => {
+    expect(rulesOf(bug('Committed', ''))).toEqual([]);
+    expect(rulesOf(bug('Committed', '  '))).toEqual([]);
+    expect(rulesOf(bug('Committed', null))).toEqual([]);
+    expect(rulesOf(pbi({ fields: { [EFFORT]: 5, [EFFORT_DAYS]: 2, [INTEGRATION_BUILD]: '1.0' } }))).toEqual([]);
+    expect(findAlerts(bug('Committed'), { ...rules, integrationBuild: undefined })).toEqual([]);
   });
 });

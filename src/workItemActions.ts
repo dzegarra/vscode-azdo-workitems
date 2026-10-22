@@ -21,6 +21,7 @@ async function runAction(store: WorkItemsStore, message: WorkItemAction): Promis
     case 'openDependencyMap':
     case 'changeState':
     case 'addTask':
+    case 'clearIntegrationBuild':
     case 'fillIntegrationBuild':
       // These work with any work item, including parents / children not assigned to the user
       await vscode.commands.executeCommand(`totalflowx.${message.type}`, message.id);

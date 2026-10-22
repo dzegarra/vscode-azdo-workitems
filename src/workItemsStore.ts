@@ -398,12 +398,22 @@ async function alertRules(client: AzdoClient): Promise<(AlertRules & { integrati
   }
   // Without the field names, only the required fields cannot be checked
   const fields = await client.getFields().catch(() => []);
+  const integrationBuild = settings().integrationBuild;
+  const integrationBuildField = resolveFieldName(integrationBuild.field, fields);
   return {
     workItemTypes: s.workItemTypes,
     blockingTags: s.blockingTags,
     pullRequestTaskPattern: compilePullRequestTaskPattern(s.pullRequestTaskPattern),
     requiredFields: resolveRequiredFields(s.requiredFields, fields),
-    integrationBuildField: resolveFieldName(settings().integrationBuild.field, fields),
+    integrationBuildField,
+    integrationBuild: integrationBuildField
+      ? {
+          name: integrationBuild.field,
+          referenceName: integrationBuildField,
+          workItemTypes: integrationBuild.workItemTypes,
+          states: integrationBuild.states,
+        }
+      : undefined,
   };
 }
 

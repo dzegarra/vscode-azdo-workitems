@@ -17,7 +17,7 @@ import { baseBranchAlarmSoundEnabled, funEnabled, funSoundsEnabled, resolveConte
 import { BaseBranchAlert } from './baseBranchAlert';
 import { getGitApi, pickRepository, Repository } from './git';
 import { resolveWorkItemEntry } from './commands/pickWorkItem';
-import { fillIntegrationBuild } from './commands/integrationBuild';
+import { clearIntegrationBuild, fillIntegrationBuild } from './commands/integrationBuild';
 import { linkBranchToTask } from './commands/linkBranchToTask';
 import { linkTaskBranch } from './commands/linkTaskBranch';
 import { linkTaskPullRequest } from './commands/linkTaskPullRequest';
@@ -415,6 +415,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const workItemId = id ?? (await resolveWorkItemEntry(store, undefined))?.workItem.id;
       if (workItemId) {
         await fillIntegrationBuild(store, workItemId);
+      }
+    }),
+    command('totalflowx.clearIntegrationBuild', async (id?: number) => {
+      const workItemId = id ?? (await resolveWorkItemEntry(store, undefined))?.workItem.id;
+      if (workItemId) {
+        await clearIntegrationBuild(store, workItemId);
       }
     }),
     command('totalflowx.linkBranchToTask', async (parentId?: number, taskId?: number, branch?: string) => {

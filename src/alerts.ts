@@ -8,6 +8,7 @@ export type AlertRule =
   | 'noPullRequestTask'
   | 'pullRequestTaskNotDone'
   | 'pullRequestTaskNotInProgress'
+  | 'staleIntegrationBuild'
   | 'taskBranchNotLinked'
   | 'taskPullRequestNotLinked'
   | 'tasksNotDone';
@@ -19,10 +20,10 @@ export interface WorkItemAlert {
   relatedId?: number;
   /** PR the alert is about, for the PR task rules and "taskPullRequestNotLinked" */
   pullRequestId?: number;
-  /** Reference name of the empty field, for "missingField" alerts */
+  /** Reference name of the field, for "missingField" (empty) and "staleIntegrationBuild" (filled) alerts */
   field?: string;
   /** Quick fix offered next to the alert */
-  action?: 'fillIntegrationBuild' | 'linkTaskBranch' | 'linkTaskPullRequest';
+  action?: 'clearIntegrationBuild' | 'fillIntegrationBuild' | 'linkTaskBranch' | 'linkTaskPullRequest';
   /** Branch the alert is about, for "taskBranchNotLinked" */
   branch?: string;
   /** The original or the duplicate the alert is about, for the duplicate rules (offers to open it) */
@@ -94,6 +95,17 @@ export interface AlertRules {
   /** Recognizes the PR task by its title */
   pullRequestTaskPattern: RegExp;
   requiredFields: RequiredFieldsRule[];
+  /** The "Integrated in Build" field and when it must be set. Undefined: the field does not exist (not checked) */
+  integrationBuild?: IntegrationBuildRule;
+}
+
+export interface IntegrationBuildRule {
+  /** As named in the settings ("Integrated in Build") */
+  name: string;
+  referenceName: string;
+  workItemTypes: string[];
+  /** States in which it must be set (Ready to Test) */
+  states: string[];
 }
 
 /** States in which the work item is considered finished by its developers */
@@ -277,6 +289,33 @@ function fieldAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {
   }));
 }
 
+// Rule ALERT-11
+/**
+ * "Integrated in Build" is set but the Bug is no longer Ready to Test nor closed: it was reopened (the fix did not
+ * work), so the value names a build without the fix. A new one is set when it is Ready to Test again
+ */
+function staleIntegrationBuildAlerts(input: AlertInput, rule: IntegrationBuildRule | undefined): WorkItemAlert[] {
+  if (
+    !rule?.workItemTypes.includes(input.type) ||
+    isOneOf(input.state, rule.states) ||
+    isClosed(input.state) ||
+    isEmpty(input.fields[rule.referenceName])
+  ) {
+    return [];
+  }
+  const value = input.fields[rule.referenceName];
+  return [
+    {
+      rule: 'staleIntegrationBuild',
+      message: `Is ${input.state} but "${rule.name}" is still ${
+        typeof value === 'string' ? value.trim() : JSON.stringify(value)
+      } (reopened? a new build is set when it is ${rule.states.join(' / ')} again)`,
+      field: rule.referenceName,
+      action: 'clearIntegrationBuild',
+    },
+  ];
+}
+
 function whereIs(iteration: AlertIteration): string {
   return iteration.name ? `in ${iteration.name}` : 'not planned';
 }
@@ -320,6 +359,7 @@ export function findAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[
     ...taskPullRequestAlerts(input),
     ...pullRequestAlerts(input, rules),
     ...fieldAlerts(input, rules),
+    ...staleIntegrationBuildAlerts(input, rules.integrationBuild),
     ...duplicateAlerts(input),
   ];
 }

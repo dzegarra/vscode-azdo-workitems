@@ -168,6 +168,7 @@ The filters apply to work items with alerts too: when they hide some, the banner
 | The PR is completed but the PR task is not Done                                                                                     | Backlog Items and Bugs |
 | Effort or Effort in days is empty                                                                                                   | Backlog Items          |
 | Integrated in Build is empty while Ready to Test                                                                                    | Bugs                   |
+| Integrated in Build has a value while the Bug is not Ready to Test nor Done (it was reopened: the build did not fix it)             | Bugs                   |
 | The branch of an open task (this repository) is not linked to the work item ("Branch … of task … is not linked to this work item")  | Backlog Items and Bugs |
 | The PR of an open task is not linked to the work item ("PR … of task … is not linked to this work item"; abandoned PRs are ignored) | Backlog Items and Bugs |
 | A duplicate and its original (**Duplicate Of** link) are not planned in the same iteration ("Not planned with its original #…")     | Backlog Items and Bugs |
@@ -181,6 +182,7 @@ When a Bug is Ready to Test, "Integrated in Build" must tell testers in which re
 
 - **Fill** next to the "Integrated in Build is empty" alert looks the version up and proposes the value, ready to confirm or edit.
 - Moving a Bug to Ready to Test with the state picker of the extension proposes it right away when the field is empty (Escape skips it).
+- A Bug that goes back from Ready to Test (or Done) to another state was reopened: the fix is not in that build. The alert "Is … but "Integrated in Build" is still …" shows until the field is emptied; **Clear** next to it asks for confirmation and empties it, so a new value is proposed when the Bug is Ready to Test again.
 
 The feed, package, suffix, field and states can be changed in the `totalflowx.integrationBuild.*` settings. Fields can be named as in the work item form ("Integrated in Build"), as in the API ("Integration Build") or by reference name.
 

@@ -173,6 +173,11 @@
         "category": "Totalflow X"
       },
       {
+        "command": "totalflowx.clearIntegrationBuild",
+        "title": "Clear Integrated in Build",
+        "category": "Totalflow X"
+      },
+      {
         "command": "totalflowx.linkBranchToTask",
         "title": "Link a Branch to a Task",
         "category": "Totalflow X"

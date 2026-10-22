@@ -892,6 +892,9 @@ function renderAlerts(item: WorkItemModel): string {
       fix = ` <button class="link" data-action="openDetails" data-id="${alert.duplicateId}" title="Open the Work Item Details panel of ${alert.duplicateId}">Open</button>`;
     } else if (alert.action === 'fillIntegrationBuild') {
       fix = ` <button class="link" data-action="fillIntegrationBuild" data-id="${item.id}" title="Use the last release of the deploy image">Fill</button>`;
+    } else if (alert.action === 'clearIntegrationBuild') {
+      // Rule ALERT-FIX-7
+      fix = ` <button class="link" data-action="clearIntegrationBuild" data-id="${item.id}" title="Empty the field: a new build is set when it is ready to test again">Clear</button>`;
     } else if (alert.relatedId) {
       fix = ` <button class="link" data-action="changeState" data-id="${alert.relatedId}" title="Change the state of ${alert.relatedId}">Fix</button>`;
     }

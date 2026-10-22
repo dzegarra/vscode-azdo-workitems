@@ -321,6 +321,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       case 'addTask':
       case 'changeState':
       case 'checkout':
+      case 'clearIntegrationBuild':
       case 'createBranch':
       case 'createPullRequest':
       case 'deleteBranch':

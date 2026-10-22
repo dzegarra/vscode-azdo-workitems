@@ -463,6 +463,15 @@ export class AzdoClient {
     });
   }
 
+  /** Empties a field ("remove" operation of the JSON patch) */
+  async clearWorkItemField(workItemId: number, referenceName: string): Promise<void> {
+    await this.request(this.url(`wit/workitems/${workItemId}`), {
+      method: 'PATCH',
+      contentType: 'application/json-patch+json',
+      body: JSON.stringify([{ op: 'remove', path: `/fields/${referenceName}` }]),
+    });
+  }
+
   async updateWorkItemState(workItemId: number, state: string): Promise<void> {
     await this.request(this.url(`wit/workitems/${workItemId}`), {
       method: 'PATCH',

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { WorkItem } from '../azdoClient';
-import { resolveFieldName } from '../alerts';
+import { isEmpty, resolveFieldName } from '../alerts';
 import { resolveContext, settings } from '../config';
 import { integrationBuildValue, lastPublishedVersion } from '../integrationBuild';
 import { normalizeState } from '../states';
@@ -56,6 +56,45 @@ export async function fillIntegrationBuild(store: WorkItemsStore, id: number): P
   }
   await client.updateWorkItemField(id, field, value);
   void vscode.window.setStatusBarMessage(`$(check) ${id}: "${fieldName}" set to ${value}`, STATUS_MESSAGE_MS);
+  await store.refresh();
+}
+
+const CLEAR = 'Clear';
+
+// Rule ALERT-FIX-7
+/**
+ * Empties "Integrated in Build" of a reopened Bug (the quick fix of the alert "Is … but "Integrated in Build" is
+ * still …"), after a confirmation. A new value is proposed when it moves to Ready to Test again
+ */
+export async function clearIntegrationBuild(store: WorkItemsStore, id: number): Promise<void> {
+  const { client } = resolveContext(store.repository());
+  const { field: fieldName, states } = settings().integrationBuild;
+  const field = resolveFieldName(fieldName, await client.getFields());
+  if (!field) {
+    throw new Error(`The field "${fieldName}" does not exist in the project.`);
+  }
+  const current = store.find(id)?.workItem.fields[field];
+  if (isEmpty(current)) {
+    void vscode.window.showInformationMessage(`"${fieldName}" of ${id} is already empty.`);
+    return;
+  }
+  const answer = await vscode.window.showWarningMessage(
+    `Clear "${fieldName}" of ${id}?`,
+    {
+      modal: true,
+      detail: `Its value ${String(
+        current
+      )} is the build of a fix that did not work. A new value is proposed when it moves to ${states.join(
+        ' / '
+      )} again.`,
+    },
+    CLEAR
+  );
+  if (answer !== CLEAR) {
+    return;
+  }
+  await client.clearWorkItemField(id, field);
+  void vscode.window.setStatusBarMessage(`$(check) ${id}: "${fieldName}" cleared`, STATUS_MESSAGE_MS);
   await store.refresh();
 }
 
