@@ -1687,6 +1687,13 @@ function renderReviewedList(
   return `<ul class="review-list reviewed-list compact"><li class="review-separator" role="separator" aria-label="Reviewed pull requests"><span>Reviewed (${reviewed.length})</span></li>${rows}</ul>`;
 }
 
+/** Empty list: still loading (first check) or really no required review */
+function reviewsEmpty(status: ViewModel['reviews']['status']): string {
+  return status === 'loading'
+    ? '<p class="muted panel-empty" role="status">Loading the pull requests waiting for your review…</p>'
+    : '<p class="muted panel-empty">No required reviews are waiting</p>';
+}
+
 function renderReviews(current: ViewModel): string {
   const { requests, status, error, includeOptional, hiddenOptional, layout, reviewed, reviewedPeriod } =
     current.reviews;
@@ -1730,11 +1737,10 @@ function renderReviews(current: ViewModel): string {
     tools: `<button class="icon-button" data-action="checkReviewRequests" title="Check now" aria-label="Check the PRs waiting for your review now">${icon(
       'refresh'
     )}</button>`,
-    body: `${
-      requests.length
-        ? renderReviewList(requests, layout)
-        : '<p class="muted panel-empty">No required reviews are waiting</p>'
-    }${renderReviewedList(reviewed, reviewedPeriod, requests)}`,
+    // The reviewed list comes with the same check: before it ends, "No reviewed PRs" would be just as wrong
+    body: `${requests.length ? renderReviewList(requests, layout) : reviewsEmpty(status)}${
+      status === 'loading' ? '' : renderReviewedList(reviewed, reviewedPeriod, requests)
+    }`,
   });
 }
 

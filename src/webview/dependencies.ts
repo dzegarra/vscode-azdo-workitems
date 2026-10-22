@@ -2,7 +2,7 @@ import type { DependencyMapMessage, DependencyMapUpdate } from '../dependencyMap
 import type { DependencyGraph, GraphEdge, GraphLayout, GraphNode } from '../dependencyGraph';
 import { dependencyChain, filterGraph, layoutGraph } from '../dependencyGraph';
 import { escapeHtml } from '../html';
-import { typeIcon } from '../icons';
+import { typeIcon, typeIdClass } from '../icons';
 import { DependencyRisk, RISK_DESCRIPTIONS } from '../schedule';
 import { stateCategory } from '../states';
 
@@ -301,7 +301,7 @@ function renderNode(node: GraphNode, layout: GraphLayout, focusId?: number): str
   return `<div class="${classes}" data-id="${node.id}" tabindex="0"
       ${box({ left: position.x, top: position.y, width: LAYOUT.columnWidth, height: LAYOUT.nodeHeight })}>
     <div class="node-head">
-      ${typeIcon(node.type)}<span class="node-id">${node.id}</span>${renderPriority(node)}
+      ${typeIcon(node.type)}<span class="node-id${typeIdClass(node.type)}">${node.id}</span>${renderPriority(node)}
       <span class="state state-${stateCategory(node.state)}">${escapeHtml(node.state)}</span>
     </div>
     <div class="node-title" title="${escapeHtml(node.title)}">${escapeHtml(node.title)}</div>
@@ -324,7 +324,7 @@ function renderLegend(): string {
         `<span class="legend-item"><span class="legend-line risk-${risk}"></span>${RISK_DESCRIPTIONS[risk]}</span>`
     )
     .join('');
-  return `<div class="legend">${risks}<span class="legend-item"><span class="legend-mine"></span>Mine</span><span class="legend-item"><span class="legend-critical"></span>P1 critical</span></div>`;
+  return `<div class="legend">${risks}<span class="legend-item"><span class="legend-critical"></span>P1 critical</span></div>`;
 }
 
 function renderToolbar(): string {

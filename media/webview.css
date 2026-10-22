@@ -1043,16 +1043,20 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-.link.id.id-type-bug {
+.link.id.id-type-bug,
+.node-id.id-type-bug {
   color: var(--red);
 }
-.link.id.id-type-backlog {
+.link.id.id-type-backlog,
+.node-id.id-type-backlog {
   color: var(--blue);
 }
-.link.id.id-type-task {
+.link.id.id-type-task,
+.node-id.id-type-task {
   color: var(--yellow);
 }
-.link.id.id-type-feature {
+.link.id.id-type-feature,
+.node-id.id-type-feature {
   color: var(--purple);
 }
 
@@ -3758,20 +3762,25 @@ button.task-pill.empty:focus-visible {
 /* border (default): the background stays; the border brightens and a soft shadow lifts the tile. Only the sides
    without a coloured bar change: the left bar of the tiles keeps its colour */
 /* --bar: the colour of the thick left bar of each kind of tile (state of the work item, state of the PR…), used by
-   the hover styles: "border" draws the whole border in it, "accent" brightens and widens the bar */
-.card {
+   the hover styles: "border" draws the whole border in it, "accent" brightens and widens the bar. The cards of the
+   dependency map (.node) draw their whole border in it */
+.card,
+.node {
   --bar: var(--grey);
 }
 
-.card.state-border-in-progress {
+.card.state-border-in-progress,
+.node.state-border-in-progress {
   --bar: var(--blue);
 }
 
-.card.state-border-done {
+.card.state-border-done,
+.node.state-border-done {
   --bar: var(--green);
 }
 
-.card.state-border-removed {
+.card.state-border-removed,
+.node.state-border-removed {
   --bar: var(--red);
 }
 

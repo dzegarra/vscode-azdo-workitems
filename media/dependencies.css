@@ -83,13 +83,6 @@ body {
   border-top-style: dashed;
 }
 
-.legend-mine {
-  width: 10px;
-  height: 10px;
-  border: 2px solid var(--vscode-focusBorder);
-  border-radius: 3px;
-}
-
 .legend-critical {
   width: 10px;
   height: 10px;
@@ -217,8 +210,10 @@ body {
   grid-template-rows: auto 1fr auto;
   gap: 2px;
   padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--grey);
+  /* The whole border has the colour of the state (--bar, set by the state-border-* class in webview.css). This file
+     is loaded after webview.css: a border colour set here on .node alone would hide the state */
+  border: 1px solid var(--bar);
+  border-left-width: 3px;
   border-radius: var(--radius);
   background: var(--vscode-editorWidget-background, var(--card-bg));
   cursor: pointer;
@@ -231,10 +226,10 @@ body {
   outline: none;
 }
 
-.node.mine {
-  border-top-color: var(--vscode-focusBorder);
-  border-right-color: var(--vscode-focusBorder);
-  border-bottom-color: var(--vscode-focusBorder);
+/* The border tells the state, so my work items are told by the "Me" of the footer */
+.node.mine .assignee {
+  color: var(--vscode-focusBorder);
+  font-weight: 600;
 }
 
 .node.focus {
@@ -242,8 +237,8 @@ body {
 }
 
 /*
- * P1 still to do: a red glow behind the card, as if lit from behind. The card itself is unchanged (no tint, its own
- * border, blue when it is mine): only the halo around it is red
+ * P1 still to do: a red glow behind the card, as if lit from behind. The card itself is unchanged (no tint, its
+ * state border): only the halo around it is red
  */
 .node.critical {
   --critical: #e5484d;
