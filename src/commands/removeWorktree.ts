@@ -2,14 +2,9 @@ import * as vscode from 'vscode';
 import { GitAPI, pickRepository } from '../git';
 import { WorkItemsStore } from '../workItemsStore';
 import { listWorktrees, removeWorktreeSafely, worktreeHasChanges } from '../worktreeGit';
-import {
-  removableWorktrees,
-  samePath,
-  Worktree,
-  worktreeDescription,
-  worktreeDetail,
-  worktreeLabel,
-} from '../worktrees';
+import type { WorktreeTracker } from '../worktreeTracker';
+import { worktreePickEntries } from '../worktreeRows';
+import { mainWorktreeFolder, removableWorktrees, samePath, Worktree, worktreeLabel } from '../worktrees';
 
 const REMOVE = 'Remove';
 const REMOVE_LOSING_CHANGES = 'Remove (changes will be lost)';
@@ -121,39 +116,52 @@ export async function removeWorktrees(store: WorkItemsStore, root: string, targe
   }
 }
 
-/** The "Remove Worktrees…" command: pick any of the repository's worktrees (except main and this window's) */
-export async function removeWorktreesCommand(git: GitAPI, store: WorkItemsStore): Promise<void> {
+// Rule WORKTREE-PICK-1
+/**
+ * The "Remove Worktrees…" command (every worktree except main and this window's) and "Clean Up Worktrees…" (only
+ * the stale and idle ones). The stale ones come first and are pre-selected; each says why it can go
+ */
+export async function removeWorktreesCommand(
+  git: GitAPI,
+  store: WorkItemsStore,
+  tracker: WorktreeTracker,
+  cleanupOnly = false
+): Promise<void> {
   const root = pickRepository(git).rootUri.fsPath;
+  // Fresh git state: the uncommitted changes shown must be the current ones
+  await tracker.refresh();
   const all = await listWorktrees(root);
-  const removable = removableWorktrees(all, store.openFolders());
-  if (!removable.length) {
-    void vscode.window.showInformationMessage('There are no other worktrees to remove.');
+  const entries = worktreePickEntries(tracker.list(), mainWorktreeFolder(all, root), cleanupOnly);
+  if (!entries.length) {
+    void vscode.window.showInformationMessage(
+      cleanupOnly ? 'No worktree needs cleaning up.' : 'There are no other worktrees to remove.'
+    );
     return;
   }
-  const items = await Promise.all(
-    removable.map(async (worktree) => {
-      const { dirty } = await inspect(worktree);
-      return {
-        label: worktreeLabel(worktree),
-        description: worktreeDescription(all[0].path, worktree),
-        detail: worktreeDetail(worktree, dirty) || undefined,
-        worktree,
-      };
-    })
+  const items = entries.map((entry) =>
+    'separator' in entry ? { label: entry.separator, kind: vscode.QuickPickItemKind.Separator } : entry
   );
   const picked = await vscode.window.showQuickPick(items, {
-    title: 'Remove worktrees',
+    title: cleanupOnly ? 'Clean up worktrees' : 'Remove worktrees',
     placeHolder: 'Select the worktrees to remove (the branches are kept)',
     canPickMany: true,
     ignoreFocusOut: true,
   });
-  if (picked?.length) {
-    await removeWorktrees(
-      store,
-      root,
-      picked.map((item) => item.worktree)
-    );
+  const paths = (picked ?? []).flatMap((item) => ('path' in item ? [item.path] : []));
+  const targets = all.filter((worktree) => paths.some((folder) => samePath(folder, worktree.path)));
+  if (targets.length) {
+    await removeWorktrees(store, root, targets);
   }
+}
+
+/** Removes the worktree of a folder (the Worktrees view, the notification of a stale worktree) */
+export async function removeWorktreeAt(store: WorkItemsStore, git: GitAPI, folder: string): Promise<void> {
+  const root = pickRepository(git).rootUri.fsPath;
+  const worktree = (await listWorktrees(root)).find((candidate) => samePath(candidate.path, folder));
+  if (!worktree) {
+    throw new Error(`${folder} is no longer a worktree of this repository.`);
+  }
+  await removeWorktrees(store, root, [worktree]);
 }
 
 /** Removes the worktree that has the branch (the branch stays), after the usual confirmation */

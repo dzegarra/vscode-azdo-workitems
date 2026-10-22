@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { settings } from '../config';
 import { GitAPI, pickRepository, Repository } from '../git';
+import type { CheckoutKind } from '../viewModel';
 import { WorkItemsStore } from '../workItemsStore';
 import { copyEnvFiles, createWorktree, listWorktrees, stashPop, stashPush, writeSetupMarker } from '../worktreeGit';
 import {
@@ -20,6 +21,8 @@ import {
 export interface BranchTarget {
   branch: string;
   pullRequest?: { id: number; title: string };
+  /** The card or PR the checkout comes from: remembered with the worktree it creates (Rule WORKTREE-ORIGIN-1) */
+  origin?: { kind: CheckoutKind; id: number };
 }
 
 const OPEN_IN_WORKTREE = 'Open in a worktree';
@@ -160,6 +163,7 @@ export async function openInWorktree(
     }
   );
   await store.refreshWorktrees();
+  store.announceWorktree({ path: folder, branch, origin: target.origin });
   store.notify();
   await openFolder(folder);
   void vscode.window.showInformationMessage(`Opened ${branch} in a worktree at ${folder}`);
@@ -169,12 +173,12 @@ export async function openInWorktree(
  * Rules WORKTREE-OPEN-1, WORKTREE-OPEN-2: the "Open in a worktree" / "Open worktree" items of the menus: opens the worktree of the
  * branch, or creates it when there is none (same as the Open in a worktree button of the … picker)
  */
-export async function openOrCreateWorktree(git: GitAPI, store: WorkItemsStore, branch: string): Promise<void> {
-  if (worktreeOpenAction(!!store.worktreeFor(branch)) === 'open') {
-    await openWorktree(store, branch);
+export async function openOrCreateWorktree(git: GitAPI, store: WorkItemsStore, target: BranchTarget): Promise<void> {
+  if (worktreeOpenAction(!!store.worktreeFor(target.branch)) === 'open') {
+    await openWorktree(store, target.branch);
     return;
   }
-  await openInWorktree(pickRepository(git), store, { branch });
+  await openInWorktree(pickRepository(git), store, target);
 }
 
 const CHOICES: Record<string, CheckoutChoice | 'stash'> = {

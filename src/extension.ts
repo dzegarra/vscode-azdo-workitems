@@ -3,7 +3,7 @@ import { createBranch } from './commands/createBranch';
 import { checkoutPullRequest } from './commands/checkoutPullRequest';
 import { isCheckoutBranch } from './workItemBranches';
 import { BranchTarget, checkoutBranch, openOrCreateWorktree } from './commands/checkoutBranch';
-import { removeWorktreeOf, removeWorktreesCommand } from './commands/removeWorktree';
+import { removeWorktreeAt, removeWorktreeOf, removeWorktreesCommand } from './commands/removeWorktree';
 import { runPendingWorktreeSetup } from './worktreeSetup';
 import { showActionPicker } from './actionPickerUi';
 import { checkoutMenuSections } from './checkoutMenu';
@@ -13,7 +13,15 @@ import { addBuildNotesSkipTag } from './commands/addBuildNotesSkipTag';
 import { retargetPullRequest } from './commands/retargetPullRequest';
 import { createPullRequest } from './commands/createPullRequest';
 import { deleteBranch } from './commands/deleteBranch';
-import { baseBranchAlarmSoundEnabled, funEnabled, funSoundsEnabled, resolveContext, SECTION, settings } from './config';
+import {
+  baseBranchAlarmSoundEnabled,
+  funEnabled,
+  funSoundsEnabled,
+  resolveContext,
+  SECTION,
+  settings,
+  worktreeSettings,
+} from './config';
 import { BaseBranchAlert } from './baseBranchAlert';
 import { getGitApi, pickRepository, Repository } from './git';
 import { resolveWorkItemEntry } from './commands/pickWorkItem';
@@ -41,6 +49,8 @@ import { PullRequestNotifier } from './pullRequestNotifier';
 import { PullRequestTaskStarter } from './pullRequestTaskStarter';
 import { ReviewStatusBar } from './reviewStatusBar';
 import { SummaryView } from './summaryView';
+import { CLEAN_UP_WORKTREES_COMMAND, REMOVE_WORKTREE_AT_COMMAND, WorktreeTracker } from './worktreeTracker';
+import { rowOf, WorktreesView } from './worktreesView';
 import { FunJournalStore } from './funJournalStore';
 import { SHOW_SPRINT_RECAP_COMMAND, SprintRecapPanel } from './sprintRecapPanel';
 import type { SoundId } from './sounds';
@@ -132,12 +142,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   const notifier = new PullRequestNotifier(context.globalState, store, funJournal, () => celebrate(true, 'merged'));
   const sprintRecap = new SprintRecapPanel(context.extensionUri, store, funJournal);
+  const worktreeTracker = new WorktreeTracker(context.globalState, { store, reviews: reviewRequests, myPullRequests });
+  const worktreesView = new WorktreesView(worktreeTracker);
   // Native tree view: it exists from the activation, so its badge shows on the activity bar icon from a cold start
   const summary = new SummaryView({
     store,
     reviews: reviewRequests,
     myPullRequests,
     celebrateCleanBoard: () => funEnabled() && settings().alerts.enabled,
+    worktrees: worktreeTracker,
+    showStaleWorktrees: () => worktreeSettings().showInSummary,
   });
   const currentRepository = () => (git.repositories.length ? pickRepository(git) : undefined);
 
@@ -151,32 +165,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           if (!entry || !isCheckoutBranch(entry.branches, branch)) {
             throw new Error(`${branch} is not a branch of work item ${id} in this repository.`);
           }
-          return { branch };
+          return { branch, origin: { kind, id } };
         }
         if (!entry?.branch) {
           throw new Error(`Work item ${id} has no branch.`);
         }
-        return { branch: entry.branch };
+        return { branch: entry.branch, origin: { kind, id } };
       }
       case 'task': {
         if (!branch || !store.taskBranchNames(id).includes(branch)) {
           throw new Error(`${branch ?? 'The branch'} is not a branch of task ${id} in this repository.`);
         }
-        return { branch };
+        return { branch, origin: { kind, id } };
       }
       case 'review': {
         const request = reviewRequests.models().find((r) => r.id === id);
         if (!request) {
           throw new Error(`PR ${id} is no longer waiting for your review.`);
         }
-        return { branch: request.sourceBranch, pullRequest: { id, title: request.title } };
+        return { branch: request.sourceBranch, pullRequest: { id, title: request.title }, origin: { kind, id } };
       }
       case 'myPullRequest': {
         const pullRequest = myPullRequests.models().items.find((item) => item.id === id);
         if (!pullRequest) {
           throw new Error(`PR ${id} is no longer in your list of pull requests.`);
         }
-        return { branch: pullRequest.sourceBranch, pullRequest: { id, title: pullRequest.title } };
+        return {
+          branch: pullRequest.sourceBranch,
+          pullRequest: { id, title: pullRequest.title },
+          origin: { kind, id },
+        };
       }
     }
   };
@@ -267,6 +285,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     reviewRequests,
     reviewStatusBar,
     summary,
+    worktreeTracker,
+    worktreesView,
     reviewRequests.onDidChange(() => view.post()),
     myPullRequests,
     myPullRequestsStatusBar,
@@ -374,7 +394,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // remote, git creates the local tracking branch
       const target = branch
         ? branchTarget('workItem', entry.workItem.id, branch)
-        : entry.branch && { branch: entry.branch };
+        : entry.branch && { branch: entry.branch, origin: { kind: 'workItem' as const, id: entry.workItem.id } };
       if (target) {
         await checkoutBranch(git, store, target);
       }
@@ -385,13 +405,40 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       checkoutBranch(git, store, branchTarget(kind, id, branch), 'here')
     ),
     command('totalflowx.openWorktree', async (kind: CheckoutKind, id: number, branch?: string) =>
-      openOrCreateWorktree(git, store, branchTarget(kind, id, branch).branch)
+      openOrCreateWorktree(git, store, branchTarget(kind, id, branch))
     ),
     command('totalflowx.worktreeMenu', showBranchActions),
     command('totalflowx.removeWorktree', async (kind: CheckoutKind, id: number, branch?: string) =>
       removeWorktreeOf(store, git, branchTarget(kind, id, branch).branch)
     ),
-    command('totalflowx.removeWorktrees', () => removeWorktreesCommand(git, store)),
+    command('totalflowx.removeWorktrees', () => removeWorktreesCommand(git, store, worktreeTracker)),
+    command(CLEAN_UP_WORKTREES_COMMAND, () => removeWorktreesCommand(git, store, worktreeTracker, true)),
+    command(REMOVE_WORKTREE_AT_COMMAND, async (folder?: unknown) => {
+      // From the notification (a folder) or from a row of the Worktrees view (its node)
+      const target = typeof folder === 'string' ? folder : rowOf(folder)?.path;
+      if (target) {
+        await removeWorktreeAt(store, git, target);
+      }
+    }),
+    command('totalflowx.worktrees.refresh', () => worktreeTracker.refresh()),
+    command('totalflowx.worktrees.open', async (node?: unknown) => {
+      const row = rowOf(node);
+      if (row) {
+        await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(row.path), { forceNewWindow: true });
+      }
+    }),
+    command('totalflowx.worktrees.openOwner', async (node?: unknown) => {
+      const owner = rowOf(node)?.owner;
+      if (!owner) {
+        return;
+      }
+      if (owner.kind === 'workItem' || owner.kind === 'task') {
+        await details.open(owner.id);
+        return;
+      }
+      const { client, repositoryName } = resolveContext(currentRepository());
+      await vscode.env.openExternal(vscode.Uri.parse(client.pullRequestWebUrlByName(repositoryName, owner.id)));
+    }),
     command('totalflowx.openDetails', async (id?: number) => {
       // From the command palette: pick one of the work items
       const workItemId = id ?? (await resolveWorkItemEntry(store, undefined))?.workItem.id;
@@ -464,7 +511,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         throw new Error(`PR ${pullRequestId} is no longer waiting for your review.`);
       }
       if (request) {
-        await checkoutPullRequest(git, store, request);
+        await checkoutPullRequest(git, store, request, 'review');
       }
     }),
     command('totalflowx.checkMyPullRequests', () => myPullRequests.poll()),
@@ -490,7 +537,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         throw new Error(`PR ${pullRequestId} is no longer in your list of pull requests.`);
       }
       if (pullRequest) {
-        await checkoutPullRequest(git, store, pullRequest);
+        await checkoutPullRequest(git, store, pullRequest, 'myPullRequest');
       }
     }),
     command(PUBLISH_PULL_REQUEST_COMMAND, async (pullRequestId: number) => {

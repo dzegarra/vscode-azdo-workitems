@@ -50,6 +50,7 @@ import {
 } from './reviewedRequests';
 import type { Layout } from './viewModel';
 import { WorkItemsStore } from './workItemsStore';
+import type { ActiveReview, KnownPullRequest } from './worktreeHygiene';
 
 /** What is fetched about a PR to review besides the PR itself */
 interface ReviewCardData {
@@ -334,6 +335,35 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
     return withFeature('reviews', async () => {
       await this.runPoll(manual);
     });
+  }
+
+  /**
+   * Only for the cleanup of the worktrees (src/worktreeHygiene.ts), never for counting or notifying reviews: the
+   * PRs of the open repository where the user is a reviewer. `active` comes with every check; `closed` only while the
+   * period of "Reviewed" lists closed PRs. Undefined until the first check succeeded. No request
+   */
+  pullRequestsForWorktrees(): { active: ActiveReview[]; closed: KnownPullRequest[] } | undefined {
+    const local = this.localRepository();
+    const userId = this.userId;
+    if (!local || !userId || this.status !== 'ready') {
+      return undefined;
+    }
+    const inRepository = (pr: ReviewerPullRequest) => pr.repository.name.toLowerCase() === local.name.toLowerCase();
+    const branch = (pr: ReviewerPullRequest) => pr.sourceRefName.replace('refs/heads/', '');
+    return {
+      active: this.activeReviewed.filter(inRepository).map((pr) => ({
+        id: pr.pullRequestId,
+        title: pr.title,
+        sourceBranch: branch(pr),
+        myVote: pr.reviewers.find((reviewer) => reviewer.id === userId)?.vote ?? 0,
+      })),
+      closed: this.closedReviewed.filter(inRepository).map((pr) => ({
+        id: pr.pullRequestId,
+        title: pr.title,
+        sourceBranch: branch(pr),
+        status: pr.status,
+      })),
+    };
   }
 
   /**

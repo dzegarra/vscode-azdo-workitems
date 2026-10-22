@@ -83,9 +83,20 @@
           "id": "totalflowx.summary",
           "name": "Summary",
           "visibility": "collapsed"
+        },
+        {
+          "id": "totalflowx.worktrees",
+          "name": "Worktrees",
+          "visibility": "collapsed"
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "totalflowx.worktrees",
+        "contents": "No other worktrees. The ones you create from a card or a pull request show up here, with whether they can be removed."
+      }
+    ],
     "commands": [
       {
         "command": "totalflowx.refresh",
@@ -140,6 +151,36 @@
         "title": "Remove Worktrees…",
         "category": "Totalflow X",
         "icon": "$(trash)"
+      },
+      {
+        "command": "totalflowx.cleanUpWorktrees",
+        "title": "Clean Up Worktrees…",
+        "category": "Totalflow X",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "totalflowx.worktrees.refresh",
+        "title": "Refresh Worktrees",
+        "category": "Totalflow X",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "totalflowx.worktrees.open",
+        "title": "Open Worktree",
+        "category": "Totalflow X",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "totalflowx.removeWorktreeAt",
+        "title": "Remove Worktree",
+        "category": "Totalflow X",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "totalflowx.worktrees.openOwner",
+        "title": "Open Work Item or Pull Request",
+        "category": "Totalflow X",
+        "icon": "$(link-external)"
       },
       {
         "command": "totalflowx.openDetails",
@@ -307,6 +348,37 @@
         {
           "command": "totalflowx.openSettings",
           "when": "view == totalflowx.myItems"
+        },
+        {
+          "command": "totalflowx.cleanUpWorktrees",
+          "when": "view == totalflowx.worktrees",
+          "group": "navigation@1"
+        },
+        {
+          "command": "totalflowx.worktrees.refresh",
+          "when": "view == totalflowx.worktrees",
+          "group": "navigation@2"
+        },
+        {
+          "command": "totalflowx.removeWorktrees",
+          "when": "view == totalflowx.worktrees"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "totalflowx.worktrees.openOwner",
+          "when": "view == totalflowx.worktrees && viewItem =~ /^worktree\\..*\\.owned$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "totalflowx.worktrees.open",
+          "when": "view == totalflowx.worktrees && viewItem =~ /^worktree\\.present\\./",
+          "group": "inline@2"
+        },
+        {
+          "command": "totalflowx.removeWorktreeAt",
+          "when": "view == totalflowx.worktrees && viewItem =~ /^worktree\\./",
+          "group": "inline@3"
         }
       ],
       "commandPalette": [
@@ -336,6 +408,18 @@
         },
         {
           "command": "totalflowx.revealWorkItem",
+          "when": "false"
+        },
+        {
+          "command": "totalflowx.worktrees.open",
+          "when": "false"
+        },
+        {
+          "command": "totalflowx.removeWorktreeAt",
+          "when": "false"
+        },
+        {
+          "command": "totalflowx.worktrees.openOwner",
           "when": "false"
         }
       ]
@@ -741,6 +825,28 @@
             "default": true,
             "description": "Move the tasks linked to your published pull requests (active, not draft) to In Progress, also when the PR was published outside the extension. Done and Removed tasks are left alone.",
             "order": 9
+          },
+          "totalflowx.worktrees.idleDays": {
+            "type": "number",
+            "default": 14,
+            "minimum": 0,
+            "scope": "application",
+            "description": "A worktree whose branch has had no commit for this many days (counted from its creation when later) is listed as idle in the Worktrees view and the Clean Up Worktrees picker. 0: never idle.",
+            "order": 10
+          },
+          "totalflowx.worktrees.notifyWhenStale": {
+            "type": "boolean",
+            "default": true,
+            "scope": "application",
+            "description": "Notify once when a worktree can be removed: its pull request was merged or abandoned, the review is over, its branch was deleted in the remote or its work item is closed.",
+            "order": 11
+          },
+          "totalflowx.worktrees.showInSummary": {
+            "type": "boolean",
+            "default": true,
+            "scope": "application",
+            "description": "Show a \"N worktrees to clean up\" row in the Summary view (never in the activity bar badge).",
+            "order": 12
           }
         }
       },

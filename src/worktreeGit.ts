@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
 import { copyFile, readdir, readFile, rmdir, rm, stat, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
+import { BranchFacts, parseBranchFacts } from './worktreeHygiene';
 import {
   ENV_PARENT_FOLDERS,
   envFileCandidates,
@@ -35,6 +36,17 @@ export function git(cwd: string, args: string[]): Promise<string> {
 
 export async function listWorktrees(cwd: string): Promise<Worktree[]> {
   return parseWorktreeList(await git(cwd, ['worktree', 'list', '--porcelain']));
+}
+
+/** Upstream tracking and last commit date of every local branch, with one git call (no fetch) */
+export async function readBranchFacts(cwd: string): Promise<Map<string, BranchFacts>> {
+  return parseBranchFacts(
+    await git(cwd, [
+      'for-each-ref',
+      '--format=%(refname:short)%09%(upstream:track)%09%(committerdate:unix)',
+      'refs/heads',
+    ])
+  );
 }
 
 async function refExists(cwd: string, ref: string): Promise<boolean> {
@@ -162,6 +174,14 @@ export async function takeSetupMarker(folder: string): Promise<SetupMarker | und
 
 export async function worktreeHasChanges(worktreeRoot: string): Promise<boolean> {
   return (await git(worktreeRoot, ['status', '--porcelain'])).trim().length > 0;
+}
+
+/**
+ * Same, for background checks: `--no-optional-locks` keeps git from refreshing the index, so it never takes the
+ * index.lock that a commit in the worktree's own window may need at that moment
+ */
+export async function worktreeHasChangesInBackground(worktreeRoot: string): Promise<boolean> {
+  return (await git(worktreeRoot, ['--no-optional-locks', 'status', '--porcelain'])).trim().length > 0;
 }
 
 /** Removes the worktree; without `force` git refuses when it has uncommitted changes */

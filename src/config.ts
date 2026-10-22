@@ -120,6 +120,16 @@ export function funSoundsEnabled(): boolean {
   return config.get<boolean>('fun.enabled', false) && config.get<boolean>('fun.sounds', false);
 }
 
+/** totalflowx.worktrees.*: tracking of the leftover worktrees (Rules WORKTREE-STALE-*, WORKTREE-IDLE-*, WORKTREE-NUDGE-1) */
+export function worktreeSettings(): { idleDays: number; notifyWhenStale: boolean; showInSummary: boolean } {
+  const config = vscode.workspace.getConfiguration(`${SECTION}.worktrees`);
+  return {
+    idleDays: Math.max(0, Math.floor(config.get<number>('idleDays', 14))),
+    notifyWhenStale: config.get<boolean>('notifyWhenStale', true),
+    showInSummary: config.get<boolean>('showInSummary', true),
+  };
+}
+
 /** totalflowx.pipelines.baseBranchAlarmSound: the alarm sound when the base branch breaks. Not a fun feature: on by default */
 export function baseBranchAlarmSoundEnabled(): boolean {
   return vscode.workspace.getConfiguration(SECTION).get<boolean>('pipelines.baseBranchAlarmSound', true);

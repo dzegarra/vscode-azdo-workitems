@@ -16,7 +16,7 @@ import { openPredecessors } from './predecessors';
 import { ScheduledIteration } from './schedule';
 import { branchesToVerify, TaskBranchModel, toTaskBranchModels } from './taskBranches';
 import { sortTaskPullRequests, TaskPullRequestModel, toTaskPullRequestModel } from './taskPullRequests';
-import { FilterModel, ViewModel, WorkItemModel } from './viewModel';
+import { CheckoutKind, FilterModel, ViewModel, WorkItemModel } from './viewModel';
 import { runDetailsLoader } from './runDetailsLoader';
 import { BaseBranchHealth, baseBranchHealth, finishedStates, incidentKey } from './baseBranchHealth';
 import {
@@ -35,6 +35,7 @@ import { listWorktrees } from './worktreeGit';
 import { findWorktree, otherWorktreeBranches, Worktree } from './worktrees';
 import { taskWorkingOn, WorkingOnLevel, workingOnLevels } from './workingOn';
 import { realpathSync } from 'node:fs';
+import type { KnownPullRequest, KnownWorkItem } from './worktreeHygiene';
 import {
   canCreateBranchForTask,
   canCreatePullRequestForTask,
@@ -83,6 +84,13 @@ export interface WorkItemEntry {
   duplicateOf?: WorkItem[];
   /** The work items duplicating it; undefined when they could not be loaded */
   duplicates?: WorkItem[];
+}
+
+/** A worktree the extension has just created, and the card or PR it was created from (unknown for a new branch's offer) */
+export interface CreatedWorktreeEvent {
+  path: string;
+  branch: string;
+  origin?: { kind: CheckoutKind; id: number };
 }
 
 interface WorkingOnState {
@@ -468,6 +476,10 @@ export class WorkItemsStore {
   /** Fired after the work items are reloaded from Azure DevOps, e.g. after changing a state */
   readonly onDidLoad = this.loadEmitter.event;
 
+  private readonly worktreeCreatedEmitter = new vscode.EventEmitter<CreatedWorktreeEvent>();
+  /** Fired when the extension has created a worktree, with what it was created for (src/worktreeTracker.ts) */
+  readonly onDidCreateWorktree = this.worktreeCreatedEmitter.event;
+
   status: ViewModel['status'] = 'loading';
   error?: string;
   entries: WorkItemEntry[] = [];
@@ -787,6 +799,43 @@ export class WorkItemsStore {
     return branch ? findWorktree(this.worktrees, branch, this.openFolders()) : undefined;
   }
 
+  /**
+   * For the cleanup of the worktrees (src/worktreeHygiene.ts): the PRs of the open repository linked to the work items
+   * of the list and to their tasks, and those work items and tasks with their branches. Undefined until loaded
+   */
+  worktreeSources(): { pullRequests: KnownPullRequest[]; workItems: KnownWorkItem[] } | undefined {
+    if (this.status !== 'ready') {
+      return undefined;
+    }
+    const pullRequests = this.entries
+      .flatMap((entry) => [entry.pullRequests, ...entry.otherTasks.map((task) => task.pullRequests)].flat())
+      .filter((pr) => !isOtherRepository(pr.repository.id, this.repositoryId))
+      .map((pr) => ({
+        id: pr.pullRequestId,
+        title: pr.title,
+        sourceBranch: pr.sourceRefName.replace('refs/heads/', ''),
+        status: pr.status,
+      }));
+    const known = (item: WorkItem, branches: string[]): KnownWorkItem => ({
+      id: item.id,
+      title: item.title,
+      state: item.state,
+      branches,
+    });
+    const workItems = [
+      ...this.entries.map((entry) =>
+        known(
+          entry.workItem,
+          entry.branches.filter((branch) => !branch.otherRepository).map((branch) => branch.name)
+        )
+      ),
+      ...this.entries
+        .flatMap((entry) => entry.otherTasks)
+        .map((task) => known(task.workItem, branchNamesOf(task.workItem.links.branches, this.repositoryId))),
+    ];
+    return { pullRequests, workItems };
+  }
+
   /** Reads the worktrees with one git call. Returns whether they changed */
   async refreshWorktrees(): Promise<boolean> {
     const root = this.repository()?.rootUri.fsPath;
@@ -808,6 +857,11 @@ export class WorkItemsStore {
       );
     this.worktrees = next;
     return changed;
+  }
+
+  /** Tells that the extension has just created a worktree (after refreshWorktrees) */
+  announceWorktree(event: CreatedWorktreeEvent): void {
+    this.worktreeCreatedEmitter.fire(event);
   }
 
   /** Lets the view re-render, e.g. when the checked out branch changes */

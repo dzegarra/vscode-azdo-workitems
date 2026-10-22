@@ -17,6 +17,7 @@ Brings the Azure DevOps work of the current sprint into VS Code: your Backlog It
 - **[Alerts](#alerts)** for the work items that break the team rules (Done with open tasks, missing PR task, blocking tags, empty required fields…), in the cards, the activity bar badge and the status bar. **[Integrated in Build](#integrated-in-build)** can be filled in one click from the last release of the deploy image.
 - **[Dependencies](#dependencies)**: predecessors and successors in the Work Item Details panel, and an interactive map by iteration that highlights the risky ones.
 - **[CI pipelines](#ci-pipelines)**: live state of the runs validating your pull requests, in the cards and the status bar, with a notification when they finish. A loud **[alarm when develop is broken](#when-develop-is-broken)**.
+- **[Leftover worktrees](#leftover-worktrees)**: a Worktrees view that tells which worktrees can be removed (PR merged or abandoned, review over, work item closed, branch deleted), a Summary row, a one-time notification and a cleanup picker.
 - **[Pull request notifications](#pull-request-notifications)** when your PRs get comments or votes, or are merged.
 - **[Reviews](#pull-requests-waiting-for-my-review)**: the PRs waiting for your review at the top of the sidebar and in the status bar, with the time left before the 24 hours run out, orange when due soon and red when overdue, one-click checkout of their branch, plus notifications, reminders, a daily digest, and notifications when your review comments are answered or resolved.
 - **[Fun](#fun)** (opt-in): confetti when your PRs are merged, your green CI streak, a clean-board badge, a sprint countdown and a sprint wrap-up.
@@ -122,10 +123,27 @@ Every **Checkout** (work items, PRs to review, My Pull Requests, details) can op
 - The **…** next to Checkout (sidebar: branch rows, the card's Checkout button and the Checkout buttons of the PR boxes; also in the Work Item Details panel) opens the native picker, which always offers **Checkout here** and **Open in a worktree**. **Open in a worktree** in the task pill's picker and in the branch rows' picker creates the worktree when the branch has none, and opens it when it exists.
 - Worktrees are created next to the repository, in `<repository>.worktrees/<branch>` (e.g. `User_Interface.worktrees/feature/fui-admin/5641-network-restart-button`), and open in a new window. From a worktree window too, they go next to the main repository (the folder with the real `.git`), never inside the current worktree. The `.env.local` files (at the root and in `apps/*`, `packages/*`, `tools/*`) are copied into it, and the new window runs `npm ci` in a terminal.
 - A branch that already has a worktree adds a `⧉` to its badge (tooltip: the worktree folder), and its picker offers **Open worktree** and **Remove worktree** instead.
-- **Remove Worktrees…** (view menu or command palette) lists all the worktrees of the repository, to remove several at once. Removing a worktree keeps its branch; a worktree with uncommitted changes is only removed after confirming that they will be lost, and locked ones are skipped. Close the VS Code window of a worktree before removing it.
+- **Remove Worktrees…** (view menus or command palette) lists all the worktrees of the repository, the [removable ones](#leftover-worktrees) first, to remove several at once. Removing a worktree keeps its branch; a worktree with uncommitted changes is only removed after confirming that they will be lost, and locked ones are skipped. Close the VS Code window of a worktree before removing it.
 - **Delete branch** also removes the worktree of the branch (asking first when it has uncommitted changes).
 
 `totalflowx.checkout.mode` sets what **Checkout** does: `ask` (default), `branch` (always in place) or `worktree` (always in a worktree).
+
+### Leftover worktrees
+
+Worktrees of merged PRs and finished reviews are easy to forget. The extension remembers what each worktree it creates is for (the work item, task, your PR or the PR you review) and tells you when it is no longer needed:
+
+- **Can be removed** when its PR was merged or abandoned (or, for a worktree created from one of your PRs, the PR is no longer active), the review is over (the PR is no longer active for you), its branch was deleted in the remote (after a fetch that prunes), its work item or task is Done / Removed, or its folder is gone.
+- **Idle** when its branch has had no commit for `totalflowx.worktrees.idleDays` (14), or you approved the PR it was opened to review.
+- **In use** otherwise. Worktrees created outside the extension are recognised by their branch (your PRs, your reviews, the work items of the list).
+
+Where it shows:
+
+- The **Worktrees** view (below Summary, collapsed by default) groups them (Can be removed, Idle, In use). Each row shows the branch, why it can go (or what it is for), the age of its last commit and a ● when it has uncommitted changes. Inline buttons open the work item / PR, open the worktree in a new window, or remove it. The title bar has **Clean Up Worktrees…** and Refresh.
+- The **Summary** view shows **N worktrees to clean up** (click it to clean up). It never counts in the activity bar badge (`totalflowx.worktrees.showInSummary`).
+- A notification, once, when a worktree becomes removable: **Remove Worktree** or **Show Worktrees** (several at once: one notification with **Clean Up…**; `totalflowx.worktrees.notifyWhenStale`). When one of your PRs is merged, the [merge notification](#pull-request-notifications)'s **Delete branch** already removes its worktree, so no second notification is shown.
+- **Clean Up Worktrees…** lists the removable ones (pre-selected) and the idle ones; **Remove Worktrees…** lists all of them in the same order, with the reason of each. Removing still asks first, keeps the branch and warns about uncommitted changes.
+
+It costs no request to Azure DevOps: it reuses what the sidebar, My Pull Requests and the reviews already fetched, and reads local git (`git for-each-ref`, and `git status` in each worktree every few minutes).
 
 ## Work items you are working on
 
@@ -150,7 +168,7 @@ It can be turned off with `totalflowx.workingOn.showInStatusBar`.
 
 ## Summary view
 
-Below **Assigned to Me** (collapsed by default) the **Summary** view lists what needs your attention, one row per kind and only when there is something: [develop is broken](#when-develop-is-broken) (first; click it for what broke it), work items that need attention, pull requests waiting for your review (with how many are overdue / due soon), your pull requests with warnings, your pull requests ready to merge, and failed CI runs. Click a row to show the main list. When nothing needs attention it says so.
+Below **Assigned to Me** (collapsed by default) the **Summary** view lists what needs your attention, one row per kind and only when there is something: [develop is broken](#when-develop-is-broken) (first; click it for what broke it), work items that need attention, pull requests waiting for your review (with how many are overdue / due soon), your pull requests with warnings, your pull requests ready to merge, and failed CI runs. Click a row to show the main list. When nothing needs attention it says so. Below them, [worktrees to clean up](#leftover-worktrees) (click it to clean up).
 
 The Summary view also carries the **badge of the Totalflow X icon** in the activity bar (work items that need attention + pull requests waiting for your review + 1 while develop is broken), so the number shows from the moment VS Code starts, without opening the sidebar.
 
@@ -383,6 +401,9 @@ Personal choices (layouts, filters, the look of the cards, the fun features) are
 | `totalflowx.branches.linkToWorkItem`             | Publish and link new branches to the work item                         |
 | `totalflowx.branches.workItemStateOnCreate`      | State set when a branch is created, per type                           |
 | `totalflowx.pullRequestTasks.startWhenPublished` | Move the tasks of your published PRs to In Progress by themselves (on) |
+| `totalflowx.worktrees.idleDays`                  | Days without commits before a worktree is listed as idle (14; 0: off)  |
+| `totalflowx.worktrees.notifyWhenStale`           | Notify once when a worktree can be removed (on)                        |
+| `totalflowx.worktrees.showInSummary`             | "N worktrees to clean up" row in the Summary view (on)                 |
 
 Modules and feature names added with **Add new…** are saved to the workspace settings (`.vscode/settings.json`), so they can be committed and shared.
 

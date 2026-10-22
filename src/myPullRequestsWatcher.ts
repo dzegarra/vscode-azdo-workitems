@@ -21,6 +21,9 @@ import { REF_TYPE_REMOTE_HEAD } from './git';
 import { AttentionEffect, normalizeAttentionEffect } from './attentionEffect';
 import type { Layout } from './viewModel';
 import { WorkItemsStore } from './workItemsStore';
+import type { KnownPullRequest } from './worktreeHygiene';
+
+const HEADS_PREFIX = 'refs/heads/';
 
 const MS_PER_SECOND = 1000;
 /** Ages are refreshed this often in the view, without checking Azure DevOps */
@@ -131,6 +134,26 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
         };
       }),
     };
+  }
+
+  /**
+   * The user's PRs of the open repository (active and recently completed), for the cleanup of the worktrees
+   * (src/worktreeHygiene.ts): what the last check fetched, no request
+   */
+  pullRequestsForWorktrees(): KnownPullRequest[] {
+    const local = this.localRepository();
+    if (!local) {
+      return [];
+    }
+    return this.data
+      .filter(({ pr }) => pr.repository.name.toLowerCase() === local.name.toLowerCase())
+      .map(({ pr }) => ({
+        id: pr.pullRequestId,
+        title: pr.title,
+        sourceBranch: pr.sourceRefName.replace(HEADS_PREFIX, ''),
+        status: pr.status,
+        mine: true,
+      }));
   }
 
   /** Whether the user created the PR. False while the list is not loaded */

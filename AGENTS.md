@@ -46,6 +46,9 @@ src/actionRequests.ts      pure: title + sections of each trigger of the sidebar
 src/actionPicker.ts        pure: sections -> picker entries (separators, icons) and the allowlist that validates what a chosen item may run
 src/actionPickerUi.ts      the native QuickPick of those entries (the only vscode-facing part); the details panel's ... use it too
 src/deletableBranches.ts   pure: when a branch is offered for deletion (completed PR, still exists, no active PR); texts of the delete flows
+src/worktreeHygiene.ts     pure: origins of the worktrees, why one is stale / idle / in use, the once-only notification baseline;
+                           rows of the Worktrees view and of the cleanup pickers: src/worktreeRows.ts
+src/worktreeTracker.ts     records the origins (store.onDidCreateWorktree), classifies on every change (no request), notifies; view: src/worktreesView.ts
 src/workItemsStore.ts     work items of the current sprints + branches, PRs, CI runs, alerts, dependencies, worktrees
 src/*Watcher.ts           pollers: reviewRequestsWatcher (PRs to review), myPullRequestsWatcher (my PRs),
                           pipelineWatcher (CI runs, via src/runsPolling.ts), pullRequestNotifier (events on my PRs)

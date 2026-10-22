@@ -3,6 +3,9 @@ import type { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import type { ReviewRequestsWatcher } from './reviewRequestsWatcher';
 import { summaryBadge, SummaryInput, SummaryRow, summaryRows } from './summaryRows';
 import type { WorkItemsStore } from './workItemsStore';
+import { hygieneReasonsText } from './worktreeHygiene';
+import { worktreeLabel } from './worktrees';
+import { CLEAN_UP_WORKTREES_COMMAND, type WorktreeTracker } from './worktreeTracker';
 
 export const SUMMARY_VIEW_ID = 'totalflowx.summary';
 const FOCUS_COMMAND = 'totalflowx.myItems.focus';
@@ -16,9 +19,19 @@ export interface SummarySources {
   myPullRequests: Pick<MyPullRequestsWatcher, 'models' | 'onDidChange'>;
   /** totalflowx.fun.enabled with the alerts on (a clean board means nothing without them); off when missing */
   celebrateCleanBoard?: () => boolean;
+  /** The worktrees to clean up; no row when missing or when totalflowx.worktrees.showInSummary is off */
+  worktrees?: Pick<WorktreeTracker, 'onDidChange' | 'stale'>;
+  showStaleWorktrees?: () => boolean;
 }
 
-export function summaryInput({ store, reviews, myPullRequests, celebrateCleanBoard }: SummarySources): SummaryInput {
+export function summaryInput({
+  store,
+  reviews,
+  myPullRequests,
+  celebrateCleanBoard,
+  worktrees,
+  showStaleWorktrees,
+}: SummarySources): SummaryInput {
   const baseBranch = store.baseBranch;
   return {
     baseBranch: baseBranch && {
@@ -30,6 +43,13 @@ export function summaryInput({ store, reviews, myPullRequests, celebrateCleanBoa
     reviews: reviews.models(),
     myPullRequests: myPullRequests.models().items,
     failedRuns: store.pullRequestRuns.filter(({ run }) => run.state === 'failed').length,
+    staleWorktrees:
+      worktrees && showStaleWorktrees?.()
+        ? worktrees.stale().map((item) => ({
+            branch: worktreeLabel(item.worktree),
+            reasons: hygieneReasonsText(item.reasons),
+          }))
+        : undefined,
   };
 }
 
@@ -41,6 +61,8 @@ function toItem(row: SummaryRow): vscode.TreeItem {
   item.iconPath = new vscode.ThemeIcon(row.icon, row.color ? new vscode.ThemeColor(row.color) : undefined);
   if (row.id === 'baseBranch') {
     item.command = { command: BASE_BRANCH_COMMAND, title: 'Show what broke it' };
+  } else if (row.id === 'staleWorktrees') {
+    item.command = { command: CLEAN_UP_WORKTREES_COMMAND, title: 'Clean up worktrees' };
   } else if (row.id !== 'nothing' && row.id !== 'cleanBoard') {
     item.command = { command: FOCUS_COMMAND, title: 'Show the list' };
   }
@@ -65,6 +87,7 @@ export class SummaryView implements vscode.TreeDataProvider<SummaryRow>, vscode.
       sources.store.onDidChange(() => this.update()),
       sources.reviews.onDidChange(() => this.update()),
       sources.myPullRequests.onDidChange(() => this.update()),
+      ...(sources.worktrees ? [sources.worktrees.onDidChange(() => this.update())] : []),
     ];
     this.update();
   }

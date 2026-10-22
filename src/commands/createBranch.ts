@@ -180,7 +180,7 @@ export async function createBranch(
     const choice = await offerBranchActions(
       git,
       store,
-      { branch: target.branch },
+      { branch: target.branch, origin: { kind: 'workItem', id: workItem.id } },
       `Work item ${workItem.id} already has the branch "${target.branch}".`,
       ['Create Another']
     );
@@ -203,5 +203,10 @@ export async function createBranch(
   }
   void store.refresh();
   // The store refreshes first (the card shows the branch at once); the notification then waits for the user's answer
-  await offerBranchActions(git, store, { branch: branchName }, `Branch ${branchName} created.`);
+  await offerBranchActions(
+    git,
+    store,
+    { branch: branchName, origin: task ? { kind: 'task', id: task.id } : { kind: 'workItem', id: workItem.id } },
+    `Branch ${branchName} created.`
+  );
 }

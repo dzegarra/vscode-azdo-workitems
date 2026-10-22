@@ -17,6 +17,8 @@ export interface SummaryInput {
   baseBranch?: { branch: string; brokenPipelines: string[] };
   /** totalflowx.fun.enabled with the alerts on and work items listed: a clean board is celebrated */
   celebrateCleanBoard?: boolean;
+  /** Worktrees that can be removed (Rules WORKTREE-STALE-*), with why; missing when the row is off */
+  staleWorktrees?: { branch: string; reasons: string }[];
 }
 
 export type SummaryRowId =
@@ -27,7 +29,8 @@ export type SummaryRowId =
   | 'nothing'
   | 'pullRequestWarnings'
   | 'readyToMerge'
-  | 'reviews';
+  | 'reviews'
+  | 'staleWorktrees';
 
 export interface SummaryRow {
   id: SummaryRowId;
@@ -117,6 +120,28 @@ function cleanBoardRow(input: SummaryInput): SummaryRow[] {
     : [];
 }
 
+// Rule SUMMARY-10
+/** Worktrees to clean up: housekeeping, under the attention rows; never in the badge */
+function staleWorktreesRow(input: SummaryInput): SummaryRow[] {
+  const stale = input.staleWorktrees ?? [];
+  if (!stale.length) {
+    return [];
+  }
+  const count = stale.length;
+  return [
+    {
+      id: 'staleWorktrees',
+      label: `${count} worktree${plural(count, '', 's')} to clean up`,
+      tooltip: [
+        `${count} worktree${plural(count, ' is', 's are')} no longer needed:`,
+        ...stale.map(({ branch, reasons }) => `• ${branch}: ${reasons}`),
+      ].join('\n'),
+      icon: 'trash',
+      color: 'list.warningForeground',
+    },
+  ];
+}
+
 // Rule SUMMARY-9
 /** The base branch is broken: the first row, it needs everyone */
 function baseBranchRow(input: SummaryInput): SummaryRow[] {
@@ -182,9 +207,9 @@ function attentionRows(input: SummaryInput): SummaryRow[] {
       ];
 }
 
-/** The rows of the Summary view: what needs the user's attention, then the clean board */
+/** The rows of the Summary view: what needs the user's attention, the worktrees to clean up, then the clean board */
 export function summaryRows(input: SummaryInput): SummaryRow[] {
-  return [...attentionRows(input), ...cleanBoardRow(input)];
+  return [...attentionRows(input), ...staleWorktreesRow(input), ...cleanBoardRow(input)];
 }
 
 export interface SummaryBadge {

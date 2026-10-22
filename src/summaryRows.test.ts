@@ -127,3 +127,21 @@ describe('summaryBadge', () => {
     });
   });
 });
+
+describe('stale worktrees row (Rule SUMMARY-10)', () => {
+  it('comes after the attention rows, before the clean board, and lists why in the tooltip', () => {
+    const staleWorktrees = [
+      { branch: 'feature/a', reasons: 'PR 5 merged' },
+      { branch: 'feature/b', reasons: 'folder missing' },
+    ];
+    const rows = summaryRows({ ...empty, staleWorktrees, celebrateCleanBoard: true });
+    expect(rows.map((row) => row.id)).toEqual(['nothing', 'staleWorktrees', 'cleanBoard']);
+    expect(rows[1].label).toBe('2 worktrees to clean up');
+    expect(rows[1].tooltip).toContain('feature/a: PR 5 merged');
+    expect(summaryRows({ ...empty, staleWorktrees: [] }).map((row) => row.id)).toEqual(['nothing']);
+  });
+
+  it('never counts in the badge', () => {
+    expect(summaryBadge({ ...empty, staleWorktrees: [{ branch: 'a', reasons: 'x' }] } as SummaryInput)).toBeUndefined();
+  });
+});

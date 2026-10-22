@@ -22,6 +22,8 @@ export async function checkoutPullRequest(
   git: GitAPI,
   store: WorkItemsStore,
   request: CheckoutTarget,
+  /** "review" or "myPullRequest": remembered with the worktree the checkout may create */
+  kind: 'myPullRequest' | 'review',
   choice?: CheckoutChoice
 ): Promise<void> {
   if (!request.canCheckout) {
@@ -30,7 +32,11 @@ export async function checkoutPullRequest(
   await checkoutBranch(
     git,
     store,
-    { branch: request.sourceBranch, pullRequest: { id: request.id, title: request.title } },
+    {
+      branch: request.sourceBranch,
+      pullRequest: { id: request.id, title: request.title },
+      origin: { kind, id: request.id },
+    },
     choice
   );
 }
