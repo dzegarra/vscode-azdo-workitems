@@ -56,7 +56,7 @@ The extension enforces or supports these team rules; many features exist because
 - **Retarget warning**: squash merges leave stacked branches behind (the PR still targets the merged base and would show its commits again), so a PR whose target has a completed PR of the user (or no longer exists, when the git extension already knows the remote branches) is flagged with a **Retarget to develop** action. It only uses data already polled; the PATCH needs a confirmation because it may require a rebase.
 - **Reviewer/vote notifications ignore the user's own actions**; reviewer changes are attributed from the `ReviewersUpdate` system threads.
 - **Checkout of a PR / branch never silently carries changes**: with uncommitted changes it asks (worktree / stash / anyway). "Create branch" creates without switching, then proposes Checkout or a worktree.
-- **Worktrees** go to `<repo>.worktrees/<branch>` (the layout the team already used), copy `.env.local` files, open in a new window that runs `npm ci` once (marker in the worktree's private git dir, never in the working tree).
+- **Worktrees** go to `<repo>.worktrees/<branch>` (the layout the team already used), `<repo>` being the main working tree even when the command runs from a worktree window (otherwise, with `/` in branch names, each worktree got its own nested `.worktrees` maze; `mainWorktreeFolder`); the `.env.local` files are copied from the main working tree, copy `.env.local` files, open in a new window that runs `npm ci` once (marker in the worktree's private git dir, never in the working tree).
 
 ## CI, coverage and requests
 

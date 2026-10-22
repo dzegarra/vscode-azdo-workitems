@@ -103,6 +103,17 @@ export function worktreePath(repositoryRoot: string, branch: string): string {
   return path.join(path.dirname(root), `${path.basename(root)}.worktrees`, ...segments);
 }
 
+// Rule WORKTREE-3
+/**
+ * The folder the worktrees are created next to: the main working tree (first entry of `git worktree list`), also when
+ * the command runs in a worktree, so worktrees are never nested in another worktree's "<folder>.worktrees". `fallback`
+ * (the folder open in the window) when the list is empty or the main entry is bare
+ */
+export function mainWorktreeFolder(worktrees: Worktree[], fallback: string): string {
+  const main = worktrees.at(0);
+  return main && !main.bare ? main.path : fallback;
+}
+
 /** Relative paths of the untracked env files copied to a new worktree, given the subfolders of apps, packages and tools */
 export const ENV_FILE_NAME = '.env.local';
 export const ENV_PARENT_FOLDERS = ['apps', 'packages', 'tools'] as const;

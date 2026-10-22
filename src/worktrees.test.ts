@@ -6,6 +6,7 @@ import {
   envFileCandidates,
   findWorktree,
   hasUncommittedChanges,
+  mainWorktreeFolder,
   worktreeOpenAction,
   parseCheckoutMode,
   parseSetupMarker,
@@ -107,6 +108,32 @@ describe('worktreePath', () => {
     expect(() => worktreePath('/a/b', '../x')).toThrow();
     expect(() => worktreePath('/a/b', 'a//b')).toThrow();
     expect(() => worktreePath('/a/b', '')).toThrow();
+  });
+});
+
+describe('mainWorktreeFolder', () => {
+  const entry = (folder: string, extra: Partial<Worktree> = {}): Worktree => ({
+    path: folder,
+    bare: false,
+    detached: false,
+    prunable: false,
+    locked: false,
+    ...extra,
+  });
+  const current = '/dev/app.worktrees/feature/x/1-a';
+  const list = [entry('/dev/app', { branch: 'develop' }), entry(current, { branch: 'feature/x/1-a' })];
+
+  it('is the main working tree, also from a worktree', () => {
+    expect(mainWorktreeFolder(list, current)).toBe('/dev/app');
+  });
+
+  it('keeps new worktrees next to the main repository instead of nesting them', () => {
+    expect(worktreePath(mainWorktreeFolder(list, current), 'feature/y/2-b')).toBe('/dev/app.worktrees/feature/y/2-b');
+  });
+
+  it('falls back to the open folder without a list or with a bare main entry', () => {
+    expect(mainWorktreeFolder([], current)).toBe(current);
+    expect(mainWorktreeFolder([entry('/dev/app.git', { bare: true }), ...list.slice(1)], current)).toBe(current);
   });
 });
 

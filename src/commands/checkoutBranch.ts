@@ -10,6 +10,7 @@ import {
   decideCheckout,
   findWorktree,
   hasUncommittedChanges,
+  mainWorktreeFolder,
   stashMessage,
   worktreeOpenAction,
   worktreePath,
@@ -128,7 +129,7 @@ export async function openWorktree(store: WorkItemsStore, branch: string): Promi
 }
 
 /**
- * Opens the branch in a worktree next to the repository (creating it, and its local branch, when needed), copies the
+ * Opens the branch in a worktree next to the main repository (creating it, and its local branch, when needed), copies the
  * untracked env files and opens it in a new window, which runs `npm ci` once
  */
 export async function openInWorktree(
@@ -142,17 +143,19 @@ export async function openInWorktree(
     void vscode.window.showInformationMessage(`${branch} is the branch checked out in this window: nothing to do.`);
     return;
   }
-  const existing = findWorktree(await listWorktrees(root), branch, [root]);
+  const worktrees = await listWorktrees(root);
+  const existing = findWorktree(worktrees, branch, [root]);
   if (existing) {
     await openFolder(existing.path);
     return;
   }
-  const folder = worktreePath(root, branch);
+  const main = mainWorktreeFolder(worktrees, root);
+  const folder = worktreePath(main, branch);
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: `Creating a worktree for ${branch}…` },
     async () => {
       await createWorktree(root, settings().remote, branch, folder);
-      await copyEnvFiles(root, folder);
+      await copyEnvFiles(main, folder);
       await writeSetupMarker(folder, { npmCi: true, createdAt: new Date().toISOString() });
     }
   );
