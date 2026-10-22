@@ -6,7 +6,16 @@ import { branchBelongsToWorkItem } from './naming';
 
 export type WorkingOnLevel = 'here' | 'worktree';
 
-export const WORKING_ON_ANIMATIONS = ['none', 'borderLight', 'runningBorder', 'glow', 'stripes'] as const;
+export const WORKING_ON_ANIMATIONS = [
+  'none',
+  'borderLight',
+  'runningBorder',
+  'glow',
+  'stripes',
+  'rainbow',
+  'neon',
+  'retro',
+] as const;
 /** totalflowx.workingOn.animation: what the card of a work item being worked on "here" does */
 export type WorkingOnAnimation = (typeof WORKING_ON_ANIMATIONS)[number];
 

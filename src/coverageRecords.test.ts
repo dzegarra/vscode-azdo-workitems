@@ -4,6 +4,7 @@ import {
   currentStreak,
   describeRecords,
   EMPTY_RECORDS,
+  gainOverPreviousPullRequest,
   isNewBest,
   recordResult,
 } from './coverageRecords';
@@ -91,5 +92,15 @@ describe('describeRecords', () => {
 
   it('says nothing before the first result', () => {
     expect(describeRecords(EMPTY_RECORDS, 80)).toBeUndefined();
+  });
+});
+
+describe('gainOverPreviousPullRequest', () => {
+  it('compares a run with the PR recorded before its own', () => {
+    const records = record(record(record(EMPTY_RECORDS, 1, 10, 80), 2, 20, 81.5), 3, 30, 79);
+    expect(gainOverPreviousPullRequest(records, 20)).toBeCloseTo(1.5);
+    expect(gainOverPreviousPullRequest(records, 30)).toBeCloseTo(-2.5);
+    expect(gainOverPreviousPullRequest(records, 10)).toBeUndefined();
+    expect(gainOverPreviousPullRequest(records, 99)).toBeUndefined();
   });
 });

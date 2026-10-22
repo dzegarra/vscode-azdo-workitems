@@ -21,6 +21,7 @@ import type { PullRequestTone } from './workItemLinks';
 import type { AttentionEffect } from './attentionEffect';
 import type { HoverStyle } from './hoverStyle';
 import type { TaskCountStyle } from './taskCountStyle';
+import type { SprintCountdown } from './sprintCountdown';
 import type { WorkingOnAnimation, WorkingOnLevel } from './workingOn';
 
 export interface PullRequestModel {
@@ -144,6 +145,10 @@ export interface IterationModel {
   name: string;
   path: string;
   teams: string[];
+  /** Last day of the sprint (midnight UTC); undefined when not planned */
+  finishDate?: string;
+  /** "🌱 6 days left" (totalflowx.fun.enabled only) */
+  countdown?: SprintCountdown;
 }
 
 export interface FilterModel {
@@ -161,7 +166,7 @@ export interface FilterModel {
   hiddenDuplicates: string[];
 }
 
-/** totalflowx.layout: compact rows (2 lines) or the large cards */
+/** totalflowx.workItems.layout: compact rows (2 lines) or the large cards */
 export type Layout = 'compact' | 'large';
 
 /** The two PR boxes above the work items */
@@ -182,7 +187,7 @@ export interface ViewModel {
   /** Work items with alerts skip the state / PR / priority filters (totalflowx.filter.alwaysShowAlerts) */
   alwaysShowAlerts: boolean;
   layout: Layout;
-  /** How the cards and PR tiles react to the pointer (totalflowx.hoverStyle) */
+  /** How the cards and PR tiles react to the pointer (totalflowx.appearance.hoverStyle) */
   hoverStyle: HoverStyle;
   /** Milliseconds before the popovers (task details, coverage, predecessors, PR history) appear on hover (totalflowx.popovers.hoverDelay) */
   popoverDelay: number;
@@ -321,6 +326,8 @@ export type ExtensionMessage =
   | { type: 'setTasksExpanded'; expanded: boolean }
   /** Scrolls to the card of the work item and flashes it, opening its iteration group when collapsed */
   | { type: 'revealWorkItem'; id: number }
+  /** Confetti: one of the user's PRs was merged (totalflowx.fun.enabled) */
+  | { type: 'celebrate' }
   | { type: 'state'; model: ViewModel };
 
 export const NO_PULL_REQUEST = 'No PR';

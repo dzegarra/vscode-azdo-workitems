@@ -2,6 +2,8 @@ export interface Iteration {
   id: string;
   name: string;
   path: string;
+  /** Midnight UTC of the first and last days of the sprint, e.g. "2026-10-27T00:00:00Z"; missing when not planned */
+  attributes?: { startDate?: string; finishDate?: string };
 }
 
 /** Current iteration shared by one or more teams */

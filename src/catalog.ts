@@ -4,8 +4,8 @@ import { SECTION } from './config';
 const ADD_NEW_LABEL = '$(add) Add new…';
 
 interface CatalogPickOptions {
-  /** Setting holding the catalog, e.g. "branchModules" */
-  setting: 'branchModules' | 'prFeatureNames';
+  /** Setting holding the catalog, e.g. "branches.modules" */
+  setting: 'branches.modules' | 'pullRequests.featureNames';
   title: string;
   placeholder: string;
   preselected?: string;

@@ -8,8 +8,10 @@ import {
   currentBranchState,
   MERGE_SECTION,
 } from './ciTooltip';
-import { SECTION } from './config';
+import { funEnabled, recordsScope, SECTION } from './config';
+import { FunJournalStore } from './funJournalStore';
 import { GitAPI } from './git';
+import { greenStreak, GreenStreak, greenStreakLabel, greenStreakTooltip } from './greenStreak';
 import { ciItemColors, ciStatusText, countRunStates, STATE_ICONS } from './pipelines';
 import { runLabel, testsUrl } from './runDetails';
 import { WorkItemsStore } from './workItemsStore';
@@ -62,7 +64,7 @@ export class PipelineStatusBar implements vscode.Disposable {
   private readonly subscriptions: vscode.Disposable[];
   private lastBranch?: string;
 
-  constructor(git: GitAPI, private readonly store: WorkItemsStore) {
+  constructor(git: GitAPI, private readonly store: WorkItemsStore, private readonly journal: FunJournalStore) {
     this.item.name = 'CI runs';
     this.item.command = SHOW_RUNS_COMMAND;
     // The PR of the checked out branch is highlighted: render again when it changes
@@ -76,8 +78,12 @@ export class PipelineStatusBar implements vscode.Disposable {
       ...git.repositories.map(watch),
       git.onDidOpenRepository((repository) => this.subscriptions.push(watch(repository))),
       store.onDidChange(() => this.update()),
+      journal.onDidChange(() => this.update()),
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration(`${SECTION}.pipelines.showInStatusBar`)) {
+        if (
+          event.affectsConfiguration(`${SECTION}.pipelines.showInStatusBar`) ||
+          event.affectsConfiguration(`${SECTION}.fun.enabled`)
+        ) {
           this.update();
         }
       }),
@@ -105,6 +111,12 @@ export class PipelineStatusBar implements vscode.Disposable {
     });
   }
 
+  /** The green streak of the user when the fun features are on */
+  private streak(): GreenStreak | undefined {
+    const scope = funEnabled() ? recordsScope(this.store.repository()) : undefined;
+    return scope ? greenStreak(this.journal.journal(scope).runs) : undefined;
+  }
+
   private update(): void {
     this.lastBranch = this.currentBranch();
     const enabled = vscode.workspace.getConfiguration(SECTION).get<boolean>('pipelines.showInStatusBar', true);
@@ -114,7 +126,8 @@ export class PipelineStatusBar implements vscode.Disposable {
       return;
     }
     const counts = countRunStates(groups.flatMap((group) => group.runs.map((run) => run.state)));
-    this.item.text = ciStatusText(counts);
+    const streak = this.streak();
+    this.item.text = [ciStatusText(counts), streak && greenStreakLabel(streak)].filter(Boolean).join('  ');
     const colors = ciItemColors(currentBranchState(groups));
     this.item.backgroundColor = colors.background && new vscode.ThemeColor(colors.background);
     this.item.color = colors.foreground && new vscode.ThemeColor(colors.foreground);
@@ -126,6 +139,10 @@ export class PipelineStatusBar implements vscode.Disposable {
       } else {
         tooltip.appendText(part.value);
       }
+    }
+    const streakLine = streak && greenStreakTooltip(streak);
+    if (streakLine) {
+      tooltip.appendText(`\n\n${streakLine}`);
     }
     this.item.tooltip = tooltip;
     this.item.show();

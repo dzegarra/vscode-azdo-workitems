@@ -11,11 +11,3 @@ export function normalizePopoverDelay(value: unknown): number {
   }
   return Math.round(Math.min(MAX_POPOVER_DELAY, Math.max(MIN_POPOVER_DELAY, value)));
 }
-
-/**
- * The value the user set explicitly in `totalflowx.popovers.hoverDelay`, else the one of the deprecated
- * `totalflowx.tasks.hoverCardDelay`, else the default. Both arguments are `undefined` when the setting is not set
- */
-export function resolvePopoverDelay(explicit: unknown, deprecatedExplicit: unknown): number {
-  return normalizePopoverDelay(explicit !== undefined ? explicit : deprecatedExplicit);
-}

@@ -222,6 +222,8 @@ export interface FinishedRunContext {
   excellent?: boolean;
   /** Work items linked to the PR, listed as links to their details */
   workItemIds?: number[];
+  /** Sentences added at the end, before the work items (the celebrations of totalflowx.fun.enabled) */
+  notes?: string[];
 }
 
 export interface FinishedRunMessage {
@@ -242,6 +244,15 @@ function failureReason(run: RunModel): string {
     return `failed: ${plural(run.tests.failed, 'test')} failed${names}`;
   }
   return run.failedStep ? `failed at ${run.failedStep}` : 'failed';
+}
+
+/** The message, then extra sentences */
+function withNotes(message: FinishedRunMessage, notes: string[] | undefined): FinishedRunMessage {
+  if (!notes?.length) {
+    return message;
+  }
+  const text = /[.!?]$/.test(message.text) ? message.text : `${message.text}.`;
+  return { ...message, text: [text, ...notes].join(' ') };
 }
 
 /** The message, then the links to the work items of the PR as a last sentence */
@@ -285,5 +296,5 @@ function finishedRunText(run: RunModel, context: FinishedRunContext, now: Date):
  * "PR 13770 "Title" failed: 1 test failed (Name). Work items: #1234"
  */
 export function finishedRunMessage(run: RunModel, context: FinishedRunContext, now = new Date()): FinishedRunMessage {
-  return withWorkItemLinks(finishedRunText(run, context, now), context.workItemIds);
+  return withWorkItemLinks(withNotes(finishedRunText(run, context, now), context.notes), context.workItemIds);
 }

@@ -13,7 +13,7 @@ import { addBuildNotesSkipTag } from './commands/addBuildNotesSkipTag';
 import { retargetPullRequest } from './commands/retargetPullRequest';
 import { createPullRequest } from './commands/createPullRequest';
 import { deleteBranch } from './commands/deleteBranch';
-import { resolveContext, SECTION, settings } from './config';
+import { funEnabled, resolveContext, SECTION, settings } from './config';
 import { getGitApi, pickRepository, Repository } from './git';
 import { resolveWorkItemEntry } from './commands/pickWorkItem';
 import { fillIntegrationBuild } from './commands/integrationBuild';
@@ -40,6 +40,8 @@ import { PullRequestNotifier } from './pullRequestNotifier';
 import { PullRequestTaskStarter } from './pullRequestTaskStarter';
 import { ReviewStatusBar } from './reviewStatusBar';
 import { SummaryView } from './summaryView';
+import { FunJournalStore } from './funJournalStore';
+import { SHOW_SPRINT_RECAP_COMMAND, SprintRecapPanel } from './sprintRecapPanel';
 import { PullRequestExtrasLoader } from './pullRequestExtras';
 import { CHECKOUT_REVIEW_COMMAND, ReviewRequestsWatcher } from './reviewRequestsWatcher';
 import { WorkItemDetailsPanels } from './workItemDetails';
@@ -103,22 +105,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const git = await getGitApi();
   const store = new WorkItemsStore(git);
   const details = new WorkItemDetailsPanels(context.extensionUri, store);
-  const notifier = new PullRequestNotifier(context.globalState, store);
+  const funJournal = new FunJournalStore(context.globalState);
   const pullRequestTaskStarter = new PullRequestTaskStarter(store);
   const dependencyMap = new DependencyMapPanel(context.extensionUri, store);
-  const pipelineStatusBar = new PipelineStatusBar(git, store);
+  const pipelineStatusBar = new PipelineStatusBar(git, store, funJournal);
   const currentWorkItemStatusBar = new CurrentWorkItemStatusBar(git, store);
   // One loader for both PR boxes: they share what it caches
   const pullRequestExtras = new PullRequestExtrasLoader(store);
-  const reviewRequests = new ReviewRequestsWatcher(context.globalState, store, pullRequestExtras);
+  const reviewRequests = new ReviewRequestsWatcher(context.globalState, store, pullRequestExtras, funJournal);
   const reviewStatusBar = new ReviewStatusBar(reviewRequests);
   const myPullRequests = new MyPullRequestsWatcher(store, pullRequestExtras);
   const myPullRequestsStatusBar = new MyPullRequestsStatusBar(myPullRequests, store);
   const coverageRecords = new CoverageRecordsStore(context.globalState);
-  const pipelineWatcher = new PipelineWatcher(store, myPullRequests, coverageRecords);
+  const pipelineWatcher = new PipelineWatcher(store, myPullRequests, coverageRecords, funJournal);
   const view = new WorkItemsViewProvider(context.extensionUri, store, reviewRequests, myPullRequests, coverageRecords);
+  const notifier = new PullRequestNotifier(context.globalState, store, funJournal, () => view.celebrate());
+  const sprintRecap = new SprintRecapPanel(context.extensionUri, store, funJournal);
   // Native tree view: it exists from the activation, so its badge shows on the activity bar icon from a cold start
-  const summary = new SummaryView({ store, reviews: reviewRequests, myPullRequests });
+  const summary = new SummaryView({
+    store,
+    reviews: reviewRequests,
+    myPullRequests,
+    celebrateCleanBoard: () => funEnabled() && settings().alerts.enabled,
+  });
   const currentRepository = () => (git.repositories.length ? pickRepository(git) : undefined);
 
   /** Branch (and PR) behind the Checkout button of a card */
@@ -210,7 +219,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // The title bar shows the button of the layout the user is not using
   const updateLayoutContext = () => void vscode.commands.executeCommand('setContext', LAYOUT_CONTEXT, layoutSetting());
   const setLayout = (layout: 'compact' | 'large') =>
-    vscode.workspace.getConfiguration(SECTION).update('layout', layout, vscode.ConfigurationTarget.Global);
+    vscode.workspace.getConfiguration(SECTION).update('workItems.layout', layout, vscode.ConfigurationTarget.Global);
   updateLayoutContext();
 
   // Re-render when the checked out branch changes, without reloading from Azure DevOps
@@ -232,6 +241,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     command('totalflowx.useLargeLayout', () => setLayout('large')),
     command(REVEAL_WORK_ITEM_COMMAND, (id: number) => view.reveal(id)),
     command('totalflowx.expandTasks', () => view.setTasksExpanded(true)),
+    command(SHOW_SPRINT_RECAP_COMMAND, (path?: string) => sprintRecap.show(path)),
+    funJournal,
+    sprintRecap,
     command('totalflowx.collapseTasks', () => view.setTasksExpanded(false)),
     details,
     notifier,
@@ -269,7 +281,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       summary.update();
       // Organization / project / repository set in the settings make the git remote unnecessary
       store.recheckRepository();
-      if (event.affectsConfiguration(`${SECTION}.notifications`)) {
+      if (
+        event.affectsConfiguration(`${SECTION}.myPullRequests.notifications`) ||
+        event.affectsConfiguration(`${SECTION}.myPullRequests.notificationsPollIntervalSeconds`)
+      ) {
         notifier.start();
       }
       if (event.affectsConfiguration(`${SECTION}.reviews`)) {
@@ -306,10 +321,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         view.post();
         return;
       }
-      if (event.affectsConfiguration(`${SECTION}.layout`)) {
+      if (event.affectsConfiguration(`${SECTION}.workItems.layout`)) {
         updateLayoutContext();
       }
-      if (event.affectsConfiguration(`${SECTION}.showInReviewState`)) {
+      if (event.affectsConfiguration(`${SECTION}.workItems.showInReviewState`)) {
         // Display only: the panels redraw what they have, nothing is fetched
         details.rerender();
         dependencyMap.repost();
@@ -478,7 +493,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       );
     }),
     command('totalflowx.openIterationBoard', () => openIterationBoard(currentRepository(), store)),
-    command('totalflowx.selectTeams', () => selectTeams(currentRepository()))
+    command('totalflowx.selectTeams', () => selectTeams(currentRepository())),
+    // No requests and no repository needed: does not wait for the repository like the commands above
+    vscode.commands.registerCommand('totalflowx.openSettings', () =>
+      vscode.commands.executeCommand('workbench.action.openSettings', `@ext:${context.extension.id}`)
+    )
   );
   // When the repository is not open yet, it starts from onDidOpenRepository
   if (git.repositories.length) {

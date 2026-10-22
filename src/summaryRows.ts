@@ -13,9 +13,18 @@ export interface SummaryInput {
   myPullRequests: { isCompleted: boolean; readyToMerge: boolean; warnings: { severity: string }[] }[];
   /** Latest CI runs of the followed PRs that failed */
   failedRuns: number;
+  /** totalflowx.fun.enabled with the alerts on and work items listed: a clean board is celebrated */
+  celebrateCleanBoard?: boolean;
 }
 
-export type SummaryRowId = 'alerts' | 'failedRuns' | 'nothing' | 'pullRequestWarnings' | 'readyToMerge' | 'reviews';
+export type SummaryRowId =
+  | 'alerts'
+  | 'cleanBoard'
+  | 'failedRuns'
+  | 'nothing'
+  | 'pullRequestWarnings'
+  | 'readyToMerge'
+  | 'reviews';
 
 export interface SummaryRow {
   id: SummaryRowId;
@@ -88,9 +97,26 @@ function ownPullRequestRows(pullRequests: SummaryInput['myPullRequests']): Summa
   return rows;
 }
 
+// Rule SUMMARY-8
+/** The work items of the list all follow the team rules: a row to be proud of, under the others */
+function cleanBoardRow(input: SummaryInput): SummaryRow[] {
+  return input.celebrateCleanBoard && !input.workItemsWithAlerts
+    ? [
+        {
+          id: 'cleanBoard',
+          label: 'Clean board ✨',
+          description: 'every work item follows the team rules',
+          tooltip: 'None of your work items breaks a team rule. Keep it up!',
+          icon: 'sparkle',
+          color: 'testing.iconPassed',
+        },
+      ]
+    : [];
+}
+
 // Rules SUMMARY-1, SUMMARY-5, SUMMARY-7
 /** What needs the user's attention, one row each, only when the count is above 0 */
-export function summaryRows(input: SummaryInput): SummaryRow[] {
+function attentionRows(input: SummaryInput): SummaryRow[] {
   const rows: SummaryRow[] = [];
   const alerts = input.workItemsWithAlerts;
   if (alerts) {
@@ -131,6 +157,11 @@ export function summaryRows(input: SummaryInput): SummaryRow[] {
           icon: 'check',
         },
       ];
+}
+
+/** The rows of the Summary view: what needs the user's attention, then the clean board */
+export function summaryRows(input: SummaryInput): SummaryRow[] {
+  return [...attentionRows(input), ...cleanBoardRow(input)];
 }
 
 export interface SummaryBadge {

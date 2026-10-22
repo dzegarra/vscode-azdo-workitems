@@ -251,7 +251,7 @@ async function askTitle(
     return undefined;
   }
   const featureName = await pickFromCatalog({
-    setting: 'prFeatureNames',
+    setting: 'pullRequests.featureNames',
     title: `[${workItemIds.join(',')}] <Feature Name>: …`,
     placeholder: 'Select the feature that best aligns with the changes',
     preselected: parsed ? settings().moduleToFeature[parsed.module] : undefined,

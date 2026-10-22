@@ -55,6 +55,13 @@ export function isNewBest(records: CoverageRecords, runId: number): boolean {
   return records.best?.runId === runId && records.best.previous !== undefined;
 }
 
+/** Percentage points the run gained over the PR recorded before its own; undefined for the first PR or an unknown run */
+export function gainOverPreviousPullRequest(records: CoverageRecords, runId: number): number | undefined {
+  const index = records.results.findIndex((entry) => entry.runId === runId);
+  const previous = index > 0 ? records.results[index - 1] : undefined;
+  return previous ? records.results[index].percent - previous.percent : undefined;
+}
+
 /** "Your best: 98% · streak: 4 PRs ≥ 80%" */
 export function describeRecords(records: CoverageRecords, target: number): string | undefined {
   if (!records.best) {

@@ -19,6 +19,7 @@ Brings the Azure DevOps work of the current sprint into VS Code: your Backlog It
 - **[CI pipelines](#ci-pipelines)**: live state of the runs validating your pull requests, in the cards and the status bar, with a notification when they finish.
 - **[Pull request notifications](#pull-request-notifications)** when your PRs get comments or votes, or are merged.
 - **[Reviews](#pull-requests-waiting-for-my-review)**: the PRs waiting for your review at the top of the sidebar and in the status bar, with the time left before the 24 hours run out, orange when due soon and red when overdue, one-click checkout of their branch, plus notifications, reminders, a daily digest, and notifications when your review comments are answered or resolved.
+- **[Fun](#fun)** (opt-in): confetti when your PRs are merged, your green CI streak, a clean-board badge, a sprint countdown and a sprint wrap-up.
 
 ## Install
 
@@ -44,22 +45,22 @@ Each work item is a card with:
 - Duplicates (a work item linked **Duplicate Of** another one): the duplicate shows **Duplicate of** with the original's ID and a dot with its state (its iteration in the tooltip), and its card is toned down (dashed left bar, faded title; back to normal on hover, and never while it has an alert), since the work is tracked on the original. The original shows **Duplicated by** with the IDs of its duplicates. In the compact rows a copy icon shows the original's ID (on a duplicate) or the number of duplicates (on an original). The **Dups** filter row (only when some card is a duplicate) hides the duplicates (`totalflowx.filter.hiddenDuplicates`)
 - Pull requests linked to the work item with their status (the PRs of other repositories are faded and in italics; hover them to see the repository). Only the PRs of this repository decide whether **Create PR** is offered: Draft, In review, Approved, Waiting for author, Rejected, Conflicts, Completed, Abandoned
 
-Cards are sorted by state: Done, Ready to Test, In review, Committed, In Progress, Approved, New, To Do (`totalflowx.stateOrder`). Done and Ready to Test are shown in green, In review, Committed and In Progress in blue.
+Cards are sorted by state: Done, Ready to Test, In review, Committed, In Progress, Approved, New, To Do (`totalflowx.workItems.stateOrder`). Done and Ready to Test are shown in green, In review, Committed and In Progress in blue.
 
-**In review** is a derived state: Azure DevOps has no such state for Backlog Items and Bugs, so a Committed work item shows **In review** when its only open tasks are In Progress PR tasks (title matching `totalflowx.alerts.pullRequestTaskPattern` or linked to a PR) and every other task is Done (Removed tasks are ignored). It is display only: the State filter, the sort, the card, the Work Item Details panel, the status bar and the Dependency Map (for your own work items) show it, but nothing changes in Azure DevOps and the alerts, task rules and **Change state** keep using the real state (hover the state to see it). Turn it off with `totalflowx.showInReviewState`.
+**In review** is a derived state: Azure DevOps has no such state for Backlog Items and Bugs, so a Committed work item shows **In review** when its only open tasks are In Progress PR tasks (title matching `totalflowx.alerts.pullRequestTaskPattern` or linked to a PR) and every other task is Done (Removed tasks are ignored). It is display only: the State filter, the sort, the card, the Work Item Details panel, the status bar and the Dependency Map (for your own work items) show it, but nothing changes in Azure DevOps and the alerts, task rules and **Change state** keep using the real state (hover the state to see it). Turn it off with `totalflowx.workItems.showInReviewState`.
 
 Within each state, cards are sorted by priority, then severity. The filter chips are folded by default: the funnel button next to the search box shows them (its badge counts the values hidden by the filters, and the "hidden by filters" note at the end of the list opens them too). Use the **Type**, **State**, **PR** and **Priority** chips to filter the cards (coloured like the cards; the hidden values are grey and dashed) (by default only Product Backlog Items and Bugs, hiding Done / Removed / Closed), and the search box to find them by ID, title or branch. The PR filter uses the main PR of each work item (the active one, or the most recent), or `No PR`.
 
 ### Layouts
 
-The cards come in two layouts, switched with the **Compact / Large** buttons next to the **My Work Items** title (`totalflowx.layout`):
+The cards come in two layouts, switched with the **Compact / Large** buttons next to the **My Work Items** title (`totalflowx.workItems.layout`):
 
 - **Compact** (default): two lines per work item. The first one has the type, ID, title and state; the second one only the signals that apply: priority / severity, branch (`current`, or `not deleted` for finished work items), main PR state, CI state of the main PR, task progress (`☑ 2/3`) and alerts (`⚠ 2`). Hover a signal for details. Click a row to expand it into the large card, with its buttons and tasks; click its header to fold it back.
 - **Large**: the full cards described below.
 
 Switching layout, unfolding / folding a compact row (work items and both PR boxes), expanding / collapsing the **Waiting for your review** and **My Pull Requests** boxes, and opening / closing the **Tasks** of a card (one, or all with **Expand / Collapse all tasks**) are animated (a box grows or shrinks, the rest slides); each card morphs from one form to the other in about 0.2 s and the rest of the view slides to its new place. Nothing moves when the system asks for reduced motion.
 
-Hovering (or focusing with the keyboard) a work item card or a PR tile does not change its background, so the text keeps its contrast: by default the whole border takes the colour of the tile's left bar and a soft shadow lifts the tile (`totalflowx.hoverStyle`; see the settings table for `tint` and `accent`).
+Hovering (or focusing with the keyboard) a work item card or a PR tile does not change its background, so the text keeps its contrast: by default the whole border takes the colour of the tile's left bar and a soft shadow lifts the tile (`totalflowx.appearance.hoverStyle`; see the settings table for `tint` and `accent`).
 
 ### Tasks
 
@@ -67,7 +68,7 @@ The tasks of a card are folded under a `Tasks` line with a slim segmented line (
 
 Card actions:
 
-- **Create branch**: pick the module, adjust the short name. The branch is created from `origin/develop` (without switching to it; the module picker has a first row **Base: origin/develop · change…** to start from another branch instead, see below), published and linked to the work item's _Development_ section; then a notification offers to **Checkout** it or **Open in a worktree** (or just stay where you are). Product Backlog Items and Bugs in New / Approved / To Do are moved to **Committed** (`totalflowx.stateOnBranchCreated`).
+- **Create branch**: pick the module, adjust the short name. The branch is created from `origin/develop` (without switching to it; the module picker has a first row **Base: origin/develop · change…** to start from another branch instead, see below), published and linked to the work item's _Development_ section; then a notification offers to **Checkout** it or **Open in a worktree** (or just stay where you are). Product Backlog Items and Bugs in New / Approved / To Do are moved to **Committed** (`totalflowx.branches.workItemStateOnCreate`).
 - **State** (the coloured state of a card, a nested task or the Work Item Details panel): pick the new state among the ones allowed for that work item type.
 - **Add task** (Backlog Items and Bugs): creates a Task under the work item, in the same iteration and area and assigned to the same person. Tasks are never shown as cards of their own nor in the filters: they are always nested in the card of their Backlog Item / Bug, where they can be managed (and their state changed).
 - **Work item ID** (in the header of a card or a compact row): opens the **Work Item Details panel** (an editor tab, one per work item): description, acceptance criteria / repro steps (with their images), assignee, effort, tags, parent, children, branch and PRs, with the same actions and an **Open in Azure DevOps** button. When the description links to Figma, **Figma design** opens it in the [Figma extension for VS Code](https://marketplace.visualstudio.com/items?itemName=figma.figma-vscode-extension) if it is installed, or in the browser; the button next to it always opens the browser. The Figma extension opens the file but not the linked frame; the browser opens the exact frame. Prototypes, FigJam and Figma Make links open in the browser.
@@ -135,7 +136,7 @@ The work items of the checked-out branch are highlighted: a tinted card with an 
 - **Task rows**: in a card's task list, the row of the task whose branch is checked out here has a light blue tint and a bold title; a task whose branch is checked out in another worktree has a thin dashed blue outline (`totalflowx.workingOn.showWorktrees`). Rows keep their height and do not animate; screen readers hear "Checked out here" / "Checked out in a worktree".
 - **Never hidden**: they ignore the State / PR / Priority filters and stay visible in a collapsed iteration group; the Type filter and the search still apply (`totalflowx.workingOn.ignoreFilters`).
 - **Working on section**: they are moved to a section at the top of the list, this window's first (`totalflowx.workingOn.section`).
-- **Animation** (optional, only for the card "here"; "In worktree" cards stay still): `totalflowx.workingOn.animation` = `none` (default), `borderLight` (a soft band travels down the thick left border), `runningBorder` (a short bright segment runs around the card border, as thick as the left border on that side), `glow` (a soft blue halo breathes) or `stripes` (diagonal stripes slide inside the badge). `totalflowx.workingOn.pulseBadge` (on by default) makes a halo expand from the **Working on** badge (and from the dot of the compact row) and fade out every 2 s; it combines with any animation. Nothing moves when the system asks for reduced motion.
+- **Animation** (optional, only for the card "here"; "In worktree" cards stay still): `totalflowx.workingOn.animation` = `none` (default), `borderLight` (a soft band travels down the thick left border), `runningBorder` (a short bright segment runs around the card border, as thick as the left border on that side), `glow` (a soft blue halo breathes), `stripes` (diagonal stripes slide inside the badge), `rainbow` (the thick left border cycles through the rainbow), `neon` (a neon outline that flickers now and then) or `retro` (faint CRT scanlines roll down the card). `totalflowx.workingOn.pulseBadge` (on by default) makes a halo expand from the **Working on** badge (and from the dot of the compact row) and fade out every 2 s; it combines with any animation. Nothing moves when the system asks for reduced motion.
 
 Turn any of these settings off to keep only the highlight. The status bar item of the current work item has **Show in sidebar**, which scrolls to its card and makes it flash.
 
@@ -145,7 +146,7 @@ The status bar shows the work item of the checked out branch, e.g. `66280 Access
 
 When the work item is **not assigned to you**, e.g. you checked out a colleague's branch to review a PR, it is shown with an eye icon and the name of the **owner of the branch** (the person who created it in Azure DevOps): `60800 Update Unit Configuration… · Borislav Surovi EXT`. Hover it to see who the work item is assigned to, its state and the branch. When the branch was not pushed yet, the person the work item is assigned to is named instead.
 
-It can be turned off with `totalflowx.statusBar.currentWorkItem`.
+It can be turned off with `totalflowx.workingOn.showInStatusBar`.
 
 ## Summary view
 
@@ -251,7 +252,7 @@ The extension checks the pull requests you created (every 2 minutes by default) 
 - a reviewer **votes** (approved, approved with suggestions, waiting for the author, rejected);
 - it is **merged**: a second notification offers to set its open PR tasks to **Done** (**Set Done** / **Open task**; `taskDone` in the events setting). Not automatic: you may have more to do in the task.
 
-Notifications about comments have **Open Comment**, which opens the PR at that thread. Choose the events with `totalflowx.notifications.events` (`comments`, `reopened`, `reviewers`, `vote`, `merged`, `taskDone`).
+Notifications about comments have **Open Comment**, which opens the PR at that thread. Choose the events with `totalflowx.myPullRequests.notifications` (`comments`, `reopened`, `reviewers`, `vote`, `merged`, `taskDone`).
 
 Your own comments, votes and reviewer changes, system messages and vote resets are ignored. When more than 3 updates arrive at once, a single summary notification lists them. Updates that happened while VS Code was closed are notified when it starts. Run **Check My Pull Requests Now** from the command palette to check immediately.
 
@@ -294,6 +295,20 @@ Once you vote (approve, approve with suggestions, wait for author or reject) or 
 
 Only the PRs where you are a reviewer yourself are listed: when a group (e.g. a team) is the reviewer, the PR shows up once you are added to it, or once you vote for the group.
 
+## Fun
+
+Small celebrations, **off by default**: turn them on with `totalflowx.fun.enabled`. Everything stays on your machine and nothing is compared with anybody.
+
+- **Merged PRs**: confetti falls over the sidebar (when it is open) and the notification becomes `🚀 PR 13931 shipped: Fix the header. Your 3rd this sprint!`, with easter eggs for round or palindromic PR numbers (`🪞 PR 13931 reads the same backwards!`) and milestones (`🏅 That makes 25 merged pull requests!`).
+- **Fast approvals**: the first approval of a PR within an hour of publishing it gets `⚡ First approval 40 min after publishing.` (within 15 minutes: `⚡ Lightning review`).
+- **Green streak**: from 3 green CI runs in a row, the CI status bar item shows `$(flame) 7` (the tooltip tells your best), the run notification says `🔥 7 green runs in a row.`, and the failure that ends it says `💔 That ends a streak of 7 green runs.` Your own runs only: your PRs, your manual runs and the runs after your merges. Canceled runs do not count; a re-run of the failed jobs replaces the failure.
+- **Coverage gain**: `🎯 +1.8 pts of coverage over your previous PR.` in the notification of a successful run.
+- **Clean board ✨**: a row of the Summary view when none of your work items breaks a team rule (it never counts in the badge).
+- **Sprint countdown**: `🌱 6 days left` before the sprint line of the list (in each group header when your teams are in different sprints), `🏃` with 2 working days left or less, `🔥 Last day` on the last one. Working days follow `totalflowx.reviews.workingDays`.
+- **Sprint Wrap-up**: on the last day of the sprint you are offered your recap: PRs merged, opened and reviewed, work items done, CI green rate and best streak, quickest merge, longest ride, fastest first approval, and whether you reviewed more than you opened (🤝 Net giver). Open it any time with **Totalflow X: Show Sprint Wrap-up**. It counts what the extension saw since this version was installed, also while the fun features are off.
+
+Animations (confetti included) respect the system's reduced-motion setting. More card animations for the work item you are working on are in `totalflowx.workingOn.animation` (see [Work items you are working on](#work-items-you-are-working-on)).
+
 ## Diagnostics
 
 - **Show Azure DevOps Usage** (command palette) opens a report of the requests made to Azure DevOps since the extension started and in the last hour: requests per feature (sidebar, CI runs, My Pull Requests, Waiting for your review, PR notifications, dependency map, Work Item Details panel, status bar, commands), requests per minute (averages, busiest minute, the last 15 minutes), and errors and throttling (by status, the last errors, throttled responses with Azure DevOps' rate-limit headers).
@@ -301,42 +316,126 @@ Only the PRs where you are a reviewer yourself are listed: when a group (e.g. a 
 
 ## Settings
 
-| Setting                                                | Description                                                                                                                                                                                                  |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `totalflowx.branchModules`                             | Catalog of branch modules                                                                                                                                                                                    |
-| `totalflowx.prFeatureNames`                            | Catalog of PR feature names                                                                                                                                                                                  |
-| `totalflowx.moduleToFeature`                           | Feature name suggested for each branch module                                                                                                                                                                |
-| `totalflowx.branchTypeByWorkItemType`                  | Branch prefix per work item type (`Bug` → `bugfix`)                                                                                                                                                          |
-| `totalflowx.baseBranch`                                | Base branch and PR target (`develop`)                                                                                                                                                                        |
-| `totalflowx.filter.types`                              | Work item types shown (Type chips)                                                                                                                                                                           |
-| `totalflowx.filter.hiddenPriorities`                   | Priorities hidden (Priority chips)                                                                                                                                                                           |
-| `totalflowx.filter.alwaysShowAlerts`                   | Show work items with alerts whatever the filters (off)                                                                                                                                                       |
-| `totalflowx.filter.hiddenPullRequestStates`            | PR states hidden (PR chips)                                                                                                                                                                                  |
-| `totalflowx.filter.hiddenDuplicates`                   | `["Duplicates"]` hides the work items that duplicate another one (Dups chip)                                                                                                                                 |
-| `totalflowx.stateOrder`                                | Order of the cards by state                                                                                                                                                                                  |
-| `totalflowx.showInReviewState`                         | Show **In review** for Committed work items whose only open tasks are PR tasks in progress (on)                                                                                                              |
-| `totalflowx.stateOnBranchCreated`                      | State set when a branch is created, per type                                                                                                                                                                 |
-| `totalflowx.notifications.events`                      | PR events notified (`comments`, `vote`, `merged`, `taskDone`…); empty: none                                                                                                                                  |
-| `totalflowx.notifications.pollIntervalSeconds`         | How often your PRs are checked (seconds, min. 30)                                                                                                                                                            |
-| `totalflowx.filter.hiddenStates`                       | States hidden (State chips)                                                                                                                                                                                  |
-| `totalflowx.teams`                                     | Teams whose current iteration is listed (empty: all my teams)                                                                                                                                                |
-| `totalflowx.linkBranchToWorkItem`                      | Publish and link new branches to the work item                                                                                                                                                               |
-| `totalflowx.pullRequestTasks.startWhenPublished`       | Move the tasks of your published PRs to In Progress by themselves (on)                                                                                                                                       |
-| `totalflowx.organization` / `.project` / `.repository` | Override what is detected from the remote                                                                                                                                                                    |
-| `totalflowx.alerts.*`                                  | Alert rules: tags, required fields, types, PR task pattern                                                                                                                                                   |
-| `totalflowx.integrationBuild.*`                        | Feed, package and suffix used to fill Integrated in Build                                                                                                                                                    |
-| `totalflowx.layout`                                    | Layout of the cards: `compact` (default) or `large`                                                                                                                                                          |
-| `totalflowx.hoverStyle`                                | Hover of cards and PR tiles: `border` (default), `tint` or `accent`                                                                                                                                          |
-| `totalflowx.tasks.countStyle`                          | Counts on the Tasks bar of large cards: `filled` (default) or `outlined`                                                                                                                                     |
-| `totalflowx.popovers.hoverDelay`                       | Delay of the popovers (task card, coverage, predecessors, PR history) on hover (ms, 0-3000, 500); replaces `tasks.hoverCardDelay`                                                                            |
-| `totalflowx.myPullRequests.*`                          | My pull requests: show drafts, refresh interval, status bar, `attentionEffect` (effect of the tiles that need you: `pulse` by default, `none`, `static`, `waves`, `shimmer`, `ripple`, `rainbow`, `breathe`) |
-| `totalflowx.statusBar.currentWorkItem`                 | Show the work item of the current branch in the status bar                                                                                                                                                   |
-| `totalflowx.dependencies.*`                            | Completed states of predecessors                                                                                                                                                                             |
-| `totalflowx.coverage.*`                                | Coverage levels: minimum (60), target (80), excellent (95)                                                                                                                                                   |
-| `totalflowx.pipelines.*`                               | CI runs: refresh interval, notifications, status bar                                                                                                                                                         |
-| `totalflowx.reviews.*`                                 | PRs to review: maximum wait, due soon, reminders, status bar                                                                                                                                                 |
+The settings are grouped by category under **Totalflow X devtools for Azure Devops** in the Settings editor. **Totalflow X: Open Settings** (also in the `...` menu of the view) opens them.
+
+Personal choices (layouts, filters, the look of the cards, the fun features) are user settings: they follow you to every workspace and are ignored in a workspace's `.vscode/settings.json`. The team settings (connection, branch and PR naming, team rules) can be set in the workspace settings and committed, so the whole team shares them.
+
+### Connection
+
+| Setting                                                | Description                                                   |
+| ------------------------------------------------------ | ------------------------------------------------------------- |
+| `totalflowx.organization` / `.project` / `.repository` | Override what is detected from the remote                     |
+| `totalflowx.remote`                                    | Git remote pointing to Azure DevOps (`origin`)                |
+| `totalflowx.teams`                                     | Teams whose current iteration is listed (empty: all my teams) |
+
+### Work Items List
+
+| Setting                                     | Description                                                                                     |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `totalflowx.workItems.layout`               | Layout of the cards: `compact` (default) or `large`                                             |
+| `totalflowx.filter.types`                   | Work item types shown (Type chips)                                                              |
+| `totalflowx.filter.hiddenStates`            | States hidden (State chips)                                                                     |
+| `totalflowx.filter.hiddenPullRequestStates` | PR states hidden (PR chips)                                                                     |
+| `totalflowx.filter.hiddenPriorities`        | Priorities hidden (Priority chips)                                                              |
+| `totalflowx.filter.hiddenPredecessorStates` | Work items hidden by the state of their predecessors (Predecessors chips)                       |
+| `totalflowx.filter.hiddenDuplicates`        | `["Duplicates"]` hides the work items that duplicate another one (Dups chip)                    |
+| `totalflowx.filter.alwaysShowAlerts`        | Show work items with alerts whatever the filters (off)                                          |
+| `totalflowx.workItems.stateOrder`           | Order of the cards by state                                                                     |
+| `totalflowx.workItems.showInReviewState`    | Show **In review** for Committed work items whose only open tasks are PR tasks in progress (on) |
+| `totalflowx.dependencies.completedStates`   | States in which a predecessor counts as completed                                               |
+
+### Working On
+
+| Setting                                       | Description                                                               |
+| --------------------------------------------- | ------------------------------------------------------------------------- |
+| `totalflowx.workingOn.section`                | List the work items you are working on in a "Working on" section (on)     |
+| `totalflowx.workingOn.ignoreFilters`          | Never hide the work items you are working on (on)                         |
+| `totalflowx.workingOn.showWorktrees`          | Also mark the work items checked out in another worktree (on)             |
+| `totalflowx.workingOn.includeLinkedWorkItems` | Also mark the work items linked to the one of the checked out branch (on) |
+| `totalflowx.workingOn.showInStatusBar`        | Show the work item of the current branch in the status bar                |
+
+### Branches & Pull Request Creation
+
+| Setting                                          | Description                                                            |
+| ------------------------------------------------ | ---------------------------------------------------------------------- |
+| `totalflowx.branches.baseBranch`                 | Base branch and PR target (`develop`)                                  |
+| `totalflowx.checkout.mode`                       | What the Checkout buttons do: `ask` (default), `branch` or `worktree`  |
+| `totalflowx.branches.typeByWorkItemType`         | Branch prefix per work item type (`Bug` → `bugfix`)                    |
+| `totalflowx.branches.modules`                    | Catalog of branch modules                                              |
+| `totalflowx.pullRequests.featureNames`           | Catalog of PR feature names                                            |
+| `totalflowx.pullRequests.featureByModule`        | Feature name suggested for each branch module                          |
+| `totalflowx.branches.linkToWorkItem`             | Publish and link new branches to the work item                         |
+| `totalflowx.branches.workItemStateOnCreate`      | State set when a branch is created, per type                           |
+| `totalflowx.pullRequestTasks.startWhenPublished` | Move the tasks of your published PRs to In Progress by themselves (on) |
 
 Modules and feature names added with **Add new…** are saved to the workspace settings (`.vscode/settings.json`), so they can be committed and shared.
+
+### My Pull Requests
+
+| Setting                                              | Description                                                                 |
+| ---------------------------------------------------- | --------------------------------------------------------------------------- |
+| `totalflowx.myPullRequests.layout`                   | Layout of the "My Pull Requests" box (`compact` or `large`)                 |
+| `totalflowx.myPullRequests.showDrafts`               | List your draft PRs (on)                                                    |
+| `totalflowx.myPullRequests.completedPeriod`          | How far back your completed PRs are listed (`day`)                          |
+| `totalflowx.myPullRequests.showInStatusBar`          | Show how many of your PRs need you in the status bar (on)                   |
+| `totalflowx.myPullRequests.notifications`            | PR events notified (`comments`, `vote`, `merged`, `taskDone`…); empty: none |
+| `totalflowx.myPullRequests.minimumRequiredReviewers` | Team rule: required reviewers a published PR should have (2)                |
+
+### Reviews
+
+| Setting                                      | Description                                                            |
+| -------------------------------------------- | ---------------------------------------------------------------------- |
+| `totalflowx.reviews.layout`                  | Layout of the "Waiting for your review" box                            |
+| `totalflowx.reviews.includeOptional`         | Also list the PRs where you are an optional reviewer (off)             |
+| `totalflowx.reviews.reviewedPeriod`          | Also list, dimmed, the PRs you already reviewed (`hidden`)             |
+| `totalflowx.reviews.showInStatusBar`         | Show how many PRs wait for your review in the status bar (on)          |
+| `totalflowx.reviews.notifications`           | Notifications about the PRs you review (requested, due soon, overdue…) |
+| `totalflowx.reviews.maxWaitHours`            | Team rule: maximum wait for reviewers, in working hours (24)           |
+| `totalflowx.reviews.workingDays`             | Days on which the waiting time counts (Monday to Friday)               |
+| `totalflowx.reviews.dueSoonHours`            | Hours before the maximum wait when a PR is due soon (6)                |
+| `totalflowx.reviews.remindOverdueEveryHours` | How often an overdue PR is notified again (4; 0: once)                 |
+
+### CI & Coverage
+
+| Setting                                | Description                                                |
+| -------------------------------------- | ---------------------------------------------------------- |
+| `totalflowx.pipelines.showInStatusBar` | Show the CI runs of your PRs in the status bar (on)        |
+| `totalflowx.pipelines.notifyOnFinish`  | Notify when a CI run of your PRs finishes (on)             |
+| `totalflowx.coverage.*`                | Coverage levels: minimum (60), target (80), excellent (95) |
+
+### Team Rules
+
+| Setting                         | Description                                                      |
+| ------------------------------- | ---------------------------------------------------------------- |
+| `totalflowx.alerts.*`           | Alert rules: tags, required fields, types, PR task pattern       |
+| `totalflowx.buildNotes.*`       | Build notes rule: on/off, folder, file suffix, skip tag          |
+| `totalflowx.integrationBuild.*` | Field, feed, package and suffix used to fill Integrated in Build |
+
+### Appearance
+
+| Setting                                     | Description                                                                                                                 |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `totalflowx.appearance.hoverStyle`          | Hover of cards and PR tiles: `border` (default), `tint` or `accent`                                                         |
+| `totalflowx.popovers.hoverDelay`            | Delay of the popovers (task card, coverage, predecessors, PR history) on hover (ms, 0-3000, 500)                            |
+| `totalflowx.tasks.countStyle`               | Counts on the Tasks bar of large cards: `filled` (default) or `outlined`                                                    |
+| `totalflowx.workingOn.animation`            | Animation of the card of the work item you are working on (`none`)                                                          |
+| `totalflowx.workingOn.pulseBadge`           | Halo around the "Working on" badge (on)                                                                                     |
+| `totalflowx.myPullRequests.attentionEffect` | Effect of the tiles that need you: `pulse` by default, `none`, `static`, `waves`, `shimmer`, `ripple`, `rainbow`, `breathe` |
+| `totalflowx.fun.enabled`                    | Celebrations, green streak, clean board, sprint countdown and the offer of the Sprint Wrap-up (off)                         |
+
+### Advanced
+
+How often Azure DevOps is polled, and diagnostics. The defaults keep the number of requests low; lower intervals cost more requests.
+
+| Setting                                                      | Description                                                                    |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| `totalflowx.pipelines.pollIntervalSeconds`                   | Refresh of a CI run while it is queued or running (15 s)                       |
+| `totalflowx.pipelines.idlePollIntervalSeconds`               | Check for new CI runs when none is running (60 s)                              |
+| `totalflowx.pipelines.branchRunsHours`                       | Hours back to show your manual and post-merge runs (24; 0: off)                |
+| `totalflowx.myPullRequests.pollIntervalSeconds`              | How often your PRs are checked for the "My Pull Requests" box (120 s, min. 30) |
+| `totalflowx.myPullRequests.notificationsPollIntervalSeconds` | How often your PRs are checked for notifications (120 s, min. 30)              |
+| `totalflowx.reviews.pollIntervalSeconds`                     | How often the PRs waiting for your review are checked (120 s, min. 30)         |
+| `totalflowx.diagnostics.logRequests`                         | Log every request in the **Totalflow X** output channel (off)                  |
 
 ## Contributing
 

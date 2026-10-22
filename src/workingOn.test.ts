@@ -227,6 +227,8 @@ describe('working on animation', () => {
     expect(workingOnAnimationClasses('none', true)).toEqual(['pulse-badge']);
     expect(workingOnAnimationClasses('borderLight', false)).toEqual(['anim-borderLight']);
     expect(workingOnAnimationClasses('stripes', true)).toEqual(['anim-stripes', 'pulse-badge']);
+    expect(workingOnAnimationClasses('rainbow', false)).toEqual(['anim-rainbow']);
+    expect(normalizeWorkingOnAnimation('retro')).toBe('retro');
   });
 
   it('falls back to no animation for unknown values', () => {

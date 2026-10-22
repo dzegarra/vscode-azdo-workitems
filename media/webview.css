@@ -700,6 +700,200 @@ button {
       box-shadow: 0 0 0 7px color-mix(in srgb, var(--working-here) 0%, transparent);
     }
   }
+
+  /* F: the thick left border cycles through the rainbow (a tall gradient slides; only background-position moves) */
+  .list.anim-rainbow .card.working-here::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    bottom: -1px;
+    left: -5px;
+    width: 5px;
+    border-radius: var(--radius) 0 0 var(--radius);
+    background: linear-gradient(
+        to bottom,
+        #e40303,
+        #ff8c00,
+        #ffed00,
+        #008026,
+        #004dff,
+        #750787,
+        #e40303,
+        #ff8c00,
+        #ffed00,
+        #008026,
+        #004dff,
+        #750787,
+        #e40303
+      )
+      0 0 / 100% 600%;
+    pointer-events: none;
+    animation: working-rainbow 6s linear infinite;
+  }
+
+  @keyframes working-rainbow {
+    to {
+      background-position: 0 100%;
+    }
+  }
+
+  /* G: a neon outline that hums and flickers now and then (only the opacity of a static shadow changes) */
+  .list.anim-neon .card.working-here::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--working-here) 90%, #ffffff),
+      0 0 8px 1px color-mix(in srgb, var(--working-here) 80%, transparent);
+    opacity: 0.9;
+    pointer-events: none;
+    animation: working-neon 5s steps(1, end) infinite;
+  }
+
+  @keyframes working-neon {
+    0%,
+    100% {
+      opacity: 0.9;
+    }
+
+    91% {
+      opacity: 0.25;
+    }
+
+    92% {
+      opacity: 0.9;
+    }
+
+    94% {
+      opacity: 0.4;
+    }
+
+    95% {
+      opacity: 0.9;
+    }
+  }
+
+  /* H: faint scanlines roll down the card, like an old CRT monitor (only background-position moves) */
+  .list.anim-retro .card.working-here::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius);
+    background: repeating-linear-gradient(
+        to bottom,
+        color-mix(in srgb, var(--working-here) 14%, transparent) 0 1px,
+        transparent 1px 4px
+      )
+      0 0 / 100% 4px;
+    pointer-events: none;
+    animation: working-retro 0.6s linear infinite;
+  }
+
+  @keyframes working-retro {
+    to {
+      background-position: 0 4px;
+    }
+  }
+}
+
+/* ---------- Fun (totalflowx.fun.enabled) ---------- */
+
+/* Countdown of the sprint, before the scope line or in the header of an iteration group */
+.countdown {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10.5px;
+  line-height: 16px;
+  color: var(--countdown-color);
+  background: color-mix(in srgb, var(--countdown-color) 16%, transparent);
+}
+
+.iteration-toggle .countdown {
+  flex: none;
+  margin: 0 0 0 4px;
+  font-weight: normal;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.countdown.mood-calm {
+  --countdown-color: var(--green);
+}
+
+.countdown.mood-hurry {
+  --countdown-color: var(--orange);
+}
+
+.countdown.mood-last {
+  --countdown-color: var(--red);
+}
+
+/* Confetti of a merged PR: pieces placed by the webview (CSSOM variables), removed after a few seconds */
+.confetti {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: -12px;
+  left: var(--x, 50%);
+  width: 6px;
+  height: 10px;
+  border-radius: 1px;
+  opacity: 0;
+  background: var(--confetti, var(--blue));
+}
+
+.confetti-piece.c0 {
+  --confetti: var(--blue);
+}
+
+.confetti-piece.c1 {
+  --confetti: var(--green);
+}
+
+.confetti-piece.c2 {
+  --confetti: var(--yellow);
+}
+
+.confetti-piece.c3 {
+  --confetti: var(--red);
+}
+
+.confetti-piece.c4 {
+  --confetti: var(--purple);
+}
+
+.confetti-piece.c5 {
+  --confetti: var(--vscode-charts-orange, #d18616);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .confetti-piece {
+    animation: confetti-fall 2.8s cubic-bezier(0.3, 0.6, 0.6, 1) var(--delay, 0ms) forwards;
+  }
+
+  @keyframes confetti-fall {
+    0% {
+      opacity: 1;
+      transform: translate(0, 0) rotate(0deg);
+    }
+
+    85% {
+      opacity: 1;
+    }
+
+    100% {
+      opacity: 0;
+      transform: translate(var(--drift, 0px), 105vh) rotate(var(--spin, 540deg));
+    }
+  }
 }
 
 /* "Working on" section: a tinted band with a bold heading, unlike the framed panels and the plain iteration headers */

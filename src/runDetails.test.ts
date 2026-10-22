@@ -234,6 +234,16 @@ describe('finishedRunMessage', () => {
     );
   });
 
+  it('ends with the notes, before the work items', () => {
+    const failed = run({ state: 'failed' });
+    expect(
+      finishedRunMessage(failed, { ...context, notes: ['💔 That ends a streak of 4 green runs.'] }, NOW).text
+    ).toBe('PR 13713 failed. 💔 That ends a streak of 4 green runs.');
+    expect(finishedRunMessage(ok, { ...context, notes: ['A.', 'B.'], workItemIds: [7] }, NOW).text).toMatch(
+      /▲ \+3\.2%\. A\. B\. Work items: \[#7\]/
+    );
+  });
+
   it('does not boast of a streak of one', () => {
     expect(finishedRunMessage(ok, { ...context, streak: 1 }, NOW).text).not.toContain('in a row');
   });

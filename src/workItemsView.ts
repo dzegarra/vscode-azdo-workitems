@@ -2,7 +2,7 @@ import { migratePredecessorStates } from './predecessors';
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { showActionPicker } from './actionPickerUi';
-import { coverageThresholds, recordsScope, SECTION, settings } from './config';
+import { coverageThresholds, funEnabled, recordsScope, SECTION, settings, workingDaysSetting } from './config';
 import { safeRelativePath } from './coverage';
 import { describeRecords } from './coverageRecords';
 import { CoverageRecordsStore } from './coverageRecordsStore';
@@ -24,6 +24,7 @@ import {
   ViewModel,
   WebviewMessage,
 } from './viewModel';
+import { sprintCountdown } from './sprintCountdown';
 import { runWorkItemAction } from './workItemActions';
 import { WorkItemsStore } from './workItemsStore';
 
@@ -50,7 +51,9 @@ export function workingOnSettings(): ViewModel['workingOn'] {
 export const LAYOUT_CONTEXT = 'totalflowx.layout';
 
 export function layoutSetting(): Layout {
-  return vscode.workspace.getConfiguration(SECTION).get<Layout>('layout', 'compact') === 'large' ? 'large' : 'compact';
+  return vscode.workspace.getConfiguration(SECTION).get<Layout>('workItems.layout', 'compact') === 'large'
+    ? 'large'
+    : 'compact';
 }
 
 /** Sidebar view rendering the work items as cards */
@@ -93,8 +96,16 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     const { items, hiddenDrafts, hiddenCompleted, completedSummary } = this.myPullRequests.models();
     const reviewConfig = reviewSettings();
     const pullRequestConfig = myPullRequestSettings();
+    const base = this.store.toViewModel(filterSettings());
+    const fun = funEnabled();
+    const now = new Date();
     const model: ViewModel = {
-      ...this.store.toViewModel(filterSettings()),
+      ...base,
+      // Rule FUN-COUNTDOWN-4
+      iterations: base.iterations.map((iteration) => ({
+        ...iteration,
+        countdown: fun ? sprintCountdown(iteration.finishDate, now, workingDaysSetting()) : undefined,
+      })),
       alwaysShowAlerts: vscode.workspace.getConfiguration(SECTION).get<boolean>('filter.alwaysShowAlerts', false),
       layout: layoutSetting(),
       hoverStyle: settings().hoverStyle,
@@ -177,6 +188,16 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     }
     const message: ExtensionMessage = { type: 'revealWorkItem', id: this.pendingReveal };
     this.pendingReveal = undefined;
+    void this.view.webview.postMessage(message);
+  }
+
+  // Rule FUN-MERGE-4
+  /** Confetti in the sidebar, only when it is open and showing: nothing is queued for later */
+  celebrate(): void {
+    if (!this.ready || !this.view?.visible) {
+      return;
+    }
+    const message: ExtensionMessage = { type: 'celebrate' };
     void this.view.webview.postMessage(message);
   }
 
@@ -279,7 +300,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         // Personal, like the filters: the view is posted again when the setting changes
         await vscode.workspace
           .getConfiguration(SECTION)
-          .update('layout', message.layout, vscode.ConfigurationTarget.Global);
+          .update('workItems.layout', message.layout, vscode.ConfigurationTarget.Global);
         return;
       case 'setFilter': {
         // Filters are personal: saved in the user settings. Each write updates settings.json and

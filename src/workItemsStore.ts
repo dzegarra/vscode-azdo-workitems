@@ -1227,6 +1227,7 @@ export class WorkItemsStore {
         name: iteration.name,
         path: iteration.path,
         teams,
+        finishDate: iteration.attributes?.finishDate,
       })),
       workItems,
       filter,

@@ -54,7 +54,7 @@ async function pickModuleAndBase(
   let base = baseBranch;
   for (;;) {
     const pick = await pickFromCatalogOrExtra({
-      setting: 'branchModules',
+      setting: 'branches.modules',
       title: `${type}/<module>/${entry.workItem.id}-…`,
       placeholder: 'Select the module affected by the changes',
       newItemPrompt: 'New module name (kebab-case, e.g. fui-apps-xyz)',

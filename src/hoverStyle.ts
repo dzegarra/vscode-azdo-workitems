@@ -1,4 +1,4 @@
-/** How the work item cards and the PR tiles react to the pointer (totalflowx.hoverStyle). Pure: no "vscode" import */
+/** How the work item cards and the PR tiles react to the pointer (totalflowx.appearance.hoverStyle). Pure: no "vscode" import */
 
 export const HOVER_STYLES = ['border', 'tint', 'accent'] as const;
 export type HoverStyle = (typeof HOVER_STYLES)[number];

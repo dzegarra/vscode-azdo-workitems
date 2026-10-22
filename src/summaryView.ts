@@ -9,13 +9,16 @@ const FOCUS_COMMAND = 'totalflowx.myItems.focus';
 
 /** The parts of the extension the Summary reads. Structural, so a test can pass fakes */
 export interface SummarySources {
-  store: Pick<WorkItemsStore, 'onDidChange' | 'pullRequestRuns' | 'withAlerts'>;
+  store: Pick<WorkItemsStore, 'entries' | 'onDidChange' | 'pullRequestRuns' | 'withAlerts'>;
   reviews: Pick<ReviewRequestsWatcher, 'models' | 'onDidChange'>;
   myPullRequests: Pick<MyPullRequestsWatcher, 'models' | 'onDidChange'>;
+  /** totalflowx.fun.enabled with the alerts on (a clean board means nothing without them); off when missing */
+  celebrateCleanBoard?: () => boolean;
 }
 
-export function summaryInput({ store, reviews, myPullRequests }: SummarySources): SummaryInput {
+export function summaryInput({ store, reviews, myPullRequests, celebrateCleanBoard }: SummarySources): SummaryInput {
   return {
+    celebrateCleanBoard: !!celebrateCleanBoard?.() && store.entries.length > 0,
     workItemsWithAlerts: store.withAlerts.length,
     reviews: reviews.models(),
     myPullRequests: myPullRequests.models().items,
@@ -29,7 +32,7 @@ function toItem(row: SummaryRow): vscode.TreeItem {
   item.description = row.description;
   item.tooltip = row.tooltip;
   item.iconPath = new vscode.ThemeIcon(row.icon, row.color ? new vscode.ThemeColor(row.color) : undefined);
-  if (row.id !== 'nothing') {
+  if (row.id !== 'nothing' && row.id !== 'cleanBoard') {
     item.command = { command: FOCUS_COMMAND, title: 'Show the list' };
   }
   return item;

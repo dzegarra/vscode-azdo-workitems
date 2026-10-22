@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizePopoverDelay, resolvePopoverDelay } from './popoverDelay';
+import { normalizePopoverDelay } from './popoverDelay';
 
 describe('normalizePopoverDelay', () => {
   it('keeps values in range', () => {
@@ -20,21 +20,5 @@ describe('normalizePopoverDelay', () => {
     expect(normalizePopoverDelay(null)).toBe(500);
     expect(normalizePopoverDelay(Number.NaN)).toBe(500);
     expect(normalizePopoverDelay(Number.POSITIVE_INFINITY)).toBe(500);
-  });
-});
-
-describe('resolvePopoverDelay', () => {
-  it('uses the new setting when it is set, even to 0', () => {
-    expect(resolvePopoverDelay(200, 900)).toBe(200);
-    expect(resolvePopoverDelay(0, 900)).toBe(0);
-  });
-
-  it('reads the deprecated setting when the new one is not set', () => {
-    expect(resolvePopoverDelay(undefined, 900)).toBe(900);
-    expect(resolvePopoverDelay(undefined, 0)).toBe(0);
-  });
-
-  it('uses the default when neither is set', () => {
-    expect(resolvePopoverDelay(undefined, undefined)).toBe(500);
   });
 });

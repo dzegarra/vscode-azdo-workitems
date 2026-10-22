@@ -8,6 +8,7 @@ import {
   reviewedPeriodSetting,
   toReviewedDetails,
   toReviewedRequests,
+  votedPullRequestIds,
 } from './reviewedRequests';
 
 const ME = 'me';
@@ -179,5 +180,18 @@ describe('reviewed details fetch policy', () => {
     const now: ReviewedRef[] = [{ id: 1, status: 'completed' }];
     expect(reviewedIdsToDrop([{ id: 1, status: 'active' }], now, new Set([1]))).toEqual([1]);
     expect(reviewedIdsToFetch(now, new Set([1]), none, false)).toEqual([1]);
+  });
+});
+
+describe('votedPullRequestIds', () => {
+  it('lists the published PRs of others the user voted on, for the fun journal', () => {
+    const prs = [
+      pr(1, 10),
+      pr(2, 0),
+      pr(3, -5),
+      pr(4, 10, { isDraft: true }),
+      pr(5, 10, { createdBy: { id: ME, displayName: 'Me' } }),
+    ];
+    expect(votedPullRequestIds(prs, ME)).toEqual([1, 3]);
   });
 });

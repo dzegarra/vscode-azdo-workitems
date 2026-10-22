@@ -8,7 +8,7 @@ import { parseCheckoutMode } from './worktrees';
 import { DEFAULT_COMPLETED_STATES } from './predecessors';
 import { DEFAULT_STATE_ORDER } from './states';
 import { parseWorkingDays } from './workingTime';
-import { resolvePopoverDelay } from './popoverDelay';
+import { normalizePopoverDelay } from './popoverDelay';
 import { normalizeHoverStyle } from './hoverStyle';
 import { normalizeTaskCountStyle } from './taskCountStyle';
 import { normalizeWorkingOnAnimation } from './workingOn';
@@ -27,12 +27,6 @@ export function compilePullRequestTaskPattern(source: string): RegExp {
   }
 }
 
-/** What the user set explicitly (folder, workspace or user), `undefined` when the setting still has its default */
-function explicitSetting(config: vscode.WorkspaceConfiguration, key: string): unknown {
-  const info = config.inspect(key);
-  return info?.workspaceFolderValue ?? info?.workspaceValue ?? info?.globalValue;
-}
-
 export function settings() {
   const config = vscode.workspace.getConfiguration(SECTION);
   return {
@@ -41,18 +35,18 @@ export function settings() {
     repository: config.get<string>('repository', ''),
     teams: config.get<string[]>('teams', []),
     remote: config.get<string>('remote', 'origin'),
-    baseBranch: config.get<string>('baseBranch', 'develop'),
+    baseBranch: config.get<string>('branches.baseBranch', 'develop'),
     checkoutMode: parseCheckoutMode(config.get<string>('checkout.mode', 'ask')),
-    branchTypeByWorkItemType: config.get<Partial<Record<string, string>>>('branchTypeByWorkItemType', {}),
-    branchModules: config.get<string[]>('branchModules', []),
-    prFeatureNames: config.get<string[]>('prFeatureNames', []),
-    moduleToFeature: config.get<Partial<Record<string, string>>>('moduleToFeature', {}),
-    linkBranchToWorkItem: config.get<boolean>('linkBranchToWorkItem', true),
+    branchTypeByWorkItemType: config.get<Partial<Record<string, string>>>('branches.typeByWorkItemType', {}),
+    branchModules: config.get<string[]>('branches.modules', []),
+    prFeatureNames: config.get<string[]>('pullRequests.featureNames', []),
+    moduleToFeature: config.get<Partial<Record<string, string>>>('pullRequests.featureByModule', {}),
+    linkBranchToWorkItem: config.get<boolean>('branches.linkToWorkItem', true),
     /** Rule TASK-PR-8: the tasks of the user's published PRs move to In Progress by themselves */
     startPullRequestTasks: config.get<boolean>('pullRequestTasks.startWhenPublished', true),
-    stateOnBranchCreated: config.get<Partial<Record<string, string>>>('stateOnBranchCreated', {}),
-    stateOrder: config.get<string[]>('stateOrder', DEFAULT_STATE_ORDER),
-    showInReviewState: config.get<boolean>('showInReviewState', true),
+    stateOnBranchCreated: config.get<Partial<Record<string, string>>>('branches.workItemStateOnCreate', {}),
+    stateOrder: config.get<string[]>('workItems.stateOrder', DEFAULT_STATE_ORDER),
+    showInReviewState: config.get<boolean>('workItems.showInReviewState', true),
     /** Hours back to look for the manual and post-merge runs (Rules STATUSBAR-CI-6, STATUSBAR-CI-8); 0: off */
     branchRunsHours: Math.max(0, config.get<number>('pipelines.branchRunsHours', 24)),
     dependencies: {
@@ -67,11 +61,8 @@ export function settings() {
       protocolType: config.get<string>('integrationBuild.protocolType', 'UPack'),
       suffix: config.get<string>('integrationBuild.suffix', '+'),
     },
-    hoverStyle: normalizeHoverStyle(config.get<string>('hoverStyle', 'border')),
-    popoverDelay: resolvePopoverDelay(
-      explicitSetting(config, 'popovers.hoverDelay'),
-      explicitSetting(config, 'tasks.hoverCardDelay')
-    ),
+    hoverStyle: normalizeHoverStyle(config.get<string>('appearance.hoverStyle', 'border')),
+    popoverDelay: normalizePopoverDelay(config.get<unknown>('popovers.hoverDelay')),
     tasksCountStyle: normalizeTaskCountStyle(config.get<string>('tasks.countStyle', 'filled')),
     workingOn: {
       showWorktrees: config.get<boolean>('workingOn.showWorktrees', true),
@@ -111,6 +102,11 @@ export function buildNotesSettings(): BuildNotesOptions {
 /** Weekdays whose time counts as waiting time of pull requests (setting totalflowx.reviews.workingDays) */
 export function workingDaysSetting(): number[] {
   return parseWorkingDays(vscode.workspace.getConfiguration(`${SECTION}.reviews`).get<string[]>('workingDays'));
+}
+
+/** totalflowx.fun.enabled: celebrations, green streak, clean board row, sprint countdown, recap offer. Off by default */
+export function funEnabled(): boolean {
+  return vscode.workspace.getConfiguration(SECTION).get<boolean>('fun.enabled', false);
 }
 
 /** Coverage levels: below `minimum` is low, from `target` is good, from `excellent` is excellent */

@@ -1,8 +1,12 @@
 import * as vscode from 'vscode';
-import { coverageThresholds, recordsScope, SECTION } from './config';
+import { coverageGainNote } from './celebrations';
+import { coverageThresholds, funEnabled, recordsScope, SECTION } from './config';
 import { coverageLevel } from './coverage';
-import { CoverageResult, currentStreak, isNewBest } from './coverageRecords';
+import { CoverageResult, currentStreak, gainOverPreviousPullRequest, isNewBest } from './coverageRecords';
 import { CoverageRecordsStore } from './coverageRecordsStore';
+import { recordRuns } from './funJournal';
+import { FunJournalStore } from './funJournalStore';
+import { greenStreak, greenStreakNote } from './greenStreak';
 import { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import { RunModel } from './pipelines';
 import { finishedRunMessage, finishedRunSubject, testsUrl } from './runDetails';
@@ -11,6 +15,13 @@ import { WorkItemsStore } from './workItemsStore';
 
 const MIN_INTERVAL_SECONDS = 5;
 const MIN_IDLE_SECONDS = 30;
+
+interface RecordsUpdate {
+  newBest: boolean;
+  streak: number;
+  /** Points gained over the PR recorded before */
+  gain?: number;
+}
 
 function pipelineSettings() {
   const config = vscode.workspace.getConfiguration(`${SECTION}.pipelines`);
@@ -34,7 +45,8 @@ export class PipelineWatcher implements vscode.Disposable {
   constructor(
     private readonly store: WorkItemsStore,
     private readonly myPullRequests: MyPullRequestsWatcher,
-    private readonly records: CoverageRecordsStore
+    private readonly records: CoverageRecordsStore,
+    private readonly journal: FunJournalStore
   ) {
     this.poller = new RunsPoller({
       settings: () => {
@@ -72,8 +84,11 @@ export class PipelineWatcher implements vscode.Disposable {
       // Coverage records: only the runs validating the user's own PRs
       const own = entry.kind === 'pullRequest' && this.myPullRequests.isMine(entry.pullRequestId);
       const records = await this.syncRecords(own ? [entry.run] : []);
+      // The manual and merge runs are only the user's own; PR runs also come from other people's PRs
+      const mine = entry.kind !== 'pullRequest' || own;
+      const streakNote = mine ? await this.recordRun(entry.run) : undefined;
       if (notify) {
-        void this.notify(entry, records);
+        void this.notify(entry, records, streakNote);
       }
     }
   }
@@ -82,7 +97,7 @@ export class PipelineWatcher implements vscode.Disposable {
    * Records the coverage of the successful runs, oldest first. Only the user's own PRs count: the PRs of the
    * store also include the ones of other people linked to the work items of the user
    */
-  private async syncRecords(runs: RunModel[]): Promise<{ newBest: boolean; streak: number } | undefined> {
+  private async syncRecords(runs: RunModel[]): Promise<RecordsUpdate | undefined> {
     const scope = recordsScope(this.store.repository());
     const owners = new Map(
       this.myPullRequests.ownRuns().flatMap((pr) => pr.runs.map((run) => [run.id, pr.pullRequestId]))
@@ -107,7 +122,20 @@ export class PipelineWatcher implements vscode.Disposable {
     return {
       newBest: !!last && isNewBest(records, last.runId),
       streak: currentStreak(records, coverageThresholds().target),
+      gain: last && gainOverPreviousPullRequest(records, last.runId),
     };
+  }
+
+  // Rule FUN-RUN-4
+  /** Adds a finished run of the user to the fun journal; the sentence about the green streak it changed */
+  private async recordRun(run: RunModel): Promise<string | undefined> {
+    const scope = recordsScope(this.store.repository());
+    if (!scope) {
+      return undefined;
+    }
+    // Another window may have recorded it first: then before and after are equal and nothing is said twice
+    const { before, after } = await this.journal.update(scope, (journal) => recordRuns(journal, [run], new Date()));
+    return greenStreakNote(greenStreak(before.runs), greenStreak(after.runs));
   }
 
   /** The links of the PR as Azure DevOps lists them for the user's PRs, else the work items of the list */
@@ -118,7 +146,8 @@ export class PipelineWatcher implements vscode.Disposable {
 
   private async notify(
     finished: FinishedRun,
-    records: { newBest: boolean; streak: number } | undefined
+    records: RecordsUpdate | undefined,
+    streakNote: string | undefined
   ): Promise<void> {
     const { run } = finished;
     const thresholds = coverageThresholds();
@@ -134,6 +163,11 @@ export class PipelineWatcher implements vscode.Disposable {
       streak: records?.streak,
       target: thresholds.target,
       excellent: !!run.coverage && coverageLevel(run.coverage.percent, thresholds) === 'excellent',
+      notes: funEnabled()
+        ? [run.state === 'succeeded' ? coverageGainNote(records?.gain) : undefined, streakNote].filter(
+            (note): note is string => !!note
+          )
+        : undefined,
     });
     const show = warning ? vscode.window.showWarningMessage : vscode.window.showInformationMessage;
     const buttons = hasFailedTests ? ['Open Run', 'Show Tests'] : ['Open Run'];

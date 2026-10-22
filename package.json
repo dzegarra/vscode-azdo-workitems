@@ -256,6 +256,17 @@
         "command": "totalflowx.showRequestLog",
         "title": "Show Request Log",
         "category": "Totalflow X"
+      },
+      {
+        "command": "totalflowx.showSprintRecap",
+        "title": "Show Sprint Wrap-up",
+        "category": "Totalflow X"
+      },
+      {
+        "command": "totalflowx.openSettings",
+        "title": "Open Settings",
+        "category": "Totalflow X",
+        "icon": "$(gear)"
       }
     ],
     "menus": {
@@ -281,6 +292,10 @@
         },
         {
           "command": "totalflowx.removeWorktrees",
+          "when": "view == totalflowx.myItems"
+        },
+        {
+          "command": "totalflowx.openSettings",
           "when": "view == totalflowx.myItems"
         }
       ],
@@ -315,414 +330,485 @@
         }
       ]
     },
-    "configuration": {
-      "title": "Totalflow X devtools for Azure Devops",
-      "properties": {
-        "totalflowx.organization": {
-          "type": "string",
-          "default": "",
-          "description": "Azure DevOps organization. Leave empty to detect it from the 'origin' remote."
-        },
-        "totalflowx.project": {
-          "type": "string",
-          "default": "",
-          "description": "Azure DevOps project. Leave empty to detect it from the 'origin' remote."
-        },
-        "totalflowx.repository": {
-          "type": "string",
-          "default": "",
-          "description": "Azure DevOps Git repository. Leave empty to detect it from the 'origin' remote."
-        },
-        "totalflowx.teams": {
-          "type": "array",
-          "items": {
-            "type": "string"
+    "configuration": [
+      {
+        "id": "totalflowx.connection",
+        "title": "Connection",
+        "order": 1,
+        "properties": {
+          "totalflowx.organization": {
+            "type": "string",
+            "default": "",
+            "description": "Azure DevOps organization. Leave empty to detect it from the 'origin' remote.",
+            "order": 1
           },
-          "default": [],
-          "description": "Teams whose current iteration is listed. Leave empty to list all the teams you belong to."
-        },
-        "totalflowx.remote": {
-          "type": "string",
-          "default": "origin",
-          "description": "Git remote pointing to Azure DevOps."
-        },
-        "totalflowx.baseBranch": {
-          "type": "string",
-          "default": "develop",
-          "description": "Branch new branches are created from and pull requests target."
-        },
-        "totalflowx.checkout.mode": {
-          "type": "string",
-          "enum": [
-            "ask",
-            "branch",
-            "worktree"
-          ],
-          "enumDescriptions": [
-            "Switch branch; when you have uncommitted changes, ask: open a worktree, stash them or check out anyway.",
-            "Always switch the branch of this window, without asking (git carries your changes or refuses on conflicts).",
-            "Always open the branch in a worktree: its own folder next to the repository, in a new window."
-          ],
-          "default": "ask",
-          "description": "What the Checkout buttons do. The ▾ next to them always offers both ways."
-        },
-        "totalflowx.filter.types": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "totalflowx.project": {
+            "type": "string",
+            "default": "",
+            "description": "Azure DevOps project. Leave empty to detect it from the 'origin' remote.",
+            "order": 2
           },
-          "default": [
-            "Product Backlog Item",
-            "Bug"
-          ],
-          "description": "Work item types shown. Empty: all types. Also editable with the Type chips of the view."
-        },
-        "totalflowx.filter.hiddenStates": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "totalflowx.repository": {
+            "type": "string",
+            "default": "",
+            "description": "Azure DevOps Git repository. Leave empty to detect it from the 'origin' remote.",
+            "order": 3
           },
-          "default": [
-            "Done",
-            "Removed",
-            "Closed"
-          ],
-          "description": "Work item states hidden. Also editable with the State chips of the view."
-        },
-        "totalflowx.filter.hiddenPullRequestStates": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "totalflowx.remote": {
+            "type": "string",
+            "default": "origin",
+            "description": "Git remote pointing to Azure DevOps.",
+            "order": 4
           },
-          "default": [],
-          "description": "States of the main PR of the work items hidden (\"No PR\" for work items without PRs). Also editable with the PR chips of the view."
-        },
-        "totalflowx.filter.hiddenPriorities": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "Priorities hidden (\"P1\" … \"P4\", or \"No priority\"). Also editable with the Priority chips of the view."
-        },
-        "totalflowx.filter.hiddenPredecessorStates": {
-          "type": "array",
-          "items": {
+          "totalflowx.teams": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "description": "Teams whose current iteration is listed. Leave empty to list all the teams you belong to.",
+            "order": 5
+          }
+        }
+      },
+      {
+        "id": "totalflowx.workItems",
+        "title": "Work Items List",
+        "order": 2,
+        "properties": {
+          "totalflowx.workItems.layout": {
             "type": "string",
             "enum": [
-              "Incomplete predecessors",
-              "Complete predecessors"
-            ]
+              "compact",
+              "large"
+            ],
+            "enumDescriptions": [
+              "Two lines per work item: title and state, then small signals (priority, branch, PR, CI, tasks, alerts). Click a row to expand it.",
+              "Full cards with the branch, the PRs, the actions and the task list."
+            ],
+            "default": "compact",
+            "description": "How the work items of the view are shown. Also switchable with the button of the view title.",
+            "scope": "application",
+            "order": 1
           },
-          "default": [],
-          "description": "Work items hidden by their predecessors: \"Incomplete predecessors\" (some predecessor is not completed) or \"Complete predecessors\". Also editable with the Deps chips of the view."
-        },
-        "totalflowx.filter.hiddenDuplicates": {
-          "type": "array",
-          "items": {
+          "totalflowx.filter.types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "Product Backlog Item",
+              "Bug"
+            ],
+            "description": "Work item types shown. Empty: all types. Also editable with the Type chips of the view.",
+            "scope": "application",
+            "order": 2
+          },
+          "totalflowx.filter.hiddenStates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "Done",
+              "Removed",
+              "Closed"
+            ],
+            "description": "Work item states hidden. Also editable with the State chips of the view.",
+            "scope": "application",
+            "order": 3
+          },
+          "totalflowx.filter.hiddenPullRequestStates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "description": "States of the main PR of the work items hidden (\"No PR\" for work items without PRs). Also editable with the PR chips of the view.",
+            "scope": "application",
+            "order": 4
+          },
+          "totalflowx.filter.hiddenPriorities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "description": "Priorities hidden (\"P1\" … \"P4\", or \"No priority\"). Also editable with the Priority chips of the view.",
+            "scope": "application",
+            "order": 5
+          },
+          "totalflowx.filter.hiddenPredecessorStates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "Incomplete predecessors",
+                "Complete predecessors"
+              ]
+            },
+            "default": [],
+            "description": "Work items hidden by their predecessors: \"Incomplete predecessors\" (some predecessor is not completed) or \"Complete predecessors\". Also editable with the Deps chips of the view.",
+            "scope": "application",
+            "order": 6
+          },
+          "totalflowx.filter.hiddenDuplicates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "Duplicates"
+              ]
+            },
+            "default": [],
+            "description": "\"Duplicates\": hides the work items linked as \"Duplicate Of\" another one. Also editable with the Dups chip of the view.",
+            "scope": "application",
+            "order": 7
+          },
+          "totalflowx.filter.alwaysShowAlerts": {
+            "type": "boolean",
+            "default": false,
+            "description": "Always show the work items that need attention (alerts), even when the State, PR or Priority filters hide them. Off: the filters apply to every work item, and the alerts banner tells how many are hidden (\"Show only these\" shows them).",
+            "scope": "application",
+            "order": 8
+          },
+          "totalflowx.workItems.stateOrder": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "Done",
+              "Ready to Test",
+              "In review",
+              "Committed",
+              "In Progress",
+              "Approved",
+              "New",
+              "To Do"
+            ],
+            "description": "Order in which the work items are sorted by state. Case, spaces and dashes are ignored. States not listed go last.",
+            "order": 9
+          },
+          "totalflowx.workItems.showInReviewState": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Show **In review** for a Committed work item whose only open tasks are In Progress PR tasks (title matching `#totalflowx.alerts.pullRequestTaskPattern#` or linked to a PR) while every other task is Done. Display only: nothing changes in Azure DevOps and the rules keep using the real state. Turn it off to see the real states.",
+            "order": 10
+          },
+          "totalflowx.dependencies.completedStates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "Done",
+              "Ready to Test",
+              "Closed",
+              "Removed"
+            ],
+            "description": "States in which a predecessor counts as completed. Work items with predecessors in any other state show an \"open predecessors\" caution: the team avoids completing them before their predecessors are completed.",
+            "order": 11
+          }
+        }
+      },
+      {
+        "id": "totalflowx.workingOn",
+        "title": "Working On",
+        "order": 3,
+        "properties": {
+          "totalflowx.workingOn.section": {
+            "type": "boolean",
+            "default": true,
+            "description": "List the work items you are working on in a \"Working on\" section at the top of the list, instead of in their iteration group (they keep their highlight).",
+            "order": 1
+          },
+          "totalflowx.workingOn.ignoreFilters": {
+            "type": "boolean",
+            "default": true,
+            "description": "Never hide the work items you are working on: they skip the State, PR and Priority filters and \"Show only these\" (the Type filter and the search still apply), and are still listed when their iteration group is collapsed.",
+            "order": 2
+          },
+          "totalflowx.workingOn.showWorktrees": {
+            "type": "boolean",
+            "default": true,
+            "description": "Also mark as \"In worktree\" the work items whose branch is checked out in another worktree of the repository. Off: only the branch checked out in this window counts.",
+            "order": 3
+          },
+          "totalflowx.workingOn.includeLinkedWorkItems": {
+            "type": "boolean",
+            "default": true,
+            "description": "Besides the work item of the checked out branch, mark the other work items of the list linked to it: the ones whose active pull request comes from that branch or whose Development section links to it. Off: only the work item of the branch.",
+            "order": 4
+          },
+          "totalflowx.workingOn.showInStatusBar": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show the work item of the checked out branch in the status bar. Work items assigned to someone else (e.g. a colleague's branch checked out to review it) are shown differently, with the person who created the branch.",
+            "order": 5
+          }
+        }
+      },
+      {
+        "id": "totalflowx.branches",
+        "title": "Branches & Pull Request Creation",
+        "order": 4,
+        "properties": {
+          "totalflowx.branches.baseBranch": {
+            "type": "string",
+            "default": "develop",
+            "description": "Branch new branches are created from and pull requests target.",
+            "order": 1
+          },
+          "totalflowx.checkout.mode": {
             "type": "string",
             "enum": [
-              "Duplicates"
-            ]
+              "ask",
+              "branch",
+              "worktree"
+            ],
+            "enumDescriptions": [
+              "Switch branch; when you have uncommitted changes, ask: open a worktree, stash them or check out anyway.",
+              "Always switch the branch of this window, without asking (git carries your changes or refuses on conflicts).",
+              "Always open the branch in a worktree: its own folder next to the repository, in a new window."
+            ],
+            "default": "ask",
+            "description": "What the Checkout buttons do. The ▾ next to them always offers both ways.",
+            "order": 2
           },
-          "default": [],
-          "description": "\"Duplicates\": hides the work items linked as \"Duplicate Of\" another one. Also editable with the Dups chip of the view."
-        },
-        "totalflowx.dependencies.completedStates": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "totalflowx.branches.typeByWorkItemType": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {
+              "Bug": "bugfix"
+            },
+            "description": "Branch prefix per work item type. Types not listed use 'feature'.",
+            "order": 3
           },
-          "default": [
-            "Done",
-            "Ready to Test",
-            "Closed",
-            "Removed"
-          ],
-          "description": "States in which a predecessor counts as completed. Work items with predecessors in any other state show an \"open predecessors\" caution: the team avoids completing them before their predecessors are completed."
-        },
-        "totalflowx.layout": {
-          "type": "string",
-          "enum": [
-            "compact",
-            "large"
-          ],
-          "enumDescriptions": [
-            "Two lines per work item: title and state, then small signals (priority, branch, PR, CI, tasks, alerts). Click a row to expand it.",
-            "Full cards with the branch, the PRs, the actions and the task list."
-          ],
-          "default": "compact",
-          "description": "How the work items of the view are shown. Also switchable with the button of the view title."
-        },
-        "totalflowx.hoverStyle": {
-          "type": "string",
-          "enum": [
-            "border",
-            "tint",
-            "accent"
-          ],
-          "enumDescriptions": [
-            "The border of the card or PR tile takes the colour of its left bar (state of the work item or PR) and a soft shadow lifts it. The background (and the text contrast) does not change.",
-            "A faint lighter background. The text contrast drops only marginally.",
-            "The coloured bar on the left gets brighter and wider. The background does not change."
-          ],
-          "default": "border",
-          "markdownDescription": "How the work item cards and the PR tiles react to the pointer (and to the keyboard focus). The default does not touch the background, because the list hover colour of many themes is close to the text colours and makes them harder to read."
-        },
-        "totalflowx.tasks.countStyle": {
-          "type": "string",
-          "enum": [
-            "filled",
-            "outlined"
-          ],
-          "enumDescriptions": [
-            "Each count is a circle filled with the colour of its state, with a fixed dark text colour that keeps the contrast in any theme.",
-            "Each count is a circle with the card background, a ring in the colour of its state and the number in that colour."
-          ],
-          "default": "filled",
-          "markdownDescription": "How the counts look on the bar of the `Tasks` header of a large card: a circle on each segment of the bar (To do, In progress, Done). The default fills the circle, which guarantees the text contrast."
-        },
-        "totalflowx.popovers.hoverDelay": {
-          "type": "number",
-          "default": 500,
-          "minimum": 0,
-          "maximum": 3000,
-          "description": "Delay before the popovers (task details, coverage, predecessors, PR history) appear on hover (milliseconds). 0 shows them at once; keyboard focus shows them at once."
-        },
-        "totalflowx.tasks.hoverCardDelay": {
-          "type": "number",
-          "default": 500,
-          "minimum": 0,
-          "maximum": 3000,
-          "deprecationMessage": "Deprecated: use totalflowx.popovers.hoverDelay (it applies to every popover). This value is only read while the new setting is not set.",
-          "markdownDeprecationMessage": "**Deprecated**: use `#totalflowx.popovers.hoverDelay#` (it applies to every popover). This value is only read while the new setting is not set.",
-          "description": "Deprecated: use totalflowx.popovers.hoverDelay."
-        },
-        "totalflowx.filter.alwaysShowAlerts": {
-          "type": "boolean",
-          "default": false,
-          "description": "Always show the work items that need attention (alerts), even when the State, PR or Priority filters hide them. Off: the filters apply to every work item, and the alerts banner tells how many are hidden (\"Show only these\" shows them)."
-        },
-        "totalflowx.workingOn.showWorktrees": {
-          "type": "boolean",
-          "default": true,
-          "description": "Also mark as \"In worktree\" the work items whose branch is checked out in another worktree of the repository. Off: only the branch checked out in this window counts."
-        },
-        "totalflowx.workingOn.includeLinkedWorkItems": {
-          "type": "boolean",
-          "default": true,
-          "description": "Besides the work item of the checked out branch, mark the other work items of the list linked to it: the ones whose active pull request comes from that branch or whose Development section links to it. Off: only the work item of the branch."
-        },
-        "totalflowx.workingOn.ignoreFilters": {
-          "type": "boolean",
-          "default": true,
-          "description": "Never hide the work items you are working on: they skip the State, PR and Priority filters and \"Show only these\" (the Type filter and the search still apply), and are still listed when their iteration group is collapsed."
-        },
-        "totalflowx.workingOn.section": {
-          "type": "boolean",
-          "default": true,
-          "description": "List the work items you are working on in a \"Working on\" section at the top of the list, instead of in their iteration group (they keep their highlight)."
-        },
-        "totalflowx.workingOn.animation": {
-          "type": "string",
-          "enum": [
-            "none",
-            "borderLight",
-            "runningBorder",
-            "glow",
-            "stripes"
-          ],
-          "enumDescriptions": [
-            "No card animation.",
-            "A soft bright band travels down the thick blue left border every ~3 s, like the progress bar of VS Code.",
-            "A short bright segment runs around the whole card border every ~4 s.",
-            "A soft blue halo behind the card breathes in and out over ~3 s.",
-            "Diagonal stripes slide inside the \"Working on\" badge, like a busy progress bar."
-          ],
-          "default": "none",
-          "markdownDescription": "Animation of the card of the work item you are working on (checked out in this window; \"In worktree\" cards never animate). Off by default: the sidebar is always visible and motion distracts. Nothing animates when the system asks for reduced motion."
-        },
-        "totalflowx.workingOn.pulseBadge": {
-          "type": "boolean",
-          "default": true,
-          "description": "A halo expands from the \"Working on\" badge (and from the dot of the compact row) and fades out every ~2 s, like a recording light. Independent from the card animation. Nothing animates when the system asks for reduced motion."
-        },
-        "totalflowx.showInReviewState": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Show **In review** for a Committed work item whose only open tasks are In Progress PR tasks (title matching `#totalflowx.alerts.pullRequestTaskPattern#` or linked to a PR) while every other task is Done. Display only: nothing changes in Azure DevOps and the rules keep using the real state. Turn it off to see the real states."
-        },
-        "totalflowx.stateOrder": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "totalflowx.branches.modules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "common",
+              "devops",
+              "fui-common",
+              "fui-dashboard",
+              "fui-devices",
+              "fui-users",
+              "fui-data-collection",
+              "fui-calibration",
+              "fui-admin",
+              "fui-apps",
+              "fui-common-apps",
+              "fui-apps-xmv",
+              "fui-apps-aga3",
+              "fui-apps-aga7",
+              "fui-apps-pid",
+              "fui-apps-pulseacc",
+              "fui-apps-cause-and-effect",
+              "fui-apps-cause-and-effect-plus",
+              "fui-apps-tfxlogger",
+              "fui-apps-ngc",
+              "fui-apps-xio",
+              "fui-apps-modbus",
+              "fui-apps-tfio",
+              "fui-apps-artificial-lift",
+              "fui-tag-library",
+              "pmui-api",
+              "pmui-auth",
+              "pmui-dashboard",
+              "pmui-diagnostics"
+            ],
+            "description": "Catalog of modules used in branch names: <type>/<module>/<id>-<slug>.",
+            "order": 4
           },
-          "default": [
-            "Done",
-            "Ready to Test",
-            "In review",
-            "Committed",
-            "In Progress",
-            "Approved",
-            "New",
-            "To Do"
-          ],
-          "description": "Order in which the work items are sorted by state. Case, spaces and dashes are ignored. States not listed go last."
-        },
-        "totalflowx.branchTypeByWorkItemType": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
+          "totalflowx.pullRequests.featureNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "DevOps",
+              "FUI Common",
+              "FUI API Client",
+              "FUI Dashboard",
+              "FUI Devices",
+              "FUI Users",
+              "FUI Data Collection",
+              "FUI Calibration",
+              "FUI Administration",
+              "FUI Factory Setup and Reset",
+              "FUI Applications",
+              "FUI Common Apps",
+              "FUI AGA3",
+              "FUI AGA7",
+              "FUI PID",
+              "FUI PulseAcc",
+              "FUI API Liquid",
+              "FUI Cause and Effect",
+              "FUI Cause and Effect Plus",
+              "FUI TFXLogger",
+              "FUI XIO",
+              "FUI Coriolis",
+              "FUI ModBus",
+              "FUI TFIO",
+              "FUI XMV",
+              "FUI NGC",
+              "FUI Tag Library",
+              "FUI Artificial Lift",
+              "PMUI API Client",
+              "PMUI Authentication",
+              "PMUI Dashboard",
+              "PMUI Diagnostics",
+              "PMUI User Settings"
+            ],
+            "description": "Catalog of feature names used in PR titles: [ids] Feature Name: Description.",
+            "order": 5
           },
-          "default": {
-            "Bug": "bugfix"
+          "totalflowx.pullRequests.featureByModule": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {
+              "common": "FUI Common",
+              "devops": "DevOps",
+              "fui-common": "FUI Common",
+              "fui-dashboard": "FUI Dashboard",
+              "fui-devices": "FUI Devices",
+              "fui-users": "FUI Users",
+              "fui-data-collection": "FUI Data Collection",
+              "fui-calibration": "FUI Calibration",
+              "fui-admin": "FUI Administration",
+              "fui-apps": "FUI Applications",
+              "fui-common-apps": "FUI Common Apps",
+              "fui-apps-xmv": "FUI XMV",
+              "fui-apps-aga3": "FUI AGA3",
+              "fui-apps-aga7": "FUI AGA7",
+              "fui-apps-pid": "FUI PID",
+              "fui-apps-pulseacc": "FUI PulseAcc",
+              "fui-apps-cause-and-effect": "FUI Cause and Effect",
+              "fui-apps-cause-and-effect-plus": "FUI Cause and Effect Plus",
+              "fui-apps-tfxlogger": "FUI TFXLogger",
+              "fui-apps-ngc": "FUI NGC",
+              "fui-apps-xio": "FUI XIO",
+              "fui-apps-modbus": "FUI ModBus",
+              "fui-apps-tfio": "FUI TFIO",
+              "fui-apps-artificial-lift": "FUI Artificial Lift",
+              "fui-tag-library": "FUI Tag Library",
+              "pmui-api": "PMUI API Client",
+              "pmui-auth": "PMUI Authentication",
+              "pmui-dashboard": "PMUI Dashboard",
+              "pmui-diagnostics": "PMUI Diagnostics"
+            },
+            "description": "Feature name preselected in the PR title for each branch module.",
+            "order": 6
           },
-          "description": "Branch prefix per work item type. Types not listed use 'feature'."
-        },
-        "totalflowx.branchModules": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "totalflowx.branches.linkToWorkItem": {
+            "type": "boolean",
+            "default": true,
+            "description": "Add the new branch to the work item's Development section.",
+            "order": 7
           },
-          "default": [
-            "common",
-            "devops",
-            "fui-common",
-            "fui-dashboard",
-            "fui-devices",
-            "fui-users",
-            "fui-data-collection",
-            "fui-calibration",
-            "fui-admin",
-            "fui-apps",
-            "fui-common-apps",
-            "fui-apps-xmv",
-            "fui-apps-aga3",
-            "fui-apps-aga7",
-            "fui-apps-pid",
-            "fui-apps-pulseacc",
-            "fui-apps-cause-and-effect",
-            "fui-apps-cause-and-effect-plus",
-            "fui-apps-tfxlogger",
-            "fui-apps-ngc",
-            "fui-apps-xio",
-            "fui-apps-modbus",
-            "fui-apps-tfio",
-            "fui-apps-artificial-lift",
-            "fui-tag-library",
-            "pmui-api",
-            "pmui-auth",
-            "pmui-dashboard",
-            "pmui-diagnostics"
-          ],
-          "description": "Catalog of modules used in branch names: <type>/<module>/<id>-<slug>."
-        },
-        "totalflowx.prFeatureNames": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "totalflowx.branches.workItemStateOnCreate": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {
+              "Product Backlog Item": "Committed",
+              "Bug": "Committed"
+            },
+            "description": "State a work item is moved to when a branch is created for it, per work item type. Only applied to work items in New, Approved or To Do. Remove a type to disable it.",
+            "order": 8
           },
-          "default": [
-            "DevOps",
-            "FUI Common",
-            "FUI API Client",
-            "FUI Dashboard",
-            "FUI Devices",
-            "FUI Users",
-            "FUI Data Collection",
-            "FUI Calibration",
-            "FUI Administration",
-            "FUI Factory Setup and Reset",
-            "FUI Applications",
-            "FUI Common Apps",
-            "FUI AGA3",
-            "FUI AGA7",
-            "FUI PID",
-            "FUI PulseAcc",
-            "FUI API Liquid",
-            "FUI Cause and Effect",
-            "FUI Cause and Effect Plus",
-            "FUI TFXLogger",
-            "FUI XIO",
-            "FUI Coriolis",
-            "FUI ModBus",
-            "FUI TFIO",
-            "FUI XMV",
-            "FUI NGC",
-            "FUI Tag Library",
-            "FUI Artificial Lift",
-            "PMUI API Client",
-            "PMUI Authentication",
-            "PMUI Dashboard",
-            "PMUI Diagnostics",
-            "PMUI User Settings"
-          ],
-          "description": "Catalog of feature names used in PR titles: [ids] Feature Name: Description."
-        },
-        "totalflowx.moduleToFeature": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": {
-            "common": "FUI Common",
-            "devops": "DevOps",
-            "fui-common": "FUI Common",
-            "fui-dashboard": "FUI Dashboard",
-            "fui-devices": "FUI Devices",
-            "fui-users": "FUI Users",
-            "fui-data-collection": "FUI Data Collection",
-            "fui-calibration": "FUI Calibration",
-            "fui-admin": "FUI Administration",
-            "fui-apps": "FUI Applications",
-            "fui-common-apps": "FUI Common Apps",
-            "fui-apps-xmv": "FUI XMV",
-            "fui-apps-aga3": "FUI AGA3",
-            "fui-apps-aga7": "FUI AGA7",
-            "fui-apps-pid": "FUI PID",
-            "fui-apps-pulseacc": "FUI PulseAcc",
-            "fui-apps-cause-and-effect": "FUI Cause and Effect",
-            "fui-apps-cause-and-effect-plus": "FUI Cause and Effect Plus",
-            "fui-apps-tfxlogger": "FUI TFXLogger",
-            "fui-apps-ngc": "FUI NGC",
-            "fui-apps-xio": "FUI XIO",
-            "fui-apps-modbus": "FUI ModBus",
-            "fui-apps-tfio": "FUI TFIO",
-            "fui-apps-artificial-lift": "FUI Artificial Lift",
-            "fui-tag-library": "FUI Tag Library",
-            "pmui-api": "PMUI API Client",
-            "pmui-auth": "PMUI Authentication",
-            "pmui-dashboard": "PMUI Dashboard",
-            "pmui-diagnostics": "PMUI Diagnostics"
-          },
-          "description": "Feature name preselected in the PR title for each branch module."
-        },
-        "totalflowx.linkBranchToWorkItem": {
-          "type": "boolean",
-          "default": true,
-          "description": "Add the new branch to the work item's Development section."
-        },
-        "totalflowx.pullRequestTasks.startWhenPublished": {
-          "type": "boolean",
-          "default": true,
-          "description": "Move the tasks linked to your published pull requests (active, not draft) to In Progress, also when the PR was published outside the extension. Done and Removed tasks are left alone."
-        },
-        "totalflowx.stateOnBranchCreated": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": {
-            "Product Backlog Item": "Committed",
-            "Bug": "Committed"
-          },
-          "description": "State a work item is moved to when a branch is created for it, per work item type. Only applied to work items in New, Approved or To Do. Remove a type to disable it."
-        },
-        "totalflowx.notifications.events": {
-          "type": "array",
-          "items": {
+          "totalflowx.pullRequestTasks.startWhenPublished": {
+            "type": "boolean",
+            "default": true,
+            "description": "Move the tasks linked to your published pull requests (active, not draft) to In Progress, also when the PR was published outside the extension. Done and Removed tasks are left alone.",
+            "order": 9
+          }
+        }
+      },
+      {
+        "id": "totalflowx.myPullRequests",
+        "title": "My Pull Requests",
+        "order": 5,
+        "properties": {
+          "totalflowx.myPullRequests.layout": {
             "type": "string",
             "enum": [
+              "compact",
+              "large"
+            ],
+            "enumDescriptions": [
+              "Two lines per pull request: ID, title and status, then small signals. Click a row to expand it.",
+              "Full cards with the reviewers, the warnings and the actions."
+            ],
+            "default": "compact",
+            "description": "How the pull requests of the \"My Pull Requests\" box are shown. The box has a button to switch it.",
+            "scope": "application",
+            "order": 1
+          },
+          "totalflowx.myPullRequests.showDrafts": {
+            "type": "boolean",
+            "default": true,
+            "description": "List your draft pull requests in the \"My Pull Requests\" box. The box has a button to switch it. When hidden, the box counts the drafts.",
+            "scope": "application",
+            "order": 2
+          },
+          "totalflowx.myPullRequests.completedPeriod": {
+            "type": "string",
+            "enum": [
+              "hidden",
+              "day",
+              "week",
+              "month"
+            ],
+            "enumDescriptions": [
+              "Completed pull requests are not listed (the box counts those completed in the last 24 hours).",
+              "Completed in the last 24 hours.",
+              "Completed in the last 7 days.",
+              "Completed in the last 30 days."
+            ],
+            "default": "day",
+            "description": "How far back your completed pull requests are listed (faded) in the \"My Pull Requests\" box. The box has a selector for it. The latest 50 completed pull requests are fetched.",
+            "scope": "application",
+            "order": 3
+          },
+          "totalflowx.myPullRequests.showInStatusBar": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show in the status bar how many of your pull requests need you (rejected, waiting for you, conflicts, failed CI, unresolved comments) or are ready to merge.",
+            "order": 4
+          },
+          "totalflowx.myPullRequests.notifications": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "comments",
+                "vote",
+                "merged",
+                "reviewers",
+                "reopened",
+                "taskDone"
+              ],
+              "enumDescriptions": [
+                "New comments from other people, and replies to your comments",
+                "Votes of the reviewers (approved, waiting for author, rejected…)",
+                "The PR is merged",
+                "A person becomes a required reviewer, stops being a reviewer, declines to review, or switches between required and optional (changes made by you are not notified)",
+                "A resolved comment is reopened",
+                "A PR is completed: offers to set its open PR task to Done"
+              ]
+            },
+            "uniqueItems": true,
+            "default": [
               "comments",
               "vote",
               "merged",
@@ -730,302 +816,95 @@
               "reopened",
               "taskDone"
             ],
-            "enumDescriptions": [
-              "New comments from other people, and replies to your comments",
-              "Votes of the reviewers (approved, waiting for author, rejected…)",
-              "The PR is merged",
-              "A person becomes a required reviewer, stops being a reviewer, declines to review, or switches between required and optional (changes made by you are not notified)",
-              "A resolved comment is reopened",
-              "A PR is completed: offers to set its open PR task to Done"
-            ]
+            "description": "Events of the pull requests you created that show a notification. Empty: no notifications.",
+            "order": 5
           },
-          "uniqueItems": true,
-          "default": [
-            "comments",
-            "vote",
-            "merged",
-            "reviewers",
-            "reopened",
-            "taskDone"
-          ],
-          "description": "Events of the pull requests you created that show a notification. Empty: no notifications."
-        },
-        "totalflowx.notifications.pollIntervalSeconds": {
-          "type": "number",
-          "default": 120,
-          "minimum": 30,
-          "description": "How often your pull requests are checked, in seconds."
-        },
-        "totalflowx.alerts.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show alerts on the work items with problems the team agreed to avoid."
-        },
-        "totalflowx.alerts.workItemTypes": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "Product Backlog Item",
-            "Bug"
-          ],
-          "description": "Work item types checked for alerts."
-        },
-        "totalflowx.alerts.blockingTags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "Needs refinement",
-            "Requirements",
-            "UX feedback required",
-            "Missing REST API",
-            "Blocked",
-            "PT Feedback Required"
-          ],
-          "description": "Tags meaning a work item cannot be completed yet: they are listed in the issues before completion of open work items. Case is ignored."
-        },
-        "totalflowx.alerts.pullRequestTaskPattern": {
-          "type": "string",
-          "default": "\\b(PR|pull request)\\b",
-          "description": "Regular expression (case is ignored) recognizing the PR task among the tasks of a work item by its title."
-        },
-        "totalflowx.alerts.requiredFields": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": [
-              "types",
-              "fields"
+          "totalflowx.myPullRequests.minimumRequiredReviewers": {
+            "type": "number",
+            "default": 2,
+            "minimum": 0,
+            "description": "Team rule: how many required reviewers (people, not groups) a published pull request of yours should have. The box warns when it has fewer. 0 disables the warning.",
+            "order": 6
+          }
+        }
+      },
+      {
+        "id": "totalflowx.reviews",
+        "title": "Reviews",
+        "order": 6,
+        "properties": {
+          "totalflowx.reviews.layout": {
+            "type": "string",
+            "enum": [
+              "compact",
+              "large"
             ],
-            "properties": {
-              "types": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "Work item types"
-              },
-              "states": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "Only in these states. Empty: always"
-              },
-              "fields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "Field names, as shown in Azure DevOps (or reference names)"
-              }
-            }
+            "enumDescriptions": [
+              "Two lines per pull request: ID, title and time left, then small signals. Click a row to expand it.",
+              "Full cards with the progress bar, the reviewers and the branch."
+            ],
+            "default": "compact",
+            "description": "How the pull requests of the \"Waiting for your review\" box are shown. The box has a button to switch it.",
+            "scope": "application",
+            "order": 1
           },
-          "default": [
-            {
-              "types": [
-                "Product Backlog Item"
+          "totalflowx.reviews.includeOptional": {
+            "type": "boolean",
+            "default": false,
+            "description": "Also list the pull requests where you are an optional reviewer. By default only the ones where you are a required reviewer are listed. The \"Waiting for your review\" box has a button to switch it. Notifications, the digest, the status bar and the activity bar badge only count the pull requests listed.",
+            "scope": "application",
+            "order": 2
+          },
+          "totalflowx.reviews.reviewedPeriod": {
+            "type": "string",
+            "enum": [
+              "hidden",
+              "active",
+              "day",
+              "week",
+              "month"
+            ],
+            "default": "hidden",
+            "enumDescriptions": [
+              "The pull requests you already reviewed are not listed.",
+              "The active pull requests you already voted on.",
+              "Those, plus the ones completed or abandoned in the last 24 hours.",
+              "Those, plus the ones completed or abandoned in the last 7 days.",
+              "Those, plus the ones completed or abandoned in the last 30 days."
+            ],
+            "description": "Also list, dimmed, the pull requests you already reviewed (voted on) in a \"Reviewed\" section below the ones waiting for your review. They never count in the badge, the Summary, the status bar or the notifications. The periods with a window make one more request to Azure DevOps (at most every 10 minutes). The box has a selector to switch it.",
+            "scope": "application",
+            "order": 3
+          },
+          "totalflowx.reviews.showInStatusBar": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show how many pull requests are waiting for your review in the status bar.",
+            "order": 4
+          },
+          "totalflowx.reviews.notifications": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "requested",
+                "dueSoon",
+                "overdue",
+                "digest",
+                "replied",
+                "resolved"
               ],
-              "fields": [
-                "Effort",
-                "Effort in days"
+              "enumDescriptions": [
+                "You are added as reviewer of a pull request (or it is published from draft)",
+                "A pull request is due soon (`totalflowx.reviews.dueSoonHours` before the maximum wait)",
+                "A pull request is overdue; repeated every `totalflowx.reviews.remindOverdueEveryHours`",
+                "The first time VS Code checks each day: one summary of all the pull requests waiting for your review",
+                "Someone replies to a comment you started on a pull request you review",
+                "A comment you started on a pull request you review is resolved (Resolved, Won't fix, Closed, By design)"
               ]
             },
-            {
-              "types": [
-                "Bug"
-              ],
-              "states": [
-                "Ready to Test"
-              ],
-              "fields": [
-                "Integrated in Build"
-              ]
-            }
-          ],
-          "description": "Fields that must have a value. Fields that do not exist in the project are ignored."
-        },
-        "totalflowx.integrationBuild.field": {
-          "type": "string",
-          "default": "Integrated in Build",
-          "description": "Field filled with the last release of the deploy image (display name or reference name)."
-        },
-        "totalflowx.integrationBuild.workItemTypes": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "Bug"
-          ],
-          "description": "Work item types for which the field is offered when they move to one of the states below."
-        },
-        "totalflowx.integrationBuild.states": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [
-            "Ready to Test"
-          ],
-          "description": "States in which the field must be filled. Moving a work item to them from the extension offers to fill it."
-        },
-        "totalflowx.integrationBuild.feed": {
-          "type": "string",
-          "default": "bison_deployimage_rmc",
-          "description": "Azure Artifacts feed (of the current project) publishing the deploy image."
-        },
-        "totalflowx.integrationBuild.package": {
-          "type": "string",
-          "default": "rmc.image.deploy",
-          "description": "Package whose last published version is used."
-        },
-        "totalflowx.integrationBuild.protocolType": {
-          "type": "string",
-          "default": "UPack",
-          "description": "Protocol of the package (UPack for Universal Packages)."
-        },
-        "totalflowx.integrationBuild.suffix": {
-          "type": "string",
-          "default": "+",
-          "description": "Appended to the version: the fix ships in the release after the last published one."
-        },
-        "totalflowx.pipelines.pollIntervalSeconds": {
-          "type": "number",
-          "default": 15,
-          "minimum": 5,
-          "description": "While a CI run of your pull requests is queued or running, how often its state is refreshed (seconds). See idlePollIntervalSeconds for when none is running."
-        },
-        "totalflowx.pipelines.idlePollIntervalSeconds": {
-          "type": "number",
-          "default": 60,
-          "minimum": 0,
-          "description": "When no CI run of your pull requests is queued or running, how often to check for new runs (re-runs, new pushes), in seconds (at least 30). 0 disables these checks."
-        },
-        "totalflowx.pipelines.notifyOnFinish": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show a notification when a CI run of your pull requests finishes."
-        },
-        "totalflowx.pipelines.branchRunsHours": {
-          "type": "number",
-          "default": 24,
-          "minimum": 0,
-          "description": "Besides the runs of your pull requests, the CI status bar item shows the runs you queued by hand and the runs started by the merge of your pull requests, from the last N hours. 0 disables them."
-        },
-        "totalflowx.pipelines.showInStatusBar": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show the CI runs of your pull requests in the status bar."
-        },
-        "totalflowx.coverage.minimum": {
-          "type": "number",
-          "default": 60,
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Coverage (%) of a CI run below which it is shown in red."
-        },
-        "totalflowx.coverage.target": {
-          "type": "number",
-          "default": 80,
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Coverage (%) the team aims for. Below it the coverage is orange, from it green. The files under it are listed, and the streak of your pull requests counts the ones at or above it."
-        },
-        "totalflowx.coverage.excellent": {
-          "type": "number",
-          "default": 95,
-          "minimum": 0,
-          "maximum": 100,
-          "description": "Coverage (%) from which a CI run is celebrated (gold, with a trophy)."
-        },
-        "totalflowx.reviews.maxWaitHours": {
-          "type": "number",
-          "default": 24,
-          "minimum": 1,
-          "description": "Hours a pull request may wait for reviewers (team rule), counted from its publication, on working days only (see Working Days). Overdue PRs are shown in red."
-        },
-        "totalflowx.reviews.workingDays": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": [
-              "mon",
-              "tue",
-              "wed",
-              "thu",
-              "fri",
-              "sat",
-              "sun"
-            ]
-          },
-          "uniqueItems": true,
-          "default": [
-            "mon",
-            "tue",
-            "wed",
-            "thu",
-            "fri"
-          ],
-          "description": "Days on which the waiting time of pull requests counts (team rule: 24 h of working time). Weekends are not counted by default. All 24 hours of a working day count; days off and public holidays are not handled."
-        },
-        "totalflowx.reviews.dueSoonHours": {
-          "type": "number",
-          "default": 6,
-          "minimum": 0,
-          "description": "Hours before the maximum wait when a pull request is due soon: shown in orange and notified once."
-        },
-        "totalflowx.reviews.remindOverdueEveryHours": {
-          "type": "number",
-          "default": 4,
-          "minimum": 0,
-          "description": "While a pull request is overdue, how often it is notified again (hours). 0: only once."
-        },
-        "totalflowx.reviews.includeOptional": {
-          "type": "boolean",
-          "default": false,
-          "description": "Also list the pull requests where you are an optional reviewer. By default only the ones where you are a required reviewer are listed. The \"Waiting for your review\" box has a button to switch it. Notifications, the digest, the status bar and the activity bar badge only count the pull requests listed."
-        },
-        "totalflowx.reviews.reviewedPeriod": {
-          "type": "string",
-          "enum": [
-            "hidden",
-            "active",
-            "day",
-            "week",
-            "month"
-          ],
-          "default": "hidden",
-          "enumDescriptions": [
-            "The pull requests you already reviewed are not listed.",
-            "The active pull requests you already voted on.",
-            "Those, plus the ones completed or abandoned in the last 24 hours.",
-            "Those, plus the ones completed or abandoned in the last 7 days.",
-            "Those, plus the ones completed or abandoned in the last 30 days."
-          ],
-          "description": "Also list, dimmed, the pull requests you already reviewed (voted on) in a \"Reviewed\" section below the ones waiting for your review. They never count in the badge, the Summary, the status bar or the notifications. The periods with a window make one more request to Azure DevOps (at most every 10 minutes). The box has a selector to switch it."
-        },
-        "totalflowx.reviews.layout": {
-          "type": "string",
-          "enum": [
-            "compact",
-            "large"
-          ],
-          "enumDescriptions": [
-            "Two lines per pull request: ID, title and time left, then small signals. Click a row to expand it.",
-            "Full cards with the progress bar, the reviewers and the branch."
-          ],
-          "default": "compact",
-          "description": "How the pull requests of the \"Waiting for your review\" box are shown. The box has a button to switch it."
-        },
-        "totalflowx.reviews.notifications": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": [
+            "uniqueItems": true,
+            "default": [
               "requested",
               "dueSoon",
               "overdue",
@@ -1033,146 +912,452 @@
               "replied",
               "resolved"
             ],
-            "enumDescriptions": [
-              "You are added as reviewer of a pull request (or it is published from draft)",
-              "A pull request is due soon (`totalflowx.reviews.dueSoonHours` before the maximum wait)",
-              "A pull request is overdue; repeated every `totalflowx.reviews.remindOverdueEveryHours`",
-              "The first time VS Code checks each day: one summary of all the pull requests waiting for your review",
-              "Someone replies to a comment you started on a pull request you review",
-              "A comment you started on a pull request you review is resolved (Resolved, Won't fix, Closed, By design)"
-            ]
+            "description": "Notifications about the pull requests you review. Empty: none.",
+            "order": 5
           },
-          "uniqueItems": true,
-          "default": [
-            "requested",
-            "dueSoon",
-            "overdue",
-            "digest",
-            "replied",
-            "resolved"
-          ],
-          "description": "Notifications about the pull requests you review. Empty: none."
-        },
-        "totalflowx.reviews.pollIntervalSeconds": {
-          "type": "number",
-          "default": 120,
-          "minimum": 30,
-          "description": "How often the pull requests waiting for your review are checked (seconds)."
-        },
-        "totalflowx.reviews.showInStatusBar": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show how many pull requests are waiting for your review in the status bar."
-        },
-        "totalflowx.myPullRequests.showInStatusBar": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show in the status bar how many of your pull requests need you (rejected, waiting for you, conflicts, failed CI, unresolved comments) or are ready to merge."
-        },
-        "totalflowx.myPullRequests.attentionEffect": {
-          "type": "string",
-          "enum": [
-            "none",
-            "static",
-            "pulse",
-            "waves",
-            "shimmer",
-            "ripple",
-            "rainbow",
-            "breathe"
-          ],
-          "enumDescriptions": [
-            "Nothing: the tiles that need you look like the others.",
-            "A steady faint orange tint, no motion.",
-            "The orange background breathes gently and continuously.",
-            "Soft orange diagonal bands drift slowly across the tile.",
-            "A soft orange light sweeps across the tile from left to right every few seconds, over the faint tint.",
-            "Orange rings expand from the left edge (the state bar) and fade out, repeating.",
-            "A slowly moving multicolour gradient at low opacity. The only effect that is not orange.",
-            "An orange glow grows and fades along the inside edges of the tile; the centre stays clear."
-          ],
-          "default": "pulse",
-          "markdownDescription": "Effect of the background of the My Pull Requests tiles that need your attention (reviewer feedback, conflicts, failed CI, unresolved comments, team-rule warnings). Only the background is drawn, behind the text, and it stays faint so the text keeps its contrast. With reduced motion in the system every animated effect shows the `static` tint."
-        },
-        "totalflowx.myPullRequests.showDrafts": {
-          "type": "boolean",
-          "default": true,
-          "description": "List your draft pull requests in the \"My Pull Requests\" box. The box has a button to switch it. When hidden, the box counts the drafts."
-        },
-        "totalflowx.myPullRequests.completedPeriod": {
-          "type": "string",
-          "enum": [
-            "hidden",
-            "day",
-            "week",
-            "month"
-          ],
-          "enumDescriptions": [
-            "Completed pull requests are not listed (the box counts those completed in the last 24 hours).",
-            "Completed in the last 24 hours.",
-            "Completed in the last 7 days.",
-            "Completed in the last 30 days."
-          ],
-          "default": "day",
-          "description": "How far back your completed pull requests are listed (faded) in the \"My Pull Requests\" box. The box has a selector for it. The latest 50 completed pull requests are fetched."
-        },
-        "totalflowx.myPullRequests.layout": {
-          "type": "string",
-          "enum": [
-            "compact",
-            "large"
-          ],
-          "enumDescriptions": [
-            "Two lines per pull request: ID, title and status, then small signals. Click a row to expand it.",
-            "Full cards with the reviewers, the warnings and the actions."
-          ],
-          "default": "compact",
-          "description": "How the pull requests of the \"My Pull Requests\" box are shown. The box has a button to switch it."
-        },
-        "totalflowx.myPullRequests.pollIntervalSeconds": {
-          "type": "number",
-          "default": 120,
-          "minimum": 30,
-          "description": "How often the pull requests you created are checked: policies, comments, CI runs and auto-complete (seconds)."
-        },
-        "totalflowx.myPullRequests.minimumRequiredReviewers": {
-          "type": "number",
-          "default": 2,
-          "minimum": 0,
-          "description": "Team rule: how many required reviewers (people, not groups) a published pull request of yours should have. The box warns when it has fewer. 0 disables the warning."
-        },
-        "totalflowx.buildNotes.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Team rule: a pull request with changes testers should know about explains them in one of the build notes files; any other one is tagged. Warns in My Pull Requests when neither is done, and asks before creating a PR whose branch changes none of them."
-        },
-        "totalflowx.buildNotes.directory": {
-          "type": "string",
-          "default": "build-notes",
-          "description": "Folder of the build notes files (one per feature), relative to the repository root. The rule only applies to the repository open in VS Code, and when the folder exists in it."
-        },
-        "totalflowx.buildNotes.fileSuffix": {
-          "type": "string",
-          "default": "-notes.md",
-          "description": "End of the name of the build notes files in that folder (e.g. pid-notes.md). Changing any of them counts as writing the notes; other files (e.g. _template.md) do not."
-        },
-        "totalflowx.buildNotes.skipTag": {
-          "type": "string",
-          "default": "no-build-notes",
-          "description": "Azure DevOps pull request tag (label) of the PRs without changes for testers."
-        },
-        "totalflowx.statusBar.currentWorkItem": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show the work item of the checked out branch in the status bar. Work items assigned to someone else (e.g. a colleague's branch checked out to review it) are shown differently, with the person who created the branch."
-        },
-        "totalflowx.diagnostics.logRequests": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Log every request to Azure DevOps (time, method, URL, status, duration, feature, throttling) in the **Totalflow X** output channel. Tokens and headers are never logged. Off: nothing is written."
+          "totalflowx.reviews.maxWaitHours": {
+            "type": "number",
+            "default": 24,
+            "minimum": 1,
+            "description": "Hours a pull request may wait for reviewers (team rule), counted from its publication, on working days only (see Working Days). Overdue PRs are shown in red.",
+            "order": 6
+          },
+          "totalflowx.reviews.workingDays": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ]
+            },
+            "uniqueItems": true,
+            "default": [
+              "mon",
+              "tue",
+              "wed",
+              "thu",
+              "fri"
+            ],
+            "description": "Days on which the waiting time of pull requests counts (team rule: 24 h of working time). Weekends are not counted by default. All 24 hours of a working day count; days off and public holidays are not handled.",
+            "order": 7
+          },
+          "totalflowx.reviews.dueSoonHours": {
+            "type": "number",
+            "default": 6,
+            "minimum": 0,
+            "description": "Hours before the maximum wait when a pull request is due soon: shown in orange and notified once.",
+            "order": 8
+          },
+          "totalflowx.reviews.remindOverdueEveryHours": {
+            "type": "number",
+            "default": 4,
+            "minimum": 0,
+            "description": "While a pull request is overdue, how often it is notified again (hours). 0: only once.",
+            "order": 9
+          }
+        }
+      },
+      {
+        "id": "totalflowx.ci",
+        "title": "CI & Coverage",
+        "order": 7,
+        "properties": {
+          "totalflowx.pipelines.showInStatusBar": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show the CI runs of your pull requests in the status bar.",
+            "order": 1
+          },
+          "totalflowx.pipelines.notifyOnFinish": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show a notification when a CI run of your pull requests finishes.",
+            "order": 2
+          },
+          "totalflowx.coverage.minimum": {
+            "type": "number",
+            "default": 60,
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Coverage (%) of a CI run below which it is shown in red.",
+            "order": 3
+          },
+          "totalflowx.coverage.target": {
+            "type": "number",
+            "default": 80,
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Coverage (%) the team aims for. Below it the coverage is orange, from it green. The files under it are listed, and the streak of your pull requests counts the ones at or above it.",
+            "order": 4
+          },
+          "totalflowx.coverage.excellent": {
+            "type": "number",
+            "default": 95,
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Coverage (%) from which a CI run is celebrated (gold, with a trophy).",
+            "order": 5
+          }
+        }
+      },
+      {
+        "id": "totalflowx.teamRules",
+        "title": "Team Rules",
+        "order": 8,
+        "properties": {
+          "totalflowx.alerts.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show alerts on the work items with problems the team agreed to avoid.",
+            "order": 1
+          },
+          "totalflowx.alerts.workItemTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "Product Backlog Item",
+              "Bug"
+            ],
+            "description": "Work item types checked for alerts.",
+            "order": 2
+          },
+          "totalflowx.alerts.blockingTags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "Needs refinement",
+              "Requirements",
+              "UX feedback required",
+              "Missing REST API",
+              "Blocked",
+              "PT Feedback Required"
+            ],
+            "description": "Tags meaning a work item cannot be completed yet: they are listed in the issues before completion of open work items. Case is ignored.",
+            "order": 3
+          },
+          "totalflowx.alerts.requiredFields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "types",
+                "fields"
+              ],
+              "properties": {
+                "types": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Work item types"
+                },
+                "states": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Only in these states. Empty: always"
+                },
+                "fields": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Field names, as shown in Azure DevOps (or reference names)"
+                }
+              }
+            },
+            "default": [
+              {
+                "types": [
+                  "Product Backlog Item"
+                ],
+                "fields": [
+                  "Effort",
+                  "Effort in days"
+                ]
+              },
+              {
+                "types": [
+                  "Bug"
+                ],
+                "states": [
+                  "Ready to Test"
+                ],
+                "fields": [
+                  "Integrated in Build"
+                ]
+              }
+            ],
+            "description": "Fields that must have a value. Fields that do not exist in the project are ignored.",
+            "order": 4
+          },
+          "totalflowx.alerts.pullRequestTaskPattern": {
+            "type": "string",
+            "default": "\\b(PR|pull request)\\b",
+            "description": "Regular expression (case is ignored) recognizing the PR task among the tasks of a work item by its title.",
+            "order": 5
+          },
+          "totalflowx.buildNotes.enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Team rule: a pull request with changes testers should know about explains them in one of the build notes files; any other one is tagged. Warns in My Pull Requests when neither is done, and asks before creating a PR whose branch changes none of them.",
+            "order": 6
+          },
+          "totalflowx.buildNotes.directory": {
+            "type": "string",
+            "default": "build-notes",
+            "description": "Folder of the build notes files (one per feature), relative to the repository root. The rule only applies to the repository open in VS Code, and when the folder exists in it.",
+            "order": 7
+          },
+          "totalflowx.buildNotes.fileSuffix": {
+            "type": "string",
+            "default": "-notes.md",
+            "description": "End of the name of the build notes files in that folder (e.g. pid-notes.md). Changing any of them counts as writing the notes; other files (e.g. _template.md) do not.",
+            "order": 8
+          },
+          "totalflowx.buildNotes.skipTag": {
+            "type": "string",
+            "default": "no-build-notes",
+            "description": "Azure DevOps pull request tag (label) of the PRs without changes for testers.",
+            "order": 9
+          },
+          "totalflowx.integrationBuild.field": {
+            "type": "string",
+            "default": "Integrated in Build",
+            "description": "Field filled with the last release of the deploy image (display name or reference name).",
+            "order": 10
+          },
+          "totalflowx.integrationBuild.workItemTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "Bug"
+            ],
+            "description": "Work item types for which the field is offered when they move to one of the states below.",
+            "order": 11
+          },
+          "totalflowx.integrationBuild.states": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "Ready to Test"
+            ],
+            "description": "States in which the field must be filled. Moving a work item to them from the extension offers to fill it.",
+            "order": 12
+          },
+          "totalflowx.integrationBuild.feed": {
+            "type": "string",
+            "default": "bison_deployimage_rmc",
+            "description": "Azure Artifacts feed (of the current project) publishing the deploy image.",
+            "order": 13
+          },
+          "totalflowx.integrationBuild.package": {
+            "type": "string",
+            "default": "rmc.image.deploy",
+            "description": "Package whose last published version is used.",
+            "order": 14
+          },
+          "totalflowx.integrationBuild.protocolType": {
+            "type": "string",
+            "default": "UPack",
+            "description": "Protocol of the package (UPack for Universal Packages).",
+            "order": 15
+          },
+          "totalflowx.integrationBuild.suffix": {
+            "type": "string",
+            "default": "+",
+            "description": "Appended to the version: the fix ships in the release after the last published one.",
+            "order": 16
+          }
+        }
+      },
+      {
+        "id": "totalflowx.appearance",
+        "title": "Appearance",
+        "order": 9,
+        "properties": {
+          "totalflowx.appearance.hoverStyle": {
+            "type": "string",
+            "enum": [
+              "border",
+              "tint",
+              "accent"
+            ],
+            "enumDescriptions": [
+              "The border of the card or PR tile takes the colour of its left bar (state of the work item or PR) and a soft shadow lifts it. The background (and the text contrast) does not change.",
+              "A faint lighter background. The text contrast drops only marginally.",
+              "The coloured bar on the left gets brighter and wider. The background does not change."
+            ],
+            "default": "border",
+            "markdownDescription": "How the work item cards and the PR tiles react to the pointer (and to the keyboard focus). The default does not touch the background, because the list hover colour of many themes is close to the text colours and makes them harder to read.",
+            "scope": "application",
+            "order": 1
+          },
+          "totalflowx.popovers.hoverDelay": {
+            "type": "number",
+            "default": 500,
+            "minimum": 0,
+            "maximum": 3000,
+            "description": "Delay before the popovers (task details, coverage, predecessors, PR history) appear on hover (milliseconds). 0 shows them at once; keyboard focus shows them at once.",
+            "scope": "application",
+            "order": 2
+          },
+          "totalflowx.tasks.countStyle": {
+            "type": "string",
+            "enum": [
+              "filled",
+              "outlined"
+            ],
+            "enumDescriptions": [
+              "Each count is a circle filled with the colour of its state, with a fixed dark text colour that keeps the contrast in any theme.",
+              "Each count is a circle with the card background, a ring in the colour of its state and the number in that colour."
+            ],
+            "default": "filled",
+            "markdownDescription": "How the counts look on the bar of the `Tasks` header of a large card: a circle on each segment of the bar (To do, In progress, Done). The default fills the circle, which guarantees the text contrast.",
+            "scope": "application",
+            "order": 3
+          },
+          "totalflowx.workingOn.animation": {
+            "type": "string",
+            "enum": [
+              "none",
+              "borderLight",
+              "runningBorder",
+              "glow",
+              "stripes",
+              "rainbow",
+              "neon",
+              "retro"
+            ],
+            "enumDescriptions": [
+              "No card animation.",
+              "A soft bright band travels down the thick blue left border every ~3 s, like the progress bar of VS Code.",
+              "A short bright segment runs around the whole card border every ~4 s.",
+              "A soft blue halo behind the card breathes in and out over ~3 s.",
+              "Diagonal stripes slide inside the \"Working on\" badge, like a busy progress bar.",
+              "The thick left border slowly cycles through the colours of the rainbow (~6 s).",
+              "The card outline glows like a neon sign, with an occasional flicker.",
+              "Faint scanlines roll down the card, like an old CRT monitor."
+            ],
+            "default": "none",
+            "markdownDescription": "Animation of the card of the work item you are working on (checked out in this window; \"In worktree\" cards never animate). Off by default: the sidebar is always visible and motion distracts. Nothing animates when the system asks for reduced motion.",
+            "scope": "application",
+            "order": 4
+          },
+          "totalflowx.workingOn.pulseBadge": {
+            "type": "boolean",
+            "default": true,
+            "description": "A halo expands from the \"Working on\" badge (and from the dot of the compact row) and fades out every ~2 s, like a recording light. Independent from the card animation. Nothing animates when the system asks for reduced motion.",
+            "scope": "application",
+            "order": 5
+          },
+          "totalflowx.myPullRequests.attentionEffect": {
+            "type": "string",
+            "enum": [
+              "none",
+              "static",
+              "pulse",
+              "waves",
+              "shimmer",
+              "ripple",
+              "rainbow",
+              "breathe"
+            ],
+            "enumDescriptions": [
+              "Nothing: the tiles that need you look like the others.",
+              "A steady faint orange tint, no motion.",
+              "The orange background breathes gently and continuously.",
+              "Soft orange diagonal bands drift slowly across the tile.",
+              "A soft orange light sweeps across the tile from left to right every few seconds, over the faint tint.",
+              "Orange rings expand from the left edge (the state bar) and fade out, repeating.",
+              "A slowly moving multicolour gradient at low opacity. The only effect that is not orange.",
+              "An orange glow grows and fades along the inside edges of the tile; the centre stays clear."
+            ],
+            "default": "pulse",
+            "markdownDescription": "Effect of the background of the My Pull Requests tiles that need your attention (reviewer feedback, conflicts, failed CI, unresolved comments, team-rule warnings). Only the background is drawn, behind the text, and it stays faint so the text keeps its contrast. With reduced motion in the system every animated effect shows the `static` tint.",
+            "scope": "application",
+            "order": 6
+          },
+          "totalflowx.fun.enabled": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "Small celebrations, off by default: confetti in the sidebar and a 🚀 notification when one of your PRs is merged (with easter eggs and milestones), a ⚡ note on fast first approvals, your green CI streak (🔥) in the CI status bar item and in the run notifications, a 🎯 note when a PR raises your coverage over your previous one, a \"Clean board ✨\" row in the Summary view when none of your work items breaks a team rule, a countdown next to the sprint (🌱 / 🏃 / 🔥), and the offer of the **Sprint Wrap-up** on the last day of the sprint. Everything stays on your machine and nothing is compared with anybody. Animations respect reduced motion.",
+            "scope": "application",
+            "order": 7
+          }
+        }
+      },
+      {
+        "id": "totalflowx.advanced",
+        "title": "Advanced",
+        "order": 10,
+        "properties": {
+          "totalflowx.pipelines.pollIntervalSeconds": {
+            "type": "number",
+            "default": 15,
+            "minimum": 5,
+            "description": "While a CI run of your pull requests is queued or running, how often its state is refreshed (seconds). See idlePollIntervalSeconds for when none is running.",
+            "order": 1
+          },
+          "totalflowx.pipelines.idlePollIntervalSeconds": {
+            "type": "number",
+            "default": 60,
+            "minimum": 0,
+            "description": "When no CI run of your pull requests is queued or running, how often to check for new runs (re-runs, new pushes), in seconds (at least 30). 0 disables these checks.",
+            "order": 2
+          },
+          "totalflowx.pipelines.branchRunsHours": {
+            "type": "number",
+            "default": 24,
+            "minimum": 0,
+            "description": "Besides the runs of your pull requests, the CI status bar item shows the runs you queued by hand and the runs started by the merge of your pull requests, from the last N hours. 0 disables them.",
+            "order": 3
+          },
+          "totalflowx.myPullRequests.pollIntervalSeconds": {
+            "type": "number",
+            "default": 120,
+            "minimum": 30,
+            "description": "How often the pull requests you created are checked: policies, comments, CI runs and auto-complete (seconds).",
+            "order": 4
+          },
+          "totalflowx.myPullRequests.notificationsPollIntervalSeconds": {
+            "type": "number",
+            "default": 120,
+            "minimum": 30,
+            "description": "How often your pull requests are checked, in seconds.",
+            "order": 5
+          },
+          "totalflowx.reviews.pollIntervalSeconds": {
+            "type": "number",
+            "default": 120,
+            "minimum": 30,
+            "description": "How often the pull requests waiting for your review are checked (seconds).",
+            "order": 6
+          },
+          "totalflowx.diagnostics.logRequests": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "Log every request to Azure DevOps (time, method, URL, status, duration, feature, throttling) in the **Totalflow X** output channel. Tokens and headers are never logged. Off: nothing is written.",
+            "order": 7
+          }
         }
       }
-    }
+    ]
   },
   "scripts": {
     "build": "npm run build:extension && npm run build:webview && npm run build:dependencies",

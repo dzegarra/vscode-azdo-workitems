@@ -1,7 +1,12 @@
 import { withFeature } from './requestContext';
 import * as vscode from 'vscode';
 import { AzdoClient, PullRequestDetails } from './azdoClient';
-import { resolveContext, SECTION } from './config';
+import { approvalSpeedNote, mergedCelebration } from './celebrations';
+import { funEnabled, recordsScope, resolveContext, SECTION } from './config';
+import { FunJournal, recordOpened, recordPullRequestEvents } from './funJournal';
+import { FunJournalStore } from './funJournalStore';
+import { publishedAt } from './pullRequestTimeline';
+import { isInSprint } from './sprintCountdown';
 import {
   commentThreadId,
   describeEvent,
@@ -26,9 +31,9 @@ const MAX_NOTIFICATIONS = 3;
 type NotificationKind = PullRequestEventKind | 'taskDone';
 
 function notificationSettings() {
-  const config = vscode.workspace.getConfiguration(`${SECTION}.notifications`);
+  const config = vscode.workspace.getConfiguration(`${SECTION}.myPullRequests`);
   return {
-    events: config.get<NotificationKind[]>('events', [
+    events: config.get<NotificationKind[]>('notifications', [
       'comments',
       'vote',
       'merged',
@@ -36,7 +41,7 @@ function notificationSettings() {
       'reopened',
       'taskDone',
     ]),
-    intervalSeconds: Math.max(MIN_INTERVAL_SECONDS, config.get<number>('pollIntervalSeconds', 120)),
+    intervalSeconds: Math.max(MIN_INTERVAL_SECONDS, config.get<number>('notificationsPollIntervalSeconds', 120)),
   };
 }
 
@@ -48,15 +53,16 @@ function eventUrl(event: PullRequestEvent, preferComment: boolean): string {
 
 async function toSnapshot(client: AzdoClient, pr: PullRequestDetails): Promise<PullRequestSnapshot> {
   // Only active PRs get new comments; skipping the others saves requests
-  const threads =
-    pr.status === 'active'
-      ? snapshotThreads(await client.getPullRequestThreads(pr.repository.id, pr.pullRequestId))
-      : undefined;
+  const rawThreads =
+    pr.status === 'active' ? await client.getPullRequestThreads(pr.repository.id, pr.pullRequestId) : undefined;
+  const threads = rawThreads && snapshotThreads(rawThreads);
   return {
     id: pr.pullRequestId,
     title: pr.title,
     status: pr.status,
     url: pr.webUrl,
+    publishedAt: pr.creationDate && publishedAt({ creationDate: pr.creationDate }, rawThreads),
+    closedAt: pr.closedDate,
     reviewers: pr.reviewers
       .filter((reviewer) => reviewer.id && !reviewer.isContainer)
       .map((reviewer) => ({
@@ -80,7 +86,13 @@ export class PullRequestNotifier implements vscode.Disposable {
   private polling = false;
   private myId?: Promise<string>;
 
-  constructor(private readonly state: vscode.Memento, private readonly store: WorkItemsStore) {}
+  constructor(
+    private readonly state: vscode.Memento,
+    private readonly store: WorkItemsStore,
+    private readonly journal: FunJournalStore,
+    /** Throws the confetti of a merged PR in the sidebar (when it is open) */
+    private readonly celebrate: () => void
+  ) {}
 
   start(): void {
     this.stop();
@@ -122,9 +134,10 @@ export class PullRequestNotifier implements vscode.Disposable {
       // Read just before comparing: another window may have stored a newer snapshot meanwhile
       const previous = this.state.get<StoredSnapshot>(key);
       await this.state.update(key, toStored(current, previous ?? {}));
-      if (previous) {
-        this.notify(detectEvents(previous, current, myId));
-      }
+      const events = previous ? detectEvents(previous, current, myId) : [];
+      // The snapshot is stored: a failure of the fun features must not lose these events
+      const notes = await this.recordJournal(pullRequests, events).catch(() => new Map<string, string>());
+      this.notify(events, notes);
     } catch (error) {
       this.myId = undefined;
       if (reportErrors) {
@@ -135,7 +148,60 @@ export class PullRequestNotifier implements vscode.Disposable {
     }
   }
 
-  private notify(allEvents: PullRequestEvent[]): void {
+  // Rule FUN-RUN-5
+  /**
+   * Records the opened PRs, the merges and the first approvals in the fun journal (also while the fun features are
+   * off, for the recap). Returns the celebration texts that replace the plain ones, per PR, when the features are on
+   */
+  private async recordJournal(
+    pullRequests: PullRequestDetails[],
+    events: PullRequestEvent[]
+  ): Promise<Map<string, string>> {
+    const notes = new Map<string, string>();
+    const scope = recordsScope(this.store.repository());
+    if (!scope) {
+      return notes;
+    }
+    let firstApprovals = new Map<number, number | undefined>();
+    const { after } = await this.journal.update(scope, (journal) => {
+      const opened = recordOpened(
+        journal,
+        pullRequests.flatMap((pr) => (pr.creationDate ? [{ id: pr.pullRequestId, at: pr.creationDate }] : []))
+      );
+      const recorded = recordPullRequestEvents(opened, events, new Date());
+      firstApprovals = recorded.firstApprovals;
+      return recorded.journal;
+    });
+    if (!funEnabled()) {
+      return notes;
+    }
+    for (const event of events) {
+      const { pullRequest } = event;
+      if (event.kind === 'merged') {
+        notes.set(`merged:${String(pullRequest.id)}`, this.mergedText(after, pullRequest));
+      } else if (event.kind === 'vote' && firstApprovals.has(pullRequest.id)) {
+        const note = approvalSpeedNote(firstApprovals.get(pullRequest.id));
+        if (note) {
+          notes.set(`vote:${String(pullRequest.id)}:${event.reviewer.id}`, `${describeEvent(event)} ${note}`);
+        }
+      }
+    }
+    return notes;
+  }
+
+  /** "🚀 PR 1234 shipped: Title. Your 3rd this sprint!" */
+  private mergedText(journal: FunJournal, pullRequest: { id: number; title: string }): string {
+    const merge = journal.merged.find((entry) => entry.id === pullRequest.id);
+    const sprint = this.store.iterations
+      .map(({ iteration }) => iteration.attributes)
+      .find((dates) => merge && isInSprint(merge.mergedAt, dates?.startDate, dates?.finishDate));
+    const thisSprint = sprint
+      ? journal.merged.filter((entry) => isInSprint(entry.mergedAt, sprint.startDate, sprint.finishDate)).length
+      : undefined;
+    return mergedCelebration(pullRequest, { thisSprint, total: journal.merged.length });
+  }
+
+  private notify(allEvents: PullRequestEvent[], notes: Map<string, string>): void {
     const enabled = notificationSettings().events;
     const events = allEvents.filter((event) => enabled.includes(event.kind));
     const announce = enabled.includes('merged');
@@ -144,7 +210,15 @@ export class PullRequestNotifier implements vscode.Disposable {
     // nothing to offer
     allEvents
       .filter((event) => event.kind === 'merged' && (announce || enabled.includes('taskDone')))
-      .forEach((event) => void this.handleMerged(event, enabled.includes('taskDone'), announce));
+      .forEach(
+        (event) =>
+          void this.handleMerged(
+            event,
+            enabled.includes('taskDone'),
+            announce,
+            notes.get(`merged:${String(event.pullRequest.id)}`)
+          )
+      );
     if (!events.length) {
       return;
     }
@@ -158,12 +232,23 @@ export class PullRequestNotifier implements vscode.Disposable {
       return;
     }
     for (const event of shown) {
-      void this.show(event);
+      const text =
+        event.kind === 'vote' ? notes.get(`vote:${String(event.pullRequest.id)}:${event.reviewer.id}`) : undefined;
+      void this.show(event, text);
     }
   }
 
   /** The offer for a completed PR (tasks to Done, branch to delete); the plain notification when there is none */
-  private async handleMerged(event: PullRequestEvent, offerTasks: boolean, announce: boolean): Promise<void> {
+  private async handleMerged(
+    event: PullRequestEvent,
+    offerTasks: boolean,
+    announce: boolean,
+    celebration: string | undefined
+  ): Promise<void> {
+    // Rule FUN-MERGE-3
+    if (celebration) {
+      this.celebrate();
+    }
     let offered = false;
     try {
       const { client } = resolveContext(this.store.repository());
@@ -180,14 +265,15 @@ export class PullRequestNotifier implements vscode.Disposable {
     }
     // Rule MYPR-OFFER-3
     if (!offered && announce) {
-      await this.show(event);
+      await this.show(event, celebration);
     }
   }
 
-  private async show(event: PullRequestEvent): Promise<void> {
+  /** The notification of an event; `text` replaces its description (a celebration) */
+  private async show(event: PullRequestEvent, text?: string): Promise<void> {
     const threadId = commentThreadId(event);
     const buttons = threadId === undefined ? ['Open PR'] : ['Open Comment', 'Open PR'];
-    const picked = await vscode.window.showInformationMessage(describeEvent(event), ...buttons);
+    const picked = await vscode.window.showInformationMessage(text ?? describeEvent(event), ...buttons);
     if (picked) {
       await vscode.env.openExternal(vscode.Uri.parse(eventUrl(event, picked === 'Open Comment')));
     }

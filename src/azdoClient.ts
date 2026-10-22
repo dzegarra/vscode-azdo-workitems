@@ -101,6 +101,9 @@ export interface PullRequestDetails extends PullRequest, PullRequestState {
   targetRefName?: string;
   createdBy?: { id?: string; displayName?: string };
   repository: { id: string; name: string; project?: { id?: string; name?: string } };
+  /** ISO dates, as every PR response has them */
+  creationDate?: string;
+  closedDate?: string;
 }
 
 export interface Team {

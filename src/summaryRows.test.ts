@@ -15,6 +15,22 @@ describe('summaryRows', () => {
     expect(summaryRows(empty)[0].label).toBe('Nothing needs your attention');
   });
 
+  it('celebrates a clean board under the other rows, only when asked and without alerts', () => {
+    expect(summaryRows({ ...empty, celebrateCleanBoard: true }).map((row) => row.id)).toEqual([
+      'nothing',
+      'cleanBoard',
+    ]);
+    expect(summaryRows({ ...empty, failedRuns: 1, celebrateCleanBoard: true }).map((row) => row.id)).toEqual([
+      'failedRuns',
+      'cleanBoard',
+    ]);
+    expect(summaryRows({ ...empty, workItemsWithAlerts: 1, celebrateCleanBoard: true }).map((row) => row.id)).toEqual([
+      'alerts',
+    ]);
+    expect(summaryRows(empty).map((row) => row.id)).toEqual(['nothing']);
+    expect(summaryBadge({ ...empty, celebrateCleanBoard: true } as SummaryInput)).toBeUndefined();
+  });
+
   it('lists only the rows with a count above 0, in order', () => {
     const rows = summaryRows({
       workItemsWithAlerts: 2,

@@ -2,6 +2,8 @@ import { withFeature } from './requestContext';
 import * as vscode from 'vscode';
 import { AzdoClient } from './azdoClient';
 import { resolveContext, SECTION, settings as extensionSettings, workingDaysSetting } from './config';
+import { recordReviewed } from './funJournal';
+import type { FunJournalStore } from './funJournalStore';
 import { myPullRequestSettings } from './myPullRequestsWatcher';
 import type { PullRequestExtras } from './myPullRequests';
 import type { PullRequestExtrasLoader } from './pullRequestExtras';
@@ -40,6 +42,7 @@ import {
   reviewedIdsToDrop,
   reviewedIdsToFetch,
   reviewedPeriodSetting,
+  votedPullRequestIds,
   ReviewedRef,
   ReviewedRequest,
   toReviewedDetails,
@@ -152,7 +155,8 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
   constructor(
     private readonly state: vscode.Memento,
     private readonly store: WorkItemsStore,
-    private readonly extras: PullRequestExtrasLoader
+    private readonly extras: PullRequestExtrasLoader,
+    private readonly journal: FunJournalStore
   ) {}
 
   /** Requests that count: the required ones, and the optional ones when `includeOptional` is on */
@@ -164,7 +168,7 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
 
   /**
    * The PRs already reviewed by the user, for the box's "Reviewed" section only. Nothing else may use them: see
-   * `activeReviewed`
+   * `activeReviewed`. (The only other reader of the votes is the fun journal, for the sprint recap: see runPoll)
    */
   reviewed(): ReviewedRequest[] {
     const { baseBranch } = extensionSettings();
@@ -398,6 +402,14 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
       const publishedDates = new Map(requests.map(({ id }) => [id, lastPublishedFromDraft(threads.get(id) ?? [])]));
       this.requests = withPublishedDates(requests, publishedDates);
       this.activeReviewed = pullRequests;
+      // The PRs voted on go to the fun journal, which only the sprint recap reads (no request: same response)
+      const seenAt = new Date().toISOString();
+      await this.journal.update(scope, (journal) =>
+        recordReviewed(
+          journal,
+          votedPullRequestIds(pullRequests, myId).map((id) => ({ id, at: seenAt }))
+        )
+      );
       this.status = 'ready';
       this.error = undefined;
       // The cards are shown right away; their details come as they are fetched

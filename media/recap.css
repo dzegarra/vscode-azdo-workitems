@@ -1,0 +1,76 @@
+/* Sprint wrap-up panel (src/sprintRecap.ts): static HTML, VS Code theme variables only */
+body {
+  margin: 0;
+  padding: 24px 16px;
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+.recap {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+h1 {
+  margin: 0 0 12px;
+  font-size: 1.8em;
+}
+
+h2 {
+  margin: 24px 0 8px;
+  font-size: 1.1em;
+  color: var(--vscode-descriptionForeground);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.highlights li {
+  margin: 6px 0;
+  font-size: 1.15em;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.stat {
+  display: grid;
+  gap: 2px;
+  padding: 12px;
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+  border-radius: 8px;
+  background: var(--vscode-sideBar-background);
+}
+
+.stat .value {
+  font-size: 1.8em;
+  font-weight: 600;
+  color: var(--vscode-charts-blue, #3794ff);
+}
+
+.stat .label,
+.muted {
+  color: var(--vscode-descriptionForeground);
+}
+
+.records li,
+.merged li {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.note {
+  margin-top: 28px;
+  font-size: 0.9em;
+}

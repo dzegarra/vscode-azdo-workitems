@@ -1122,6 +1122,15 @@ function renderCards(items: WorkItemModel[], current: ViewModel): string {
     .join('');
 }
 
+/** "🌱 6 days left" next to the sprint (totalflowx.fun.enabled); empty without a countdown */
+function countdownPill(countdown: IterationModel['countdown']): string {
+  return countdown
+    ? `<span class="countdown mood-${countdown.mood}" title="${escapeHtml(countdown.tooltip)}">${escapeHtml(
+        countdown.text
+      )}</span>`
+    : '';
+}
+
 // Rule WORKON-4
 /**
  * Work items of one iteration. The group can be collapsed to keep only the iterations of interest open;
@@ -1148,7 +1157,7 @@ function renderIteration(iteration: IterationModel, items: WorkItemModel[], curr
     <h2><button class="iteration-toggle" data-action="toggleIteration" data-path="${escapeHtml(iteration.path)}"
       aria-expanded="${!collapsed}" title="${escapeHtml(iteration.path)}">
       ${icon('chevron', 'chevron')}<span class="iteration-name">${escapeHtml(iteration.name)}</span>
-      <span class="count">${cards.length}</span>${alerts}</button></h2>
+      <span class="count">${cards.length}</span>${alerts}${countdownPill(iteration.countdown)}</button></h2>
     ${body}
   </section>`;
 }
@@ -2274,7 +2283,9 @@ function render(): void {
   }
   const scope = describeScope(model.iterations);
   const scopeElement = document.getElementById('scope') as HTMLElement;
-  scopeElement.textContent = scope.text;
+  // With several sprints, each group header has its own countdown
+  const countdown = model.iterations.length === 1 ? countdownPill(model.iterations[0].countdown) : '';
+  scopeElement.innerHTML = `${countdown}${escapeHtml(scope.text)}`;
   scopeElement.title = scope.tooltip;
   (app.querySelector('.progress') as HTMLElement).hidden = model.status !== 'loading';
   (document.getElementById('filters') as HTMLElement).innerHTML =
@@ -2693,7 +2704,40 @@ document.addEventListener('click', (event) => {
 // The width of the sidebar changes the perimeter of the cards, hence the duration of their running light
 window.addEventListener('resize', placeRunningLights);
 
+/* ---------- Celebrations (totalflowx.fun.enabled) ---------- */
+
+const CONFETTI_PIECES = 60;
+const CONFETTI_COLORS = 6;
+const CONFETTI_MS = 4000;
+
+// Rule FUN-MERGE-4
+/** Confetti falls over the sidebar for a few seconds and is removed; nothing at all with reduced motion */
+function throwConfetti(): void {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    return;
+  }
+  const layer = document.createElement('div');
+  layer.className = 'confetti';
+  layer.setAttribute('aria-hidden', 'true');
+  for (let i = 0; i < CONFETTI_PIECES; i += 1) {
+    const piece = document.createElement('span');
+    piece.className = `confetti-piece c${String(i % CONFETTI_COLORS)}`;
+    // Place and timing through CSSOM (strict CSP: no inline styles)
+    piece.style.setProperty('--x', `${String(Math.round(Math.random() * 100))}%`);
+    piece.style.setProperty('--drift', `${String(Math.round((Math.random() - 0.5) * 120))}px`);
+    piece.style.setProperty('--delay', `${String(Math.round(Math.random() * 700))}ms`);
+    piece.style.setProperty('--spin', `${String(Math.round(360 + Math.random() * 720))}deg`);
+    layer.append(piece);
+  }
+  document.body.append(layer);
+  setTimeout(() => layer.remove(), CONFETTI_MS);
+}
+
 window.addEventListener('message', ({ data }: MessageEvent<ExtensionMessage>) => {
+  if (data.type === 'celebrate') {
+    throwConfetti();
+    return;
+  }
   if (data.type === 'setTasksExpanded') {
     setTasksExpanded(data.expanded);
     return;

@@ -63,9 +63,9 @@ export class CurrentWorkItemStatusBar implements vscode.Disposable {
       store.onDidLoad(() => this.schedule(true)),
       vscode.window.onDidChangeActiveTextEditor(() => this.schedule()),
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration(`${SECTION}.statusBar.currentWorkItem`)) {
+        if (event.affectsConfiguration(`${SECTION}.workingOn.showInStatusBar`)) {
           this.schedule(true);
-        } else if (event.affectsConfiguration(`${SECTION}.showInReviewState`) && this.resolved) {
+        } else if (event.affectsConfiguration(`${SECTION}.workItems.showInReviewState`) && this.resolved) {
           this.show(this.resolved);
         }
       })
@@ -92,7 +92,7 @@ export class CurrentWorkItemStatusBar implements vscode.Disposable {
   }
 
   private async runUpdate(force: boolean): Promise<void> {
-    const enabled = vscode.workspace.getConfiguration(SECTION).get<boolean>('statusBar.currentWorkItem', true);
+    const enabled = vscode.workspace.getConfiguration(SECTION).get<boolean>('workingOn.showInStatusBar', true);
     const branch = this.store.repository()?.state.HEAD?.name;
     const id = branch ? workItemIdFromBranch(branch) : undefined;
     if (!enabled || !branch || id === undefined) {

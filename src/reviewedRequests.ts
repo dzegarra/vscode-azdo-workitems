@@ -61,6 +61,12 @@ function myListedVote(pr: ReviewerPullRequest, myId: string): { vote: VoteKind; 
   return VOTES_LISTED.includes(vote) ? { vote, isRequired: !!me.isRequired } : undefined;
 }
 
+// Rule FUN-KARMA-2
+/** PRs of others the user voted on (REVIEWED-2): the reviews of the fun journal, which only the sprint recap reads */
+export function votedPullRequestIds(pullRequests: ReviewerPullRequest[], myId: string): number[] {
+  return pullRequests.filter((pr) => myListedVote(pr, myId)).map((pr) => pr.pullRequestId);
+}
+
 // Rules REVIEWED-3, REVIEWED-4
 /** Whether the PR is in the period: the active ones always, the closed ones when closed within the window */
 function inPeriod(pr: ReviewerPullRequest, now: Date, windowMs: number): boolean {

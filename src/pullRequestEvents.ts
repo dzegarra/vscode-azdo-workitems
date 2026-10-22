@@ -71,6 +71,10 @@ export interface PullRequestSnapshot {
   reviewerUpdates?: ReviewerUpdate[];
   /** IDs of all the "ReviewersUpdate" threads (also of groups); undefined when the threads were not fetched */
   reviewerUpdateIds?: number[];
+  /** When it left draft (else its creation); undefined when unknown. Never stored: only the fun journal reads it */
+  publishedAt?: string;
+  /** When it was completed or abandoned */
+  closedAt?: string;
 }
 
 /** What is remembered between polls */
