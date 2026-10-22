@@ -41,19 +41,31 @@ export function greenStreakTooltip(streak: GreenStreak): string | undefined {
   return `🔥 ${String(streak.current)} green CI runs in a row${best}`;
 }
 
+/** What a recorded run did to the streak: worth telling only from MIN_SHOWN_STREAK */
+export type GreenStreakChange = 'broken' | 'grew' | 'record';
+
 // Rule FUN-STREAK-3
 /**
- * The sentence that ends the notification of a finished run: the streak it extends, or the one it broke.
- * Undefined when there is nothing worth saying
+ * The streak grew to MIN_SHOWN_STREAK or more (a record when it beats a best of that size), or a failure ended one of
+ * that size. Undefined otherwise, also when the run was already recorded (before and after are equal)
  */
-export function greenStreakNote(before: GreenStreak, after: GreenStreak): string | undefined {
+export function greenStreakChange(before: GreenStreak, after: GreenStreak): GreenStreakChange | undefined {
   if (after.current > before.current && after.current >= MIN_SHOWN_STREAK) {
-    return after.current > before.best && before.best >= MIN_SHOWN_STREAK
-      ? `🔥 ${String(after.current)} green runs in a row: a new record!`
-      : `🔥 ${String(after.current)} green runs in a row.`;
+    return after.current > before.best && before.best >= MIN_SHOWN_STREAK ? 'record' : 'grew';
   }
-  if (after.current === 0 && before.current >= MIN_SHOWN_STREAK) {
-    return `💔 That ends a streak of ${String(before.current)} green runs.`;
+  return after.current === 0 && before.current >= MIN_SHOWN_STREAK ? 'broken' : undefined;
+}
+
+/** The sentence that ends the notification of a finished run; undefined when there is nothing worth saying */
+export function greenStreakNote(before: GreenStreak, after: GreenStreak): string | undefined {
+  switch (greenStreakChange(before, after)) {
+    case 'record':
+      return `🔥 ${String(after.current)} green runs in a row: a new record!`;
+    case 'grew':
+      return `🔥 ${String(after.current)} green runs in a row.`;
+    case 'broken':
+      return `💔 That ends a streak of ${String(before.current)} green runs.`;
+    case undefined:
+      return undefined;
   }
-  return undefined;
 }

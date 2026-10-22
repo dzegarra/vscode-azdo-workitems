@@ -21,6 +21,7 @@ import type { PullRequestTone } from './workItemLinks';
 import type { AttentionEffect } from './attentionEffect';
 import type { HoverStyle } from './hoverStyle';
 import type { TaskCountStyle } from './taskCountStyle';
+import type { SoundId } from './sounds';
 import type { SprintCountdown } from './sprintCountdown';
 import type { WorkingOnAnimation, WorkingOnLevel } from './workingOn';
 
@@ -326,8 +327,8 @@ export type ExtensionMessage =
   | { type: 'setTasksExpanded'; expanded: boolean }
   /** Scrolls to the card of the work item and flashes it, opening its iteration group when collapsed */
   | { type: 'revealWorkItem'; id: number }
-  /** Confetti: one of the user's PRs was merged (totalflowx.fun.enabled) */
-  | { type: 'celebrate' }
+  /** Confetti (a merged PR) and / or a sound (totalflowx.fun.enabled, totalflowx.fun.sounds) */
+  | { type: 'celebrate'; confetti: boolean; sound?: SoundId }
   | { type: 'state'; model: ViewModel };
 
 export const NO_PULL_REQUEST = 'No PR';

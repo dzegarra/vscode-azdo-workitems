@@ -24,6 +24,7 @@ import {
   ViewModel,
   WebviewMessage,
 } from './viewModel';
+import type { SoundId } from './sounds';
 import { sprintCountdown } from './sprintCountdown';
 import { runWorkItemAction } from './workItemActions';
 import { WorkItemsStore } from './workItemsStore';
@@ -191,13 +192,13 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     void this.view.webview.postMessage(message);
   }
 
-  // Rule FUN-MERGE-4
-  /** Confetti in the sidebar, only when it is open and showing: nothing is queued for later */
-  celebrate(): void {
-    if (!this.ready || !this.view?.visible) {
+  // Rules FUN-MERGE-4, FUN-SOUND-2
+  /** Confetti and / or a sound in the sidebar, only when it is open and showing: nothing is queued for later */
+  celebrate(confetti: boolean, sound: SoundId | undefined): void {
+    if (!this.ready || !this.view?.visible || (!confetti && !sound)) {
       return;
     }
-    const message: ExtensionMessage = { type: 'celebrate' };
+    const message: ExtensionMessage = { type: 'celebrate', confetti, sound };
     void this.view.webview.postMessage(message);
   }
 

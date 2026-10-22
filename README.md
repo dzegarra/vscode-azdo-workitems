@@ -307,6 +307,8 @@ Small celebrations, **off by default**: turn them on with `totalflowx.fun.enable
 - **Sprint countdown**: `🌱 6 days left` before the sprint line of the list (in each group header when your teams are in different sprints), `🏃` with 2 working days left or less, `🔥 Last day` on the last one. Working days follow `totalflowx.reviews.workingDays`.
 - **Sprint Wrap-up**: on the last day of the sprint you are offered your recap: PRs merged, opened and reviewed, work items done, CI green rate and best streak, quickest merge, longest ride, fastest first approval, and whether you reviewed more than you opened (🤝 Net giver). Open it any time with **Totalflow X: Show Sprint Wrap-up**. It counts what the extension saw since this version was installed, also while the fun features are off.
 
+**Sounds** (`totalflowx.fun.sounds`, off by default, needs `totalflowx.fun.enabled` too): a short, quiet rising chime when one of your PRs is merged, a ding when your green streak sets a new record, and a low "bonk" when a failure ends a streak. The sidebar plays them, so only while it is open and visible; nothing is played for comments or votes.
+
 Animations (confetti included) respect the system's reduced-motion setting. More card animations for the work item you are working on are in `totalflowx.workingOn.animation` (see [Work items you are working on](#work-items-you-are-working-on)).
 
 ## Diagnostics
@@ -422,6 +424,7 @@ Modules and feature names added with **Add new…** are saved to the workspace s
 | `totalflowx.workingOn.pulseBadge`           | Halo around the "Working on" badge (on)                                                                                     |
 | `totalflowx.myPullRequests.attentionEffect` | Effect of the tiles that need you: `pulse` by default, `none`, `static`, `waves`, `shimmer`, `ripple`, `rainbow`, `breathe` |
 | `totalflowx.fun.enabled`                    | Celebrations, green streak, clean board, sprint countdown and the offer of the Sprint Wrap-up (off)                         |
+| `totalflowx.fun.sounds`                     | Short sounds with the celebrations: merged PR, streak record, broken streak (off; needs `fun.enabled`)                      |
 
 ### Advanced
 

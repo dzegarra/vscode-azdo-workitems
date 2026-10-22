@@ -54,6 +54,7 @@ import { myPullRequestsPanelTone, reviewsPanelTone } from '../panelTone';
 import { ATTENTION_EFFECTS, attentionEffectClass } from '../attentionEffect';
 import { HOVER_STYLES, hoverStyleClass } from '../hoverStyle';
 import { TASK_COUNT_STYLES, taskCountStyleClass } from '../taskCountStyle';
+import { SOUND_VOLUME, SoundId, SOUNDS } from '../sounds';
 import { splitWorkingOn, WorkingOnLevel, workingOnAnimationClasses, workingOnBadge } from '../workingOn';
 import type { CompletedPeriod } from '../myPullRequests';
 import type {
@@ -2733,9 +2734,46 @@ function throwConfetti(): void {
   setTimeout(() => layer.remove(), CONFETTI_MS);
 }
 
+let audio: AudioContext | undefined;
+
+// Rule FUN-SOUND-2
+/**
+ * Synthesizes a short sound (src/sounds.ts) with the Web Audio API: oscillators with a quick attack and an exponential
+ * fade, no file. Silent when the webview may not play audio yet
+ */
+function playSound(id: SoundId): void {
+  try {
+    audio ??= new AudioContext();
+    if (audio.state === 'suspended') {
+      void audio.resume();
+    }
+    const now = audio.currentTime;
+    for (const note of SOUNDS[id]) {
+      const oscillator = audio.createOscillator();
+      const gain = audio.createGain();
+      oscillator.type = note.wave;
+      oscillator.frequency.value = note.frequency;
+      const start = now + note.start;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(SOUND_VOLUME, start + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + note.duration);
+      oscillator.connect(gain).connect(audio.destination);
+      oscillator.start(start);
+      oscillator.stop(start + note.duration + 0.05);
+    }
+  } catch {
+    // No audio in this webview: the celebration stays silent
+  }
+}
+
 window.addEventListener('message', ({ data }: MessageEvent<ExtensionMessage>) => {
   if (data.type === 'celebrate') {
-    throwConfetti();
+    if (data.confetti) {
+      throwConfetti();
+    }
+    if (data.sound) {
+      playSound(data.sound);
+    }
     return;
   }
   if (data.type === 'setTasksExpanded') {

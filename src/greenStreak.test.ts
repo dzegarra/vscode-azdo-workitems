@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { JournalRun } from './funJournal';
-import { greenStreak, greenStreakLabel, greenStreakNote, greenStreakTooltip } from './greenStreak';
+import { greenStreak, greenStreakChange, greenStreakLabel, greenStreakNote, greenStreakTooltip } from './greenStreak';
 
 /** "+" a green run, "-" a red one */
 const runs = (outcomes: string): JournalRun[] =>
@@ -50,5 +50,15 @@ describe('greenStreakNote', () => {
 
   it('says nothing when the run was already recorded', () => {
     expect(greenStreakNote({ current: 4, best: 4 }, { current: 4, best: 4 })).toBeUndefined();
+  });
+});
+
+describe('greenStreakChange', () => {
+  it('tells a grown streak, a record and a broken streak apart', () => {
+    expect(greenStreakChange({ current: 2, best: 5 }, { current: 3, best: 5 })).toBe('grew');
+    expect(greenStreakChange({ current: 5, best: 5 }, { current: 6, best: 6 })).toBe('record');
+    expect(greenStreakChange({ current: 4, best: 4 }, { current: 0, best: 4 })).toBe('broken');
+    expect(greenStreakChange({ current: 1, best: 1 }, { current: 2, best: 2 })).toBeUndefined();
+    expect(greenStreakChange({ current: 4, best: 4 }, { current: 4, best: 4 })).toBeUndefined();
   });
 });

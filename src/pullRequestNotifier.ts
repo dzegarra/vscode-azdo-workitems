@@ -90,7 +90,7 @@ export class PullRequestNotifier implements vscode.Disposable {
     private readonly state: vscode.Memento,
     private readonly store: WorkItemsStore,
     private readonly journal: FunJournalStore,
-    /** Throws the confetti of a merged PR in the sidebar (when it is open) */
+    /** Throws the confetti of a merged PR in the sidebar (when it is open), with its sound when they are on */
     private readonly celebrate: () => void
   ) {}
 

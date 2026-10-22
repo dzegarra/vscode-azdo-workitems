@@ -109,6 +109,12 @@ export function funEnabled(): boolean {
   return vscode.workspace.getConfiguration(SECTION).get<boolean>('fun.enabled', false);
 }
 
+/** totalflowx.fun.sounds: short sounds with the celebrations; only with totalflowx.fun.enabled. Off by default */
+export function funSoundsEnabled(): boolean {
+  const config = vscode.workspace.getConfiguration(SECTION);
+  return config.get<boolean>('fun.enabled', false) && config.get<boolean>('fun.sounds', false);
+}
+
 /** Coverage levels: below `minimum` is low, from `target` is good, from `excellent` is excellent */
 export function coverageThresholds(): CoverageThresholds {
   const config = vscode.workspace.getConfiguration(`${SECTION}.coverage`);

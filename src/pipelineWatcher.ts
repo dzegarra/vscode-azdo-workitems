@@ -6,11 +6,12 @@ import { CoverageResult, currentStreak, gainOverPreviousPullRequest, isNewBest }
 import { CoverageRecordsStore } from './coverageRecordsStore';
 import { recordRuns } from './funJournal';
 import { FunJournalStore } from './funJournalStore';
-import { greenStreak, greenStreakNote } from './greenStreak';
+import { greenStreak, greenStreakChange, greenStreakNote } from './greenStreak';
 import { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import { RunModel } from './pipelines';
 import { finishedRunMessage, finishedRunSubject, testsUrl } from './runDetails';
 import { FinishedRun, RunsPoller } from './runsPolling';
+import { SoundId, streakSound } from './sounds';
 import { WorkItemsStore } from './workItemsStore';
 
 const MIN_INTERVAL_SECONDS = 5;
@@ -46,7 +47,9 @@ export class PipelineWatcher implements vscode.Disposable {
     private readonly store: WorkItemsStore,
     private readonly myPullRequests: MyPullRequestsWatcher,
     private readonly records: CoverageRecordsStore,
-    private readonly journal: FunJournalStore
+    private readonly journal: FunJournalStore,
+    /** Plays a sound in the sidebar when totalflowx.fun.sounds allows it */
+    private readonly playSound: (sound: SoundId) => void
   ) {
     this.poller = new RunsPoller({
       settings: () => {
@@ -135,7 +138,12 @@ export class PipelineWatcher implements vscode.Disposable {
     }
     // Another window may have recorded it first: then before and after are equal and nothing is said twice
     const { before, after } = await this.journal.update(scope, (journal) => recordRuns(journal, [run], new Date()));
-    return greenStreakNote(greenStreak(before.runs), greenStreak(after.runs));
+    const streaks = { before: greenStreak(before.runs), after: greenStreak(after.runs) };
+    const sound = funEnabled() ? streakSound(greenStreakChange(streaks.before, streaks.after)) : undefined;
+    if (sound) {
+      this.playSound(sound);
+    }
+    return greenStreakNote(streaks.before, streaks.after);
   }
 
   /** The links of the PR as Azure DevOps lists them for the user's PRs, else the work items of the list */

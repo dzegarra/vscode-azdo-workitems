@@ -13,7 +13,7 @@ import { addBuildNotesSkipTag } from './commands/addBuildNotesSkipTag';
 import { retargetPullRequest } from './commands/retargetPullRequest';
 import { createPullRequest } from './commands/createPullRequest';
 import { deleteBranch } from './commands/deleteBranch';
-import { funEnabled, resolveContext, SECTION, settings } from './config';
+import { funEnabled, funSoundsEnabled, resolveContext, SECTION, settings } from './config';
 import { getGitApi, pickRepository, Repository } from './git';
 import { resolveWorkItemEntry } from './commands/pickWorkItem';
 import { fillIntegrationBuild } from './commands/integrationBuild';
@@ -42,6 +42,7 @@ import { ReviewStatusBar } from './reviewStatusBar';
 import { SummaryView } from './summaryView';
 import { FunJournalStore } from './funJournalStore';
 import { SHOW_SPRINT_RECAP_COMMAND, SprintRecapPanel } from './sprintRecapPanel';
+import type { SoundId } from './sounds';
 import { PullRequestExtrasLoader } from './pullRequestExtras';
 import { CHECKOUT_REVIEW_COMMAND, ReviewRequestsWatcher } from './reviewRequestsWatcher';
 import { WorkItemDetailsPanels } from './workItemDetails';
@@ -117,9 +118,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const myPullRequests = new MyPullRequestsWatcher(store, pullRequestExtras);
   const myPullRequestsStatusBar = new MyPullRequestsStatusBar(myPullRequests, store);
   const coverageRecords = new CoverageRecordsStore(context.globalState);
-  const pipelineWatcher = new PipelineWatcher(store, myPullRequests, coverageRecords, funJournal);
   const view = new WorkItemsViewProvider(context.extensionUri, store, reviewRequests, myPullRequests, coverageRecords);
-  const notifier = new PullRequestNotifier(context.globalState, store, funJournal, () => view.celebrate());
+  // Rule FUN-SOUND-2: the sounds need totalflowx.fun.sounds on top of totalflowx.fun.enabled
+  const celebrate = (confetti: boolean, sound: SoundId) =>
+    view.celebrate(confetti, funSoundsEnabled() ? sound : undefined);
+  const pipelineWatcher = new PipelineWatcher(store, myPullRequests, coverageRecords, funJournal, (sound) =>
+    celebrate(false, sound)
+  );
+  const notifier = new PullRequestNotifier(context.globalState, store, funJournal, () => celebrate(true, 'merged'));
   const sprintRecap = new SprintRecapPanel(context.extensionUri, store, funJournal);
   // Native tree view: it exists from the activation, so its badge shows on the activity bar icon from a cold start
   const summary = new SummaryView({
