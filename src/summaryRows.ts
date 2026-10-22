@@ -13,12 +13,15 @@ export interface SummaryInput {
   myPullRequests: { isCompleted: boolean; readyToMerge: boolean; warnings: { severity: string }[] }[];
   /** Latest CI runs of the followed PRs that failed */
   failedRuns: number;
+  /** The CI of the base branch is red (Rules BASE-CI-*): the pipelines broken on it */
+  baseBranch?: { branch: string; brokenPipelines: string[] };
   /** totalflowx.fun.enabled with the alerts on and work items listed: a clean board is celebrated */
   celebrateCleanBoard?: boolean;
 }
 
 export type SummaryRowId =
   | 'alerts'
+  | 'baseBranch'
   | 'cleanBoard'
   | 'failedRuns'
   | 'nothing'
@@ -114,10 +117,30 @@ function cleanBoardRow(input: SummaryInput): SummaryRow[] {
     : [];
 }
 
+// Rule SUMMARY-9
+/** The base branch is broken: the first row, it needs everyone */
+function baseBranchRow(input: SummaryInput): SummaryRow[] {
+  const pipelines = input.baseBranch?.brokenPipelines ?? [];
+  if (!input.baseBranch || !pipelines.length) {
+    return [];
+  }
+  const { branch } = input.baseBranch;
+  return [
+    {
+      id: 'baseBranch',
+      label: `${branch} is broken`,
+      description: pipelines.join(', '),
+      tooltip: `The CI of ${branch} failed (${pipelines.join(', ')}). It must be fixed as soon as possible.`,
+      icon: 'flame',
+      color: 'errorForeground',
+    },
+  ];
+}
+
 // Rules SUMMARY-1, SUMMARY-5, SUMMARY-7
 /** What needs the user's attention, one row each, only when the count is above 0 */
 function attentionRows(input: SummaryInput): SummaryRow[] {
-  const rows: SummaryRow[] = [];
+  const rows: SummaryRow[] = baseBranchRow(input);
   const alerts = input.workItemsWithAlerts;
   if (alerts) {
     rows.push({
@@ -171,18 +194,22 @@ export interface SummaryBadge {
 
 // Rule SUMMARY-6
 /**
- * Number on the activity bar icon: work items with alerts + PRs waiting for the user's review.
- * Undefined (no badge) when both are 0
+ * Number on the activity bar icon: work items with alerts + PRs waiting for the user's review + 1 when the base
+ * branch is broken. Undefined (no badge) when all are 0
  */
-export function summaryBadge(input: Pick<SummaryInput, 'reviews' | 'workItemsWithAlerts'>): SummaryBadge | undefined {
+export function summaryBadge(
+  input: Pick<SummaryInput, 'baseBranch' | 'reviews' | 'workItemsWithAlerts'>
+): SummaryBadge | undefined {
   const withAlerts = input.workItemsWithAlerts;
   const toReview = input.reviews.length;
-  if (!withAlerts && !toReview) {
+  const broken = input.baseBranch?.brokenPipelines.length ? 1 : 0;
+  if (!withAlerts && !toReview && !broken) {
     return undefined;
   }
   const reasons = [
+    broken && `${input.baseBranch?.branch ?? ''} is broken`,
     withAlerts && `${withAlerts} work item${withAlerts === 1 ? ' needs' : 's need'} attention`,
     toReview && `${toReview} pull request${toReview === 1 ? ' is' : 's are'} waiting for your review`,
   ].filter(Boolean);
-  return { value: withAlerts + toReview, tooltip: reasons.join(', ') };
+  return { value: broken + withAlerts + toReview, tooltip: reasons.join(', ') };
 }

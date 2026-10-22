@@ -18,7 +18,17 @@ import { branchesToVerify, TaskBranchModel, toTaskBranchModels } from './taskBra
 import { sortTaskPullRequests, TaskPullRequestModel, toTaskPullRequestModel } from './taskPullRequests';
 import { FilterModel, ViewModel, WorkItemModel } from './viewModel';
 import { runDetailsLoader } from './runDetailsLoader';
-import { BranchRun, isActive, latestBranchRuns, latestRuns, MergeRun, mergeRuns, RunModel } from './pipelines';
+import { BaseBranchHealth, baseBranchHealth, finishedStates, incidentKey } from './baseBranchHealth';
+import {
+  BranchRun,
+  isActive,
+  latestBranchRuns,
+  latestRuns,
+  MergeRun,
+  mergeRuns,
+  RunModel,
+  RunState,
+} from './pipelines';
 import { FinishedRun, FollowedPullRequest, followedPullRequestIds, RunsSnapshot, RunsTracker } from './runsPolling';
 import { isOtherRepository, toPullRequestModel } from './pullRequestModel';
 import { listWorktrees } from './worktreeGit';
@@ -589,17 +599,71 @@ export class WorkItemsStore {
   private async runRefreshRuns(): Promise<FinishedRun[] | undefined> {
     await this.whenRepositoryReady();
     const client = resolveContext(this.repository()).client;
-    const finished = await this.tracker.refresh(this.activePullRequestIds(), async (ids) => {
-      const [pullRequests, branchRuns] = await Promise.all([
-        fetchPullRequestRuns(client, ids),
-        this.fetchBranchRuns(client),
-      ]);
-      return { pullRequests, ...branchRuns };
-    });
-    if (finished) {
+    const [finished, baseBranchChanged] = await Promise.all([
+      this.tracker.refresh(this.activePullRequestIds(), async (ids) => {
+        const [pullRequests, branchRuns] = await Promise.all([
+          fetchPullRequestRuns(client, ids),
+          this.fetchBranchRuns(client),
+        ]);
+        return { pullRequests, ...branchRuns };
+      }),
+      this.refreshBaseBranch(client),
+    ]);
+    if (finished || baseBranchChanged) {
       this.changeEmitter.fire();
     }
     return finished;
+  }
+
+  private baseBranchState?: BaseBranchHealth;
+  /** Finished state of the base branch's builds at the last fetch: a re-run keeps its build id (Rule BASE-CI-1) */
+  private baseBranchKnownStates: ReadonlyMap<number, RunState> = new Map();
+  /** When the runs of the base branch were last fetched */
+  private baseBranchFetchedAt = 0;
+
+  /** Whether the CI of the base branch (develop) is red, and which pipelines; undefined: off or not known yet */
+  get baseBranch(): BaseBranchHealth | undefined {
+    return this.baseBranchState;
+  }
+
+  /**
+   * Rules BASE-CI-1..4: the runs of the base branch, at most once a minute (they never make the polling fast: develop
+   * runs after every merge of every team). A failed fetch keeps the last known state. True when the alarm changed
+   */
+  private async refreshBaseBranch(client: AzdoClient, force = false): Promise<boolean> {
+    const before = this.baseBranchSignature();
+    const { baseBranch: branch, baseBranchAlert } = settings();
+    const repositoryId = this.repositoryId;
+    if (!baseBranchAlert.enabled || !repositoryId) {
+      this.baseBranchState = undefined;
+      return before !== this.baseBranchSignature();
+    }
+    if (!force && Date.now() - this.baseBranchFetchedAt < BRANCH_RUNS_MIN_INTERVAL_MS) {
+      return false;
+    }
+    this.baseBranchFetchedAt = Date.now();
+    try {
+      const builds = await client.getBranchBuilds(repositoryId, branch);
+      const known = this.baseBranchKnownStates;
+      const health = baseBranchHealth(builds, branch, baseBranchAlert.ignoredPipelines, new Date(), known);
+      this.baseBranchKnownStates = finishedStates(builds, known);
+      // Their failed tests or failed step, for the texts (cached by build id)
+      const runs = await runDetailsLoader.enrich(
+        client,
+        health.broken.map(({ run }) => run)
+      );
+      this.baseBranchState = { ...health, broken: health.broken.map((pipeline, i) => ({ ...pipeline, run: runs[i] })) };
+    } catch {
+      // Network hiccup: keep the last known state
+    }
+    return before !== this.baseBranchSignature();
+  }
+
+  private baseBranchSignature(): string {
+    const state = this.baseBranchState;
+    return state
+      ? JSON.stringify(state.broken.map((p) => [incidentKey(p), p.run.id, p.run.tests?.failed, p.fixRunning]))
+      : '';
   }
 
   private myId?: Promise<string>;
@@ -762,7 +826,11 @@ export class WorkItemsStore {
       this.entries = await this.fetch();
       const client = resolveContext(this.repository()).client;
       const [runs, branchRuns] = await withFeature('ci', () =>
-        Promise.all([fetchPullRequestRuns(client, this.activePullRequestIds()), this.fetchBranchRuns(client, true)])
+        Promise.all([
+          fetchPullRequestRuns(client, this.activePullRequestIds()),
+          this.fetchBranchRuns(client, true),
+          this.refreshBaseBranch(client, true),
+        ])
       );
       this.tracker.runs = runs;
       this.tracker.branchRuns = branchRuns.branchRuns ?? this.tracker.branchRuns;

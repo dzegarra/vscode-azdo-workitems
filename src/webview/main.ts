@@ -2248,13 +2248,38 @@ function onTaskCardPointer(target: EventTarget | null): void {
   }
 }
 
+// Rule BASE-CI-8
+/** The red banner of a broken base branch, above everything; clicking it lists what broke it */
+function renderBaseBranchAlarm(current: ViewModel): string {
+  const banner = current.baseBranch;
+  if (!banner) {
+    return '';
+  }
+  // A clock time: an elapsed time would go stale between two posts of the state
+  const since = banner.since
+    ? ` since ${new Date(banner.since).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`
+    : '';
+  const lines = banner.lines
+    .map(
+      (line) =>
+        `<span class="alarm-line">${escapeHtml(line.failure)}</span><span class="alarm-by">${escapeHtml(
+          line.brokenBy
+        )}</span>`
+    )
+    .join('');
+  return `<button class="base-branch-alarm" data-action="showBaseBranchAlert" role="alert"
+    title="Show the failing runs and the pull request that broke it">
+    <span class="alarm-title">🔥 ${escapeHtml(banner.title)}${escapeHtml(since)}</span>${lines}
+    <span class="alarm-hint">Fix it before anything else</span></button>`;
+}
+
 function render(): void {
   const app = document.getElementById('app');
   if (!app || !model) {
     return;
   }
   if (!app.childElementCount) {
-    app.innerHTML = `<div id="panels"><div id="reviews"></div><div id="my-prs"></div></div>
+    app.innerHTML = `<div id="base-branch"></div><div id="panels"><div id="reviews"></div><div id="my-prs"></div></div>
       <div class="toolbar">
         <div class="list-head"><h2 class="list-title">My Work Items</h2><span id="list-tools" class="list-tools"></span></div>
         <div class="search-row">
@@ -2305,6 +2330,7 @@ function render(): void {
   );
   list.innerHTML = renderList(model);
   (document.getElementById('list-tools') as HTMLElement).innerHTML = renderListTools(model);
+  (document.getElementById('base-branch') as HTMLElement).innerHTML = renderBaseBranchAlarm(model);
   (document.getElementById('reviews') as HTMLElement).innerHTML = renderReviews(model);
   (document.getElementById('my-prs') as HTMLElement).innerHTML = renderMyPullRequests(model);
   sizeReviewBars();
@@ -2622,6 +2648,8 @@ document.addEventListener('click', (event) => {
     post({ type: action, kind: kind as CheckoutKind, id: Number(id), branch });
   } else if (action === 'refresh') {
     post({ type: 'refresh' });
+  } else if (action === 'showBaseBranchAlert') {
+    post({ type: 'showBaseBranchAlert' });
   } else if (action === 'toggleIteration' && path !== undefined) {
     if (!collapsedIterations.delete(path)) {
       collapsedIterations.add(path);

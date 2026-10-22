@@ -49,6 +49,11 @@ export function settings() {
     showInReviewState: config.get<boolean>('workItems.showInReviewState', true),
     /** Hours back to look for the manual and post-merge runs (Rules STATUSBAR-CI-6, STATUSBAR-CI-8); 0: off */
     branchRunsHours: Math.max(0, config.get<number>('pipelines.branchRunsHours', 24)),
+    /** Rules BASE-CI-*: the alarm when the CI of the base branch is red */
+    baseBranchAlert: {
+      enabled: config.get<boolean>('pipelines.baseBranchAlert', true),
+      ignoredPipelines: config.get<string[]>('pipelines.baseBranchIgnoredPipelines', []),
+    },
     dependencies: {
       completedStates: config.get<string[]>('dependencies.completedStates', DEFAULT_COMPLETED_STATES),
     },
@@ -113,6 +118,11 @@ export function funEnabled(): boolean {
 export function funSoundsEnabled(): boolean {
   const config = vscode.workspace.getConfiguration(SECTION);
   return config.get<boolean>('fun.enabled', false) && config.get<boolean>('fun.sounds', false);
+}
+
+/** totalflowx.pipelines.baseBranchAlarmSound: the alarm sound when the base branch breaks. Not a fun feature: on by default */
+export function baseBranchAlarmSoundEnabled(): boolean {
+  return vscode.workspace.getConfiguration(SECTION).get<boolean>('pipelines.baseBranchAlarmSound', true);
 }
 
 /** Coverage levels: below `minimum` is low, from `target` is good, from `excellent` is excellent */

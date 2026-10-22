@@ -1,10 +1,10 @@
 /**
- * The short sounds of totalflowx.fun.sounds, as notes the sidebar webview synthesizes with the Web Audio API: no audio
+ * The short sounds of totalflowx.fun.sounds (and the alarm of totalflowx.pipelines.baseBranchAlarmSound), as notes the sidebar webview synthesizes with the Web Audio API: no audio
  * file, no change to the CSP. Pure, no "vscode" import (the webview imports it too)
  */
 import type { GreenStreakChange } from './greenStreak';
 
-export type SoundId = 'merged' | 'record' | 'streakBroken';
+export type SoundId = 'alarm' | 'merged' | 'record' | 'streakBroken';
 
 export interface Note {
   /** Hz */
@@ -13,7 +13,7 @@ export interface Note {
   start: number;
   /** Seconds until it has faded out */
   duration: number;
-  wave: 'sine' | 'triangle';
+  wave: 'sine' | 'square' | 'triangle';
 }
 
 /** Peak gain of a note: quiet on purpose, it plays at work */
@@ -27,8 +27,22 @@ const E6 = 1318.51;
 const B6 = 1975.53;
 const G3 = 196;
 const D3 = 146.83;
+const A5 = 880;
+const SIREN_CYCLES = 3;
+const SIREN_STEP = 0.3;
+
+/** Rule BASE-CI-9: a two-tone siren (square waves, harsh on purpose): the base branch is broken */
+function siren(): Note[] {
+  return Array.from({ length: SIREN_CYCLES * 2 }, (_, index) => ({
+    frequency: index % 2 ? E5 : A5,
+    start: index * SIREN_STEP,
+    duration: SIREN_STEP,
+    wave: 'square' as const,
+  }));
+}
 
 export const SOUNDS: Record<SoundId, Note[]> = {
+  alarm: siren(),
   /** A rising arpeggio, played with the confetti */
   merged: [
     { frequency: C5, start: 0, duration: 0.25, wave: 'triangle' },

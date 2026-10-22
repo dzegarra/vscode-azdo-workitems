@@ -193,6 +193,11 @@
         "category": "Totalflow X"
       },
       {
+        "command": "totalflowx.showBaseBranchAlert",
+        "title": "Show What Broke the Base Branch",
+        "category": "Totalflow X"
+      },
+      {
         "command": "totalflowx.checkout",
         "title": "Checkout Work Item Branch",
         "category": "Totalflow X"
@@ -1003,6 +1008,28 @@
             "maximum": 100,
             "description": "Coverage (%) from which a CI run is celebrated (gold, with a trophy).",
             "order": 5
+          },
+          "totalflowx.pipelines.baseBranchAlert": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Raise an alarm when the CI of the base branch (`#totalflowx.branches.baseBranch#`, `develop`) is red: a red status bar item until it is green again, a modal dialog once per break, a banner at the top of the sidebar and a row in the Summary.",
+            "order": 6
+          },
+          "totalflowx.pipelines.baseBranchIgnoredPipelines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "description": "Pipelines whose runs on the base branch never raise the alarm (names, case is ignored). Pipelines without a run on the base branch for 14 days are ignored anyway.",
+            "order": 7
+          },
+          "totalflowx.pipelines.baseBranchAlarmSound": {
+            "type": "boolean",
+            "default": true,
+            "scope": "application",
+            "description": "Play a siren when the base branch breaks (only while the sidebar is open and visible). Independent from the fun sounds.",
+            "order": 8
           }
         }
       },

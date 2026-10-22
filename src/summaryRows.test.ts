@@ -47,6 +47,24 @@ describe('summaryRows', () => {
     ]);
   });
 
+  it('puts a broken base branch first, with its pipelines', () => {
+    const rows = summaryRows({
+      ...empty,
+      workItemsWithAlerts: 1,
+      baseBranch: { branch: 'develop', brokenPipelines: ['Lint', 'User-Interface-CI'] },
+    });
+    expect(rows.map((row) => row.id)).toEqual(['baseBranch', 'alerts']);
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        label: 'develop is broken',
+        description: 'Lint, User-Interface-CI',
+        icon: 'flame',
+        color: 'errorForeground',
+      })
+    );
+    expect(summaryRows({ ...empty, baseBranch: { branch: 'develop', brokenPipelines: [] } })[0].id).toBe('nothing');
+  });
+
   it('describes the late reviews (required ones only)', () => {
     const [row] = summaryRows({
       ...empty,
@@ -90,6 +108,16 @@ describe('summaryBadge', () => {
       value: 3,
       tooltip: '2 work items need attention, 1 pull request is waiting for your review',
     });
+  });
+
+  it('counts a broken base branch once, first', () => {
+    expect(
+      summaryBadge({
+        workItemsWithAlerts: 1,
+        reviews: [],
+        baseBranch: { branch: 'develop', brokenPipelines: ['A', 'B'] },
+      })
+    ).toEqual({ value: 2, tooltip: 'develop is broken, 1 work item needs attention' });
   });
 
   it('uses the singular and skips the empty reason', () => {

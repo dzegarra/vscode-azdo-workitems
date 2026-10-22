@@ -22,6 +22,7 @@ import type { AttentionEffect } from './attentionEffect';
 import type { HoverStyle } from './hoverStyle';
 import type { TaskCountStyle } from './taskCountStyle';
 import type { SoundId } from './sounds';
+import type { BaseBranchBanner } from './baseBranchHealth';
 import type { SprintCountdown } from './sprintCountdown';
 import type { WorkingOnAnimation, WorkingOnLevel } from './workingOn';
 
@@ -196,6 +197,8 @@ export interface ViewModel {
   tasksCountStyle: TaskCountStyle;
   coverage: CoverageViewModel;
   workingOn: WorkingOnViewModel;
+  /** Rule BASE-CI-8: the CI of the base branch is red (undefined: green, off or not known) */
+  baseBranch?: BaseBranchBanner;
 }
 
 /** totalflowx.workingOn.* */
@@ -313,6 +316,8 @@ export type WebviewMessage =
   | { type: 'setPanelLayout'; panel: PanelId; layout: Layout }
   | { type: 'ready' }
   | { type: 'refresh' }
+  /** The banner of a broken base branch: the picker of what broke it */
+  | { type: 'showBaseBranchAlert' }
   | { type: 'setFilter'; filter: FilterModel }
   | { type: 'setLayout'; layout: Layout };
 

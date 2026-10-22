@@ -13,7 +13,8 @@ import { addBuildNotesSkipTag } from './commands/addBuildNotesSkipTag';
 import { retargetPullRequest } from './commands/retargetPullRequest';
 import { createPullRequest } from './commands/createPullRequest';
 import { deleteBranch } from './commands/deleteBranch';
-import { funEnabled, funSoundsEnabled, resolveContext, SECTION, settings } from './config';
+import { baseBranchAlarmSoundEnabled, funEnabled, funSoundsEnabled, resolveContext, SECTION, settings } from './config';
+import { BaseBranchAlert } from './baseBranchAlert';
 import { getGitApi, pickRepository, Repository } from './git';
 import { resolveWorkItemEntry } from './commands/pickWorkItem';
 import { fillIntegrationBuild } from './commands/integrationBuild';
@@ -124,6 +125,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     view.celebrate(confetti, funSoundsEnabled() ? sound : undefined);
   const pipelineWatcher = new PipelineWatcher(store, myPullRequests, coverageRecords, funJournal, (sound) =>
     celebrate(false, sound)
+  );
+  // Rule BASE-CI-9: the alarm has its own setting: it is not a fun feature
+  const baseBranchAlert = new BaseBranchAlert(context.globalState, store, myPullRequests, () =>
+    view.celebrate(false, baseBranchAlarmSoundEnabled() ? 'alarm' : undefined)
   );
   const notifier = new PullRequestNotifier(context.globalState, store, funJournal, () => celebrate(true, 'merged'));
   const sprintRecap = new SprintRecapPanel(context.extensionUri, store, funJournal);
@@ -257,6 +262,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     dependencyMap,
     pipelineWatcher,
     pipelineStatusBar,
+    baseBranchAlert,
     currentWorkItemStatusBar,
     reviewRequests,
     reviewStatusBar,
@@ -336,9 +342,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         dependencyMap.repost();
       }
       // Filters and the layout are applied by the view; other settings need to reload the work items
-      const onlyFilters = ['teams', 'organization', 'project', 'repository', 'remote', 'alerts'].every(
-        (key) => !event.affectsConfiguration(`${SECTION}.${key}`)
-      );
+      const onlyFilters = [
+        'teams',
+        'organization',
+        'project',
+        'repository',
+        'remote',
+        'alerts',
+        'branches.baseBranch',
+        'pipelines.baseBranchAlert',
+        'pipelines.baseBranchIgnoredPipelines',
+      ].every((key) => !event.affectsConfiguration(`${SECTION}.${key}`));
       if (onlyFilters) {
         view.post();
       } else {

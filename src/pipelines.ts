@@ -17,6 +17,8 @@ export interface BuildRun {
   reason?: string;
   /** "ci.message" of the runs queued by a push: the commit message, "Merged PR 13837: …" after a merge */
   triggerInfo?: Record<string, string>;
+  /** Who the run is for: whoever completed the PR for a run queued by its merge */
+  requestedFor?: { displayName: string };
 }
 
 export interface FailedTest {
@@ -88,7 +90,7 @@ export function shortBranchName(refName: string): string {
   return refName.startsWith(HEADS_PREFIX) ? refName.slice(HEADS_PREFIX.length) : refName;
 }
 
-function toRunModel(build: BuildRun): RunModel {
+export function toRunModel(build: BuildRun): RunModel {
   return {
     id: build.id,
     pipeline: build.definition.name,

@@ -3869,3 +3869,66 @@ button.task-pill.empty:focus-visible {
 .pred-issue {
   padding-left: 2px;
 }
+
+/*
+ * Rule BASE-CI-8: the base branch is broken. A solid red banner above everything (the status bar's error colours, so
+ * it matches the red item there), pulsing a halo while motion is allowed: it must not be missed
+ */
+.base-branch-alarm {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 var(--gap);
+  padding: 8px 10px;
+  border: 1px solid var(--vscode-statusBarItem-errorBackground, #c72e0f);
+  border-radius: var(--radius);
+  background: var(--vscode-statusBarItem-errorBackground, #c72e0f);
+  color: var(--vscode-statusBarItem-errorForeground, #ffffff);
+  text-align: left;
+  cursor: pointer;
+}
+
+.base-branch-alarm:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.base-branch-alarm .alarm-title {
+  font-weight: 700;
+  font-size: 1.1em;
+}
+
+.base-branch-alarm .alarm-line {
+  margin-top: 4px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.base-branch-alarm .alarm-by,
+.base-branch-alarm .alarm-hint {
+  opacity: 0.9;
+  overflow-wrap: anywhere;
+}
+
+.base-branch-alarm .alarm-hint {
+  margin-top: 4px;
+  font-style: italic;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .base-branch-alarm {
+    animation: base-branch-alarm 1.6s ease-in-out infinite;
+  }
+
+  @keyframes base-branch-alarm {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--vscode-statusBarItem-errorBackground, #c72e0f) 70%, transparent);
+    }
+    50% {
+      box-shadow: 0 0 0 5px color-mix(in srgb, var(--vscode-statusBarItem-errorBackground, #c72e0f) 0%, transparent);
+    }
+  }
+}

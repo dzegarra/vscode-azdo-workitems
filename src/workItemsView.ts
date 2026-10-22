@@ -25,6 +25,8 @@ import {
   WebviewMessage,
 } from './viewModel';
 import type { SoundId } from './sounds';
+import { baseBranchBanner } from './baseBranchHealth';
+import { SHOW_BASE_BRANCH_COMMAND } from './baseBranchAlert';
 import { sprintCountdown } from './sprintCountdown';
 import { runWorkItemAction } from './workItemActions';
 import { WorkItemsStore } from './workItemsStore';
@@ -114,6 +116,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       tasksCountStyle: settings().tasksCountStyle,
       workingOn: workingOnSettings(),
       coverage: this.coverageModel(),
+      baseBranch: baseBranchBanner(this.store.baseBranch, now),
       reviews: {
         status: this.reviews.status,
         error: this.reviews.error,
@@ -226,6 +229,9 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         this.post();
         this.flushReveal();
         await this.store.ensureLoaded();
+        return;
+      case 'showBaseBranchAlert':
+        await vscode.commands.executeCommand(SHOW_BASE_BRANCH_COMMAND);
         return;
       case 'refresh':
         await Promise.all([this.store.refresh(), this.reviews.poll(true), this.myPullRequests.poll()]);

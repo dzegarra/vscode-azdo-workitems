@@ -4,7 +4,8 @@ import { SOUND_VOLUME, SoundId, soundLength, SOUNDS, streakSound } from './sound
 describe('SOUNDS', () => {
   it('are short, quiet and audible', () => {
     for (const id of Object.keys(SOUNDS) as SoundId[]) {
-      expect(soundLength(id)).toBeLessThanOrEqual(1);
+      // The alarm lasts a little longer: it must not be missed
+      expect(soundLength(id)).toBeLessThanOrEqual(id === 'alarm' ? 2 : 1);
       for (const note of SOUNDS[id]) {
         expect(note.frequency).toBeGreaterThan(100);
         expect(note.duration).toBeGreaterThan(0);
@@ -19,6 +20,15 @@ describe('SOUNDS', () => {
     expect(merged).toEqual([...merged].sort((a, b) => a - b));
     const broken = SOUNDS.streakBroken.map((note) => note.frequency);
     expect(broken).toEqual([...broken].sort((a, b) => b - a));
+  });
+});
+
+describe('alarm', () => {
+  it('is a two-tone siren', () => {
+    const tones = SOUNDS.alarm.map((note) => note.frequency);
+    expect(new Set(tones).size).toBe(2);
+    expect(tones.every((tone, index) => index === 0 || tone !== tones[index - 1])).toBe(true);
+    expect(SOUNDS.alarm.every((note) => note.wave === 'square')).toBe(true);
   });
 });
 

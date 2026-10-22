@@ -16,7 +16,7 @@ Brings the Azure DevOps work of the current sprint into VS Code: your Backlog It
 - **[Work item editing](#usage)**: change states, add tasks, and see the full details (description, acceptance criteria, effort, tags, parent, children) in an editor tab.
 - **[Alerts](#alerts)** for the work items that break the team rules (Done with open tasks, missing PR task, blocking tags, empty required fields…), in the cards, the activity bar badge and the status bar. **[Integrated in Build](#integrated-in-build)** can be filled in one click from the last release of the deploy image.
 - **[Dependencies](#dependencies)**: predecessors and successors in the Work Item Details panel, and an interactive map by iteration that highlights the risky ones.
-- **[CI pipelines](#ci-pipelines)**: live state of the runs validating your pull requests, in the cards and the status bar, with a notification when they finish.
+- **[CI pipelines](#ci-pipelines)**: live state of the runs validating your pull requests, in the cards and the status bar, with a notification when they finish. A loud **[alarm when develop is broken](#when-develop-is-broken)**.
 - **[Pull request notifications](#pull-request-notifications)** when your PRs get comments or votes, or are merged.
 - **[Reviews](#pull-requests-waiting-for-my-review)**: the PRs waiting for your review at the top of the sidebar and in the status bar, with the time left before the 24 hours run out, orange when due soon and red when overdue, one-click checkout of their branch, plus notifications, reminders, a daily digest, and notifications when your review comments are answered or resolved.
 - **[Fun](#fun)** (opt-in): confetti when your PRs are merged, your green CI streak, a clean-board badge, a sprint countdown and a sprint wrap-up.
@@ -150,9 +150,9 @@ It can be turned off with `totalflowx.workingOn.showInStatusBar`.
 
 ## Summary view
 
-Below **Assigned to Me** (collapsed by default) the **Summary** view lists what needs your attention, one row per kind and only when there is something: work items that need attention, pull requests waiting for your review (with how many are overdue / due soon), your pull requests with warnings, your pull requests ready to merge, and failed CI runs. Click a row to show the main list. When nothing needs attention it says so.
+Below **Assigned to Me** (collapsed by default) the **Summary** view lists what needs your attention, one row per kind and only when there is something: [develop is broken](#when-develop-is-broken) (first; click it for what broke it), work items that need attention, pull requests waiting for your review (with how many are overdue / due soon), your pull requests with warnings, your pull requests ready to merge, and failed CI runs. Click a row to show the main list. When nothing needs attention it says so.
 
-The Summary view also carries the **badge of the Totalflow X icon** in the activity bar (work items that need attention + pull requests waiting for your review), so the number shows from the moment VS Code starts, without opening the sidebar.
+The Summary view also carries the **badge of the Totalflow X icon** in the activity bar (work items that need attention + pull requests waiting for your review + 1 while develop is broken), so the number shows from the moment VS Code starts, without opening the sidebar.
 
 ## Alerts
 
@@ -225,6 +225,18 @@ Besides your pull requests, the item also follows, from the last 24 hours (`tota
 - **RUNS WITHOUT A PULL REQUEST**: the runs you queued by hand on a branch, by branch.
 
 They have their own sections at the end of the tooltip and count in the item, and you are notified when they finish ("Merge of PR 13837 "Fix login" into develop failed: …", "Run on exp/x passed").
+
+### When develop is broken
+
+The base branch (`totalflowx.branches.baseBranch`, `develop`) must always be green. When the last run of one of its pipelines failed or partially succeeded, whoever's merge broke it, you can't miss it:
+
+- a **red status bar item** on the far left, `🔥 develop broken · PR 13901 · 37m`, which stays until a new run of that pipeline succeeds (a spinner is added while a new run is going; a running, re-run or canceled run does not clear it). Hover it for each broken pipeline and what broke it; click it to open the failing run (or its failed tests), the pull request that broke it or the first run that failed (also **Totalflow X: Show What Broke the Base Branch**);
+- a **modal dialog** once per break: "🔥 develop is broken", or "🔥 Your merge broke develop" when the merge was one of your pull requests, with **Open Run**, **Show Tests**, **Open PR** and **I'm on it**. It is shown once per break, not again after a reload or in a window opened later; the next failures of the same red streak do not show it again, a new break after a green run does;
+- a pulsing **red banner** at the top of the sidebar, with each broken pipeline and the PR that broke it (the first failure after the last green run, not the latest one);
+- the first **row of the Summary view** and **+1 on the activity bar badge**;
+- a **siren** in the sidebar when it breaks, only while the sidebar is open (`totalflowx.pipelines.baseBranchAlarmSound`, on; independent from the fun sounds).
+
+Every pipeline that runs on develop counts (merges, pushes, schedules, manual runs), except the ones listed in `totalflowx.pipelines.baseBranchIgnoredPipelines` and the ones without a run on develop for 14 days. It costs one request a minute with the CI polling. Turn it off with `totalflowx.pipelines.baseBranchAlert`.
 
 ### Why a run failed
 
@@ -399,11 +411,14 @@ Modules and feature names added with **Add new…** are saved to the workspace s
 
 ### CI & Coverage
 
-| Setting                                | Description                                                |
-| -------------------------------------- | ---------------------------------------------------------- |
-| `totalflowx.pipelines.showInStatusBar` | Show the CI runs of your PRs in the status bar (on)        |
-| `totalflowx.pipelines.notifyOnFinish`  | Notify when a CI run of your PRs finishes (on)             |
-| `totalflowx.coverage.*`                | Coverage levels: minimum (60), target (80), excellent (95) |
+| Setting                                           | Description                                                  |
+| ------------------------------------------------- | ------------------------------------------------------------ |
+| `totalflowx.pipelines.showInStatusBar`            | Show the CI runs of your PRs in the status bar (on)          |
+| `totalflowx.pipelines.notifyOnFinish`             | Notify when a CI run of your PRs finishes (on)               |
+| `totalflowx.coverage.*`                           | Coverage levels: minimum (60), target (80), excellent (95)   |
+| `totalflowx.pipelines.baseBranchAlert`            | [Alarm when develop is broken](#when-develop-is-broken) (on) |
+| `totalflowx.pipelines.baseBranchIgnoredPipelines` | Pipelines that never raise that alarm (none)                 |
+| `totalflowx.pipelines.baseBranchAlarmSound`       | Siren when develop breaks, sidebar open only (on)            |
 
 ### Team Rules
 

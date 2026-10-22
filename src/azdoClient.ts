@@ -381,6 +381,18 @@ export class AzdoClient {
     );
   }
 
+  /**
+   * The latest runs of the repository on a branch (any reason: merges, pushes, schedules, manual runs), newest first.
+   * No time window: a branch broken days ago must still show
+   */
+  getBranchBuilds(repositoryId: string, branch: string): Promise<BuildRun[]> {
+    return this.getBuilds(
+      `branchName=${encodeURIComponent(`refs/heads/${branch}`)}&${repositoryFilter(
+        repositoryId
+      )}&$top=${MAX_BRANCH_BUILDS}`
+    );
+  }
+
   /** Test runs published by a build (one per results file) */
   async getBuildTestRuns(buildId: number): Promise<RawTestRun[]> {
     const buildUri = encodeURIComponent(`vstfs:///Build/Build/${buildId}`);
@@ -557,7 +569,7 @@ export class AzdoClient {
     });
   }
 
-  private pullRequestWebUrlByName(repositoryName: string, id: number): string {
+  pullRequestWebUrlByName(repositoryName: string, id: number): string {
     return `${BASE_URL}/${encodeURIComponent(this.organization)}/${encodeURIComponent(
       this.project
     )}/_git/${encodeURIComponent(repositoryName)}/pullrequest/${id}`;
