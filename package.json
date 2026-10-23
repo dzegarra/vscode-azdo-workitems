@@ -847,6 +847,13 @@
             "scope": "application",
             "description": "Show a \"N worktrees to clean up\" row in the Summary view (never in the activity bar badge).",
             "order": 12
+          },
+          "totalflowx.worktrees.showInStatusBar": {
+            "type": "boolean",
+            "default": true,
+            "scope": "application",
+            "description": "Show in the status bar whether this window is the main folder of the repository (the one with the .git directory) or one of its worktrees (highlighted).",
+            "order": 13
           }
         }
       },

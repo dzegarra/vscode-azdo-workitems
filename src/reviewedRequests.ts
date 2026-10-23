@@ -38,6 +38,8 @@ export interface ReviewedRequest {
   url: string;
   repository: string;
   author: string;
+  /** Branch of the PR, without "refs/heads/" */
+  sourceBranch: string;
   /** The vote of the user, never 'none' or 'declined' */
   vote: VoteKind;
   status: 'abandoned' | 'active' | 'completed';
@@ -46,6 +48,12 @@ export interface ReviewedRequest {
   isRequired: boolean;
   /** Only once fetched, for the PRs the user unfolded (see reviewedIdsToFetch) */
   details?: ReviewedDetails;
+  /** Active and in the repository open in VS Code: its branch can be checked out to review it again */
+  canCheckout?: boolean;
+  /** Its branch is the one checked out */
+  isCurrentBranch?: boolean;
+  /** Another worktree has its branch checked out: its folder */
+  worktree?: string;
 }
 
 const VOTES_LISTED: VoteKind[] = ['approved', 'suggestions', 'waiting', 'rejected'];
@@ -59,6 +67,29 @@ function myListedVote(pr: ReviewerPullRequest, myId: string): { vote: VoteKind; 
   }
   const vote = voteKind(me);
   return VOTES_LISTED.includes(vote) ? { vote, isRequired: !!me.isRequired } : undefined;
+}
+
+function branchOf(pr: ReviewerPullRequest): string {
+  return pr.sourceRefName.replace(/^refs\/heads\//, '');
+}
+
+/** What the Checkout / Open worktree buttons of a review need to know of its PR */
+export interface ReviewBranchTarget {
+  id: number;
+  title: string;
+  repository: string;
+  sourceBranch: string;
+}
+
+// Rule REVIEWED-8
+/**
+ * The PR behind the Checkout / Open worktree buttons of a review: the active PRs where the user is a reviewer, waiting
+ * for their vote or already voted (the author pushed fixes and the user reviews again, or opens the worktree of the
+ * review). `pullRequests` is the response of the review poll: active PRs only, so a closed PR is never offered
+ */
+export function reviewBranchTarget(pullRequests: ReviewerPullRequest[], id: number): ReviewBranchTarget | undefined {
+  const pr = pullRequests.find((candidate) => candidate.pullRequestId === id && candidate.status === 'active');
+  return pr && { id, title: pr.title, repository: pr.repository.name, sourceBranch: branchOf(pr) };
 }
 
 // Rule FUN-KARMA-2
@@ -125,6 +156,7 @@ export function toReviewedRequests(
           url: pr.webUrl,
           repository: pr.repository.name,
           author: pr.createdBy.displayName,
+          sourceBranch: branchOf(pr),
           vote: mine.vote,
           status,
           closedAgo: status === 'active' ? undefined : formatAge(now.getTime() - Date.parse(pr.closedDate ?? '')),

@@ -42,6 +42,8 @@ import {
   reviewedIdsToDrop,
   reviewedIdsToFetch,
   reviewedPeriodSetting,
+  reviewBranchTarget,
+  ReviewBranchTarget,
   votedPullRequestIds,
   ReviewedRef,
   ReviewedRequest,
@@ -172,12 +174,15 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
    * `activeReviewed`. (The only other reader of the votes is the fun journal, for the sprint recap: see runPoll)
    */
   reviewed(): ReviewedRequest[] {
+    const local = this.localRepository();
     const { baseBranch } = extensionSettings();
     const { minimumRequiredReviewers } = myPullRequestSettings();
     return this.listedReviewed().map((request) => {
       const data = this.reviewedDetails.get(request.id);
       return {
         ...request,
+        // Rule REVIEWED-8: the branch of a closed PR is not offered (it is usually deleted)
+        ...(request.status === 'active' ? this.branchState(local, request) : {}),
         details:
           data && this.userId
             ? toReviewedDetails(
@@ -288,8 +293,6 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
     const { baseBranch } = extensionSettings();
     const { minimumRequiredReviewers } = myPullRequestSettings();
     return toReviewModels(this.shown().requests, new Date(), reviewSettings()).map((model) => {
-      const canCheckout = !!local && model.repository.toLowerCase() === local.name.toLowerCase();
-      const isCurrentBranch = canCheckout && local.head === model.sourceBranch;
       const data = this.details.get(model.id);
       return {
         ...model,
@@ -305,11 +308,32 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
                 { baseBranch, minimumRequiredReviewers }
               )
             : undefined,
-        canCheckout,
-        isCurrentBranch,
-        worktree: canCheckout && !isCurrentBranch ? this.store.worktreeFor(model.sourceBranch)?.path : undefined,
+        ...this.branchState(local, model),
       };
     });
+  }
+
+  /** Whether the branch of a PR can be checked out in the repository open in VS Code, is the current one, or has a worktree */
+  private branchState(
+    local: { name: string; head?: string } | undefined,
+    pr: { repository: string; sourceBranch: string }
+  ): { canCheckout: boolean; isCurrentBranch: boolean; worktree?: string } {
+    const canCheckout = !!local && pr.repository.toLowerCase() === local.name.toLowerCase();
+    const isCurrentBranch = canCheckout && local.head === pr.sourceBranch;
+    return {
+      canCheckout,
+      isCurrentBranch,
+      worktree: canCheckout && !isCurrentBranch ? this.store.worktreeFor(pr.sourceBranch)?.path : undefined,
+    };
+  }
+
+  /**
+   * The PR behind the Checkout / Open worktree buttons of a review: waiting for the user's vote or already voted, while
+   * it is active (see reviewBranchTarget)
+   */
+  branchTarget(id: number): (ReviewBranchTarget & { canCheckout: boolean }) | undefined {
+    const target = reviewBranchTarget(this.activeReviewed, id);
+    return target && { ...target, canCheckout: this.branchState(this.localRepository(), target).canCheckout };
   }
 
   start(): void {

@@ -258,6 +258,76 @@ export function worktreeDescription(mainWorktreePath: string, worktree: Worktree
   return relative.split(path.sep).join('/');
 }
 
+export interface WindowWorktree {
+  /** `main`: the folder that holds the real .git directory; `worktree`: a linked worktree */
+  kind: 'main' | 'worktree';
+  main: Worktree;
+  current: Worktree;
+  /** The other worktrees of the repository (not the main one, nor this one, nor the ones whose folder is gone) */
+  others: number;
+}
+
+// Rule WORKTREE-WINDOW-1
+/**
+ * Whether the folder open in this window is the main working tree (first entry of `git worktree list`) or a linked
+ * worktree. Undefined when the folder is not in the list, or the main entry is bare
+ */
+export function windowWorktree(worktrees: Worktree[], openFolders: string[]): WindowWorktree | undefined {
+  const main = worktrees.at(0);
+  const current = worktrees.find(
+    (worktree) => !worktree.bare && openFolders.some((folder) => samePath(folder, worktree.path))
+  );
+  if (!main || main.bare || !current) {
+    return undefined;
+  }
+  const others = worktrees.filter(
+    (worktree) => worktree !== main && worktree !== current && !worktree.bare && !worktree.prunable
+  ).length;
+  return { kind: current === main ? 'main' : 'worktree', main, current, others };
+}
+
+export interface WorktreeStatusBarView {
+  text: string;
+  /** Drawn with a background colour: a worktree window must not be mistaken for the main one */
+  highlight: boolean;
+  title: string;
+  lines: string[];
+}
+
+function worktreesCount(count: number, other: boolean): string {
+  const noun = `${other ? 'other ' : ''}worktree${count === 1 ? '' : 's'}`;
+  return count ? `${String(count)} ${noun}` : `No ${noun}`;
+}
+
+/** Text and tooltip of the status bar item that tells the main folder from a worktree */
+export function worktreeStatusBarView({ kind, main, current, others }: WindowWorktree): WorktreeStatusBarView {
+  const repository = path.basename(path.resolve(main.path));
+  if (kind === 'main') {
+    return {
+      text: '$(repo) main',
+      highlight: false,
+      title: `Main folder of ${repository}`,
+      lines: [
+        main.path,
+        'It holds the .git directory of the repository.',
+        worktreesCount(others, false),
+        'Click to show the Worktrees view',
+      ],
+    };
+  }
+  return {
+    text: '$(list-tree) worktree',
+    highlight: true,
+    title: `Worktree of ${repository}`,
+    lines: [
+      worktreeDescription(main.path, current),
+      `Main folder: ${main.path}`,
+      worktreesCount(others, true),
+      'Click to open the main folder in a new window',
+    ],
+  };
+}
+
 /** Detail line of the removal QuickPick: "uncommitted changes", "prunable (folder missing)", "locked" */
 export function worktreeDetail(worktree: Worktree, dirty: boolean): string {
   const parts = [

@@ -51,6 +51,7 @@ import { ReviewStatusBar } from './reviewStatusBar';
 import { SummaryView } from './summaryView';
 import { CLEAN_UP_WORKTREES_COMMAND, REMOVE_WORKTREE_AT_COMMAND, WorktreeTracker } from './worktreeTracker';
 import { rowOf, WorktreesView } from './worktreesView';
+import { WorktreeStatusBar } from './worktreeStatusBar';
 import { FunJournalStore } from './funJournalStore';
 import { SHOW_SPRINT_RECAP_COMMAND, SprintRecapPanel } from './sprintRecapPanel';
 import type { SoundId } from './sounds';
@@ -144,6 +145,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const sprintRecap = new SprintRecapPanel(context.extensionUri, store, funJournal);
   const worktreeTracker = new WorktreeTracker(context.globalState, { store, reviews: reviewRequests, myPullRequests });
   const worktreesView = new WorktreesView(worktreeTracker);
+  const worktreeStatusBar = new WorktreeStatusBar(git, store, worktreeTracker);
   // Native tree view: it exists from the activation, so its badge shows on the activity bar icon from a cold start
   const summary = new SummaryView({
     store,
@@ -179,9 +181,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return { branch, origin: { kind, id } };
       }
       case 'review': {
-        const request = reviewRequests.models().find((r) => r.id === id);
+        const request = reviewRequests.branchTarget(id);
         if (!request) {
-          throw new Error(`PR ${id} is no longer waiting for your review.`);
+          throw new Error(`PR ${id} is no longer active.`);
         }
         return { branch: request.sourceBranch, pullRequest: { id, title: request.title }, origin: { kind, id } };
       }
@@ -287,6 +289,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     summary,
     worktreeTracker,
     worktreesView,
+    worktreeStatusBar,
     reviewRequests.onDidChange(() => view.post()),
     myPullRequests,
     myPullRequestsStatusBar,
@@ -506,9 +509,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 { title: 'Check out the branch of a PR waiting for your review' }
               )
             )?.request
-          : requests.find((r) => r.id === pullRequestId);
+          : reviewRequests.branchTarget(pullRequestId);
       if (pullRequestId !== undefined && !request) {
-        throw new Error(`PR ${pullRequestId} is no longer waiting for your review.`);
+        throw new Error(`PR ${pullRequestId} is no longer active.`);
       }
       if (request) {
         await checkoutPullRequest(git, store, request, 'review');

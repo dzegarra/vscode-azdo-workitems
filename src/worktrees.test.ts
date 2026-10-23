@@ -16,8 +16,10 @@ import {
   samePath,
   serializeSetupMarker,
   stashMessage,
+  windowWorktree,
   Worktree,
   worktreeDescription,
+  worktreeStatusBarView,
   worktreeDetail,
   worktreeLabel,
   worktreePath,
@@ -257,6 +259,52 @@ describe('removalBlocker', () => {
     expect(removalBlocker(LIST, LIST[0], [])).toBe('main');
     expect(removalBlocker(LIST, LIST[1], ['/dev/app.worktrees/feature/a/1-x/'])).toBe('current');
     expect(removalBlocker(LIST, LIST[1], [])).toBeUndefined();
+  });
+});
+
+describe('windowWorktree (Rule WORKTREE-WINDOW-1)', () => {
+  it('tells the main folder, counting the other worktrees', () => {
+    expect(windowWorktree(LIST, [MAIN])).toEqual({ kind: 'main', main: LIST[0], current: LIST[0], others: 3 });
+  });
+
+  it('tells a linked worktree, also through a path written differently', () => {
+    expect(windowWorktree(LIST, ['/somewhere/else', '/dev/app.worktrees/feature/a/1-x/'])).toEqual({
+      kind: 'worktree',
+      main: LIST[0],
+      current: LIST[1],
+      others: 2,
+    });
+  });
+
+  it('does not count the worktrees whose folder is gone', () => {
+    const list = [...LIST, entry('/dev/app.worktrees/gone', { branch: 'gone', prunable: true })];
+    expect(windowWorktree(list, [MAIN])?.others).toBe(3);
+  });
+
+  it('is unknown when the folder is not listed or the main entry is bare', () => {
+    expect(windowWorktree(LIST, ['/elsewhere'])).toBeUndefined();
+    expect(windowWorktree([], [MAIN])).toBeUndefined();
+    const bare = [entry('/dev/app.git', { bare: true }), entry('/dev/app', { branch: 'develop' })];
+    expect(windowWorktree(bare, ['/dev/app'])).toBeUndefined();
+  });
+});
+
+describe('worktreeStatusBarView', () => {
+  it('shows the main folder without highlight', () => {
+    const view = worktreeStatusBarView({ kind: 'main', main: LIST[0], current: LIST[0], others: 1 });
+    expect(view).toMatchObject({ text: '$(repo) main', highlight: false, title: 'Main folder of app' });
+    expect(view.lines).toContain('1 worktree');
+  });
+
+  it('highlights a worktree and names the main folder', () => {
+    const view = worktreeStatusBarView({ kind: 'worktree', main: LIST[0], current: LIST[1], others: 0 });
+    expect(view).toMatchObject({ text: '$(list-tree) worktree', highlight: true, title: 'Worktree of app' });
+    expect(view.lines).toEqual([
+      'app.worktrees/feature/a/1-x',
+      'Main folder: /dev/app',
+      'No other worktrees',
+      'Click to open the main folder in a new window',
+    ]);
   });
 });
 

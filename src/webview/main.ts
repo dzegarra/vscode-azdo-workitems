@@ -1294,8 +1294,10 @@ function renderLinkedWorkItems(workItems: MyPullRequestModel['workItems']): stri
 
 // Rule REVIEW-CARD-5
 /** Most urgent first: the section takes the colour of the first one */
-/** Branch of the PR, to check it out and review it locally */
-function renderReviewBranch(request: ReviewRequestModel): string {
+/** Branch of the PR, to check it out and review it locally (also once reviewed, while the PR is active) */
+function renderReviewBranch(
+  request: Pick<ReviewRequestModel, 'canCheckout' | 'id' | 'isCurrentBranch' | 'sourceBranch' | 'worktree'>
+): string {
   let action = '';
   if (request.isCurrentBranch) {
     action = '<span class="pill tone-current">current</span>';
@@ -1663,6 +1665,7 @@ function renderUnfoldedReviewed(request: ReviewedRequest, author: string): strin
         ? renderReviewDetails({ details })
         : '<p class="muted reviewed-loading" role="status">Loading details…</p>'
     }
+    ${request.status === 'active' ? renderReviewBranch(request) : ''}
   </li>`;
 }
 
@@ -2613,7 +2616,10 @@ function showCheckoutActions(kind: CheckoutKind, id: number, branch: string | un
       return card && workItemActionsRequest(card, branch);
     },
     review: () => {
-      const request = model?.reviews.requests.find((candidate) => candidate.id === id);
+      // Rule REVIEWED-8: a PR already reviewed keeps its branch row while it is active
+      const request =
+        model?.reviews.requests.find((candidate) => candidate.id === id) ??
+        model?.reviews.reviewed.find((candidate) => candidate.id === id);
       return request && pullRequestActionsRequest('review', request);
     },
     myPullRequest: () => {

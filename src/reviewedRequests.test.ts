@@ -6,6 +6,7 @@ import {
   reviewedIdsToDrop,
   reviewedIdsToFetch,
   reviewedPeriodSetting,
+  reviewBranchTarget,
   toReviewedDetails,
   toReviewedRequests,
   votedPullRequestIds,
@@ -34,6 +35,26 @@ function pr(id: number, myVote: number, overrides: Partial<ReviewerPullRequest> 
 }
 
 const ids = (list: { id: number }[]) => list.map((item) => item.id);
+
+describe('reviewBranchTarget', () => {
+  it('finds the branch of an active PR, waiting for the vote or already voted', () => {
+    const list = [pr(1, 0), pr(2, 10)];
+    expect(reviewBranchTarget(list, 1)).toEqual({
+      id: 1,
+      title: 'PR title 1',
+      repository: 'User_Interface',
+      sourceBranch: 'feature/1',
+    });
+    expect(reviewBranchTarget(list, 2)?.sourceBranch).toBe('feature/2');
+    expect(toReviewedRequests(list, ME, NOW, 'active').map(({ sourceBranch }) => sourceBranch)).toEqual(['feature/2']);
+  });
+
+  it('offers nothing for a closed or unknown PR', () => {
+    const list = [pr(1, 10, { status: 'completed', closedDate: ago(1) })];
+    expect(reviewBranchTarget(list, 1)).toBeUndefined();
+    expect(reviewBranchTarget(list, 9)).toBeUndefined();
+  });
+});
 
 describe('toReviewedRequests', () => {
   it('lists nothing while the period is hidden', () => {

@@ -49,6 +49,7 @@ src/deletableBranches.ts   pure: when a branch is offered for deletion (complete
 src/worktreeHygiene.ts     pure: origins of the worktrees, why one is stale / idle / in use, the once-only notification baseline;
                            rows of the Worktrees view and of the cleanup pickers: src/worktreeRows.ts
 src/worktreeTracker.ts     records the origins (store.onDidCreateWorktree), classifies on every change (no request), notifies; view: src/worktreesView.ts
+src/worktreeStatusBar.ts   status bar "main" / "worktree" of this window (pure: windowWorktree, worktreeStatusBarView in src/worktrees.ts)
 src/workItemsStore.ts     work items of the current sprints + branches, PRs, CI runs, alerts, dependencies, worktrees
 src/*Watcher.ts           pollers: reviewRequestsWatcher (PRs to review), myPullRequestsWatcher (my PRs),
                           pipelineWatcher (CI runs, via src/runsPolling.ts), pullRequestNotifier (events on my PRs)
