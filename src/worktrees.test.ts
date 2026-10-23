@@ -13,6 +13,8 @@ import {
   parseWorktreeList,
   removableWorktrees,
   removalBlocker,
+  shortenHome,
+  worktreeFolderTree,
   samePath,
   serializeSetupMarker,
   stashMessage,
@@ -289,22 +291,64 @@ describe('windowWorktree (Rule WORKTREE-WINDOW-1)', () => {
   });
 });
 
+describe('shortenHome', () => {
+  it('writes the home folder as ~', () => {
+    expect(shortenHome('/home/me/ABB/app', '/home/me')).toBe('~/ABB/app');
+    expect(shortenHome('/home/me', '/home/me/')).toBe('~');
+    expect(shortenHome('/opt/app', '/home/me')).toBe('/opt/app');
+    expect(shortenHome('/home/meme/app', '/home/me')).toBe('/home/meme/app');
+    expect(shortenHome('/home/me/app', '')).toBe('/home/me/app');
+  });
+});
+
+describe('worktreeFolderTree', () => {
+  const main = entry('/home/me/ABB/User_Interface', { branch: 'develop' });
+  const nested = entry('/home/me/ABB/User_Interface.worktrees/feature/fui-admin/5641-restart', { branch: 'x' });
+
+  it('shows the main folder alone in the main window', () => {
+    expect(worktreeFolderTree(main, main, '/home/me')).toEqual(['~/ABB/', '└─ User_Interface  ◀ this window (.git)']);
+  });
+
+  it('shows one folder per line down to the worktree', () => {
+    expect(worktreeFolderTree(main, nested, '/home/me')).toEqual([
+      '~/ABB/',
+      '├─ User_Interface  main folder (.git)',
+      '└─ User_Interface.worktrees/',
+      '   └─ feature/',
+      '      └─ fui-admin/',
+      '         └─ 5641-restart  ◀ this window',
+    ]);
+  });
+
+  it('keeps full paths outside the home folder', () => {
+    expect(worktreeFolderTree(main, main, '/root')).toEqual([
+      '/home/me/ABB/',
+      '└─ User_Interface  ◀ this window (.git)',
+    ]);
+  });
+
+  it('gives a worktree outside the parent of the main folder its own root', () => {
+    expect(worktreeFolderTree(main, entry('/tmp/wt/x', { branch: 'x' }), '/home/me')).toEqual([
+      '/tmp/wt/',
+      '└─ x  ◀ this window',
+      'Main folder: ~/ABB/User_Interface',
+    ]);
+  });
+});
+
 describe('worktreeStatusBarView', () => {
   it('shows the main folder without highlight', () => {
-    const view = worktreeStatusBarView({ kind: 'main', main: LIST[0], current: LIST[0], others: 1 });
+    const view = worktreeStatusBarView({ kind: 'main', main: LIST[0], current: LIST[0], others: 1 }, '');
     expect(view).toMatchObject({ text: '$(repo) main', highlight: false, title: 'Main folder of app' });
+    expect(view.tree).toEqual(['/dev/', '└─ app  ◀ this window (.git)']);
     expect(view.lines).toContain('1 worktree');
   });
 
-  it('highlights a worktree and names the main folder', () => {
-    const view = worktreeStatusBarView({ kind: 'worktree', main: LIST[0], current: LIST[1], others: 0 });
+  it('highlights a worktree, with the folder tree', () => {
+    const view = worktreeStatusBarView({ kind: 'worktree', main: LIST[0], current: LIST[1], others: 0 }, '');
     expect(view).toMatchObject({ text: '$(list-tree) worktree', highlight: true, title: 'Worktree of app' });
-    expect(view.lines).toEqual([
-      'app.worktrees/feature/a/1-x',
-      'Main folder: /dev/app',
-      'No other worktrees',
-      'Click to open the main folder in a new window',
-    ]);
+    expect(view.tree.at(-1)).toBe('         └─ 1-x  ◀ this window');
+    expect(view.lines).toEqual(['No other worktrees', 'Click to open the main folder in a new window']);
   });
 });
 

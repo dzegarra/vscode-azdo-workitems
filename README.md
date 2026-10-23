@@ -126,7 +126,7 @@ Every **Checkout** (work items, PRs to review, My Pull Requests, details) can op
 - **Remove Worktrees…** (view menus or command palette) lists all the worktrees of the repository, the [removable ones](#leftover-worktrees) first, to remove several at once. Removing a worktree keeps its branch; a worktree with uncommitted changes is only removed after confirming that they will be lost, and locked ones are skipped. Close the VS Code window of a worktree before removing it.
 - **Delete branch** also removes the worktree of the branch (asking first when it has uncommitted changes).
 
-- **Main folder or worktree** in the status bar: `$(repo) main` in the original folder (the one with the `.git` directory; click it to show the Worktrees view), `$(list-tree) worktree` with a highlighted background in a worktree (hover it for its folder and the main one; click it to open the main folder in a new window). It reads local git only (`totalflowx.worktrees.showInStatusBar`, on by default).
+- **Main folder or worktree** in the status bar: `$(repo) main` in the original folder (the one with the `.git` directory; click it to show the Worktrees view), `$(list-tree) worktree` with a highlighted background in a worktree (hover it for a tree of the folders from the main one down to the worktree, `~` for your home folder; click it to open the main folder in a new window). It reads local git only (`totalflowx.worktrees.showInStatusBar`, on by default).
 
 `totalflowx.checkout.mode` sets what **Checkout** does: `ask` (default), `branch` (always in place) or `worktree` (always in a worktree).
 

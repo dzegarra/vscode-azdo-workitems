@@ -1,3 +1,4 @@
+import { homedir } from 'node:os';
 import * as vscode from 'vscode';
 import { SECTION } from './config';
 import { GitAPI } from './git';
@@ -62,7 +63,7 @@ export class WorktreeStatusBar implements vscode.Disposable {
       this.item.hide();
       return;
     }
-    const view = worktreeStatusBarView(info);
+    const view = worktreeStatusBarView(info, homedir());
     this.item.text = view.text;
     this.item.backgroundColor = view.highlight ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined;
     this.item.color = view.highlight ? new vscode.ThemeColor('statusBarItem.warningForeground') : undefined;
@@ -78,8 +79,11 @@ export class WorktreeStatusBar implements vscode.Disposable {
     tooltip.appendMarkdown('**');
     tooltip.appendText(view.title);
     tooltip.appendMarkdown('**');
-    for (const line of view.lines) {
-      tooltip.appendMarkdown('  \n');
+    tooltip.appendCodeblock(view.tree.join('\n'), 'text');
+    for (const [index, line] of view.lines.entries()) {
+      if (index) {
+        tooltip.appendMarkdown('  \n');
+      }
       tooltip.appendText(line);
     }
     this.item.tooltip = tooltip;

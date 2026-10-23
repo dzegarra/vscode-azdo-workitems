@@ -291,7 +291,59 @@ export interface WorktreeStatusBarView {
   /** Drawn with a background colour: a worktree window must not be mistaken for the main one */
   highlight: boolean;
   title: string;
+  /** Lines of the folder tree, from the parent of the main folder down to this window's folder (monospace) */
+  tree: string[];
   lines: string[];
+}
+
+/** "~/…" when the folder is inside the home folder, else the folder unchanged */
+export function shortenHome(folder: string, home: string): string {
+  if (!home) {
+    return folder;
+  }
+  const relative = path.relative(path.resolve(home), path.resolve(folder));
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    return folder;
+  }
+  return relative ? `~/${relative.split(path.sep).join('/')}` : '~';
+}
+
+const THIS_WINDOW = '  ◀ this window';
+
+function folderLine(folder: string, home: string): string {
+  const shown = shortenHome(folder, home);
+  return shown.endsWith('/') ? shown : `${shown}/`;
+}
+
+/**
+ * The folders from the parent of the main folder down to this window's one, one per line, so that long worktree
+ * paths are readable and their depth shows. A worktree outside that parent (made by hand) gets its own root and the
+ * main folder on a last line
+ */
+export function worktreeFolderTree(main: Worktree, current: Worktree, home: string): string[] {
+  const mainFolder = path.resolve(main.path);
+  const parent = path.dirname(mainFolder);
+  const name = path.basename(mainFolder);
+  if (samePath(mainFolder, current.path)) {
+    return [folderLine(parent, home), `└─ ${name}${THIS_WINDOW} (.git)`];
+  }
+  const relative = path.relative(parent, path.resolve(current.path));
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    const folder = path.resolve(current.path);
+    return [
+      folderLine(path.dirname(folder), home),
+      `└─ ${path.basename(folder)}${THIS_WINDOW}`,
+      `Main folder: ${shortenHome(mainFolder, home)}`,
+    ];
+  }
+  const segments = relative.split(path.sep);
+  return [
+    folderLine(parent, home),
+    `├─ ${name}  main folder (.git)`,
+    ...segments.map(
+      (segment, index) => `${'   '.repeat(index)}└─ ${segment}${index === segments.length - 1 ? THIS_WINDOW : '/'}`
+    ),
+  ];
 }
 
 function worktreesCount(count: number, other: boolean): string {
@@ -300,15 +352,19 @@ function worktreesCount(count: number, other: boolean): string {
 }
 
 /** Text and tooltip of the status bar item that tells the main folder from a worktree */
-export function worktreeStatusBarView({ kind, main, current, others }: WindowWorktree): WorktreeStatusBarView {
+export function worktreeStatusBarView(
+  { kind, main, current, others }: WindowWorktree,
+  home: string
+): WorktreeStatusBarView {
+  const tree = worktreeFolderTree(main, current, home);
   const repository = path.basename(path.resolve(main.path));
   if (kind === 'main') {
     return {
       text: '$(repo) main',
       highlight: false,
       title: `Main folder of ${repository}`,
+      tree,
       lines: [
-        main.path,
         'It holds the .git directory of the repository.',
         worktreesCount(others, false),
         'Click to show the Worktrees view',
@@ -319,12 +375,8 @@ export function worktreeStatusBarView({ kind, main, current, others }: WindowWor
     text: '$(list-tree) worktree',
     highlight: true,
     title: `Worktree of ${repository}`,
-    lines: [
-      worktreeDescription(main.path, current),
-      `Main folder: ${main.path}`,
-      worktreesCount(others, true),
-      'Click to open the main folder in a new window',
-    ],
+    tree,
+    lines: [worktreesCount(others, true), 'Click to open the main folder in a new window'],
   };
 }
 
