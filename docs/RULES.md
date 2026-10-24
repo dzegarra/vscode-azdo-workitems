@@ -22,7 +22,7 @@ The exact rules that decide **which states are shown** and **which options and a
 6. [Tasks](#6-tasks)
 7. [Flows](#7-flows)
 8. [Alerts](#8-alerts-team-rules-of-the-work-items)
-9. [Working on, signals, filters, sorting, dependencies, summary](#9-working-on-signals-filters-sorting-dependencies-summary) (and the fun features: [FUN](#fun-the-fun-features-totalflowxfunenabled-off-by-default); the redesign: [TRACK](#track-the-track-of-a-work-item-trackts-redesign), [NOW](#now-the-needs-you-queue-nowqueuets-redesign), [TABS](#tabs-the-tabs-of-the-sidebar-sidebartabsts-redesign), [SPRINT](#sprint-the-sprint-strip-above-the-tabs-sprintcountdowntssprintprogress-redesign))
+9. [Working on, signals, filters, sorting, dependencies, summary](#9-working-on-signals-filters-sorting-dependencies-summary) (and the fun features: [FUN](#fun-the-fun-features-totalflowxfunenabled-off-by-default); the redesign: [TRACK](#track-the-track-of-a-work-item-trackts-redesign), [NOW](#now-the-needs-you-queue-nowqueuets-redesign), [TABS](#tabs-the-tabs-of-the-sidebar-sidebartabsts-redesign), [SPRINT](#sprint-the-sprint-strip-above-the-tabs-sprintcountdowntssprintprogress-redesign), [LOOK](#look-the-look-of-the-webviews-lookts-redesign))
 10. [Thresholds and settings](#10-thresholds-and-settings)
 11. [Diagrams](#11-diagrams)
 12. [Open questions / known gaps](#12-open-questions--known-gaps)
@@ -942,6 +942,12 @@ Always shown (not a fun feature), for the sprint with both dates that ends first
 | SPRINT-1 | Sprint with start and finish dates, not over | One segment per working day (`reviews.workingDays`), first and last included; the days before today filled, today half | sprintCountdown.ts:sprintProgress | sprintCountdown.test.ts › counts the working days of the sprint…        |
 | SPRINT-2 | Text                                         | "N days left" (working days, today and the last day included); "Last day" on the last day                              | sprintCountdown.ts:sprintProgress | sprintCountdown.test.ts › says how many days are left, and the last day |
 | SPRINT-3 | 2 working days left or fewer                 | The text is highlighted                                                                                                | sprintCountdown.ts:sprintProgress | same                                                                    |
+
+### LOOK: the look of the webviews (`look.ts`, redesign)
+
+| ID     | Condition                                                  | Result                                                                                                                                                                             | Code              | Test                                                                        |
+| ------ | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | --------------------------------------------------------------------------- |
+| LOOK-1 | `appearance.look` = `totalflow`, not a high contrast theme | The page gets `look-totalflow`: the design's palette (dark, or light with a light theme) and fonts (bundled, `font-src` of the webview) replace the theme's; otherwise the theme's | look.ts:lookClass | look.test.ts › applies the Totalflow look, never over a high contrast theme |
 
 ## 10. Thresholds and settings
 

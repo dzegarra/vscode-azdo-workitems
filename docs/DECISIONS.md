@@ -148,6 +148,7 @@ The UI is being rebuilt from a design made with all the rules known in advance (
 - **The "Needs you" rows unfold in place with the card the other tabs show**, not a new panel: the buttons and pickers of that card keep working there, and the row stays one line when folded.
 - **The sprint strip is always shown**, not only with the fun features: the days left of the sprint matter to everyone; the emoji countdown stays a fun feature.
 - **Station names in the track are not written under each segment**: six names do not fit a narrow sidebar; the segment tooltips name them and one caption names the station to look at.
+- **The design look is a setting, `appearance.look` (`theme` by default, `totalflow`)**: the user wanted both. It overrides the theme variables on the body, so every component follows without a second stylesheet; its fonts are bundled (`media/fonts`, OFL, latin and latin-ext for the Polish names) since the webview CSP forbids the network; high contrast themes always win, the user chose them to read the screen. The tab counts that need the user are amber in both looks (amber is reserved for "needs you").
 - **Removed with the redesign** (no migration, a single user then): `totalflowx.workItems.layout` (and the Use Compact / Large Layout commands) and `totalflowx.workingOn.section` (the Now tab lists the work items being worked on).
 - **Personal settings that still mean something are kept; purely cosmetic ones the new design replaces are removed**, each one listed here and in the README when it goes.
 

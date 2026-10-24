@@ -58,6 +58,7 @@ import { TASK_COUNT_STYLES, taskCountStyleClass } from '../taskCountStyle';
 import { SOUND_VOLUME, SoundId, SOUNDS } from '../sounds';
 import { splitWorkingOn, WorkingOnLevel, workingOnAnimationClasses, workingOnBadge } from '../workingOn';
 import { nowQueue, type NowItem, type Verb } from '../nowQueue';
+import { lookClass } from '../look';
 import { isSidebarTab, SIDEBAR_TABS, TAB_LABELS, tabCounts, type SidebarTab } from '../sidebarTabs';
 import { currentStation, trackPullRequest, workItemTrack, type Station } from '../track';
 import type { CompletedPeriod } from '../myPullRequests';
@@ -2648,6 +2649,9 @@ function render(): void {
       render();
     });
   }
+  // Rule LOOK-1: the look is a class of the body, so the page background follows it too
+  const look = lookClass(model.look, Array.from(document.body.classList));
+  document.body.classList.toggle('look-totalflow', look === 'look-totalflow');
   // Hover style of the cards and PR tiles, switched by a class (strict CSP: no inline styles)
   for (const style of HOVER_STYLES) {
     app.classList.toggle(hoverStyleClass(style), style === model.hoverStyle);

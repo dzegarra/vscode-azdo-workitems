@@ -4095,8 +4095,9 @@ button.task-pill.empty:focus-visible {
 }
 
 .tab-count.urgent {
-  color: var(--vscode-badge-foreground);
-  background: var(--vscode-badge-background);
+  /* Amber is reserved for "needs you" */
+  color: var(--vscode-sideBar-background);
+  background: var(--needs-you);
   font-weight: 600;
 }
 
@@ -4308,4 +4309,104 @@ button.task-pill.empty:focus-visible {
   .sprint-day {
     border: 1px solid CanvasText;
   }
+}
+
+/* ---------- Totalflow look (totalflowx.appearance.look = totalflow, Rule LOOK-1) ----------
+ * The palette and fonts of the redesign, in a dark and a light variant. They override the theme variables the rest of
+ * the stylesheet reads, so every component follows. High contrast themes keep their own colours
+ */
+body.look-totalflow:not([class*='vscode-high-contrast']) {
+  --vscode-font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  --vscode-sideBar-background: #10141a;
+  --vscode-foreground: #e8ebf1;
+  --vscode-descriptionForeground: #a3adbb;
+  --vscode-disabledForeground: #8390a1;
+  --vscode-widget-border: #262e3a;
+  --vscode-panel-border: #262e3a;
+  --vscode-focusBorder: #5aa2ff;
+  --vscode-panelTitle-activeBorder: #ffb224;
+  --vscode-list-hoverBackground: #1a212c;
+  --vscode-input-background: #161b22;
+  --vscode-input-foreground: #e8ebf1;
+  --vscode-input-border: #262e3a;
+  --vscode-badge-background: #262e3a;
+  --vscode-badge-foreground: #e8ebf1;
+  --vscode-button-background: #5aa2ff;
+  --vscode-button-foreground: #04101f;
+  --vscode-button-hoverBackground: #7db4ff;
+  --vscode-textLink-foreground: #7db4ff;
+  --vscode-charts-blue: #5aa2ff;
+  --vscode-charts-green: #3dd68c;
+  --vscode-charts-red: #ff5f57;
+  --vscode-charts-orange: #ffb224;
+  --vscode-charts-yellow: #e8d44d;
+  --vscode-charts-purple: #b69cff;
+  --vscode-errorForeground: #ff8a84;
+  --vscode-editorWarning-foreground: #ffc266;
+  --card-bg: #161b22;
+  --border: #262e3a;
+  --orange: #ffb224;
+  --waiting: #ffb224;
+  --needs-you: #ffb224;
+  --broken: #ff5f57;
+  --in-flight: #5aa2ff;
+  --passed: #3dd68c;
+  --pending: #262e3a;
+
+  background: var(--vscode-sideBar-background);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+}
+
+body.look-totalflow.vscode-light {
+  --vscode-sideBar-background: #f6f7f9;
+  --vscode-foreground: #12161c;
+  --vscode-descriptionForeground: #4a5463;
+  --vscode-disabledForeground: #5e6878;
+  --vscode-widget-border: #e2e6ec;
+  --vscode-panel-border: #e2e6ec;
+  --vscode-focusBorder: #1f6fe0;
+  --vscode-panelTitle-activeBorder: #b26b00;
+  --vscode-list-hoverBackground: #eef1f5;
+  --vscode-input-background: #ffffff;
+  --vscode-input-foreground: #12161c;
+  --vscode-input-border: #d5dae1;
+  --vscode-badge-background: #e2e6ec;
+  --vscode-badge-foreground: #12161c;
+  --vscode-button-background: #1f6fe0;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #174fa3;
+  --vscode-textLink-foreground: #1f6fe0;
+  --vscode-charts-blue: #1f6fe0;
+  --vscode-charts-green: #12804c;
+  --vscode-charts-red: #c8312a;
+  --vscode-charts-orange: #b26b00;
+  --vscode-charts-yellow: #8a6d00;
+  --vscode-charts-purple: #6e4fd8;
+  --vscode-errorForeground: #a1231d;
+  --vscode-editorWarning-foreground: #8a5200;
+  --card-bg: #ffffff;
+  --border: #e2e6ec;
+  --orange: #b26b00;
+  --waiting: #b26b00;
+  --needs-you: #b26b00;
+  --broken: #c8312a;
+  --in-flight: #1f6fe0;
+  --passed: #12804c;
+  --pending: #e2e6ec;
+}
+
+/* Space Grotesk for the headings and the numbers that matter; IBM Plex Mono for IDs, branches and times */
+body.look-totalflow:not([class*='vscode-high-contrast'])
+  :is(.section-title, .list-title, .sprint-name, .panel-title, .iteration-name, .tab, .tab-count, .verb-chip) {
+  font-family: 'Space Grotesk', 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+body.look-totalflow:not([class*='vscode-high-contrast'])
+  :is(.link.id, code, .sprint-left, .now-detail, .track-caption) {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+body.look-totalflow:not([class*='vscode-high-contrast']) .section-title {
+  letter-spacing: 0.1em;
 }

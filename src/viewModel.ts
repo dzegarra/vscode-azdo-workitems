@@ -21,6 +21,7 @@ import { isClosedState, shownStateOf } from './states';
 import type { PullRequestTone } from './workItemLinks';
 import type { AttentionEffect } from './attentionEffect';
 import type { HoverStyle } from './hoverStyle';
+import type { Look } from './look';
 import type { TaskCountStyle } from './taskCountStyle';
 import type { SoundId } from './sounds';
 import type { BaseBranchBanner } from './baseBranchHealth';
@@ -200,6 +201,8 @@ export interface ViewModel {
   alwaysShowAlerts: boolean;
   /** How the cards and PR tiles react to the pointer (totalflowx.appearance.hoverStyle) */
   hoverStyle: HoverStyle;
+  /** Colours and fonts of the theme or of the design (totalflowx.appearance.look, Rule LOOK-1) */
+  look: Look;
   /** The cards of forgotten work items pulse in orange (totalflowx.appearance.asleepPulse, Rule REMIND-3) */
   asleepPulse: boolean;
   /** Milliseconds before the popovers (task details, coverage, predecessors, PR history) appear on hover (totalflowx.popovers.hoverDelay) */

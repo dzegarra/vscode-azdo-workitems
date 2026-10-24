@@ -131,6 +131,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       staleWorktrees: this.worktrees && worktreeSettings().showInSummary ? this.worktrees.stale().length : 0,
       alwaysShowAlerts: vscode.workspace.getConfiguration(SECTION).get<boolean>('filter.alwaysShowAlerts', false),
       hoverStyle: settings().hoverStyle,
+      look: settings().look,
       asleepPulse: settings().asleepPulse,
       popoverDelay: settings().popoverDelay,
       tasksCountStyle: settings().tasksCountStyle,
@@ -391,8 +392,9 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${
     webview.cspSource
-  }; script-src 'nonce-${nonce}';">
+  }; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="${asset('media', 'fonts.css').toString()}">
   <link rel="stylesheet" href="${asset('media', 'webview.css').toString()}">
   <title>Work Items</title>
 </head>

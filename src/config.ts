@@ -10,6 +10,7 @@ import { DEFAULT_STATE_ORDER } from './states';
 import { parseWorkingDays } from './workingTime';
 import { normalizePopoverDelay } from './popoverDelay';
 import { normalizeHoverStyle } from './hoverStyle';
+import { normalizeLook } from './look';
 import { normalizeTaskCountStyle } from './taskCountStyle';
 import { normalizeWorkingOnAnimation } from './workingOn';
 
@@ -67,6 +68,7 @@ export function settings() {
       suffix: config.get<string>('integrationBuild.suffix', '+'),
     },
     hoverStyle: normalizeHoverStyle(config.get<string>('appearance.hoverStyle', 'border')),
+    look: normalizeLook(config.get<string>('appearance.look', 'theme')),
     asleepPulse: config.get<boolean>('appearance.asleepPulse', true),
     popoverDelay: normalizePopoverDelay(config.get<unknown>('popovers.hoverDelay')),
     tasksCountStyle: normalizeTaskCountStyle(config.get<string>('tasks.countStyle', 'filled')),

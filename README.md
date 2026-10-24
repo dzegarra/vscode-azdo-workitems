@@ -69,6 +69,8 @@ In the **Work** tab every work item is a compact row that unfolds into the full 
 
 Unfolding / folding a compact row (work items and both PR boxes), expanding / collapsing the **Waiting for your review** and **My Pull Requests** boxes, and opening / closing the **Tasks** of a card (one, or all with **Expand / Collapse all tasks**) are animated (a box grows or shrinks, the rest slides); each card morphs from one form to the other in about 0.2 s and the rest of the view slides to its new place. Nothing moves when the system asks for reduced motion.
 
+**Look**: by default the sidebar uses the colours and font of your VS Code theme. Set `totalflowx.appearance.look` to `totalflow` for the palette and fonts of the Totalflow X design (IBM Plex Sans, IBM Plex Mono and Space Grotesk, bundled with the extension under the SIL Open Font License), in a dark or light variant following your theme. High contrast themes always keep their own colours.
+
 Hovering (or focusing with the keyboard) a work item card or a PR tile does not change its background, so the text keeps its contrast: by default the whole border takes the colour of the tile's left bar and a soft shadow lifts the tile (`totalflowx.appearance.hoverStyle`; see the settings table for `tint` and `accent`).
 
 ### Tasks
@@ -472,17 +474,18 @@ Modules and feature names added with **Add new…** are saved to the workspace s
 
 ### Appearance
 
-| Setting                                     | Description                                                                                                                 |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `totalflowx.appearance.asleepPulse`         | The cards of forgotten work items (zZ badge) pulse in orange (on)                                                           |
-| `totalflowx.appearance.hoverStyle`          | Hover of cards and PR tiles: `border` (default), `tint` or `accent`                                                         |
-| `totalflowx.popovers.hoverDelay`            | Delay of the popovers (task card, coverage, predecessors, PR history) on hover (ms, 0-3000, 500)                            |
-| `totalflowx.tasks.countStyle`               | Counts on the Tasks bar of large cards: `filled` (default) or `outlined`                                                    |
-| `totalflowx.workingOn.animation`            | Animation of the card of the work item you are working on (`none`)                                                          |
-| `totalflowx.workingOn.pulseBadge`           | Halo around the "Working on" badge (on)                                                                                     |
-| `totalflowx.myPullRequests.attentionEffect` | Effect of the tiles that need you: `pulse` by default, `none`, `static`, `waves`, `shimmer`, `ripple`, `rainbow`, `breathe` |
-| `totalflowx.fun.enabled`                    | Celebrations, green streak, clean board, sprint countdown and the offer of the Sprint Wrap-up (off)                         |
-| `totalflowx.fun.sounds`                     | Short sounds with the celebrations: merged PR, streak record, broken streak (off; needs `fun.enabled`)                      |
+| Setting                                     | Description                                                                                                                                                                |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `totalflowx.appearance.asleepPulse`         | The cards of forgotten work items (zZ badge) pulse in orange (on)                                                                                                          |
+| `totalflowx.appearance.hoverStyle`          | Hover of cards and PR tiles: `border` (default), `tint` or `accent`                                                                                                        |
+| `totalflowx.appearance.look`                | `theme` (default): the colours and font of your theme; `totalflow`: the palette and fonts of the design (dark or light after your theme; high contrast themes keep theirs) |
+| `totalflowx.popovers.hoverDelay`            | Delay of the popovers (task card, coverage, predecessors, PR history) on hover (ms, 0-3000, 500)                                                                           |
+| `totalflowx.tasks.countStyle`               | Counts on the Tasks bar of large cards: `filled` (default) or `outlined`                                                                                                   |
+| `totalflowx.workingOn.animation`            | Animation of the card of the work item you are working on (`none`)                                                                                                         |
+| `totalflowx.workingOn.pulseBadge`           | Halo around the "Working on" badge (on)                                                                                                                                    |
+| `totalflowx.myPullRequests.attentionEffect` | Effect of the tiles that need you: `pulse` by default, `none`, `static`, `waves`, `shimmer`, `ripple`, `rainbow`, `breathe`                                                |
+| `totalflowx.fun.enabled`                    | Celebrations, green streak, clean board, sprint countdown and the offer of the Sprint Wrap-up (off)                                                                        |
+| `totalflowx.fun.sounds`                     | Short sounds with the celebrations: merged PR, streak record, broken streak (off; needs `fun.enabled`)                                                                     |
 
 ### Advanced
 

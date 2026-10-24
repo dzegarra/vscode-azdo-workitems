@@ -42,6 +42,7 @@ src/requestRecorder.ts    the ONLY place that calls fetch: records every request
 src/requestContext.ts     AsyncLocalStorage "feature" attribution of requests (withFeature)
 docs/RULES.md             decision tables of every rule (IDs referenced by `// Rule <ID>` comments; src/rulesDoc.test.ts)
 src/track.ts               pure (redesign): the six stations of a work item (Branch → PR → CI → Review → Ready to be merged → Done), Rules TRACK-*
+src/look.ts                pure (redesign): totalflowx.appearance.look, theme or Totalflow look (media/fonts.css + media/fonts/, OFL), Rule LOOK-1
 src/sidebarTabs.ts         pure (redesign): the Now / Work / PRs tabs of the sidebar, their counts and the tab a Summary row opens, Rules TABS-*
 src/nowQueue.ts            pure (redesign): the "Needs you" queue under five verbs (review, unblock, fix, ship, clean), Rules NOW-*
 src/pullRequestTasks.ts    pure rules of the PR tasks (reusable tasks, which move on publish / completion, branch of a task row)
@@ -72,7 +73,7 @@ src/workItemDetails.ts    Work Item Details panel (one editor tab per work item)
 src/dependencyMap.ts      dependency map panel; graph/layout in src/dependencyGraph.ts, iteration model in src/schedule.ts
 src/commands/*.ts         user flows (create branch / PR, checkout + worktrees, delete branch, publish, retarget, …); base branch rules: src/baseBranch.ts (pure)
 src/*StatusBar.ts         status bar items (CI runs, reviews, my PRs that need me, current work item); texts/colours are pure: ciStatusText (src/pipelines.ts), CI tooltip (src/ciTooltip.ts), src/myPullRequestsAttention.ts
-media/*.css               styles of the webviews (webview.css shared by the sidebar and the details panel)
+media/*.css               styles of the webviews (webview.css shared by the sidebar and the details panel); fonts.css declares the bundled fonts of the Totalflow look (webviews that use it need `font-src ${webview.cspSource}`)
 ```
 
 - **Pure modules** (no `vscode` import) hold the logic and have a `*.test.ts` next to them: naming, alerts, reviews, PR shaping (`myPullRequests.ts`, `reviewCard.ts`, `prCompactSignals.ts`), timeline, coverage, runs, worktrees, schedule/graph, build notes, branches, working-on, fix links, duplicates… The `vscode`-facing files are thin wrappers. Keep it that way: new logic goes into a pure module with tests.

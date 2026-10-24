@@ -1441,6 +1441,21 @@
         "title": "Appearance",
         "order": 9,
         "properties": {
+          "totalflowx.appearance.look": {
+            "type": "string",
+            "enum": [
+              "theme",
+              "totalflow"
+            ],
+            "enumDescriptions": [
+              "The colours and font of your VS Code theme.",
+              "The palette and fonts of the Totalflow X design (IBM Plex Sans, IBM Plex Mono, Space Grotesk; bundled), in a dark or light variant following your theme. High contrast themes always keep their own colours."
+            ],
+            "default": "theme",
+            "description": "Look of the sidebar and the panels of the extension.",
+            "scope": "application",
+            "order": 0
+          },
           "totalflowx.appearance.hoverStyle": {
             "type": "string",
             "enum": [
