@@ -41,6 +41,8 @@ src/azdoClient.ts         REST client (fetch + bearer token from the VS Code Mic
 src/requestRecorder.ts    the ONLY place that calls fetch: records every request (src/requestStats.ts, src/diagnostics.ts)
 src/requestContext.ts     AsyncLocalStorage "feature" attribution of requests (withFeature)
 docs/RULES.md             decision tables of every rule (IDs referenced by `// Rule <ID>` comments; src/rulesDoc.test.ts)
+src/track.ts               pure (redesign): the six stations of a work item (Branch → PR → CI → Review → Ready to be merged → Done), Rules TRACK-*
+src/nowQueue.ts            pure (redesign): the "Needs you" queue under five verbs (review, unblock, fix, ship, clean), Rules NOW-*
 src/pullRequestTasks.ts    pure rules of the PR tasks (reusable tasks, which move on publish / completion, branch of a task row)
 src/taskMenu.ts            pure: the pill of a task row (branches + PRs) and the sections of the picker behind it
 src/checkoutMenu.ts        pure: items of the picker behind the ... of a Checkout button, and of the branch rows (src/branchMenu.ts)
