@@ -18,6 +18,7 @@ When you use a new endpoint or find that something here is wrong, update this fi
 - Field names: the form label "Integrated in Build" is the API field "Integration Build" (`Microsoft.VSTS.Build.IntegrationBuild`); `src/alerts.ts` resolves names, form labels and reference names.
 - Rich text images are attachments that need the token: the Work Item Details panel downloads them and embeds them as data URIs (only for URLs of the organization).
 - Iteration tree with dates: `GET wit/classificationnodes/Iterations?$depth=…` (cached a few minutes). Paths come as `\Project\Iteration\…`; work items use `Project\…`.
+- States per type (`GET wit/workitemtypes/{type}`, `states` and `transitions`; verified 2026-10-24): **Product Backlog Item** New, Approved (Proposed), Committed (InProgress), Done (Completed), Removed. **Bug** New, Approved, ReOpened (Proposed), Committed, Ready-to-Test (InProgress), Done (Completed), Removed; any state can move to any other, so the "testers only" rules (Done, Bug creation) are team rules, not enforced by the process. Note: Azure DevOps puts Ready-to-Test in the InProgress category while the extension counts it as finished (STATE-2).
 
 ## Pull requests
 

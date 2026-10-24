@@ -33,11 +33,13 @@ export interface NowInput {
   deletableBranches: number;
   /** Worktrees that can be removed (Rules WORKTREE-STALE-*) */
   staleWorktrees: number;
+  /** The base branch is broken (Rules BASE-CI-*): shown above the queue, it counts for everyone */
+  baseBranchBroken?: boolean;
 }
 
 export interface NowQueue {
   items: NowItem[];
-  /** What the "Now" tab counts: every row but the cleanup one (Rule NOW-6) */
+  /** What the "Now" tab counts: every row but the cleanup one, plus 1 while the base branch is broken (Rules NOW-6, NOW-7) */
   count: number;
 }
 
@@ -113,6 +115,7 @@ export function nowQueue(input: NowInput): NowQueue {
     ...shipItems(input.myPullRequests),
     ...cleanItems(input),
   ];
-  // Rule NOW-6
-  return { items, count: items.filter((item) => item.verb !== 'clean').length };
+  // Rules NOW-6, NOW-7: like the badge (SUMMARY-6), a broken base branch counts once
+  const broken = input.baseBranchBroken ? 1 : 0;
+  return { items, count: items.filter((item) => item.verb !== 'clean').length + broken };
 }

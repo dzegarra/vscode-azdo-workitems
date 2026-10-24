@@ -178,6 +178,7 @@ describe('pullRequestWarnings', () => {
       {
         text: 'Auto-complete will not delete the branch (team rule: delete branches after merging)',
         severity: 'warning',
+        concern: 'merge',
       },
     ]);
   });
@@ -194,6 +195,7 @@ describe('pullRequestWarnings', () => {
       {
         text: "Auto-complete shouldn't complete the linked Bug: Only testers have that prerogative.",
         severity: 'error',
+        concern: 'merge',
       },
     ]);
     // The most serious one first
@@ -809,6 +811,7 @@ describe('build notes warning', () => {
     expect(warnings.at(-1)).toEqual({
       text: 'Explain the changes for testers in build-notes/*-notes.md, or tag the PR "no-build-notes"',
       severity: 'warning',
+      concern: 'pullRequest',
       action: 'addSkipTag',
       actionLabel: 'Add tag no-build-notes',
     });
@@ -852,6 +855,7 @@ describe('retargetWarnings', () => {
       {
         text: 'Its base PR 13770 was completed: retarget to develop',
         severity: 'warning',
+        concern: 'pullRequest',
         action: 'retarget',
         actionLabel: 'Retarget to develop',
       },
@@ -984,6 +988,7 @@ describe('merge type of auto-complete (Rule PR-WARN-11)', () => {
       {
         text: 'Auto-complete will merge with "noFastForward" (team rule: squash the PRs into develop)',
         severity: 'warning',
+        concern: 'merge',
       },
     ]);
     expect(pullRequestWarnings(autoComplete('squash'), {}, rules)).toEqual([]);

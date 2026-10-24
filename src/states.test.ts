@@ -115,8 +115,8 @@ describe('derived In review state', () => {
 });
 
 describe('isNotStartedState', () => {
-  it('is true for New, Approved and To Do only', () => {
-    for (const state of ['New', 'Approved', 'To Do']) {
+  it('is true for New, Approved, ReOpened and To Do only', () => {
+    for (const state of ['New', 'Approved', 'ReOpened', 'Reopened', 'To Do']) {
       expect(isNotStartedState(state)).toBe(true);
     }
     for (const state of ['Committed', 'In Progress', 'Done']) {

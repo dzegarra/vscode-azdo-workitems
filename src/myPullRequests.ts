@@ -360,9 +360,18 @@ export function nextStep(
  * A mistake of the auto-complete settings. "error": it breaks a rule that only someone else may act on
  * (completing a Bug is up to the testers); "warning": a team convention
  */
+/**
+ * What a warning is about, for the station of the track it lights (Rules TRACK-3, TRACK-6): the PR itself
+ * (title, description, reviewers, links, build notes, target), its auto-complete settings (the merge), or a
+ * reviewer's feedback (the review)
+ */
+export type WarningConcern = 'feedback' | 'merge' | 'pullRequest';
+
 export interface PullRequestWarning {
   text: string;
   severity: 'error' | 'warning';
+  /** Undefined: about the PR itself */
+  concern?: WarningConcern;
   /** A fix the card offers as a button */
   action?: 'addSkipTag' | 'retarget';
   actionLabel?: string;
@@ -431,6 +440,7 @@ export function retargetWarnings(pr: AuthoredPullRequest, context: RetargetConte
     {
       text: `${reason}: retarget to ${context.baseBranch}`,
       severity: 'warning',
+      concern: 'pullRequest',
       action: 'retarget',
       actionLabel: `Retarget to ${context.baseBranch}`,
     },
@@ -479,11 +489,12 @@ export function ruleWarnings(
   if (extras.workItems && !extras.workItems.some((item) => BACKLOG_TYPES.includes(item.type))) {
     warnings.push('Link the Backlog Item or Bug of this PR');
   }
-  const found = warnings.map((text): PullRequestWarning => ({ text, severity: 'warning' }));
+  const found = warnings.map((text): PullRequestWarning => ({ text, severity: 'warning', concern: 'pullRequest' }));
   if (options.buildNotes && needsBuildNotesWarning(pr, extras.buildNotes, options.buildNotes)) {
     found.push({
       text: buildNotesWarningText(options.buildNotes),
       severity: 'warning',
+      concern: 'pullRequest',
       action: 'addSkipTag',
       actionLabel: `Add tag ${options.buildNotes.skipTag}`,
     });
@@ -510,12 +521,13 @@ export function autoCompleteWarnings(
   const warnings: PullRequestWarning[] = [];
   if (pr.autoCompleteSetBy) {
     if (pr.completionOptions?.transitionWorkItems === true && extras.workItems?.some((item) => item.type === 'Bug')) {
-      warnings.push({ text: BUG_AUTOCOMPLETE_WARNING, severity: 'error' });
+      warnings.push({ text: BUG_AUTOCOMPLETE_WARNING, severity: 'error', concern: 'merge' });
     }
     if (pr.completionOptions?.deleteSourceBranch !== true) {
       warnings.push({
         text: 'Auto-complete will not delete the branch (team rule: delete branches after merging)',
         severity: 'warning',
+        concern: 'merge',
       });
     }
     const strategy = pr.completionOptions?.mergeStrategy;
@@ -523,6 +535,7 @@ export function autoCompleteWarnings(
       warnings.push({
         text: `Auto-complete will merge with "${strategy}" (team rule: squash the PRs into ${baseBranch})`,
         severity: 'warning',
+        concern: 'merge',
       });
     }
   }
@@ -542,7 +555,13 @@ export function feedbackWarnings(pr: AuthoredPullRequest): PullRequestWarning[] 
   const who = (names: string[]) => names.join(', ');
   return [
     ...(rejected.length
-      ? [{ text: `Rejected by ${who(rejected)}: talk to them before going on`, severity: 'error' as const }]
+      ? [
+          {
+            text: `Rejected by ${who(rejected)}: talk to them before going on`,
+            severity: 'error' as const,
+            concern: 'feedback' as const,
+          },
+        ]
       : []),
     ...(waiting.length
       ? [
@@ -551,6 +570,7 @@ export function feedbackWarnings(pr: AuthoredPullRequest): PullRequestWarning[] 
               waiting.length === 1 ? 'is' : 'are'
             } waiting for you: address their comments, then ask for a new review`,
             severity: 'warning' as const,
+            concern: 'feedback' as const,
           },
         ]
       : []),

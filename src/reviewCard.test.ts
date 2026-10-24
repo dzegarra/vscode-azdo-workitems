@@ -266,6 +266,7 @@ describe('toReviewDetails', () => {
     expect(details(request, { workItems: [{ id: 1, type: 'Bug' }] }).autoCompleteNote).toEqual({
       text: BUG_AUTOCOMPLETE_WARNING,
       severity: 'error',
+      concern: 'merge',
     });
     // Without transitioning the work items, or without the Bug, the note is the usual one
     const keepsItems = pr({ autoCompleteSetBy: { id: 'ana' }, completionOptions: { transitionWorkItems: false } });

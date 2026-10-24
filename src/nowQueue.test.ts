@@ -92,6 +92,11 @@ describe('nowQueue', () => {
     expect(queue.items.filter((item) => item.verb === 'ship').map((item) => item.id)).toEqual([1]);
   });
 
+  it('counts a broken base branch once, like the badge', () => {
+    // Rule NOW-7
+    expect(nowQueue(input({ baseBranchBroken: true }))).toEqual({ items: [], count: 1 });
+  });
+
   it('does not count the cleanup row', () => {
     // Rule NOW-6
     expect(nowQueue(input({ staleWorktrees: 1 }))).toMatchObject({ count: 0, items: [{ verb: 'clean' }] });

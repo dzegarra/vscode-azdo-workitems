@@ -7,6 +7,7 @@ export const DEFAULT_STATE_ORDER = [
   'Committed',
   'In Progress',
   'Approved',
+  'ReOpened',
   'New',
   'To Do',
 ];
@@ -80,8 +81,8 @@ export function isClosedState(state: string): boolean {
   return category === 'done' || category === 'removed';
 }
 
-/** States in which work on the item has not started yet */
-const NOT_STARTED_STATES = ['New', 'Approved', 'To Do'];
+/** States in which work on the item has not started yet. ReOpened: a Bug the testers reopened behaves like Approved */
+const NOT_STARTED_STATES = ['New', 'Approved', 'ReOpened', 'To Do'];
 
 // Rule STATE-8
 export function isNotStartedState(state: string): boolean {

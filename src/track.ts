@@ -3,7 +3,7 @@
  * that apply to it. Shared by the sidebar, the details panel, the Track board and the Sprint timeline, so it must
  * not import "vscode"
  */
-import type { MyPullRequestModel } from './myPullRequests';
+import type { MyPullRequestModel, WarningConcern } from './myPullRequests';
 import { worstRunState } from './compactSignals';
 import { isFinishedState, normalizeState, stateCategory } from './states';
 import type { PullRequestModel, WorkItemModel } from './viewModel';
@@ -50,9 +50,17 @@ function branchStation(item: TrackItem, pr: PullRequestModel | undefined): Stati
   return { id: 'branch', label: 'Branch', state: reached ? 'done' : 'pending' };
 }
 
+/** The user's warnings about one concern (PullRequestWarning.concern; undefined is about the PR itself) */
+function warningsAbout(mine: TrackPullRequest | undefined, concern: WarningConcern): number {
+  return (mine?.warnings ?? []).filter((warning) => (warning.concern ?? 'pullRequest') === concern).length;
+}
+
 // Rule TRACK-3
-/** A draft is the active station: its author reviews it before publishing it */
-function pullRequestStation(pr: PullRequestModel | undefined): Station {
+/**
+ * A draft is the active station: its author reviews it before publishing it. The user's published PR that breaks
+ * a team rule about the PR itself (title, description, reviewers, links, build notes, target) is broken
+ */
+function pullRequestStation(pr: PullRequestModel | undefined, mine: TrackPullRequest | undefined): Station {
   const station = { id: 'pullRequest' as const, label: 'Pull request' };
   if (!pr || pr.tone === 'abandoned') {
     return { ...station, state: 'pending' };
@@ -60,7 +68,10 @@ function pullRequestStation(pr: PullRequestModel | undefined): Station {
   if (pr.tone === 'draft') {
     return { ...station, state: 'active', detail: 'draft · self-review' };
   }
-  return { ...station, state: 'done', detail: `PR ${String(pr.id)}` };
+  const broken = mine && !mine.isCompleted ? warningsAbout(mine, 'pullRequest') : 0;
+  return broken
+    ? { ...station, state: 'broken', detail: `${String(broken)} team rule(s) not met` }
+    : { ...station, state: 'done', detail: `PR ${String(pr.id)}` };
 }
 
 const isPublished = (pr: PullRequestModel | undefined): pr is PullRequestModel =>
@@ -118,8 +129,9 @@ function reviewStation(pr: PullRequestModel | undefined, mine: TrackPullRequest 
 
 // Rule TRACK-6
 /**
- * Active once nothing stops the merge (PR-READY): the author completes it, or auto-complete will. A PR with
- * warnings breaks a team rule (PR-EFFECT), so it is never ready
+ * Active once nothing stops the merge (PR-READY): the author completes it, or auto-complete will. Auto-complete
+ * settings that break a team rule (PR-WARN-3, PR-WARN-4, PR-WARN-11) break this station; the other warnings keep
+ * the PR from being ready (PR-EFFECT) and light their own station
  */
 function readyStation(pr: PullRequestModel | undefined, mine: TrackPullRequest | undefined): Station {
   const station = { id: 'ready' as const, label: 'Ready to be merged' };
@@ -129,8 +141,8 @@ function readyStation(pr: PullRequestModel | undefined, mine: TrackPullRequest |
   if (!mine || mine.isDraft || mine.isCompleted) {
     return { ...station, state: 'pending' };
   }
-  if (mine.warnings.length) {
-    return { ...station, state: 'broken', detail: 'team rules not met' };
+  if (warningsAbout(mine, 'merge')) {
+    return { ...station, state: 'broken', detail: 'auto-complete breaks a team rule' };
   }
   if (!mine.readyToMerge) {
     return { ...station, state: 'pending' };
@@ -169,7 +181,7 @@ export function workItemTrack(item: TrackItem, mine?: TrackPullRequest): Station
     // Rule TRACK-8
     return [
       branchStation({ ...item, branches: [] }, undefined),
-      pullRequestStation(undefined),
+      pullRequestStation(undefined, undefined),
       ciStation(undefined),
       reviewStation(undefined, undefined),
       readyStation(undefined, undefined),
@@ -178,7 +190,7 @@ export function workItemTrack(item: TrackItem, mine?: TrackPullRequest): Station
   }
   return [
     branchStation(item, pr),
-    pullRequestStation(pr),
+    pullRequestStation(pr, own),
     ciStation(pr),
     reviewStation(pr, own),
     readyStation(pr, own),

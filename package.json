@@ -636,6 +636,7 @@
               "Committed",
               "In Progress",
               "Approved",
+              "ReOpened",
               "New",
               "To Do"
             ],

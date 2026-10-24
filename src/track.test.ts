@@ -114,14 +114,34 @@ describe('workItemTrack', () => {
       detail: 'complete it',
     });
     expect(workItemTrack(withPr, mine({ readyToMerge: true, autoComplete: true }))[4].state).toBe('active');
-    expect(
-      workItemTrack(
-        withPr,
-        mine({ readyToMerge: true, warnings: [{ text: 'No description', severity: 'warning' }] })
-      )[4].state
-    ).toBe('broken');
+    const merge = {
+      text: 'Auto-complete will not delete the branch',
+      severity: 'warning' as const,
+      concern: 'merge' as const,
+    };
+    expect(workItemTrack(withPr, mine({ warnings: [merge] }))[4].state).toBe('broken');
     // Someone else's PR: what My Pull Requests knows does not apply
     expect(workItemTrack(withPr, mine({ id: 99, readyToMerge: true }))[4].state).toBe('pending');
+  });
+
+  it('lights the station each warning is about', () => {
+    // Rules TRACK-3, TRACK-6
+    const withPr = item({ pullRequests: [pr()] });
+    const title = { text: 'The title does not follow…', severity: 'warning' as const, concern: 'pullRequest' as const };
+    const feedback = { text: 'Jonas is waiting for you', severity: 'warning' as const, concern: 'feedback' as const };
+    expect(states(workItemTrack(withPr, mine({ warnings: [title] })))).toEqual([
+      'done',
+      'broken',
+      'pending',
+      'active',
+      'pending',
+      'pending',
+    ]);
+    // A warning without concern is about the PR itself
+    expect(workItemTrack(withPr, mine({ warnings: [{ text: 'x', severity: 'warning' }] }))[1].state).toBe('broken');
+    // Feedback is the review station's (the tone of the PR), not the PR's nor the merge's
+    expect(states(workItemTrack(withPr, mine({ warnings: [feedback] })))[1]).toBe('done');
+    expect(states(workItemTrack(withPr, mine({ warnings: [feedback] })))[4]).toBe('pending');
   });
 
   it('marks a merged PR as passed and asks to finish the work item', () => {
