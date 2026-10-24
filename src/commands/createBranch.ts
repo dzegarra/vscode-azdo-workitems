@@ -4,7 +4,7 @@ import { pickFromCatalogOrExtra } from '../catalog';
 import { resolveContext, settings } from '../config';
 import { WorkItem } from '../azdoClient';
 import { GitAPI, pickRepository, Repository } from '../git';
-import { branchTypeFor, buildBranchName, isValidModule, slugify } from '../naming';
+import { branchPrefix, branchTypeFor, buildBranchName, isValidModule, slugify } from '../naming';
 import { stateAfterBranchCreated } from '../states';
 import { stateForNewBranchTask } from '../pullRequestTasks';
 import { WorkItemEntry, WorkItemsStore } from '../workItemsStore';
@@ -84,7 +84,7 @@ async function askBranchName(
     return undefined;
   }
   const slug = await vscode.window.showInputBox({
-    title: `${type}/${picked.module}/${workItem.id}-<name>`,
+    title: `${branchPrefix(type, picked.module)}/${workItem.id}-<name>`,
     prompt: 'Short branch name',
     value: slugify(suggestedName),
     ignoreFocusOut: true,

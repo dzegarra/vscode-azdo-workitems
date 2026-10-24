@@ -1,5 +1,5 @@
 /** What the compact work item rows show under the title. Pure, so no "vscode" import */
-import { completionIssueCount, completionIssueLines } from './completionIssues';
+import { completionIssueCount, completionTitle } from './completionIssues';
 import { duplicateLinksTooltip } from './duplicates';
 import { fixesBugsText, fixLinksTooltip } from './fixLinks';
 import { pullRequestTooltip } from './pullRequestModel';
@@ -84,7 +84,7 @@ function completionSignal(item: WorkItemModel): CompactSignal | undefined {
     ? {
         kind: 'completion',
         label: String(count),
-        title: `Cannot be completed yet: ${completionIssueLines(item).join(' · ')}`,
+        title: completionTitle(item),
         tone: 'caution',
       }
     : undefined;

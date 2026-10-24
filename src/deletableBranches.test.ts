@@ -48,6 +48,18 @@ describe('base branches', () => {
     expect(isProtectedBranch('develop')).toBe(true);
     expect(isProtectedBranch('release/1.2')).toBe(true);
     expect(isProtectedBranch('feature/x/1-a')).toBe(false);
+  });
+
+  it('include the develop-*, release-* and hotfix-* branches of the team convention, lowercase only', () => {
+    for (const name of ['develop-bug-test', 'release-1', 'release-1.0', 'hotfix-1.1']) {
+      expect(isProtectedBranch(name)).toBe(true);
+    }
+    for (const name of ['Hotfix-1.1', 'feature/module/1-release-notes', 'developer', 'devops/1-develop-scripts']) {
+      expect(isProtectedBranch(name)).toBe(false);
+    }
+  });
+
+  it('are never merged even as the source of a completed PR', () => {
     expect(isBranchMerged('develop', [pr('develop', 'completed')], REPO)).toBe(false);
   });
 });

@@ -20,6 +20,7 @@ import {
   summarizeCompleted,
 } from './pullRequestPhases';
 import { buildTimeline, formatTimelineDate, publishedAt, Timeline } from './pullRequestTimeline';
+import type { FilesChanged } from './reviewCard';
 import type { ThreadResponse } from './reviewThreads';
 import { PullRequestReviewer, pullRequestStatus, PullRequestTone } from './workItemLinks';
 import { DEFAULT_WORKING_DAYS, workingMsBetween } from './workingTime';
@@ -138,6 +139,10 @@ export interface PullRequestExtras {
   runs: RunModel[];
   /** The build notes rule; undefined while it is not known */
   buildNotes?: BuildNotesStatus;
+  /** Commits of the target branch the source branch does not have yet; undefined when not known */
+  behind?: number;
+  /** Files changed by the PR; undefined when not known */
+  filesChanged?: FilesChanged;
 }
 
 export interface AuthoredPullRequestData {
@@ -437,6 +442,8 @@ const BACKLOG_TYPES = ['Product Backlog Item', 'User Story', 'Bug'];
 export interface WarningOptions {
   /** 0 disables the check of the required reviewers */
   minimumRequiredReviewers: number;
+  /** Team default base, e.g. "develop": the PRs into it are squashed (PR-WARN-11); unchecked when undefined */
+  baseBranch?: string;
   /** The build notes rule; unchecked when undefined */
   buildNotes?: BuildNotesOptions;
 }
@@ -487,11 +494,18 @@ export function ruleWarnings(
 export const BUG_AUTOCOMPLETE_WARNING =
   "Auto-complete shouldn't complete the linked Bug: Only testers have that prerogative.";
 
-// Rules PR-WARN-3, PR-WARN-4
-/** Mistakes of the auto-complete settings: only while auto-complete is set */
+/** Merge type of the PRs into the base branch (DEVELOPMENT_APPROACH §8.2.5): one commit per PR on develop */
+const SQUASH = 'squash';
+
+// Rules PR-WARN-3, PR-WARN-4, PR-WARN-11
+/**
+ * Mistakes of the auto-complete settings: only while auto-complete is set. The merge type is only checked when the
+ * base branch is given and the PR merges into it (the merge types of release PRs are enforced by Azure DevOps)
+ */
 export function autoCompleteWarnings(
   pr: AuthoredPullRequest,
-  extras: Pick<PullRequestExtras, 'workItems'>
+  extras: Pick<PullRequestExtras, 'workItems'>,
+  baseBranch?: string
 ): PullRequestWarning[] {
   const warnings: PullRequestWarning[] = [];
   if (pr.autoCompleteSetBy) {
@@ -501,6 +515,13 @@ export function autoCompleteWarnings(
     if (pr.completionOptions?.deleteSourceBranch !== true) {
       warnings.push({
         text: 'Auto-complete will not delete the branch (team rule: delete branches after merging)',
+        severity: 'warning',
+      });
+    }
+    const strategy = pr.completionOptions?.mergeStrategy;
+    if (baseBranch && stripHeads(pr.targetRefName) === baseBranch && strategy && strategy !== SQUASH) {
+      warnings.push({
+        text: `Auto-complete will merge with "${strategy}" (team rule: squash the PRs into ${baseBranch})`,
         severity: 'warning',
       });
     }
@@ -542,7 +563,11 @@ export function pullRequestWarnings(
   extras: Pick<PullRequestExtras, 'buildNotes' | 'workItems'>,
   options: WarningOptions = DEFAULT_WARNING_OPTIONS
 ): PullRequestWarning[] {
-  return [...feedbackWarnings(pr), ...autoCompleteWarnings(pr, extras), ...ruleWarnings(pr, extras, options)];
+  return [
+    ...feedbackWarnings(pr),
+    ...autoCompleteWarnings(pr, extras, options.baseBranch),
+    ...ruleWarnings(pr, extras, options),
+  ];
 }
 
 /**
@@ -552,7 +577,9 @@ export function pullRequestWarnings(
 export function isReadyToMerge(
   pr: AuthoredPullRequest,
   extras: Pick<PullRequestExtras, 'evaluations'>,
-  warnings: PullRequestWarning[]
+  warnings: PullRequestWarning[],
+  /** Policy types that do not count (e.g. the merge strategy, chosen by whoever completes) */
+  ignoredPolicies: readonly string[] = []
 ): boolean {
   // Rules PR-READY-1..9
   if (
@@ -567,8 +594,28 @@ export function isReadyToMerge(
     return false;
   }
   return extras.evaluations.every(
-    (evaluation) => !evaluation.isBlocking || SATISFIED_STATUSES.includes(evaluation.status)
+    (evaluation) =>
+      !evaluation.isBlocking ||
+      SATISFIED_STATUSES.includes(evaluation.status) ||
+      ignoredPolicies.includes(evaluation.type)
   );
+}
+
+/** Rejected until whoever completes the PR picks a merge type: Complete… picks squash itself */
+const MERGE_STRATEGY_POLICY = 'Require a merge strategy';
+
+// Rule MYPR-ACT-6
+/**
+ * The author can complete the PR from its card: nothing but the merge strategy stops it (that policy stays rejected
+ * until the completion chooses one, so without auto-complete a PR is never Ready to merge), and auto-complete is
+ * not set (Azure DevOps completes it by itself)
+ */
+export function canCompleteFromCard(
+  pr: AuthoredPullRequest,
+  extras: Pick<PullRequestExtras, 'evaluations'>,
+  warnings: PullRequestWarning[]
+): boolean {
+  return !pr.autoCompleteSetBy && isReadyToMerge(pr, extras, warnings, [MERGE_STRATEGY_POLICY]);
 }
 
 /**
@@ -697,6 +744,12 @@ export interface MyPullRequestModel {
   readyToMerge: boolean;
   next?: string;
   nextTone: NextTone;
+  /** Team rules about the size and age of the PR: shown, but they never keep it from being ready (MYPR-CAUTION) */
+  cautions: string[];
+  /** Commits of the target the branch does not have, when some (MYPR-BEHIND-1) */
+  behind?: { count: number; target: string };
+  /** Ready to merge and nothing completes it by itself: the author can complete it from the card (MYPR-ACT-6) */
+  canComplete: boolean;
   /** The PR belongs to the repository open in VS Code: its branch can be checked out */
   canCheckout?: boolean;
   /** Its branch is the one checked out */
@@ -729,6 +782,64 @@ export interface ListOptions {
   workingDays?: readonly number[];
   /** Remote branches of each repository (by lowercase name), when already known: a PR whose target is gone is flagged */
   remoteBranches?: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Working days a published PR may stay open (MYPR-CAUTION-1); 0 or undefined: unchecked */
+  maxOpenDays?: number;
+  /** Files a PR may change (MYPR-CAUTION-2); 0 or undefined: unchecked */
+  maxFilesChanged?: number;
+}
+
+const MS_PER_DAY = HOURS_PER_DAY * MS_PER_HOUR;
+
+// Rules MYPR-CAUTION-1, MYPR-CAUTION-2
+/**
+ * Keep PRs small and branches short-lived (DEVELOPMENT_APPROACH §10): an active, published PR open for more working
+ * days than allowed, or changing more files than allowed. Cautions, not warnings: nothing the author can fix right
+ * away, so they never keep the PR from being ready
+ */
+export function pullRequestCautions(
+  data: AuthoredPullRequestData,
+  now: Date,
+  options: Pick<ListOptions, 'maxOpenDays' | 'maxFilesChanged' | 'workingDays'>
+): string[] {
+  const { pr, extras } = data;
+  if (pr.status !== 'active' || pr.isDraft) {
+    return [];
+  }
+  const cautions: string[] = [];
+  const { maxOpenDays, maxFilesChanged } = options;
+  if (maxOpenDays) {
+    const open = workingMsBetween(
+      new Date(publishedAt(pr, extras.threads)),
+      now,
+      options.workingDays ?? DEFAULT_WORKING_DAYS
+    );
+    const days = Math.floor(open / MS_PER_DAY);
+    if (days > maxOpenDays) {
+      cautions.push(`Open for ${days} working days (team rule: keep PRs short-lived, at most ${maxOpenDays})`);
+    }
+  }
+  const files = extras.filesChanged;
+  if (maxFilesChanged && files && files.count > maxFilesChanged) {
+    cautions.push(
+      `Changes ${files.count}${files.capped ? '+' : ''} files (team rule: keep PRs small, at most ${maxFilesChanged})`
+    );
+  }
+  return cautions;
+}
+
+// Rule MYPR-BEHIND-1
+/** Commits of the target the branch lacks, for an active PR without known conflicts (they already say more) */
+export function behindCount(pr: AuthoredPullRequest, extras: Pick<PullRequestExtras, 'behind'>): number | undefined {
+  return pr.status === 'active' && pr.mergeStatus !== 'conflicts' && extras.behind ? extras.behind : undefined;
+}
+
+function behindOf(
+  pr: AuthoredPullRequest,
+  extras: Pick<PullRequestExtras, 'behind'>,
+  target: string
+): MyPullRequestModel['behind'] {
+  const count = behindCount(pr, extras);
+  return count ? { count, target } : undefined;
 }
 
 // Rule MYPR-LIST-2
@@ -838,10 +949,12 @@ function toModel(
       warnings: [],
       readyToMerge: false,
       nextTone: 'pending',
+      cautions: [],
+      canComplete: false,
     };
   }
   const warnings = [
-    ...pullRequestWarnings(pr, extras, { minimumRequiredReviewers, buildNotes }),
+    ...pullRequestWarnings(pr, extras, { minimumRequiredReviewers, buildNotes, baseBranch }),
     ...retargetWarnings(pr, {
       baseBranch,
       pullRequests: all.map((entry) => entry.pr),
@@ -850,6 +963,7 @@ function toModel(
   ];
   // Rule PR-EFFECT-1
   const next = nextStep(pr, extras, warnings);
+  const readyToMerge = isReadyToMerge(pr, extras, warnings);
   return {
     ...base,
     time: waitingTime({ pr, extras }, now, workingDays),
@@ -859,9 +973,12 @@ function toModel(
     runs: extras.runs,
     autoComplete: !!pr.autoCompleteSetBy,
     warnings,
-    readyToMerge: isReadyToMerge(pr, extras, warnings),
+    readyToMerge,
     next,
     nextTone: nextTone(next, warnings),
+    cautions: pullRequestCautions({ pr, extras }, now, { ...options, workingDays }),
+    behind: behindOf(pr, extras, target),
+    canComplete: canCompleteFromCard(pr, extras, warnings),
   };
 }
 

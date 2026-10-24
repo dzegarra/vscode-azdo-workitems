@@ -24,7 +24,9 @@ export async function checkoutPullRequest(
   request: CheckoutTarget,
   /** "review" or "myPullRequest": remembered with the worktree the checkout may create */
   kind: 'myPullRequest' | 'review',
-  choice?: CheckoutChoice
+  choice?: CheckoutChoice,
+  /** Work items whose Work Item Details panel opens with the branch (a review: REVIEW-AC-1) */
+  showDetails?: number[]
 ): Promise<void> {
   if (!request.canCheckout) {
     throw new Error(`PR ${request.id} belongs to the ${request.repository} repository, which is not open in VS Code.`);
@@ -36,6 +38,7 @@ export async function checkoutPullRequest(
       branch: request.sourceBranch,
       pullRequest: { id: request.id, title: request.title },
       origin: { kind, id: request.id },
+      showDetails,
     },
     choice
   );

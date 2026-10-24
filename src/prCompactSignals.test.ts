@@ -19,6 +19,7 @@ function details(overrides: Partial<ReviewDetails> = {}): ReviewDetails {
     autoComplete: false,
     approvalCompletes: false,
     teamRules: [],
+    toVerify: [],
     ...overrides,
   };
 }
@@ -69,6 +70,8 @@ function mine(overrides: Partial<MyPullRequestModel> = {}): MyPullRequestModel {
     warnings: [],
     readyToMerge: false,
     nextTone: 'pending',
+    cautions: [],
+    canComplete: false,
     ...overrides,
   };
 }

@@ -154,6 +154,21 @@ export async function writeSetupMarker(worktreeRoot: string, marker: SetupMarker
   return file;
 }
 
+/**
+ * Asks the window that opens the worktree to open Work Item Details panels, keeping a pending `npm ci` (the marker of
+ * a worktree just created). Fails silently: the panels are a convenience
+ */
+export async function addDetailsToSetupMarker(worktreeRoot: string, ids: number[]): Promise<void> {
+  try {
+    const file = path.join(await gitDirectory(worktreeRoot), SETUP_MARKER_FILE);
+    const existing = await readFile(file, 'utf8').then(parseSetupMarker, () => undefined);
+    const marker = { npmCi: existing?.npmCi ?? false, createdAt: new Date().toISOString(), openDetails: ids };
+    await writeFile(file, serializeSetupMarker(marker), 'utf8');
+  } catch {
+    // Without the marker the panels are simply not opened
+  }
+}
+
 /** Reads and deletes the marker of a folder, so the setup runs once. Undefined when there is none (or not a git folder) */
 export async function takeSetupMarker(folder: string): Promise<SetupMarker | undefined> {
   let file: string;

@@ -4,6 +4,7 @@
  */
 import type { ActionMenuSection } from './actionMenu';
 import type { WorkItemAlert } from './alerts';
+import type { NotUpdated } from './workItemReminders';
 import { duplicateFilterValue, type DuplicateLink } from './duplicates';
 import type { FixLink } from './fixLinks';
 import { OpenPredecessor, predecessorFilterValue } from './predecessors';
@@ -130,6 +131,10 @@ export interface WorkItemModel {
   blockingTags?: string[];
   /** Display names of the empty fields that keep a Backlog Item from being completed. Empty for closed work items */
   missingFields?: string[];
+  /** Team conventions of a Backlog Item it does not follow (COMPLETE-5, COMPLETE-6). Empty for closed work items */
+  conventions?: string[];
+  /** In progress but not updated for a while (REMIND-1): the "zZ" badge of the title. Not a completion issue */
+  notUpdated?: NotUpdated;
   /** Backlog Items only: the bugs they fix (successors of type Bug). Undefined: not applicable or unknown */
   fixesBugs?: FixLink[];
   /** Bugs only: the Backlog Items that fix them (predecessors). Undefined: not applicable or unknown */
@@ -191,6 +196,8 @@ export interface ViewModel {
   layout: Layout;
   /** How the cards and PR tiles react to the pointer (totalflowx.appearance.hoverStyle) */
   hoverStyle: HoverStyle;
+  /** The cards of forgotten work items pulse in orange (totalflowx.appearance.asleepPulse, Rule REMIND-3) */
+  asleepPulse: boolean;
   /** Milliseconds before the popovers (task details, coverage, predecessors, PR history) appear on hover (totalflowx.popovers.hoverDelay) */
   popoverDelay: number;
   /** How the counts on the bar of the Tasks header look (totalflowx.tasks.countStyle) */
@@ -305,7 +312,13 @@ export type WebviewMessage =
   | { type: 'openReviewRequest' | 'openMyPullRequest'; url: string }
   | { type: 'checkMyPullRequests' }
   | {
-      type: 'addBuildNotesSkipTag' | 'checkoutMyPullRequest' | 'publishMyPullRequest' | 'retargetMyPullRequest';
+      type:
+        | 'addBuildNotesSkipTag'
+        | 'checkoutMyPullRequest'
+        | 'completeMyPullRequest'
+        | 'publishMyPullRequest'
+        | 'restartMyPullRequestMerge'
+        | 'retargetMyPullRequest';
       pullRequestId: number;
     }
   | { type: 'setShowDrafts' | 'setShowOptional'; show: boolean }

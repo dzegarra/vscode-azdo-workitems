@@ -9,6 +9,7 @@ import {
   describeTeamRules,
   myCommentsLine,
   toReviewDetails,
+  workItemsToVerify,
 } from './reviewCard';
 import type { ReviewerPullRequest } from './reviewRequests';
 import type { ThreadResponse } from './reviewThreads';
@@ -314,5 +315,20 @@ describe('toReviewDetails', () => {
       OPTIONS
     );
     expect(result).toMatchObject({ unresolved: 3, filesChangedText: '100+ files changed' });
+  });
+});
+
+describe('workItemsToVerify (Rule REVIEW-CARD-6)', () => {
+  it('lists the Backlog Items and Bugs of the PR, not the tasks, once each', () => {
+    expect(
+      workItemsToVerify([
+        { id: 30, type: 'Bug' },
+        { id: 10, type: 'Product Backlog Item' },
+        { id: 11, type: 'Task' },
+        { id: 12 },
+        { id: 10, type: 'Product Backlog Item' },
+      ])
+    ).toEqual([10, 30]);
+    expect(workItemsToVerify(undefined)).toEqual([]);
   });
 });

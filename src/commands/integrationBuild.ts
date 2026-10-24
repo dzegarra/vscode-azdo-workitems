@@ -9,7 +9,7 @@ import { WorkItemsStore } from '../workItemsStore';
 const STATUS_MESSAGE_MS = 5000;
 
 /** Suggested value: version of the last release of the deploy image + "+". Undefined when it cannot be found */
-async function suggestedValue(store: WorkItemsStore): Promise<{ value?: string; note: string }> {
+export async function suggestedValue(store: WorkItemsStore): Promise<{ value?: string; note: string }> {
   const { feed, packageName, protocolType, suffix } = settings().integrationBuild;
   try {
     const versions = await resolveContext(store.repository()).client.getPackageVersions(

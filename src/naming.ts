@@ -2,6 +2,7 @@
  * Pure helpers implementing the team's naming conventions.
  *
  * Branches:  <type>/<module>/<id>-<slug>        e.g. feature/fui-admin/5641-network-restart-button
+ *            devops/<id>-<slug>                e.g. devops/5642-build-scripts-update (the module is the branch type)
  * PR titles: [<id>,<id>] <Feature Name>: <text>  e.g. [123,554] FUI Administration: Show the network configuration
  */
 
@@ -9,6 +10,9 @@ export const DEFAULT_BRANCH_TYPE = 'feature';
 const MAX_SLUG_LENGTH = 50;
 const MODULE_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const BRANCH_PATTERN = /^(?<type>[a-z]+)\/(?<module>[a-z0-9-]+)\/(?<id>\d+)(?:-(?<slug>.*))?$/;
+/** Modules whose branches are a type of their own, without the `<type>/` folder (DEVELOPMENT_APPROACH §8.1.3) */
+const TOP_LEVEL_MODULES = ['devops'];
+const TOP_LEVEL_PATTERN = new RegExp(`^(?<module>${TOP_LEVEL_MODULES.join('|')})\\/(?<id>\\d+)(?:-(?<slug>.*))?$`);
 
 export interface ParsedBranch {
   type: string;
@@ -42,19 +46,27 @@ export function isValidModule(module: string): boolean {
   return MODULE_PATTERN.test(module);
 }
 
-// Rule FLOW-BRANCH-4
+// Rule FLOW-BRANCH-8
+/** The folders of a branch name before `<id>-`: `<type>/<module>`, or only `devops` for the DevOps module */
+export function branchPrefix(type: string, module: string): string {
+  return TOP_LEVEL_MODULES.includes(module) ? module : `${type}/${module}`;
+}
+
+// Rules FLOW-BRANCH-4, FLOW-BRANCH-8
 export function buildBranchName(type: string, module: string, id: number, slug: string): string {
   const cleanSlug = slugify(slug, Number.MAX_SAFE_INTEGER);
-  return cleanSlug ? `${type}/${module}/${id}-${cleanSlug}` : `${type}/${module}/${id}`;
+  const prefix = branchPrefix(type, module);
+  return cleanSlug ? `${prefix}/${id}-${cleanSlug}` : `${prefix}/${id}`;
 }
 
 export function parseBranchName(branch: string): ParsedBranch | undefined {
-  const groups = BRANCH_PATTERN.exec(branch.replace(/^refs\/heads\//, ''))?.groups;
+  const name = branch.replace(/^refs\/heads\//, '');
+  const groups = BRANCH_PATTERN.exec(name)?.groups ?? TOP_LEVEL_PATTERN.exec(name)?.groups;
   if (!groups) {
     return undefined;
   }
   return {
-    type: groups.type,
+    type: (groups.type as string | undefined) ?? groups.module,
     module: groups.module,
     id: Number(groups.id),
     slug: (groups.slug as string | undefined) ?? '',

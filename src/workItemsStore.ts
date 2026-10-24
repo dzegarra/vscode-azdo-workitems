@@ -1,14 +1,15 @@
 import { withFeature } from './requestContext';
 import * as vscode from 'vscode';
 import { AzdoClient, PullRequestDetails, WorkItem } from './azdoClient';
-import { resolveContext, settings, compilePullRequestTaskPattern } from './config';
+import { resolveContext, settings, compilePullRequestTaskPattern, workingDaysSetting } from './config';
 import { RepositoryGate } from './repositoryGate';
 import { GitAPI, pickRepository, Ref, REF_TYPE_HEAD, Repository } from './git';
 import { TeamIteration } from './iterations';
 import { branchBelongsToWorkItem } from './naming';
 import { collectBranches, EntryBranch, toBranchModels, unknownRepositoryIds } from './workItemBranches';
 import { isClosedState, stateCategory } from './states';
-import { completionIssues, type CompletionIssues } from './completionIssues';
+import { completionIssues, type CompletionIssues, type ConventionRules } from './completionIssues';
+import { CHANGED_DATE_FIELD, latestChange, notUpdated, type NotUpdated } from './workItemReminders';
 import { branchesToCheckRemotely, deletableBranches, isProtectedBranch } from './deletableBranches';
 import { duplicateLinks, iterationLabel } from './duplicates';
 import { fixLinks } from './fixLinks';
@@ -74,8 +75,10 @@ export interface WorkItemEntry {
   taskBranches: string[];
   /** PR links (with project and repository) of its child tasks: the ones the quick fix of an unlinked PR may add */
   taskPullRequestLinks: { id: number; projectId: string; repositoryId: string }[];
-  /** Blocking tags and empty fields that keep it from being completed (COMPLETE-2..4); undefined without alert rules */
+  /** Blocking tags, empty fields and conventions before completion (COMPLETE-2..6); undefined without alert rules */
   completion?: CompletionIssues;
+  /** Latest change of the work item and its tasks (ISO), for Rule REMIND-1 */
+  lastChanged?: string;
   /** Work items that must be done before this one; undefined when they could not be loaded */
   predecessors?: WorkItem[];
   /** Work items that depend on this one; undefined when they could not be loaded */
@@ -369,10 +372,12 @@ function alertsOf(
     findAlerts(
       {
         type: workItem.type,
+        title: workItem.title,
         state: workItem.state,
         tags: parseTags(workItem.fields['System.Tags']),
         fields: workItem.fields,
         tasks,
+        tasksKnown: workItem.links.childIds.every((id) => related.has(id)),
         pullRequests: pullRequests.map((pr) => ({ id: pr.pullRequestId, status: pr.status, isDraft: pr.isDraft })),
         branches: branchNamesOf(workItem.links.branches, repositoryId),
         linkedPullRequestIds: workItem.links.pullRequests.map((link) => link.id),
@@ -385,11 +390,12 @@ function alertsOf(
   );
 }
 
-/** Blocking tags and empty fields of the work item, from the same rules as the alerts */
-function completionIssuesOf(workItem: WorkItem, rules: AlertRules): CompletionIssues {
+/** Blocking tags, empty fields and conventions of the work item, from the same rules as the alerts */
+function completionIssuesOf(workItem: WorkItem, rules: AlertRules & Partial<ConventionRules>): CompletionIssues {
   return completionIssues(
     {
       type: workItem.type,
+      title: workItem.title,
       state: workItem.state,
       tags: parseTags(workItem.fields['System.Tags']),
       fields: workItem.fields,
@@ -399,7 +405,9 @@ function completionIssuesOf(workItem: WorkItem, rules: AlertRules): CompletionIs
 }
 
 // Rule ALERT-GATE-1
-async function alertRules(client: AzdoClient): Promise<(AlertRules & { integrationBuildField?: string }) | undefined> {
+async function alertRules(
+  client: AzdoClient
+): Promise<(AlertRules & ConventionRules & { integrationBuildField?: string }) | undefined> {
   const s = settings().alerts;
   if (!s.enabled) {
     return undefined;
@@ -413,6 +421,9 @@ async function alertRules(client: AzdoClient): Promise<(AlertRules & { integrati
     blockingTags: s.blockingTags,
     pullRequestTaskPattern: compilePullRequestTaskPattern(s.pullRequestTaskPattern),
     requiredFields: resolveRequiredFields(s.requiredFields, fields),
+    titlePrefixes: s.titlePrefixes,
+    effortScale: s.effortScale,
+    stretch: { titlePrefix: s.stretchTitlePrefix, tags: s.stretchTags },
     integrationBuildField,
     integrationBuild: integrationBuildField
       ? {
@@ -995,6 +1006,10 @@ export class WorkItemsStore {
         taskBranches: taskBranchNamesOf(workItem, related, azdoRepository.id),
         taskPullRequestLinks,
         completion: rules && completionIssuesOf(workItem, rules),
+        lastChanged: latestChange([
+          workItem.fields[CHANGED_DATE_FIELD],
+          ...workItem.links.childIds.map((id) => related.get(id)?.fields[CHANGED_DATE_FIELD]),
+        ]),
         predecessors: dependencies.predecessors.get(workItem.id),
         successors: dependencies.successors.get(workItem.id),
         duplicateOf: dependencies.duplicateOf.get(workItem.id),
@@ -1195,6 +1210,15 @@ export class WorkItemsStore {
     );
   }
 
+  /** Reminders of the work in progress, computed when the list is shown (they depend on the time) */
+  private notUpdatedOf(workItem: WorkItem, lastChanged: string | undefined): NotUpdated | undefined {
+    const { staleAfterWorkingDays } = settings().alerts;
+    return notUpdated({ state: workItem.state, lastChanged }, new Date(), {
+      staleAfterWorkingDays,
+      workingDays: workingDaysSetting(),
+    });
+  }
+
   private toModel(
     {
       workItem,
@@ -1212,6 +1236,7 @@ export class WorkItemsStore {
       duplicates,
       otherTasks,
       completion,
+      lastChanged,
     }: WorkItemEntry,
     currentBranch: string | undefined,
     completedStates: string[],
@@ -1255,6 +1280,9 @@ export class WorkItemsStore {
         : predecessors && openPredecessors(workItem, predecessors, completedStates, this.schedule),
       blockingTags: completion?.blockingTags,
       missingFields: completion?.missingFields,
+      conventions: completion?.conventions,
+      // Rule REMIND-1: only with the alert rules
+      notUpdated: completion && this.notUpdatedOf(workItem, lastChanged),
       ...fixLinks(workItem, predecessors, successors),
       ...duplicateLinks(duplicateOf, duplicates, this.schedule),
       taskPullRequests: workItem.type === 'Task' ? this.taskPullRequests(pullRequests) : [],
@@ -1346,6 +1374,7 @@ export class WorkItemsStore {
     | 'pullRequests'
     | 'reviews'
     | 'tasksCountStyle'
+    | 'asleepPulse'
     | 'workingOn'
   > {
     const currentBranch = this.repository()?.state.HEAD?.name;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   branchActionOrder,
   decideCheckout,
+  detailsToOpen,
   emptyParentCandidates,
   envFileCandidates,
   findWorktree,
@@ -409,5 +410,26 @@ describe('worktreeOpenAction (Rules WORKTREE-OPEN-1, WORKTREE-OPEN-2)', () => {
   it('opens the worktree that exists and creates it otherwise', () => {
     expect(worktreeOpenAction(true)).toBe('open');
     expect(worktreeOpenAction(false)).toBe('create');
+  });
+});
+
+describe('Work Item Details panels of a review worktree (Rule REVIEW-AC-1)', () => {
+  const NOW = new Date('2026-10-07T12:00:00.000Z');
+
+  it('keeps the work items of the marker', () => {
+    const text = serializeSetupMarker({
+      npmCi: false,
+      createdAt: '2026-10-07T11:59:30.000Z',
+      openDetails: [66280, 1.5] as number[],
+    });
+    const marker = parseSetupMarker(text);
+    expect(marker?.openDetails).toEqual([66280]);
+    expect(detailsToOpen(marker, NOW)).toEqual([66280]);
+  });
+
+  it('ignores an old marker, left by a window that was already open', () => {
+    expect(detailsToOpen({ npmCi: false, createdAt: '2026-10-07T11:50:00.000Z', openDetails: [1] }, NOW)).toEqual([]);
+    expect(detailsToOpen({ npmCi: true, openDetails: [1] }, NOW)).toEqual([]);
+    expect(detailsToOpen(undefined, NOW)).toEqual([]);
   });
 });

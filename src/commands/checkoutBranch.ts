@@ -3,7 +3,15 @@ import { settings } from '../config';
 import { GitAPI, pickRepository, Repository } from '../git';
 import type { CheckoutKind } from '../viewModel';
 import { WorkItemsStore } from '../workItemsStore';
-import { copyEnvFiles, createWorktree, listWorktrees, stashPop, stashPush, writeSetupMarker } from '../worktreeGit';
+import {
+  addDetailsToSetupMarker,
+  copyEnvFiles,
+  createWorktree,
+  listWorktrees,
+  stashPop,
+  stashPush,
+  writeSetupMarker,
+} from '../worktreeGit';
 import {
   branchActionOrder,
   CheckoutChoice,
@@ -23,6 +31,17 @@ export interface BranchTarget {
   pullRequest?: { id: number; title: string };
   /** The card or PR the checkout comes from: remembered with the worktree it creates (Rule WORKTREE-ORIGIN-1) */
   origin?: { kind: CheckoutKind; id: number };
+  /** Work items whose Work Item Details panel opens with the branch (a review: REVIEW-AC-1) */
+  showDetails?: number[];
+}
+
+const OPEN_DETAILS_COMMAND = 'totalflowx.openDetails';
+
+/** Opens the Work Item Details panels of the target in this window */
+async function showDetailsHere(target: BranchTarget): Promise<void> {
+  for (const id of target.showDetails ?? []) {
+    await vscode.commands.executeCommand(OPEN_DETAILS_COMMAND, id);
+  }
 }
 
 const OPEN_IN_WORKTREE = 'Open in a worktree';
@@ -117,18 +136,24 @@ async function stashAndCheckout(repository: Repository, target: BranchTarget): P
   }
 }
 
-/** Opens a folder in a new window (VS Code focuses the window when the folder is already open) */
-async function openFolder(folder: string): Promise<void> {
+/**
+ * Opens a folder in a new window (VS Code focuses the window when the folder is already open). The panels of
+ * `showDetails` are opened by that window, through the setup marker of the worktree
+ */
+async function openFolder(folder: string, showDetails: number[] = []): Promise<void> {
+  if (showDetails.length) {
+    await addDetailsToSetupMarker(folder, showDetails);
+  }
   await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(folder), { forceNewWindow: true });
 }
 
 /** Opens the worktree where the branch is checked out */
-export async function openWorktree(store: WorkItemsStore, branch: string): Promise<void> {
+export async function openWorktree(store: WorkItemsStore, branch: string, showDetails?: number[]): Promise<void> {
   const worktree = store.worktreeFor(branch);
   if (!worktree) {
     throw new Error(`${branch} has no worktree.`);
   }
-  await openFolder(worktree.path);
+  await openFolder(worktree.path, showDetails);
 }
 
 /**
@@ -149,7 +174,7 @@ export async function openInWorktree(
   const worktrees = await listWorktrees(root);
   const existing = findWorktree(worktrees, branch, [root]);
   if (existing) {
-    await openFolder(existing.path);
+    await openFolder(existing.path, target.showDetails);
     return;
   }
   const main = mainWorktreeFolder(worktrees, root);
@@ -165,7 +190,7 @@ export async function openInWorktree(
   await store.refreshWorktrees();
   store.announceWorktree({ path: folder, branch, origin: target.origin });
   store.notify();
-  await openFolder(folder);
+  await openFolder(folder, target.showDetails);
   void vscode.window.showInformationMessage(`Opened ${branch} in a worktree at ${folder}`);
 }
 
@@ -175,7 +200,7 @@ export async function openInWorktree(
  */
 export async function openOrCreateWorktree(git: GitAPI, store: WorkItemsStore, target: BranchTarget): Promise<void> {
   if (worktreeOpenAction(!!store.worktreeFor(target.branch)) === 'open') {
-    await openWorktree(store, target.branch);
+    await openWorktree(store, target.branch, target.showDetails);
     return;
   }
   await openInWorktree(pickRepository(git), store, target);
@@ -226,7 +251,7 @@ export async function checkoutBranch(
   const other = findWorktree(await listWorktrees(root).catch(() => []), branch, [root]);
   if (other && choice !== 'here') {
     // Git does not let a branch be checked out twice
-    await openFolder(other.path);
+    await openFolder(other.path, target.showDetails);
     return;
   }
   const mode = modeOverride ?? settings().checkoutMode;
@@ -242,9 +267,11 @@ export async function checkoutBranch(
       return;
     case 'stash':
       await stashAndCheckout(repository, target);
+      await showDetailsHere(target);
       break;
     case 'here':
       announceCheckout(target, await checkoutHere(repository, target));
+      await showDetailsHere(target);
       break;
   }
   if (!target.pullRequest) {

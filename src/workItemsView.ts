@@ -9,6 +9,8 @@ import { CoverageRecordsStore } from './coverageRecordsStore';
 import {
   ADD_BUILD_NOTES_SKIP_TAG_COMMAND,
   RETARGET_PULL_REQUEST_COMMAND,
+  COMPLETE_PULL_REQUEST_COMMAND,
+  RESTART_PULL_REQUEST_MERGE_COMMAND,
   CHECKOUT_MY_PULL_REQUEST_COMMAND,
   MyPullRequestsWatcher,
   myPullRequestSettings,
@@ -112,6 +114,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       alwaysShowAlerts: vscode.workspace.getConfiguration(SECTION).get<boolean>('filter.alwaysShowAlerts', false),
       layout: layoutSetting(),
       hoverStyle: settings().hoverStyle,
+      asleepPulse: settings().asleepPulse,
       popoverDelay: settings().popoverDelay,
       tasksCountStyle: settings().tasksCountStyle,
       workingOn: workingOnSettings(),
@@ -253,6 +256,12 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         return;
       case 'retargetMyPullRequest':
         await vscode.commands.executeCommand(RETARGET_PULL_REQUEST_COMMAND, message.pullRequestId);
+        break;
+      case 'completeMyPullRequest':
+        await vscode.commands.executeCommand(COMPLETE_PULL_REQUEST_COMMAND, message.pullRequestId);
+        break;
+      case 'restartMyPullRequestMerge':
+        await vscode.commands.executeCommand(RESTART_PULL_REQUEST_MERGE_COMMAND, message.pullRequestId);
         return;
       case 'addBuildNotesSkipTag':
         await vscode.commands.executeCommand(ADD_BUILD_NOTES_SKIP_TAG_COMMAND, message.pullRequestId);

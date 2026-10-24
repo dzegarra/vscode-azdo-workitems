@@ -692,6 +692,53 @@ export class AzdoClient {
     });
   }
 
+  /**
+   * Commits of `base` the branch does not have (and the other way round), computed by Azure DevOps. Branch names
+   * without "refs/heads/"
+   */
+  async getBranchAheadBehind(
+    repositoryId: string,
+    branch: string,
+    base: string
+  ): Promise<{ ahead: number; behind: number }> {
+    const result = await this.request<{ aheadCount: number; behindCount: number }>(
+      this.url(
+        `git/repositories/${repositoryId}/stats/branches?name=${encodeURIComponent(
+          branch
+        )}&baseVersionDescriptor.version=${encodeURIComponent(base)}&baseVersionDescriptor.versionType=branch`
+      )
+    );
+    return { ahead: result.aheadCount, behind: result.behindCount };
+  }
+
+  /** "Restart merge" of the web UI: Azure DevOps merges the PR again with the current target, so conflicts show */
+  async restartPullRequestMerge(repositoryId: string, pullRequestId: number): Promise<void> {
+    await this.request(this.url(`git/repositories/${repositoryId}/pullrequests/${pullRequestId}`), {
+      method: 'PATCH',
+      body: JSON.stringify({ mergeStatus: 'queued' }),
+    });
+  }
+
+  /**
+   * Completes the PR at the commit the user saw (refused when somebody pushed since). The work items are not
+   * transitioned by Azure DevOps: the extension moves them itself (Bugs never go to Done)
+   */
+  async completePullRequest(
+    repositoryId: string,
+    pullRequestId: number,
+    lastMergeSourceCommit: string,
+    options: { mergeStrategy: string; deleteSourceBranch: boolean }
+  ): Promise<void> {
+    await this.request(this.url(`git/repositories/${repositoryId}/pullrequests/${pullRequestId}`), {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status: 'completed',
+        lastMergeSourceCommit: { commitId: lastMergeSourceCommit },
+        completionOptions: { ...options, transitionWorkItems: false },
+      }),
+    });
+  }
+
   /** Changes the branch the PR merges into (e.g. "refs/heads/develop") */
   async updatePullRequestTarget(repositoryId: string, pullRequestId: number, targetRefName: string): Promise<void> {
     await this.request(this.url(`git/repositories/${repositoryId}/pullrequests/${pullRequestId}`), {

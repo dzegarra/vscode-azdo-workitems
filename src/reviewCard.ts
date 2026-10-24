@@ -141,6 +141,21 @@ export interface ReviewDetails {
   filesChangedText?: string;
   /** Team rules the PR breaks (the author should fix them) */
   teamRules: string[];
+  /** Backlog Items and Bugs whose acceptance criteria the required reviewers verify (REVIEW-CARD-6) */
+  toVerify: number[];
+}
+
+const VERIFIED_TYPES = ['Product Backlog Item', 'User Story', 'Bug'];
+
+// Rule REVIEW-CARD-6
+/**
+ * The work items of a PR whose acceptance criteria its required reviewers verify (DEVELOPMENT_APPROACH §10): the
+ * Backlog Items and Bugs, not the tasks
+ */
+export function workItemsToVerify(workItems: { id: number; type?: string }[] | undefined): number[] {
+  return [
+    ...new Set((workItems ?? []).filter((item) => VERIFIED_TYPES.includes(item.type ?? '')).map(({ id }) => id)),
+  ].sort((a, b) => a - b);
 }
 
 export const AUTO_COMPLETE_REVIEWER_NOTE = 'Auto-complete is set: your approval may merge it right away';
@@ -195,6 +210,7 @@ export function toReviewDetails(
     filesChangedText: filesChanged && describeFilesChanged(filesChanged),
     // Rule REVIEW-CARD-2
     teamRules: ruleWarnings(pr, extras, { minimumRequiredReviewers }).map(({ text }) => text),
+    toVerify: workItemsToVerify(extras.workItems),
   };
 }
 

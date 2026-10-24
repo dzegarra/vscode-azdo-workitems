@@ -49,7 +49,8 @@ const pbi = (overrides: Partial<AlertInput> = {}): AlertInput => ({
   state: 'Committed',
   tags: [],
   fields: { [EFFORT]: 5, [EFFORT_DAYS]: 2 },
-  tasks: [],
+  // A closed task: started work items without tasks have their own alert (ALERT-12)
+  tasks: [{ id: 900, title: 'Analysis', state: 'Done', pullRequestIds: [] }],
   pullRequests: [],
   branches: [],
   linkedPullRequestIds: (overrides.pullRequests ?? []).map((pr) => pr.id),
@@ -393,5 +394,68 @@ describe('Integrated in Build of a reopened Bug', () => {
     expect(rulesOf(bug('Committed', null))).toEqual([]);
     expect(rulesOf(pbi({ fields: { [EFFORT]: 5, [EFFORT_DAYS]: 2, [INTEGRATION_BUILD]: '1.0' } }))).toEqual([]);
     expect(findAlerts(bug('Committed'), { ...rules, integrationBuild: undefined })).toEqual([]);
+  });
+});
+
+describe('work started without tasks (Rule ALERT-12)', () => {
+  it('alerts when a work item in progress has no task, removed ones not counted', () => {
+    const alerts = findAlerts(pbi({ tasks: [{ id: 1, title: 'Old', state: 'Removed', pullRequestIds: [] }] }), rules);
+    expect(alerts).toEqual([
+      { rule: 'noTasks', message: 'Is Committed but has no tasks (team rule: create them when the work starts)' },
+    ]);
+  });
+
+  it('says nothing before the work starts, once it is finished, or with a task', () => {
+    for (const state of ['New', 'Approved', 'Ready to Test', 'Done', 'Removed']) {
+      expect(findAlerts(pbi({ state, tasks: [] }), rules).filter((alert) => alert.rule === 'noTasks')).toEqual([]);
+    }
+    expect(findAlerts(pbi({ tasks: [{ id: 1, title: 'Work', state: 'To Do', pullRequestIds: [] }] }), rules)).toEqual(
+      []
+    );
+  });
+
+  it('says nothing when the children could not be loaded', () => {
+    expect(findAlerts(pbi({ tasks: [], tasksKnown: false }), rules)).toEqual([]);
+  });
+});
+
+describe('stretched items (Rule ALERT-13)', () => {
+  const stretch = {
+    ...rules,
+    stretch: { titlePrefix: '[Stretched]', tags: ['stretch-incomplete', 'stretch-scope-increase'] },
+  };
+  const messages = (input: Partial<AlertInput>) =>
+    findAlerts(pbi(input), stretch)
+      .filter((alert) => alert.rule === 'stretchTags')
+      .map((alert) => alert.message);
+
+  it('wants exactly one stretch tag with the prefix', () => {
+    expect(messages({ title: '[Stretched] Dashboard Persistence', tags: ['Stretch-Incomplete'] })).toEqual([]);
+    expect(messages({ title: '[Stretched] Dashboard Persistence', tags: [] })).toEqual([
+      'Is [Stretched] but has no stretch tag (one of stretch-incomplete, stretch-scope-increase)',
+    ]);
+    expect(messages({ title: '[Stretched] x', tags: ['stretch-incomplete', 'stretch-scope-increase'] })).toEqual([
+      'Has 2 stretch tags (stretch-incomplete, stretch-scope-increase): keep only the primary reason',
+    ]);
+  });
+
+  it('wants the prefix when a stretch tag is set', () => {
+    expect(messages({ title: 'Dashboard Persistence', tags: ['stretch-incomplete'] })).toEqual([
+      'Has the stretch tag stretch-incomplete but the title does not start with "[Stretched]"',
+    ]);
+  });
+
+  it('only counts the stretch tags when no prefix is set (the default)', () => {
+    const noPrefix = { ...rules, stretch: { titlePrefix: '', tags: ['stretch-incomplete', 'stretch-scope-increase'] } };
+    const alerts = (input: Partial<AlertInput>) =>
+      findAlerts(pbi(input), noPrefix).filter((alert) => alert.rule === 'stretchTags');
+    expect(alerts({ title: 'Dashboard Persistence - Stretched', tags: ['stretch-incomplete'] })).toEqual([]);
+    expect(alerts({ title: '[Stretched] x', tags: [] })).toEqual([]);
+    expect(alerts({ title: 'x', tags: ['stretch-incomplete', 'stretch-scope-increase'] })).toHaveLength(1);
+  });
+
+  it('says nothing without stretch tags in the settings, or without the title', () => {
+    expect(findAlerts(pbi({ title: '[Stretched] x' }), rules)).toEqual([]);
+    expect(messages({ tags: ['stretch-incomplete'] })).toEqual([]);
   });
 });

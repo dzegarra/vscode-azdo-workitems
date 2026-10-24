@@ -7,7 +7,7 @@ import type { FunJournalStore } from './funJournalStore';
 import { myPullRequestSettings } from './myPullRequestsWatcher';
 import type { PullRequestExtras } from './myPullRequests';
 import type { PullRequestExtrasLoader } from './pullRequestExtras';
-import { FilesChanged, MAX_COUNTED_FILES, toReviewDetails } from './reviewCard';
+import { FilesChanged, MAX_COUNTED_FILES, toReviewDetails, workItemsToVerify } from './reviewCard';
 import {
   describeReviewEvent,
   describeReviews,
@@ -82,6 +82,7 @@ export function reviewSettings(): ReviewRules & {
   notifications: ReviewNotification[];
   intervalSeconds: number;
   showInStatusBar: boolean;
+  openAcceptanceCriteria: boolean;
 } {
   const config = vscode.workspace.getConfiguration(`${SECTION}.reviews`);
   return {
@@ -101,6 +102,7 @@ export function reviewSettings(): ReviewRules & {
       'resolved',
     ]),
     intervalSeconds: Math.max(MIN_INTERVAL_SECONDS, config.get<number>('pollIntervalSeconds', 120)),
+    openAcceptanceCriteria: config.get<boolean>('openAcceptanceCriteria', true),
     showInStatusBar: config.get<boolean>('showInStatusBar', true),
   };
 }
@@ -334,6 +336,19 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
   branchTarget(id: number): (ReviewBranchTarget & { canCheckout: boolean }) | undefined {
     const target = reviewBranchTarget(this.activeReviewed, id);
     return target && { ...target, canCheckout: this.branchState(this.localRepository(), target).canCheckout };
+  }
+
+  // Rule REVIEW-AC-1
+  /**
+   * The Backlog Items and Bugs of a PR to review whose Work Item Details panel opens with its checkout (empty when
+   * `reviews.openAcceptanceCriteria` is off or the work items are not known yet)
+   */
+  workItemsToVerify(id: number): number[] {
+    if (!reviewSettings().openAcceptanceCriteria) {
+      return [];
+    }
+    const extras = (this.details.get(id) ?? this.reviewedDetails.get(id))?.extras;
+    return workItemsToVerify(extras?.workItems);
   }
 
   start(): void {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AuthoredPullRequest,
   AuthoredPullRequestData,
+  behindCount,
   CompletedPeriod,
   completedWindowMs,
   countUnresolvedThreads,
@@ -18,6 +19,7 @@ import {
   PolicyEvaluation,
   PullRequestExtras,
   PullRequestWarning,
+  pullRequestCautions,
   pullRequestWarnings,
   retargetWarnings,
   toMyPullRequestModels,
@@ -965,5 +967,143 @@ describe('reviewer feedback (Waiting for author / Rejected)', () => {
   it('says nothing for completed PRs or when nobody sent it back', () => {
     expect(feedbackWarnings({ ...sentBack, status: 'completed' })).toEqual([]);
     expect(feedbackWarnings(pr({ reviewers: [{ id: 's', displayName: 'S', vote: 10 }] }))).toEqual([]);
+  });
+});
+
+describe('merge type of auto-complete (Rule PR-WARN-11)', () => {
+  const autoComplete = (mergeStrategy?: string, targetRefName = 'refs/heads/develop') =>
+    pr({
+      autoCompleteSetBy: { id: ME },
+      targetRefName,
+      completionOptions: { deleteSourceBranch: true, mergeStrategy },
+    });
+  const rules = { ...NO_RULES, baseBranch: 'develop' };
+
+  it('warns when a PR into the base branch is not squashed', () => {
+    expect(pullRequestWarnings(autoComplete('noFastForward'), {}, rules)).toEqual([
+      {
+        text: 'Auto-complete will merge with "noFastForward" (team rule: squash the PRs into develop)',
+        severity: 'warning',
+      },
+    ]);
+    expect(pullRequestWarnings(autoComplete('squash'), {}, rules)).toEqual([]);
+  });
+
+  it('leaves other targets, unknown merge types and a missing base branch alone', () => {
+    expect(pullRequestWarnings(autoComplete('rebase', 'refs/heads/release-1.0'), {}, rules)).toEqual([]);
+    expect(pullRequestWarnings(autoComplete(undefined), {}, rules)).toEqual([]);
+    expect(pullRequestWarnings(autoComplete('rebase'), {}, NO_RULES)).toEqual([]);
+  });
+
+  it('keeps the PR from being ready, like every warning', () => {
+    const { items } = toMyPullRequestModels([{ pr: autoComplete('rebase'), extras: extras({ evaluations: [] }) }], {
+      now: NOW,
+      baseBranch: 'develop',
+      showDrafts: true,
+      ...NO_RULES,
+    });
+    expect(items[0].readyToMerge).toBe(false);
+    expect(items[0].canComplete).toBe(false);
+  });
+});
+
+describe('cautions on the size and age of a PR (Rules MYPR-CAUTION-1, MYPR-CAUTION-2)', () => {
+  const options = { maxOpenDays: 5, maxFilesChanged: 30 };
+
+  it('says when a published PR is open for more working days than allowed', () => {
+    // Published Monday 2026-09-28 12:00; Wednesday 2026-10-07 12:00 is 7 working days later
+    const old = pr({ creationDate: '2026-09-28T12:00:00Z' });
+    expect(pullRequestCautions({ pr: old, extras: extras() }, NOW, options)).toEqual([
+      'Open for 7 working days (team rule: keep PRs short-lived, at most 5)',
+    ]);
+    const recent = pr({ creationDate: '2026-10-05T12:00:00Z' });
+    expect(pullRequestCautions({ pr: recent, extras: extras() }, NOW, options)).toEqual([]);
+  });
+
+  it('says when a PR changes more files than allowed', () => {
+    const big = extras({ filesChanged: { count: 100, capped: true } });
+    expect(pullRequestCautions({ pr: pr(), extras: big }, NOW, options)).toEqual([
+      'Changes 100+ files (team rule: keep PRs small, at most 30)',
+    ]);
+    const small = extras({ filesChanged: { count: 30, capped: false } });
+    expect(pullRequestCautions({ pr: pr(), extras: small }, NOW, options)).toEqual([]);
+  });
+
+  it('is off with 0, and never applies to drafts nor to completed PRs', () => {
+    const old = pr({ creationDate: '2026-09-01T12:00:00Z' });
+    const big = extras({ filesChanged: { count: 500, capped: false } });
+    expect(pullRequestCautions({ pr: old, extras: big }, NOW, { maxOpenDays: 0, maxFilesChanged: 0 })).toEqual([]);
+    expect(pullRequestCautions({ pr: { ...old, isDraft: true }, extras: big }, NOW, options)).toEqual([]);
+    expect(pullRequestCautions({ pr: { ...old, status: 'completed' }, extras: big }, NOW, options)).toEqual([]);
+  });
+
+  it('does not keep the PR from being ready', () => {
+    const { items } = toMyPullRequestModels(
+      [
+        {
+          pr: approvedPr({ creationDate: '2026-09-01T12:00:00Z' }),
+          extras: extras({ evaluations: [], filesChanged: { count: 80, capped: false } }),
+        },
+      ],
+      { now: NOW, baseBranch: 'develop', showDrafts: true, ...NO_RULES, ...options }
+    );
+    expect(items[0].cautions).toHaveLength(2);
+    expect(items[0].readyToMerge).toBe(true);
+    expect(items[0].canComplete).toBe(true);
+  });
+});
+
+describe('behind the target (Rule MYPR-BEHIND-1) and Complete (Rule MYPR-ACT-6)', () => {
+  it('tells how many commits the branch lacks, unless the conflicts are already known', () => {
+    expect(behindCount(pr(), { behind: 12 })).toBe(12);
+    expect(behindCount(pr(), { behind: 0 })).toBeUndefined();
+    expect(behindCount(pr(), {})).toBeUndefined();
+    expect(behindCount(pr({ mergeStatus: 'conflicts' }), { behind: 12 })).toBeUndefined();
+    expect(behindCount(pr({ status: 'completed' }), { behind: 12 })).toBeUndefined();
+  });
+
+  it('offers Complete only for the PRs ready to merge without auto-complete', () => {
+    const list = (pull: AuthoredPullRequest) =>
+      toMyPullRequestModels([{ pr: pull, extras: extras({ evaluations: [] }) }], {
+        now: NOW,
+        baseBranch: 'develop',
+        showDrafts: true,
+        ...NO_RULES,
+      }).items[0];
+    expect(list(approvedPr()).canComplete).toBe(true);
+    expect(
+      list(approvedPr({ autoCompleteSetBy: { id: ME }, completionOptions: { deleteSourceBranch: true } })).canComplete
+    ).toBe(false);
+    expect(list(pr()).canComplete).toBe(false);
+    expect(list(approvedPr({ isDraft: true })).canComplete).toBe(false);
+  });
+
+  it('ignores the merge strategy policy, rejected until the completion picks squash (PR 13978)', () => {
+    const evaluations = [
+      evaluation('Minimum number of reviewers', 'approved'),
+      evaluation('Work item linking', 'approved'),
+      evaluation('Comment requirements', 'approved'),
+      evaluation('Require a merge strategy', 'rejected'),
+      evaluation('Build', 'approved'),
+    ];
+    const item = (overrides: Partial<PolicyEvaluation>[] = []) =>
+      toMyPullRequestModels(
+        [
+          {
+            pr: approvedPr(),
+            extras: extras({
+              evaluations: [
+                ...evaluations,
+                ...overrides.map((o) => ({ type: 'Build', status: 'rejected', isBlocking: true, ...o })),
+              ],
+            }),
+          },
+        ],
+        { now: NOW, baseBranch: 'develop', showDrafts: true, ...NO_RULES }
+      ).items[0];
+    expect(item().readyToMerge).toBe(false);
+    expect(item().canComplete).toBe(true);
+    // Any other blocking policy still stops it
+    expect(item([{}]).canComplete).toBe(false);
   });
 });

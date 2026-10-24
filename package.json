@@ -324,6 +324,16 @@
         "category": "Totalflow X"
       },
       {
+        "command": "totalflowx.completePullRequest",
+        "title": "Complete a Pull Request",
+        "category": "Totalflow X"
+      },
+      {
+        "command": "totalflowx.restartPullRequestMerge",
+        "title": "Restart the Merge of a Pull Request",
+        "category": "Totalflow X"
+      },
+      {
         "command": "totalflowx.revealWorkItem",
         "title": "Show Work Item in the Sidebar",
         "category": "Totalflow X"
@@ -444,6 +454,14 @@
         },
         {
           "command": "totalflowx.retargetPullRequest",
+          "when": "false"
+        },
+        {
+          "command": "totalflowx.completePullRequest",
+          "when": "false"
+        },
+        {
+          "command": "totalflowx.restartPullRequestMerge",
           "when": "false"
         },
         {
@@ -1003,6 +1021,20 @@
             "minimum": 0,
             "description": "Team rule: how many required reviewers (people, not groups) a published pull request of yours should have. The box warns when it has fewer. 0 disables the warning.",
             "order": 6
+          },
+          "totalflowx.myPullRequests.maxOpenDays": {
+            "type": "number",
+            "default": 5,
+            "minimum": 0,
+            "description": "Team rule (keep branches short-lived): working days a published pull request of yours may stay open before its card says so. 0 disables the caution.",
+            "order": 7
+          },
+          "totalflowx.myPullRequests.maxFilesChanged": {
+            "type": "number",
+            "default": 30,
+            "minimum": 0,
+            "description": "Team rule (keep pull requests small): files a pull request of yours may change before its card says so. 0 disables the caution.",
+            "order": 8
           }
         }
       },
@@ -1060,6 +1092,13 @@
             "description": "Show how many pull requests are waiting for your review in the status bar.",
             "order": 4
           },
+          "totalflowx.reviews.openAcceptanceCriteria": {
+            "type": "boolean",
+            "default": true,
+            "scope": "application",
+            "description": "When you check out the branch of a PR to review (here or in a worktree), open the Work Item Details panel of its Backlog Items and Bugs: required reviewers verify their acceptance criteria (team rule).",
+            "order": 5
+          },
           "totalflowx.reviews.notifications": {
             "type": "array",
             "items": {
@@ -1091,14 +1130,14 @@
               "resolved"
             ],
             "description": "Notifications about the pull requests you review. Empty: none.",
-            "order": 5
+            "order": 6
           },
           "totalflowx.reviews.maxWaitHours": {
             "type": "number",
             "default": 24,
             "minimum": 1,
             "description": "Hours a pull request may wait for reviewers (team rule), counted from its publication, on working days only (see Working Days). Overdue PRs are shown in red.",
-            "order": 6
+            "order": 7
           },
           "totalflowx.reviews.workingDays": {
             "type": "array",
@@ -1123,21 +1162,21 @@
               "fri"
             ],
             "description": "Days on which the waiting time of pull requests counts (team rule: 24 h of working time). Weekends are not counted by default. All 24 hours of a working day count; days off and public holidays are not handled.",
-            "order": 7
+            "order": 8
           },
           "totalflowx.reviews.dueSoonHours": {
             "type": "number",
             "default": 6,
             "minimum": 0,
             "description": "Hours before the maximum wait when a pull request is due soon: shown in orange and notified once.",
-            "order": 8
+            "order": 9
           },
           "totalflowx.reviews.remindOverdueEveryHours": {
             "type": "number",
             "default": 4,
             "minimum": 0,
             "description": "While a pull request is overdue, how often it is notified again (hours). 0: only once.",
-            "order": 9
+            "order": 10
           }
         }
       },
@@ -1383,6 +1422,57 @@
             "default": "+",
             "description": "Appended to the version: the fix ships in the release after the last published one.",
             "order": 16
+          },
+          "totalflowx.alerts.titlePrefixes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "[Platform]",
+              "[Platform UI]",
+              "[PMUI]"
+            ],
+            "description": "Team convention: the title of a Backlog Item starts with one of these prefixes, brackets included. Add the prefixes of your team. A Backlog Item without one gets a caution before completion. Empty: not checked.",
+            "order": 17
+          },
+          "totalflowx.alerts.effortScale": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "default": [1, 2, 3, 5, 8, 13, 21],
+            "description": "Team convention: the story points (Effort) of a Backlog Item are one of these values. Another value gets a caution before completion. Empty: not checked.",
+            "order": 18
+          },
+          "totalflowx.alerts.stretchTitlePrefix": {
+            "type": "string",
+            "default": "",
+            "description": "Title prefix of the new item of a stretch (DEVELOPMENT_APPROACH §13.3 says \"[Stretched]\"). When set, a red alert flags an item with the prefix but no stretch tag, or a stretch tag without the prefix. Empty (default): the title is not checked, only that an item has at most one stretch tag.",
+            "order": 19
+          },
+          "totalflowx.alerts.stretchTags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "stretch-scope-increase",
+              "stretch-incomplete",
+              "stretch-dependency",
+              "stretch-feedback",
+              "stretch-defect",
+              "stretch-technical-discovery"
+            ],
+            "description": "Team rule: the tags of the stretched items (one per item, the primary reason). A red alert when an item has several (and, when `totalflowx.alerts.stretchTitlePrefix` is set, the prefix without a tag or a tag without the prefix). Empty: not checked.",
+            "order": 20
+          },
+          "totalflowx.alerts.staleAfterWorkingDays": {
+            "type": "number",
+            "default": 1,
+            "minimum": 0,
+            "description": "Team rule (status, tasks and effort updated daily): working days without any change to a work item in progress or its tasks before a reminder shows in its caution. 0 disables it.",
+            "order": 21
           }
         }
       },
@@ -1493,19 +1583,26 @@
             "scope": "application",
             "order": 6
           },
+          "totalflowx.appearance.asleepPulse": {
+            "type": "boolean",
+            "default": true,
+            "scope": "application",
+            "description": "The card of a work item in progress that was not updated for a while (the zZ badge, see totalflowx.alerts.staleAfterWorkingDays) pulses in orange so it is not forgotten. Not for work items with alerts or being worked on. Off: only the badge. With reduced motion in the system, a steady orange border instead.",
+            "order": 7
+          },
           "totalflowx.fun.enabled": {
             "type": "boolean",
             "default": false,
             "markdownDescription": "Small celebrations, off by default: confetti in the sidebar and a 🚀 notification when one of your PRs is merged (with easter eggs and milestones), a ⚡ note on fast first approvals, your green CI streak (🔥) in the CI status bar item and in the run notifications, a 🎯 note when a PR raises your coverage over your previous one, a \"Clean board ✨\" row in the Summary view when none of your work items breaks a team rule, a countdown next to the sprint (🌱 / 🏃 / 🔥), and the offer of the **Sprint Wrap-up** on the last day of the sprint. Everything stays on your machine and nothing is compared with anybody. Animations respect reduced motion.",
             "scope": "application",
-            "order": 7
+            "order": 8
           },
           "totalflowx.fun.sounds": {
             "type": "boolean",
             "default": false,
             "markdownDescription": "Short, quiet sounds with the celebrations of `#totalflowx.fun.enabled#` (which must be on too): a rising chime when one of your PRs is merged, a ding when your green CI streak sets a new record, a low \"bonk\" when a failure ends a streak. Played by the sidebar, so only while it is open and visible.",
             "scope": "application",
-            "order": 8
+            "order": 9
           }
         }
       },

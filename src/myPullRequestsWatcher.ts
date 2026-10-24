@@ -16,6 +16,7 @@ import {
   toMyPullRequestModels,
 } from './myPullRequests';
 import { RunModel } from './pipelines';
+import type { FilesChanged } from './reviewCard';
 import type { PullRequestExtrasLoader } from './pullRequestExtras';
 import { REF_TYPE_REMOTE_HEAD } from './git';
 import { AttentionEffect, normalizeAttentionEffect } from './attentionEffect';
@@ -29,10 +30,16 @@ const MS_PER_SECOND = 1000;
 /** Ages are refreshed this often in the view, without checking Azure DevOps */
 const TICK_MS = 60 * MS_PER_SECOND;
 const MIN_INTERVAL_SECONDS = 30;
+/** The target branch moves without the PR changing: how long a "behind" count is kept */
+const BEHIND_TTL_MS = 10 * 60 * MS_PER_SECOND;
+/** Files counted per PR; more is only said as "N+" */
+const MAX_COUNTED_FILES = 100;
 export const CHECKOUT_MY_PULL_REQUEST_COMMAND = 'totalflowx.checkoutMyPullRequest';
 export const PUBLISH_PULL_REQUEST_COMMAND = 'totalflowx.publishPullRequest';
 export const ADD_BUILD_NOTES_SKIP_TAG_COMMAND = 'totalflowx.addBuildNotesSkipTag';
 export const RETARGET_PULL_REQUEST_COMMAND = 'totalflowx.retargetPullRequest';
+export const COMPLETE_PULL_REQUEST_COMMAND = 'totalflowx.completePullRequest';
+export const RESTART_PULL_REQUEST_MERGE_COMMAND = 'totalflowx.restartPullRequestMerge';
 
 interface NotesContext {
   options: ReturnType<typeof buildNotesSettings>;
@@ -62,6 +69,8 @@ export function myPullRequestSettings(): {
   layout: Layout;
   intervalSeconds: number;
   minimumRequiredReviewers: number;
+  maxOpenDays: number;
+  maxFilesChanged: number;
   showInStatusBar: boolean;
   attentionEffect: AttentionEffect;
 } {
@@ -73,6 +82,8 @@ export function myPullRequestSettings(): {
     completedPeriod: completedPeriodSetting(config.get<string>('completedPeriod', 'day')),
     layout: config.get<Layout>('layout', 'compact') === 'large' ? 'large' : 'compact',
     minimumRequiredReviewers: Math.max(0, config.get<number>('minimumRequiredReviewers', 2)),
+    maxOpenDays: Math.max(0, config.get<number>('maxOpenDays', 5)),
+    maxFilesChanged: Math.max(0, config.get<number>('maxFilesChanged', 30)),
     intervalSeconds: Math.max(MIN_INTERVAL_SECONDS, config.get<number>('pollIntervalSeconds', 120)),
   };
 }
@@ -94,6 +105,10 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
   private myId?: Promise<string>;
   /** Whether each PR changes the build notes file, by head commit: asked again only after a push */
   private readonly buildNotesCache = new BuildNotesDiffCache();
+  /** Files changed by each active PR, by its last merge source commit: asked again only after a push */
+  private readonly filesChanged = new Map<number, { commit: string; files: FilesChanged }>();
+  /** Commits behind the target, by PR: asked again after a push or BEHIND_TTL_MS (the target moves on its own) */
+  private readonly behind = new Map<number, { commit: string; time: number; behind: number }>();
   /** Threads and linked work items of the completed PRs by id: they barely change, so they are fetched once */
   private readonly completedExtras = new Map<number, Pick<PullRequestExtras, 'threads' | 'workItems'>>();
 
@@ -102,7 +117,8 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
   /** The cards to show, with whether their branch can be checked out, right now */
   models(): MyPullRequestList {
     const local = this.localRepository();
-    const { showDrafts, completedPeriod, minimumRequiredReviewers } = myPullRequestSettings();
+    const { showDrafts, completedPeriod, minimumRequiredReviewers, maxOpenDays, maxFilesChanged } =
+      myPullRequestSettings();
     const data = this.data.map(({ pr, extras }) => ({
       pr,
       // The store follows the active PRs of the user and refreshes their runs; the own fetch is the fallback
@@ -115,6 +131,8 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
       showDrafts,
       completedPeriod,
       minimumRequiredReviewers,
+      maxOpenDays,
+      maxFilesChanged,
       workingDays: workingDaysSetting(),
       buildNotes: buildNotesSettings(),
     });
@@ -222,9 +240,9 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
       const notes = this.buildNotesContext();
       this.buildNotesCache.keepOnly(pullRequests.map((pr) => pr.pullRequestId));
       const listedIds = new Set(pullRequests.map((pr) => pr.pullRequestId));
-      [...this.completedExtras.keys()]
-        .filter((id) => !listedIds.has(id))
-        .forEach((id) => this.completedExtras.delete(id));
+      for (const cache of [this.completedExtras, this.filesChanged, this.behind]) {
+        [...cache.keys()].filter((id) => !listedIds.has(id)).forEach((id) => cache.delete(id));
+      }
       this.data = await Promise.all(
         pullRequests.map(async (pr) => ({
           pr,
@@ -263,11 +281,13 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
     notes: NotesContext
   ): Promise<PullRequestExtras> {
     if (pr.status === 'active') {
-      const [extras, buildNotes] = await Promise.all([
+      const [extras, buildNotes, filesChanged, behind] = await Promise.all([
         this.extras.fetch(client, pr),
         this.fetchBuildNotes(client, pr, notes),
+        this.fetchFilesChanged(client, pr),
+        this.fetchBehind(client, pr, now),
       ]);
-      return { ...extras, buildNotes };
+      return { ...extras, buildNotes, filesChanged, behind };
     }
     const { completedPeriod } = myPullRequestSettings();
     if (!isCompletedWithin(pr, now, completedWindowMs(completedPeriod))) {
@@ -281,6 +301,57 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
     ]);
     this.completedExtras.set(pr.pullRequestId, { threads, workItems });
     return { threads, workItems, runs: [] };
+  }
+
+  // Rule MYPR-CAUTION-2
+  /** Files changed by a published PR: 2 requests per push (the last iteration, its changes), none otherwise */
+  private async fetchFilesChanged(client: AzdoClient, pr: AuthoredPullRequest): Promise<FilesChanged | undefined> {
+    const commit = pr.lastMergeSourceCommit?.commitId;
+    if (pr.isDraft || !commit || !myPullRequestSettings().maxFilesChanged) {
+      return undefined;
+    }
+    const known = this.filesChanged.get(pr.pullRequestId);
+    if (known?.commit === commit) {
+      return known.files;
+    }
+    try {
+      const iteration = await client.getLastIterationId(pr.repository.id, pr.pullRequestId);
+      if (iteration === undefined) {
+        return undefined;
+      }
+      const { count, more } = await client.getIterationChangeCount(
+        pr.repository.id,
+        pr.pullRequestId,
+        iteration,
+        MAX_COUNTED_FILES
+      );
+      const files = { count, capped: more };
+      this.filesChanged.set(pr.pullRequestId, { commit, files });
+      return files;
+    } catch {
+      return undefined;
+    }
+  }
+
+  // Rule MYPR-BEHIND-1
+  /** Commits of the target the branch lacks: 1 request per PR after a push, else at most every BEHIND_TTL_MS */
+  private async fetchBehind(client: AzdoClient, pr: AuthoredPullRequest, now: Date): Promise<number | undefined> {
+    const commit = pr.lastMergeSourceCommit?.commitId ?? '';
+    const known = this.behind.get(pr.pullRequestId);
+    if (known?.commit === commit && now.getTime() - known.time < BEHIND_TTL_MS) {
+      return known.behind;
+    }
+    try {
+      const { behind } = await client.getBranchAheadBehind(
+        pr.repository.id,
+        pr.sourceRefName.replace(HEADS_PREFIX, ''),
+        pr.targetRefName.replace(HEADS_PREFIX, '')
+      );
+      this.behind.set(pr.pullRequestId, { commit, time: now.getTime(), behind });
+      return behind;
+    } catch {
+      return known?.behind;
+    }
   }
 
   /** Where the PR stands about the build notes rule: the tag costs nothing, the diff one request per push */

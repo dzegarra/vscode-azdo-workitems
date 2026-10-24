@@ -3,6 +3,7 @@ import {
   branchBelongsToWorkItem,
   workItemIdFromBranch,
   branchTypeFor,
+  branchPrefix,
   buildBranchName,
   buildPrDescription,
   buildPrTitle,
@@ -49,7 +50,23 @@ describe('branch names', () => {
     });
     expect(parseBranchName('refs/heads/bugfix/fui-common/66499-datagrid-columns-width')?.id).toBe(66499);
     expect(parseBranchName('develop')).toBeUndefined();
+    expect(parseBranchName('devops/build-scripts-update')).toBeUndefined();
     expect(parseBranchName('10028_Change_Useless_Connected_Device_dropdown')).toBeUndefined();
+  });
+
+  it('names the branches of the devops module devops/<id>-<name>, without the type folder', () => {
+    expect(branchPrefix('feature', 'devops')).toBe('devops');
+    expect(branchPrefix('bugfix', 'fui-users')).toBe('bugfix/fui-users');
+    expect(buildBranchName('feature', 'devops', 5642, 'Build scripts update')).toBe('devops/5642-build-scripts-update');
+    expect(buildBranchName('bugfix', 'devops', 5643, '')).toBe('devops/5643');
+    expect(parseBranchName('refs/heads/devops/5642-build-scripts-update')).toEqual({
+      type: 'devops',
+      module: 'devops',
+      id: 5642,
+      slug: 'build-scripts-update',
+    });
+    expect(branchBelongsToWorkItem('devops/5642-build-scripts-update', 5642)).toBe(true);
+    expect(parseBranchName('feature/devops/5641-old-style')?.module).toBe('devops');
   });
 
   it('matches branches with work items', () => {

@@ -2626,6 +2626,11 @@ button.state:focus-visible {
   margin-top: 0;
 }
 
+/* Cautions (size, age, behind the target): information, they never keep the PR from being ready */
+.mypr-cautions {
+  color: var(--vscode-descriptionForeground);
+}
+
 .mypr-next {
   display: flex;
   align-items: baseline;
@@ -3030,6 +3035,81 @@ button.state:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * "zZ Nd" before the title of a work item not updated for a while (REMIND-1): a solid orange badge with a fixed text
+ * colour (like the "Waiting for author" pill) so it reads on any theme; it pulses with the border of its card
+ */
+.asleep {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 5px;
+  padding: 0 5px;
+  border-radius: 8px;
+  color: #1f1f1f;
+  background: #f0883e;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  vertical-align: 1px;
+}
+
+.asleep .icon {
+  width: 11px;
+  height: 11px;
+  stroke-width: 2;
+}
+
+/*
+ * Rule REMIND-3: the card of a forgotten work item (no alerts, nobody working on it) pulses in orange every 2 s,
+ * until the pointer or the focus is on it: then the normal hover border (the colour of the work item) shows. Only the
+ * colour of its own border changes (top, right, bottom; the left bar keeps the state), so it is as thick as usual
+ */
+@media (prefers-reduced-motion: no-preference) {
+  #app:not(.asleep-pulse-off) .card.asleep-pulse:not(:hover, :focus-within) {
+    animation: asleep-border 2s ease-in-out infinite;
+  }
+
+  #app:not(.asleep-pulse-off) .card.asleep-pulse:not(:hover, :focus-within) .asleep {
+    animation: asleep-badge 2s ease-in-out infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #app:not(.asleep-pulse-off) .card.asleep-pulse:not(:hover, :focus-within) {
+    border-top-color: #f0883e;
+    border-right-color: #f0883e;
+    border-bottom-color: #f0883e;
+  }
+}
+
+@keyframes asleep-border {
+  0%,
+  100% {
+    border-top-color: rgb(240 136 62 / 25%);
+    border-right-color: rgb(240 136 62 / 25%);
+    border-bottom-color: rgb(240 136 62 / 25%);
+  }
+
+  50% {
+    border-top-color: #f0883e;
+    border-right-color: #f0883e;
+    border-bottom-color: #f0883e;
+  }
+}
+
+@keyframes asleep-badge {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.12);
+    box-shadow: 0 0 6px rgb(240 136 62 / 80%);
+  }
 }
 
 .card-chevron {

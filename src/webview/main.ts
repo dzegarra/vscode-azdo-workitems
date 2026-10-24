@@ -24,7 +24,7 @@ import { RunModel, RunState } from '../pipelines';
 import { runLabel, runTooltip, RunView, runViewUrl } from '../runDetails';
 import { fixesBugsText, type FixLink } from '../fixLinks';
 import { DUPLICATES, duplicateFilterValue, type DuplicateLink } from '../duplicates';
-import { completionIssueCount, completionIssueLines } from '../completionIssues';
+import { blocksCompletion, completionIssueCount, completionTitle } from '../completionIssues';
 import { NONE_OPEN, OPEN_PREDECESSORS, predecessorFilterValue, type OpenPredecessor } from '../predecessors';
 import { RISK_DESCRIPTIONS } from '../schedule';
 import { NO_PRIORITY, priorityFilterValue, severityLevel, severityName, sortWorkItems } from '../priority';
@@ -53,6 +53,7 @@ import { needsAttention } from '../myPullRequestsAttention';
 import { myPullRequestsPanelTone, reviewsPanelTone } from '../panelTone';
 import { ATTENTION_EFFECTS, attentionEffectClass } from '../attentionEffect';
 import { HOVER_STYLES, hoverStyleClass } from '../hoverStyle';
+import { asleepPulses } from '../workItemReminders';
 import { TASK_COUNT_STYLES, taskCountStyleClass } from '../taskCountStyle';
 import { SOUND_VOLUME, SoundId, SOUNDS } from '../sounds';
 import { splitWorkingOn, WorkingOnLevel, workingOnAnimationClasses, workingOnBadge } from '../workingOn';
@@ -482,10 +483,21 @@ function renderCompletionList(item: WorkItemModel, id: string): string {
     'Missing',
     (item.missingFields ?? []).map((field) => renderIssueRow(item, field, true))
   );
-  return `<div class="pred-pop popover" id="${id}" role="group" aria-label="Issues that keep ${item.id} from being completed">
+  // Rules COMPLETE-5, COMPLETE-6
+  const conventions = renderCompletionSection(
+    'Conventions',
+    (item.conventions ?? []).map((text) => renderIssueRow(item, text, true))
+  );
+  return `<div class="pred-pop popover" id="${id}" role="group" aria-label="Issues that keep ${
+    item.id
+  } from being completed">
     <div class="pred-card">
-      <p class="pred-intro">Can be started, but it cannot be completed until these are solved.</p>
-      ${predecessors}${tags}${missing}
+      <p class="pred-intro">${
+        blocksCompletion(item)
+          ? 'Can be started, but it cannot be completed until these are solved.'
+          : 'Nothing blocks its completion, but check these.'
+      }</p>
+      ${predecessors}${tags}${missing}${conventions}
     </div></div>`;
 }
 
@@ -505,7 +517,7 @@ function renderCompletionTrigger(item: WorkItemModel, compact: boolean): string 
   const count = completionIssueCount(item);
   const id = `pred-${item.id}`;
   const glyph = icon(count === item.openPredecessors?.length ? 'link' : 'warning');
-  const title = `Cannot be completed yet: ${completionIssueLines(item).join(' · ')}`;
+  const title = completionTitle(item);
   const trigger = compact
     ? `<button class="signal signal-completion tone-caution" data-action="showCompletion" aria-describedby="${id}"
       title="${escapeHtml(title)}">${glyph}<span>${count}</span></button>`
@@ -514,6 +526,27 @@ function renderCompletionTrigger(item: WorkItemModel, compact: boolean): string 
         count
       )}</button>`;
   return `<span class="pred-wrap popover-anchor">${trigger}${renderCompletionList(item, id)}</span>`;
+}
+
+// Rules REMIND-1, REMIND-3
+/**
+ * "zZ Nd" badge at the start of the title of a work item in progress that was not updated for a while: it seems
+ * forgotten. It pulses with the border of the card (class `asleep-pulse`), so the pulse is explained where it is.
+ * Not a completion issue, so not in the caution; the details are in its tooltip
+ */
+function renderAsleep(item: WorkItemModel): string {
+  if (!item.notUpdated) {
+    return '';
+  }
+  const { days, text } = item.notUpdated;
+  return `<span class="asleep" role="img" aria-label="${escapeHtml(text)}" title="${escapeHtml(text)}">${icon(
+    'sleep'
+  )}<span aria-hidden="true">${days}d</span></span>`;
+}
+
+/** The card pulses in orange: a forgotten work item without alerts that nobody is working on (Rule REMIND-3) */
+function asleepClass(item: WorkItemModel): string {
+  return asleepPulses(item) ? 'asleep-pulse' : '';
 }
 
 /** Large card: the caution with what keeps the work item from being completed; nothing when there is nothing */
@@ -975,6 +1008,7 @@ function renderCard(item: WorkItemModel, children: TaskRow[], visibleIds: Set<nu
     workingOnClass(item),
     item.alerts.length ? 'has-alerts' : '',
     duplicateClass(item),
+    asleepClass(item),
   ].join(' ');
   const fold = foldable
     ? `<button class="card-chevron" data-action="toggleCard" data-id="${item.id}" aria-expanded="true"
@@ -992,7 +1026,7 @@ function renderCard(item: WorkItemModel, children: TaskRow[], visibleIds: Set<nu
       ${renderUrgency(item)}
       ${stateButton(item.id, item.displayState, item.state)}
     </header>
-    <div class="title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
+    <div class="title" title="${escapeHtml(item.title)}">${renderAsleep(item)}${escapeHtml(item.title)}</div>
     ${renderParent(item, visibleIds)}
     ${renderAlerts(item)}
     ${renderCompletion(item)}
@@ -1084,6 +1118,7 @@ function renderCompactCard(item: WorkItemModel, children: TaskRow[]): string {
     workingOnClass(item),
     item.alerts.length ? 'has-alerts' : '',
     duplicateClass(item),
+    asleepClass(item),
   ].join(' ');
   const signals = compactSignals(item, children).map((signal) => renderSignal(signal, item));
   return `<article class="${classes}" data-card="${item.id}" data-action="toggleCard" data-id="${item.id}">
@@ -1094,7 +1129,9 @@ function renderCompactCard(item: WorkItemModel, children: TaskRow[]): string {
       <button class="link id${typeIdClass(item.type)}" data-action="openDetails" data-id="${
     item.id
   }" title="Open the Work Item Details panel">${item.id}</button>
-      <span class="compact-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
+      <span class="compact-title" title="${escapeHtml(item.title)}">${renderAsleep(item)}${escapeHtml(
+    item.title
+  )}</span>
       ${stateButton(item.id, item.displayState, item.state)}
     </div>
     ${signals.length ? `<div class="signals">${signals.join('')}</div>` : ''}
@@ -1352,6 +1389,15 @@ function renderReviewDetails({ details }: { details?: ReviewedDetails }): string
       ? `<li class="review-muted" role="note" title="${escapeHtml(details.teamRules.join('\n'))}">${icon(
           'warning'
         )}<span>${escapeHtml(rules)}</span></li>`
+      : '',
+    // Rule REVIEW-CARD-6
+    details.toVerify.length
+      ? `<li class="review-muted" role="note">${icon('check')}<span>Verify the acceptance criteria of ${details.toVerify
+          .map(
+            (id) =>
+              `<button class="link" data-action="openDetails" data-id="${id}" title="Open the Work Item Details panel">#${id}</button>`
+          )
+          .join(', ')}</span></li>`
       : '',
   ].filter(Boolean);
   return `${meta.length ? `<div class="mypr-meta">${meta.join('<span aria-hidden="true">·</span>')}</div>` : ''}
@@ -1752,7 +1798,7 @@ function renderReviews(current: ViewModel): string {
 
 /* ---------- My pull requests ---------- */
 
-// Rules MYPR-ACT-1..3
+// Rules MYPR-ACT-1..3, MYPR-ACT-6
 function renderMyActions(pr: MyPullRequestModel): string {
   const buttons = [
     `<button class="button" data-action="openMyPullRequest" data-url="${escapeHtml(
@@ -1768,6 +1814,11 @@ function renderMyActions(pr: MyPullRequestModel): string {
         title: 'Fetch the branch of the PR and switch to it',
         worktree: pr.worktree,
       })
+    );
+  }
+  if (pr.canComplete) {
+    buttons.push(
+      `<button class="button primary" data-action="completeMyPullRequest" data-pr="${pr.id}" title="Squash merge, delete the branch and move the work items (Backlog Items to Done, Bugs to Ready to Test)">Complete…</button>`
     );
   }
   if (pr.isDraft) {
@@ -1797,6 +1848,29 @@ function renderCompactMyPullRequest(pr: MyPullRequestModel): string {
     </div>
     ${signals ? `<div class="signals pr-signals">${signals}</div>` : ''}
   </li>`;
+}
+
+// Rules MYPR-CAUTION-3, MYPR-ACT-7
+/** Cautions about the size and age of the PR, and how far behind its target the branch is (with Restart merge) */
+function renderMyPullRequestNotes(pr: MyPullRequestModel): string {
+  const notes = pr.cautions.map(
+    (text) => `<li class="mypr-caution" role="note">${icon('clock')}<span>${escapeHtml(text)}</span></li>`
+  );
+  if (pr.behind) {
+    const { count, target } = pr.behind;
+    notes.push(
+      `<li class="mypr-caution" role="note">${icon('sync')}<span>${count} commit${
+        count === 1 ? '' : 's'
+      } behind ${escapeHtml(
+        target
+      )}: conflicts only show once the merge is restarted</span><button class="button small mypr-fix" data-action="restartMyPullRequestMerge" data-pr="${
+        pr.id
+      }" title="Ask Azure DevOps to merge the branch again with the latest ${escapeHtml(
+        target
+      )}">Restart merge</button></li>`
+    );
+  }
+  return notes.length ? `<ul class="mypr-warnings mypr-cautions">${notes.join('')}</ul>` : '';
 }
 
 // Rules MYPR-ACT-4, MYPR-ACT-5, MYPR-PULSE-5, PR-EFFECT-3
@@ -1847,6 +1921,7 @@ function renderMyPullRequest(pr: MyPullRequestModel, showRepository: boolean, fo
     ${pr.reviewers.length ? `<div class="reviewers">${pr.reviewers.map(renderReviewer).join('')}</div>` : ''}
     ${pr.isCompleted ? '' : renderSignals(pr)}
     ${warnings.length ? `<ul class="mypr-warnings">${warnings.join('')}</ul>` : ''}
+    ${renderMyPullRequestNotes(pr)}
     ${
       pr.next
         ? `<div class="mypr-next ${pr.nextTone}"><span class="mypr-next-label">Next</span>${
@@ -2313,6 +2388,8 @@ function render(): void {
   for (const effect of ATTENTION_EFFECTS) {
     app.classList.toggle(attentionEffectClass(effect), effect === model.pullRequests.attentionEffect);
   }
+  // Rule REMIND-3: the orange pulse of the forgotten work items can be turned off (appearance.asleepPulse)
+  app.classList.toggle('asleep-pulse-off', !model.asleepPulse);
   // Delay of the popovers (a CSS variable: strict CSP, no inline styles)
   app.style.setProperty('--popover-delay', `${model.popoverDelay}ms`);
   // Same for the look of the counts on the bar of the Tasks header
@@ -2718,6 +2795,10 @@ document.addEventListener('click', (event) => {
     post({ type: 'addBuildNotesSkipTag', pullRequestId: Number(pr) });
   } else if (action === 'retargetMyPullRequest' && pr) {
     post({ type: 'retargetMyPullRequest', pullRequestId: Number(pr) });
+  } else if (action === 'completeMyPullRequest' && pr) {
+    post({ type: 'completeMyPullRequest', pullRequestId: Number(pr) });
+  } else if (action === 'restartMyPullRequestMerge' && pr) {
+    post({ type: 'restartMyPullRequestMerge', pullRequestId: Number(pr) });
   } else if (action === 'publishMyPullRequest' && pr) {
     post({ type: 'publishMyPullRequest', pullRequestId: Number(pr) });
   } else if (action === 'openMyPullRequest' && url) {

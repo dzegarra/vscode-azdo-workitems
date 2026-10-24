@@ -185,6 +185,18 @@ export const SETUP_MARKER_FILE = 'azdo-workitems-setup.json';
 export interface SetupMarker {
   npmCi: boolean;
   createdAt?: string;
+  /** Work items whose Work Item Details panel the window opens (a review: its acceptance criteria, REVIEW-AC-1) */
+  openDetails?: number[];
+}
+
+/** A marker left by a window that was already open (VS Code only focused it) must not open panels days later */
+const OPEN_DETAILS_MAX_AGE_MS = 2 * 60 * 1000;
+
+// Rule REVIEW-AC-1
+/** The panels a window opening the worktree opens: only when the marker was written just before */
+export function detailsToOpen(marker: SetupMarker | undefined, now: Date): number[] {
+  const written = Date.parse(marker?.createdAt ?? '');
+  return marker?.openDetails?.length && now.getTime() - written <= OPEN_DETAILS_MAX_AGE_MS ? marker.openDetails : [];
 }
 
 export function serializeSetupMarker(marker: SetupMarker): string {
@@ -198,10 +210,13 @@ export function parseSetupMarker(text: string): SetupMarker | undefined {
     if (typeof value !== 'object' || value === null) {
       return undefined;
     }
-    const { npmCi, createdAt } = value as Record<string, unknown>;
+    const { npmCi, createdAt, openDetails } = value as Record<string, unknown>;
     return {
       npmCi: npmCi === true,
       createdAt: typeof createdAt === 'string' ? createdAt : undefined,
+      openDetails: Array.isArray(openDetails)
+        ? openDetails.filter((id): id is number => typeof id === 'number' && Number.isInteger(id))
+        : undefined,
     };
   } catch {
     return undefined;

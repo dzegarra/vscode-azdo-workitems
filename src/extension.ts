@@ -11,6 +11,8 @@ import { CheckoutKind } from './viewModel';
 import { publishPullRequest } from './commands/publishPullRequest';
 import { addBuildNotesSkipTag } from './commands/addBuildNotesSkipTag';
 import { retargetPullRequest } from './commands/retargetPullRequest';
+import { completePullRequest } from './commands/completePullRequest';
+import { restartPullRequestMerge } from './commands/restartPullRequestMerge';
 import { createPullRequest } from './commands/createPullRequest';
 import { deleteBranch } from './commands/deleteBranch';
 import {
@@ -37,6 +39,8 @@ import { CurrentWorkItemStatusBar } from './currentWorkItemStatusBar';
 import {
   ADD_BUILD_NOTES_SKIP_TAG_COMMAND,
   RETARGET_PULL_REQUEST_COMMAND,
+  COMPLETE_PULL_REQUEST_COMMAND,
+  RESTART_PULL_REQUEST_MERGE_COMMAND,
   CHECKOUT_MY_PULL_REQUEST_COMMAND,
   MyPullRequestsWatcher,
   PUBLISH_PULL_REQUEST_COMMAND,
@@ -114,7 +118,7 @@ const DEBOUNCE_MS = 300;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   // A window opened on a new worktree runs `npm ci` once; never blocks nor breaks the activation
-  void runPendingWorktreeSetup();
+  const pendingDetails = runPendingWorktreeSetup();
   const git = await getGitApi();
   const store = new WorkItemsStore(git);
   const details = new WorkItemDetailsPanels(context.extensionUri, store);
@@ -185,7 +189,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (!request) {
           throw new Error(`PR ${id} is no longer active.`);
         }
-        return { branch: request.sourceBranch, pullRequest: { id, title: request.title }, origin: { kind, id } };
+        return {
+          branch: request.sourceBranch,
+          pullRequest: { id, title: request.title },
+          origin: { kind, id },
+          showDetails: reviewRequests.workItemsToVerify(id),
+        };
       }
       case 'myPullRequest': {
         const pullRequest = myPullRequests.models().items.find((item) => item.id === id);
@@ -514,7 +523,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         throw new Error(`PR ${pullRequestId} is no longer active.`);
       }
       if (request) {
-        await checkoutPullRequest(git, store, request, 'review');
+        await checkoutPullRequest(
+          git,
+          store,
+          request,
+          'review',
+          undefined,
+          reviewRequests.workItemsToVerify(request.id)
+        );
       }
     }),
     command('totalflowx.checkMyPullRequests', () => myPullRequests.poll()),
@@ -568,6 +584,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         myPullRequests.poll()
       );
     }),
+    command(COMPLETE_PULL_REQUEST_COMMAND, async (pullRequestId: number) => {
+      const pullRequest = myPullRequests.find(pullRequestId);
+      if (!pullRequest) {
+        throw new Error(`PR ${pullRequestId} is no longer in your list of pull requests.`);
+      }
+      await completePullRequest(resolveContext(currentRepository()).client, store, pullRequest, () =>
+        myPullRequests.poll()
+      );
+    }),
+    command(RESTART_PULL_REQUEST_MERGE_COMMAND, async (pullRequestId: number) => {
+      const pullRequest = myPullRequests.find(pullRequestId);
+      if (!pullRequest) {
+        throw new Error(`PR ${pullRequestId} is no longer in your list of pull requests.`);
+      }
+      await restartPullRequestMerge(resolveContext(currentRepository()).client, pullRequest, () =>
+        myPullRequests.poll()
+      );
+    }),
     command('totalflowx.openIterationBoard', () => openIterationBoard(currentRepository(), store)),
     command('totalflowx.selectTeams', () => selectTeams(currentRepository())),
     // No requests and no repository needed: does not wait for the repository like the commands above
@@ -575,6 +609,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.commands.executeCommand('workbench.action.openSettings', `@ext:${context.extension.id}`)
     )
   );
+  // Rule REVIEW-AC-1: a worktree opened for a review shows the acceptance criteria of its work items
+  void pendingDetails.then((ids) => {
+    for (const id of ids) {
+      void vscode.commands.executeCommand('totalflowx.openDetails', id);
+    }
+  });
   // When the repository is not open yet, it starts from onDidOpenRepository
   if (git.repositories.length) {
     notifier.start();

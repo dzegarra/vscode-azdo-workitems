@@ -67,6 +67,7 @@ export function settings() {
       suffix: config.get<string>('integrationBuild.suffix', '+'),
     },
     hoverStyle: normalizeHoverStyle(config.get<string>('appearance.hoverStyle', 'border')),
+    asleepPulse: config.get<boolean>('appearance.asleepPulse', true),
     popoverDelay: normalizePopoverDelay(config.get<unknown>('popovers.hoverDelay')),
     tasksCountStyle: normalizeTaskCountStyle(config.get<string>('tasks.countStyle', 'filled')),
     workingOn: {
@@ -89,6 +90,11 @@ export function settings() {
         'alerts.requiredFields',
         []
       ),
+      titlePrefixes: config.get<string[]>('alerts.titlePrefixes', []),
+      effortScale: config.get<number[]>('alerts.effortScale', []),
+      stretchTitlePrefix: config.get<string>('alerts.stretchTitlePrefix', ''),
+      stretchTags: config.get<string[]>('alerts.stretchTags', []),
+      staleAfterWorkingDays: Math.max(0, config.get<number>('alerts.staleAfterWorkingDays', 1)),
     },
   };
 }

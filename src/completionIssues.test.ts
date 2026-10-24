@@ -4,6 +4,8 @@ import {
   completionIssueCount,
   completionIssueLines,
   completionIssues,
+  completionTitle,
+  conventionIssues,
   isEmptyRichText,
   type CompletionInput,
 } from './completionIssues';
@@ -49,13 +51,14 @@ describe('isEmptyRichText', () => {
 
 describe('completionIssues', () => {
   it('finds nothing in a complete Backlog Item', () => {
-    expect(completionIssues(input(), rules)).toEqual({ blockingTags: [], missingFields: [] });
+    expect(completionIssues(input(), rules)).toEqual({ blockingTags: [], missingFields: [], conventions: [] });
   });
 
   it('finds the blocking tags alone, ignoring case and spaces, as written on the work item', () => {
     expect(completionIssues(input({ tags: [' blocked ', 'NEEDS REFINEMENT', 'Other'] }), rules)).toEqual({
       blockingTags: [' blocked ', 'NEEDS REFINEMENT'],
       missingFields: [],
+      conventions: [],
     });
   });
 
@@ -84,7 +87,11 @@ describe('completionIssues', () => {
       ...rules,
       requiredFields: duplicated,
     });
-    expect(issues).toEqual({ blockingTags: ['Blocked'], missingFields: ['Acceptance criteria', 'Effort'] });
+    expect(issues).toEqual({
+      blockingTags: ['Blocked'],
+      missingFields: ['Acceptance criteria', 'Effort'],
+      conventions: [],
+    });
   });
 
   it('applies the required fields only to the states of the rule', () => {
@@ -108,6 +115,7 @@ describe('completionIssues', () => {
       expect(completionIssues({ ...complete, state, tags: ['Blocked'], fields: {} }, rules)).toEqual({
         blockingTags: [],
         missingFields: [],
+        conventions: [],
       });
     }
   });
@@ -116,7 +124,54 @@ describe('completionIssues', () => {
     expect(completionIssues({ type: 'Bug', state: 'Active', tags: ['Blocked'], fields: {} }, rules)).toEqual({
       blockingTags: ['Blocked'],
       missingFields: [],
+      conventions: [],
     });
+  });
+});
+
+describe('conventions of the Backlog Items (Rules COMPLETE-5, COMPLETE-6)', () => {
+  const conventions = {
+    effortScale: [1, 2, 3, 5, 8, 13, 21],
+    titlePrefixes: ['[Platform]', '[Platform UI]', '[PMUI]', '[FUI]'],
+  };
+
+  it('finds story points off the scale', () => {
+    expect(conventionIssues({ ...complete, title: '[PMUI] x', fields: { [EFFORT]: 4 } }, conventions)).toEqual([
+      'Effort 4 is not on the scale 1, 2, 3, 5, 8, 13, 21',
+    ]);
+    expect(conventionIssues({ ...complete, title: '[PMUI] x', fields: { [EFFORT]: 13 } }, conventions)).toEqual([]);
+    // An empty Effort is the required fields' business
+    expect(conventionIssues({ ...complete, title: '[PMUI] x', fields: {} }, conventions)).toEqual([]);
+  });
+
+  it('finds a title without one of the prefixes, brackets included', () => {
+    expect(conventionIssues({ ...complete, title: 'Platform UI: Filtering for Tags' }, conventions)).toEqual([
+      'Title without a team prefix ([Platform], [Platform UI], [PMUI]…)',
+    ]);
+    expect(conventionIssues({ ...complete, title: ' [Platform UI] Filtering for Tags' }, conventions)).toEqual([]);
+  });
+
+  it('checks Backlog Items only, and nothing with empty lists or an unknown title', () => {
+    expect(conventionIssues({ ...complete, type: 'Bug', title: 'x', fields: { [EFFORT]: 4 } }, conventions)).toEqual(
+      []
+    );
+    expect(conventionIssues({ ...complete, title: 'x', fields: { [EFFORT]: 4 } }, {})).toEqual([]);
+    expect(conventionIssues({ ...complete, fields: { [EFFORT]: 5 } }, conventions)).toEqual([]);
+  });
+
+  it('does not say "cannot be completed" with only conventions', () => {
+    expect(completionTitle({ conventions: ['Effort 4 is not on the scale'] })).toBe(
+      'Before completion: Effort 4 is not on the scale'
+    );
+    expect(completionTitle({ blockingTags: ['Blocked'], conventions: ['Effort 4'] })).toBe(
+      'Cannot be completed yet: Tagged Blocked · Effort 4'
+    );
+  });
+
+  it('counts the conventions in the caution', () => {
+    const item = { conventions: ['Effort 4 is not on the scale', 'Title without a team prefix'] };
+    expect(completionIssueCount(item)).toBe(2);
+    expect(completionIssueLines(item)).toEqual(['Effort 4 is not on the scale', 'Title without a team prefix']);
   });
 });
 

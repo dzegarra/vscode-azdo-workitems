@@ -6,6 +6,8 @@ export type AlertRule =
   | 'duplicateStateNotInSync'
   | 'missingField'
   | 'noPullRequestTask'
+  | 'noTasks'
+  | 'stretchTags'
   | 'pullRequestTaskNotDone'
   | 'pullRequestTaskNotInProgress'
   | 'staleIntegrationBuild'
@@ -63,11 +65,15 @@ export interface AlertPullRequest {
 
 export interface AlertInput {
   type: string;
+  /** Undefined: the rules about the title are not checked */
+  title?: string;
   state: string;
   tags: string[];
   /** Fields by reference name, e.g. "Microsoft.VSTS.Scheduling.Effort" */
   fields: Record<string, unknown>;
   tasks: AlertTask[];
+  /** False when some child work items could not be loaded: the rules about having tasks say nothing */
+  tasksKnown?: boolean;
   pullRequests: AlertPullRequest[];
   /** Names of the branches of this repository linked to the work item itself (Development section) */
   branches: string[];
@@ -97,6 +103,15 @@ export interface AlertRules {
   requiredFields: RequiredFieldsRule[];
   /** The "Integrated in Build" field and when it must be set. Undefined: the field does not exist (not checked) */
   integrationBuild?: IntegrationBuildRule;
+  /** Stretched items (DEVELOPMENT_APPROACH §13.3-13.4). Undefined or no tags: not checked */
+  stretch?: StretchRule;
+}
+
+export interface StretchRule {
+  /** "[Stretched]": the title of the new item of a stretch starts with it. Empty: the title is not checked */
+  titlePrefix: string;
+  /** The stretch-* tags; a stretched item has exactly one */
+  tags: string[];
 }
 
 export interface IntegrationBuildRule {
@@ -289,6 +304,59 @@ function fieldAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[] {
   }));
 }
 
+// Rule ALERT-12
+/**
+ * Work started but no task: the team creates the tasks when the work on a backlog item starts (DEVELOPMENT_APPROACH
+ * §9.5, §10). Removed tasks do not count
+ */
+function noTaskAlerts(input: AlertInput): WorkItemAlert[] {
+  const tasks = input.tasks.filter((task) => stateCategory(task.state) !== 'removed');
+  if (input.tasksKnown === false || stateCategory(input.state) !== 'in-progress' || tasks.length) {
+    return [];
+  }
+  return [
+    { rule: 'noTasks', message: `Is ${input.state} but has no tasks (team rule: create them when the work starts)` },
+  ];
+}
+
+const lower = (text: string) => text.trim().toLowerCase();
+
+// Rule ALERT-13
+/**
+ * A stretched item has exactly one stretch tag, the primary reason (DEVELOPMENT_APPROACH §13.4). With a title
+ * prefix set, the prefix and the tag go together: one without the other means something was forgotten. The prefix is
+ * optional (empty by default): the team was not told about it and suffixes "Stretched" instead (asked to the architect)
+ */
+function stretchMessage(input: AlertInput, rule: StretchRule, tags: string[]): string | undefined {
+  if (tags.length > 1) {
+    return `Has ${tags.length} stretch tags (${tags.join(', ')}): keep only the primary reason`;
+  }
+  const prefix = rule.titlePrefix.trim();
+  if (!prefix || input.title === undefined) {
+    return undefined;
+  }
+  const prefixed = lower(input.title).startsWith(lower(prefix));
+  if (prefixed && !tags.length) {
+    return `Is ${prefix} but has no stretch tag (one of ${rule.tags.join(', ')})`;
+  }
+  return !prefixed && tags.length
+    ? `Has the stretch tag ${tags.join('')} but the title does not start with "${prefix}"`
+    : undefined;
+}
+
+function stretchAlerts(input: AlertInput, rule: StretchRule | undefined): WorkItemAlert[] {
+  if (!rule?.tags.length) {
+    return [];
+  }
+  const known = new Set(rule.tags.map(lower));
+  const message = stretchMessage(
+    input,
+    rule,
+    input.tags.filter((tag) => known.has(lower(tag)))
+  );
+  return message ? [{ rule: 'stretchTags', message }] : [];
+}
+
 // Rule ALERT-11
 /**
  * "Integrated in Build" is set but the Bug is no longer Ready to Test nor closed: it was reopened (the fix did not
@@ -361,6 +429,8 @@ export function findAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[
     ...fieldAlerts(input, rules),
     ...staleIntegrationBuildAlerts(input, rules.integrationBuild),
     ...duplicateAlerts(input),
+    ...noTaskAlerts(input),
+    ...stretchAlerts(input, rules.stretch),
   ];
 }
 

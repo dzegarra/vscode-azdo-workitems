@@ -13,6 +13,8 @@ export const ICONS = {
   collapseAll: '<path d="m4 7 4-3.5L12 7M4 12.5 8 9l4 3.5"/>',
   chevron: '<path d="m6 3.5 4.5 4.5L6 12.5"/>',
   clock: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/>',
+  /** "zZ": a work item asleep (not updated for a while) */
+  sleep: '<path d="M7.5 2.5h6l-6 7h6M2.5 9.5h3.5l-3.5 4h3.5"/>',
   sync: '<path d="M13 8a5 5 0 0 1-8.5 3.5M3 8a5 5 0 0 1 8.5-3.5M11.5 2v2.5H9M4.5 14v-2.5H7"/>',
   check: '<circle cx="8" cy="8" r="5.5"/><path d="m5.5 8.2 1.7 1.7 3.3-3.4"/>',
   error: '<circle cx="8" cy="8" r="5.5"/><path d="m6 6 4 4m0-4-4 4"/>',

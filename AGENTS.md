@@ -6,12 +6,15 @@ VS Code extension (ID `abb-totalflowx.vscode-azdo-workitems`, display name "Tota
 - Why things are the way they are: [docs/DECISIONS.md](docs/DECISIONS.md). **Read it before changing behaviour.**
 - The exact decision rules (which states are shown, which actions are unlocked), with stable IDs: [docs/RULES.md](docs/RULES.md).
 - What we learned about the Azure DevOps REST API (verified on our organization): [docs/AZURE_DEVOPS.md](docs/AZURE_DEVOPS.md).
+- The team's own process document: [docs/DEVELOPMENT_APPROACH.md](docs/DEVELOPMENT_APPROACH.md). It is a reference copy: do not edit its content.
 
 ## Context
 
 - Organization `ABB-PAMA-BVL`, project `Flow Digital Architecture`, main repository `User_Interface` (others exist, e.g. `Common_Translations`, `Communication-Interface`). Organization / project / repository are detected from the `origin` remote; settings can override them.
 - The team works in Scrum, 2-week sprints, several teams in parallel (Platform, Measurement Apps, Interface Apps, Automation Apps, UX…). Iterations are `<Project>\<Release>\<Sprint>`, e.g. `Flow Digital Architecture\MVP R3\Platform Sprint 122`.
 - Team rules enforced by the extension are listed in [docs/DECISIONS.md](docs/DECISIONS.md#team-rules).
+- The team rules come partly from [docs/DEVELOPMENT_APPROACH.md](docs/DEVELOPMENT_APPROACH.md) (the architect's document, new revisions every few months) and partly from the team. [docs/DEVELOPMENT_APPROACH_COVERAGE.md](docs/DEVELOPMENT_APPROACH_COVERAGE.md) maps every rule of that document (`DA-<n>`) to the extension's rules (RULES.md IDs) with its status: implemented, planned, waiting for the architect, later, release process, ignored. Keep it current when a rule is implemented or changed, and follow its last section when a new revision of the document arrives.
+- The **release and hotfix procedures** of that document (release branches, merges to Main, tags, hotfix branches, the Checkpoint tag) are **deferred on purpose**: ignore them until the release phase starts (see the note under the table in [docs/DECISIONS.md](docs/DECISIONS.md#team-rules)).
 - The project lives in its own repository; it was extracted (with its history) from the `User_Interface` Nx monorepo, where it was `tools/vscode-azdo-workitems`.
 
 ## Commands
@@ -55,6 +58,8 @@ src/*Watcher.ts           pollers: reviewRequestsWatcher (PRs to review), myPull
                           pipelineWatcher (CI runs, via src/runsPolling.ts), pullRequestNotifier (events on my PRs)
 src/baseBranchAlert.ts    alarm of a broken base branch (status bar, modal, sound); pure rules and texts: src/baseBranchHealth.ts
 src/pullRequestTaskStarter.ts  after each load, moves the tasks of my published PRs to In Progress (rule in src/pullRequestTasks.ts)
+src/pullRequestCompletion.ts   pure: what Complete… of My Pull Requests does to the work items (Bugs never Done); flow in src/commands/completePullRequest.ts
+src/workItemReminders.ts       pure: reminders of the completion caution (not updated daily, sprint ending)
 src/summaryView.ts        native "Summary" tree view; owns the activity bar badge (rows/badge logic, pure: src/summaryRows.ts)
 src/funJournalStore.ts    fun journal in the global state (pure recorders: src/funJournal.ts); fun texts: src/celebrations.ts,
                           src/greenStreak.ts, src/sprintCountdown.ts; sprint wrap-up: src/sprintRecap.ts (pure) + src/sprintRecapPanel.ts

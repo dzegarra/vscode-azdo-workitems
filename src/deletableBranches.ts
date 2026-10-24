@@ -18,9 +18,15 @@ function sourceBranch(pr: Pick<BranchPullRequest, 'sourceRefName'>): string {
 }
 
 // Rule DELETABLE-1
-/** Branches that PRs merge into and out of, never offered for deletion even if a PR (e.g. develop to a release) used them as source */
+/**
+ * Branches that PRs merge into and out of (locked in Azure DevOps), never offered for deletion even if a PR (e.g.
+ * develop to a release) used them as source. Team convention: `develop-*`, `release-*`, `hotfix-*`; branch names are
+ * lowercase, so the match is too
+ */
+const PROTECTED_PREFIXES = ['develop-', 'release-', 'release/', 'hotfix-'];
+
 export function isProtectedBranch(name: string): boolean {
-  return ['develop', 'main', 'master'].includes(name) || name.startsWith('release/');
+  return ['develop', 'main', 'master'].includes(name) || PROTECTED_PREFIXES.some((prefix) => name.startsWith(prefix));
 }
 
 // Rule DELETABLE-2
