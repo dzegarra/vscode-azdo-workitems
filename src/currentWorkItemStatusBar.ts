@@ -7,7 +7,9 @@ import {
   CurrentWorkItemView,
   describeCurrentWorkItem,
   Person,
+  statusBarLabel,
   statusBarText,
+  statusBarTypeColor,
 } from './currentWorkItem';
 import { GitAPI } from './git';
 import { workItemIdFromBranch } from './naming';
@@ -65,7 +67,11 @@ export class CurrentWorkItemStatusBar implements vscode.Disposable {
       vscode.workspace.onDidChangeConfiguration((event) => {
         if (event.affectsConfiguration(`${SECTION}.workingOn.showInStatusBar`)) {
           this.schedule(true);
-        } else if (event.affectsConfiguration(`${SECTION}.workItems.showInReviewState`) && this.resolved) {
+        } else if (
+          (event.affectsConfiguration(`${SECTION}.workItems.showInReviewState`) ||
+            event.affectsConfiguration(`${SECTION}.workingOn.statusBarLabel`)) &&
+          this.resolved
+        ) {
           this.show(this.resolved);
         }
       })
@@ -155,7 +161,10 @@ export class CurrentWorkItemStatusBar implements vscode.Disposable {
   }
 
   private show({ branch, info, view }: Resolved): void {
-    this.item.text = `${view.isMine ? '$(git-branch)' : '$(eye)'} ${statusBarText(info, view)}`;
+    const label = statusBarLabel(vscode.workspace.getConfiguration(SECTION).get('workingOn.statusBarLabel'));
+    this.item.text = statusBarText(info, view, label);
+    const color = statusBarTypeColor(info.type);
+    this.item.color = color && new vscode.ThemeColor(color);
     this.item.command = { command: SHOW_DETAILS_COMMAND, title: 'Open Work Item Details Panel', arguments: [info.id] };
 
     const tooltip = new vscode.MarkdownString(undefined, true);

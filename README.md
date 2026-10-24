@@ -162,9 +162,9 @@ Turn any of these settings off to keep only the highlight. The status bar item o
 
 ## Work item of the current branch
 
-The status bar shows the work item of the checked out branch, e.g. `66280 Access point label shows the SSID`. Click it to open its Work Item Details panel. The work item is found by the number in the branch name (`feature/<module>/<id>-<name>`); branches of colleagues that do not follow the convention exactly, like `feature/MA/60800_unit_config`, work too. Nothing is shown when the branch has no work item (`develop`, `release/…`).
+The status bar shows the work item of the checked out branch with the icon of its type and its ID, e.g. `$(book) 66280`, coloured by type (Backlog Items / User Stories blue, Bugs red, Tasks yellow, Features purple, like the sidebar; the colours can be changed with `workbench.colorCustomizations`: `totalflowx.workItemType.backlogForeground`, `bugForeground`, `taskForeground`, `featureForeground`). Set `totalflowx.workingOn.statusBarLabel` to `idAndTitle` to see the title too (`$(book) 66280 Access point label shows the SSID`); the title is always in the tooltip. Click it to open its Work Item Details panel. The work item is found by the number in the branch name (`feature/<module>/<id>-<name>`); branches of colleagues that do not follow the convention exactly, like `feature/MA/60800_unit_config`, work too. Nothing is shown when the branch has no work item (`develop`, `release/…`).
 
-When the work item is **not assigned to you**, e.g. you checked out a colleague's branch to review a PR, it is shown with an eye icon and the name of the **owner of the branch** (the person who created it in Azure DevOps): `60800 Update Unit Configuration… · Borislav Surovi EXT`. Hover it to see who the work item is assigned to, its state and the branch. When the branch was not pushed yet, the person the work item is assigned to is named instead.
+When the work item is **not assigned to you**, e.g. you checked out a colleague's branch to review a PR, it is shown with an eye icon and the name of the **owner of the branch** (the person who created it in Azure DevOps): `$(eye) $(book) 60800 · Borislav Surovi EXT`. Hover it to see who the work item is assigned to, its state and the branch. When the branch was not pushed yet, the person the work item is assigned to is named instead.
 
 It can be turned off with `totalflowx.workingOn.showInStatusBar`.
 
@@ -389,6 +389,7 @@ Personal choices (layouts, filters, the look of the cards, the fun features) are
 | `totalflowx.workingOn.showWorktrees`          | Also mark the work items checked out in another worktree (on)             |
 | `totalflowx.workingOn.includeLinkedWorkItems` | Also mark the work items linked to the one of the checked out branch (on) |
 | `totalflowx.workingOn.showInStatusBar`        | Show the work item of the current branch in the status bar                |
+| `totalflowx.workingOn.statusBarLabel`        | Status bar item of the current work item: `id` (default) or `idAndTitle`  |
 
 ### Branches & Pull Request Creation
 

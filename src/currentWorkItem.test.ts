@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { describeCurrentWorkItem, isSamePerson, shortTitle, statusBarText } from './currentWorkItem';
+import {
+  describeCurrentWorkItem,
+  isSamePerson,
+  shortTitle,
+  statusBarLabel,
+  statusBarText,
+  statusBarTypeColor,
+  statusBarTypeIcon,
+} from './currentWorkItem';
 
 const me = { id: 'me', displayName: 'you' };
 const borislav = {
@@ -23,7 +31,10 @@ describe('current work item', () => {
       undefined
     );
     expect(view).toMatchObject({ isMine: true, assignee: 'you', branchOwner: undefined });
-    expect(statusBarText({ ...info, assignedTo: me }, view)).toBe('60800 [Measurement] Update Unit Configuration…');
+    expect(statusBarText({ ...info, assignedTo: me }, view, 'id')).toBe('$(book) 60800');
+    expect(statusBarText({ ...info, assignedTo: me }, view, 'idAndTitle')).toBe(
+      '$(book) 60800 [Measurement] Update Unit Configuration…'
+    );
   });
 
   it("names the owner of a colleague's branch", () => {
@@ -34,7 +45,10 @@ describe('current work item', () => {
       branchOwner: 'Borislav Surovi EXT',
       ownerLabel: 'Borislav Surovi EXT',
     });
-    expect(statusBarText(info, view)).toBe('60800 [Measurement] Update Unit Configuration… · Borislav Surovi EXT');
+    expect(statusBarText(info, view, 'id')).toBe('$(eye) $(book) 60800 · Borislav Surovi EXT');
+    expect(statusBarText(info, view, 'idAndTitle')).toBe(
+      '$(eye) $(book) 60800 [Measurement] Update Unit Configuration… · Borislav Surovi EXT'
+    );
   });
 
   it('tells apart the owner of the branch and the assignee, and handles unknown ones', () => {
@@ -71,5 +85,20 @@ describe('current work item', () => {
   it('shortens long titles', () => {
     expect(shortTitle('  A   short\ntitle ', 40)).toBe('A short title');
     expect(shortTitle('x'.repeat(50), 10)).toBe(`${'x'.repeat(9)}…`);
+  });
+
+  it('shows the icon and colour of the type', () => {
+    expect(statusBarTypeIcon('Bug')).toBe('$(bug)');
+    expect(statusBarTypeIcon('Task')).toBe('$(tasklist)');
+    expect(statusBarTypeIcon('Impediment')).toBe('$(issues)');
+    expect(statusBarTypeColor('Bug')).toBe('totalflowx.workItemType.bugForeground');
+    expect(statusBarTypeColor('User Story')).toBe('totalflowx.workItemType.backlogForeground');
+    expect(statusBarTypeColor('Impediment')).toBeUndefined();
+  });
+
+  it('shows the ID alone unless the title is asked for', () => {
+    expect(statusBarLabel(undefined)).toBe('id');
+    expect(statusBarLabel('something else')).toBe('id');
+    expect(statusBarLabel('idAndTitle')).toBe('idAndTitle');
   });
 });

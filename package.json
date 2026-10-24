@@ -61,6 +61,46 @@
           "highContrast": "statusBarItem.foreground",
           "highContrastLight": "statusBarItem.foreground"
         }
+      },
+      {
+        "id": "totalflowx.workItemType.bugForeground",
+        "description": "Icon and text of the status bar item of the current work item when it is a Bug.",
+        "defaults": {
+          "dark": "#F48771",
+          "light": "#FFC2B8",
+          "highContrast": "statusBarItem.foreground",
+          "highContrastLight": "statusBarItem.foreground"
+        }
+      },
+      {
+        "id": "totalflowx.workItemType.backlogForeground",
+        "description": "Icon and text of the status bar item of the current work item when it is a Product Backlog Item or User Story.",
+        "defaults": {
+          "dark": "#75BEFF",
+          "light": "#C7E4FF",
+          "highContrast": "statusBarItem.foreground",
+          "highContrastLight": "statusBarItem.foreground"
+        }
+      },
+      {
+        "id": "totalflowx.workItemType.taskForeground",
+        "description": "Icon and text of the status bar item of the current work item when it is a Task.",
+        "defaults": {
+          "dark": "#E2C08D",
+          "light": "#FFE8A3",
+          "highContrast": "statusBarItem.foreground",
+          "highContrastLight": "statusBarItem.foreground"
+        }
+      },
+      {
+        "id": "totalflowx.workItemType.featureForeground",
+        "description": "Icon and text of the status bar item of the current work item when it is a Feature.",
+        "defaults": {
+          "dark": "#D7A5F5",
+          "light": "#EBD3FF",
+          "highContrast": "statusBarItem.foreground",
+          "highContrastLight": "statusBarItem.foreground"
+        }
       }
     ],
     "viewsContainers": {
@@ -640,6 +680,21 @@
             "default": true,
             "description": "Show the work item of the checked out branch in the status bar. Work items assigned to someone else (e.g. a colleague's branch checked out to review it) are shown differently, with the person who created the branch.",
             "order": 5
+          },
+          "totalflowx.workingOn.statusBarLabel": {
+            "type": "string",
+            "enum": [
+              "id",
+              "idAndTitle"
+            ],
+            "enumDescriptions": [
+              "The icon of the type and the ID, e.g. \"66280\": takes little space.",
+              "The icon of the type, the ID and the title (shortened to 40 characters)."
+            ],
+            "default": "id",
+            "scope": "application",
+            "description": "What the status bar item of the work item of the checked out branch shows. The full title is always in its tooltip.",
+            "order": 6
           }
         }
       },
