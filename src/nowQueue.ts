@@ -66,7 +66,9 @@ function unblockItems(pullRequests: MyPullRequestModel[]): NowItem[] {
       return [];
     }
     const reasons = attentionOf(pr).reasons.map((reason) => reason.text);
-    const details = [...reasons, ...pr.warnings.map((warning) => warning.text)];
+    // A reviewer's feedback is already one of the reasons (Waiting for author, Rejected)
+    const warnings = pr.warnings.filter((warning) => warning.concern !== 'feedback').map((warning) => warning.text);
+    const details = [...reasons, ...warnings];
     return details.length
       ? [{ verb: 'unblock' as const, id: pr.id, title: pr.title, detail: details.join(' · ') }]
       : [];

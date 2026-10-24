@@ -2,7 +2,15 @@ import { migratePredecessorStates } from './predecessors';
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { showActionPicker } from './actionPickerUi';
-import { coverageThresholds, funEnabled, recordsScope, SECTION, settings, workingDaysSetting } from './config';
+import {
+  coverageThresholds,
+  funEnabled,
+  recordsScope,
+  SECTION,
+  settings,
+  workingDaysSetting,
+  worktreeSettings,
+} from './config';
 import { safeRelativePath } from './coverage';
 import { describeRecords } from './coverageRecords';
 import { CoverageRecordsStore } from './coverageRecordsStore';
@@ -29,12 +37,18 @@ import {
 import type { SoundId } from './sounds';
 import { baseBranchBanner } from './baseBranchHealth';
 import { SHOW_BASE_BRANCH_COMMAND } from './baseBranchAlert';
-import { sprintCountdown } from './sprintCountdown';
+import { sprintCountdown, sprintProgress } from './sprintCountdown';
+import type { WorktreeTracker } from './worktreeTracker';
 import { runWorkItemAction } from './workItemActions';
 import { WorkItemsStore } from './workItemsStore';
+import { CLEAN_UP_WORKTREES_COMMAND } from './worktreeTracker';
+import type { SidebarTab } from './sidebarTabs';
 
 export const VIEW_ID = 'totalflowx.myItems';
 export const REVEAL_WORK_ITEM_COMMAND = 'totalflowx.revealWorkItem';
+export const SHOW_SIDEBAR_TAB_COMMAND = 'totalflowx.showSidebarTab';
+/** "Delete Branch of a Completed PR" (lists every branch that can go) */
+const DELETE_BRANCH_COMMAND = 'totalflowx.deleteBranch';
 
 export function filterSettings(): FilterModel {
   const config = vscode.workspace.getConfiguration(SECTION);
@@ -68,6 +82,10 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
   private ready = false;
   /** Work item to reveal as soon as the webview can: the view may still be opening */
   private pendingReveal?: number;
+  /** Tab to show as soon as the webview can */
+  private pendingTab?: SidebarTab;
+  /** Worktrees that can be removed, for the clean row of the Now tab (the tracker is created after the view) */
+  private worktrees?: Pick<WorktreeTracker, 'stale'>;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -93,6 +111,12 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  /** The worktrees to clean up count in the Now tab once the tracker exists */
+  setWorktrees(worktrees: Pick<WorktreeTracker, 'stale'>): void {
+    this.worktrees = worktrees;
+    this.post();
+  }
+
   /** Sends the current state to the webview */
   post(): void {
     if (!this.view) {
@@ -110,7 +134,10 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       iterations: base.iterations.map((iteration) => ({
         ...iteration,
         countdown: fun ? sprintCountdown(iteration.finishDate, now, workingDaysSetting()) : undefined,
+        progress: sprintProgress(iteration.startDate, iteration.finishDate, now, workingDaysSetting()),
       })),
+      // Like the Summary row (SUMMARY-10): only when worktrees.showInSummary is on
+      staleWorktrees: this.worktrees && worktreeSettings().showInSummary ? this.worktrees.stale().length : 0,
       alwaysShowAlerts: vscode.workspace.getConfiguration(SECTION).get<boolean>('filter.alwaysShowAlerts', false),
       layout: layoutSetting(),
       hoverStyle: settings().hoverStyle,
@@ -189,6 +216,23 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
     this.flushReveal();
   }
 
+  // Rule TABS-4
+  /** Shows the view on one of its tabs (a click on a Summary row) */
+  async showTab(tab: SidebarTab): Promise<void> {
+    this.pendingTab = tab;
+    await vscode.commands.executeCommand(`${VIEW_ID}.focus`);
+    this.flushTab();
+  }
+
+  private flushTab(): void {
+    if (this.pendingTab === undefined || !this.ready || !this.view?.visible) {
+      return;
+    }
+    const message: ExtensionMessage = { type: 'showTab', tab: this.pendingTab };
+    this.pendingTab = undefined;
+    void this.view.webview.postMessage(message);
+  }
+
   private flushReveal(): void {
     if (this.pendingReveal === undefined || !this.ready || !this.view?.visible) {
       return;
@@ -230,11 +274,18 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       case 'ready':
         this.ready = true;
         this.post();
+        this.flushTab();
         this.flushReveal();
         await this.store.ensureLoaded();
         return;
       case 'showBaseBranchAlert':
         await vscode.commands.executeCommand(SHOW_BASE_BRANCH_COMMAND);
+        return;
+      case 'cleanUp':
+        // Rule NOW-5: the existing flows, which ask before removing anything
+        await vscode.commands.executeCommand(
+          message.what === 'worktrees' ? CLEAN_UP_WORKTREES_COMMAND : DELETE_BRANCH_COMMAND
+        );
         return;
       case 'refresh':
         await Promise.all([this.store.refresh(), this.reviews.poll(true), this.myPullRequests.poll()]);

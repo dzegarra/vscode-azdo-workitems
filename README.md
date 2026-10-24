@@ -36,6 +36,14 @@ To debug it, run the launch configuration **Run Azure Work Items Extension** (F5
 
 Open the **Totalflow X** container in the activity bar: its **Assigned to Me** view (the list under the **My Work Items** heading) lists only the work items assigned to you (the line under the search box and the view title tell from which sprints and teams). The first time, VS Code asks you to sign in with your Microsoft account.
 
+The view has three **tabs**, under a **sprint strip** (the sprint, the working days left and one segment per working day, the ones already over filled; with teams in different sprints, the one that ends first). The alarm of a [broken develop](#when-develop-is-broken) stays above the tabs, whatever the tab:
+
+- **Now**: everything that needs you, one row each, by who waits on whom: **Review** (a pull request waiting for your review, the most urgent first), **Unblock** (one of your pull requests needs you: a reviewer sent it back, conflicts, failed CI, unresolved comments, a team rule), **Fix** (a work item breaks a team rule), **Ship** (one of your pull requests is ready to merge and you complete it) and **Clean** (worktrees and branches that can go). Click a row to unfold it in place, with the same card and buttons as in the other tabs. Below, the work items you are working on, with their **track**. The count of the tab is the number of rows (the Clean one excluded), plus 1 while develop is broken.
+- **Work**: the search, the filters and the list of your work items, as described below.
+- **PRs**: [Waiting for your review](#pull-requests-waiting-for-my-review) and [My pull requests](#my-pull-requests). The count tells how many pull requests wait for your review, then how many of yours are active.
+
+The **track** of a Backlog Item or Bug shows the six stations its work goes through: Branch, PR, CI, Review, Ready to be merged and Done (Ready to Test for Bugs: only testers move them to Done). Each one is green when passed, blue while someone else (or the CI) has it, orange when it needs you, red when it breaks a team rule, grey when not reached; the line under it names the station to look at. A draft PR is the active station (you review it before publishing it); CI starts when the PR is published; peers may review while it runs. Large cards show it under the title, compact rows as six small segments before the other signals (hover them for each station).
+
 Each work item is a card with:
 
 - ID (opens the work item in Azure DevOps), **Priority** (`P1`–`P4`) and, for Bugs, **Severity** (`S1 Critical` … `S4 Low`), coloured from red (most urgent) to grey; the type is shown by the icon. And the state
@@ -172,7 +180,7 @@ It can be turned off with `totalflowx.workingOn.showInStatusBar`.
 
 ## Summary view
 
-Below **Assigned to Me** (collapsed by default) the **Summary** view lists what needs your attention, one row per kind and only when there is something: [develop is broken](#when-develop-is-broken) (first; click it for what broke it), work items that need attention, pull requests waiting for your review (with how many are overdue / due soon), your pull requests with warnings, your pull requests ready to merge, and failed CI runs. Click a row to show the main list. When nothing needs attention it says so. Below them, [worktrees to clean up](#leftover-worktrees) (click it to clean up).
+Below **Assigned to Me** (collapsed by default) the **Summary** view lists what needs your attention, one row per kind and only when there is something: [develop is broken](#when-develop-is-broken) (first; click it for what broke it), work items that need attention, pull requests waiting for your review (with how many are overdue / due soon), your pull requests with warnings, your pull requests ready to merge, and failed CI runs. Click a row to show the tab that lists it (work items in Work, pull requests in PRs). When nothing needs attention it says so. Below them, [worktrees to clean up](#leftover-worktrees) (click it to clean up).
 
 The Summary view also carries the **badge of the Totalflow X icon** in the activity bar (work items that need attention + pull requests waiting for your review + 1 while develop is broken), so the number shows from the moment VS Code starts, without opening the sidebar.
 

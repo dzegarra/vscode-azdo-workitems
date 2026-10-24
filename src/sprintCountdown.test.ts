@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { daysUntil, isInSprint, isLastSprintDay, sprintCountdown, workingDaysLeft } from './sprintCountdown';
+import {
+  daysUntil,
+  isInSprint,
+  isLastSprintDay,
+  sprintCountdown,
+  sprintProgress,
+  workingDaysLeft,
+} from './sprintCountdown';
 
 const WEEKDAYS = [1, 2, 3, 4, 5];
 const FINISH = '2026-10-27T00:00:00Z'; // a Tuesday
@@ -60,5 +67,33 @@ describe('isInSprint', () => {
     expect(isInSprint('2026-10-28T00:00:00Z', start, FINISH)).toBe(false);
     expect(isInSprint('2026-10-13T23:59:00Z', start, FINISH)).toBe(false);
     expect(isInSprint('2026-10-20T00:00:00Z', undefined, FINISH)).toBe(false);
+  });
+});
+
+describe('sprintProgress', () => {
+  it('counts the working days of the sprint and the ones already over', () => {
+    // Rule SPRINT-1: Wed 14 Oct to Tue 27 Oct 2026 is 10 working days; on Fri 23 seven are over
+    const progress = sprintProgress(
+      '2026-10-14T00:00:00Z',
+      '2026-10-27T00:00:00Z',
+      new Date(2026, 9, 23, 10),
+      WEEKDAYS
+    );
+    expect(progress).toMatchObject({ total: 10, passed: 7, text: '3 days left', hurry: false });
+    expect(
+      sprintProgress('2026-10-14T00:00:00Z', '2026-10-27T00:00:00Z', new Date(2026, 9, 10), WEEKDAYS)?.passed
+    ).toBe(0);
+  });
+
+  it('says how many days are left, and the last day', () => {
+    // Rules SPRINT-2, SPRINT-3
+    const finish = '2026-10-27T00:00:00Z';
+    expect(sprintProgress('2026-10-14T00:00:00Z', finish, new Date(2026, 9, 26, 9), WEEKDAYS)).toMatchObject({
+      text: '2 days left',
+      hurry: true,
+    });
+    expect(sprintProgress('2026-10-14T00:00:00Z', finish, new Date(2026, 9, 27, 9), WEEKDAYS)?.text).toBe('Last day');
+    expect(sprintProgress('2026-10-14T00:00:00Z', finish, new Date(2026, 9, 28, 9), WEEKDAYS)).toBeUndefined();
+    expect(sprintProgress(undefined, finish, new Date(2026, 9, 20), WEEKDAYS)).toBeUndefined();
   });
 });

@@ -57,6 +57,9 @@ import { asleepPulses } from '../workItemReminders';
 import { TASK_COUNT_STYLES, taskCountStyleClass } from '../taskCountStyle';
 import { SOUND_VOLUME, SoundId, SOUNDS } from '../sounds';
 import { splitWorkingOn, WorkingOnLevel, workingOnAnimationClasses, workingOnBadge } from '../workingOn';
+import { nowQueue, type NowItem, type Verb } from '../nowQueue';
+import { isSidebarTab, SIDEBAR_TABS, TAB_LABELS, tabCounts, type SidebarTab } from '../sidebarTabs';
+import { currentStation, trackPullRequest, workItemTrack, type Station } from '../track';
 import type { CompletedPeriod } from '../myPullRequests';
 import type {
   CheckoutKind,
@@ -110,6 +113,10 @@ interface SavedState {
   expandedPullRequests: number[];
   /** Reviewed PRs the user unfolded: the extension fetches their details */
   expandedReviewed: number[];
+  /** Tab of the sidebar shown (Rules TABS-*) */
+  tab: SidebarTab;
+  /** Rows of the "Needs you" queue the user unfolded, as "verb:id" */
+  expandedNow: string[];
 }
 declare function acquireVsCodeApi(): VsCodeApi;
 
@@ -137,6 +144,8 @@ const expandedCards = new Set(savedState?.expandedCards ?? []);
 const expandedReviews = new Set(savedState?.expandedReviews ?? []);
 const expandedPullRequests = new Set(savedState?.expandedPullRequests ?? []);
 const expandedReviewed = new Set(savedState?.expandedReviewed ?? []);
+let activeTab: SidebarTab = isSidebarTab(savedState?.tab) ? savedState.tab : 'now';
+const expandedNow = new Set(savedState?.expandedNow ?? []);
 /**
  * Task whose pill was clicked: its detail card stays away until the pointer leaves the pill and the card. A module
  * variable because the page is rendered again on every update and the wrap of the pill is `display: contents`
@@ -158,6 +167,8 @@ function saveState(): void {
     expandedReviews: [...expandedReviews],
     expandedPullRequests: [...expandedPullRequests],
     expandedReviewed: [...expandedReviewed],
+    tab: activeTab,
+    expandedNow: [...expandedNow],
   });
 }
 
@@ -1001,6 +1012,63 @@ function renderWorkingOn(item: WorkItemModel): string {
  * Full card. In the compact layout, an expanded card gets a chevron and a header that fold it back
  * into its row
  */
+/* ---------- Track (redesign, Rules TRACK-*) ---------- */
+
+const STATION_STATE_LABELS: Record<Station['state'], string> = {
+  done: 'passed',
+  active: 'in progress',
+  needsYou: 'needs you',
+  broken: 'breaks a team rule',
+  pending: 'not reached',
+};
+
+/** The stations of a Backlog Item or Bug, with what My Pull Requests knows of its PR when it is one of the user's */
+function trackOf(item: WorkItemModel): Station[] {
+  const followed = trackPullRequest(item);
+  const mine = followed ? model?.pullRequests.items.find((pr) => pr.id === followed.id) : undefined;
+  return workItemTrack(item, mine);
+}
+
+function stationTitle(station: Station): string {
+  return `${station.label}: ${STATION_STATE_LABELS[station.state]}${station.detail ? ` · ${station.detail}` : ''}`;
+}
+
+/** The six stations under the title of a large card: one segment each, then the station to look at in words */
+function renderTrack(item: WorkItemModel): string {
+  if (!canHaveTasks(item.type)) {
+    return '';
+  }
+  const track = trackOf(item);
+  const current = currentStation(track);
+  const stations = track
+    .map(
+      (station) =>
+        `<li class="station station-${station.state}${station === current ? ' current' : ''}" title="${escapeHtml(
+          stationTitle(station)
+        )}"><span class="visually-hidden">${escapeHtml(stationTitle(station))}</span></li>`
+    )
+    .join('');
+  const caption = current
+    ? `<p class="track-caption"><span class="track-current station-${current.state}">${escapeHtml(
+        current.label
+      )}</span>${current.detail ? ` · ${escapeHtml(current.detail)}` : ''}</p>`
+    : '<p class="track-caption">Done</p>';
+  return `<div class="track"><ol class="track-bars" aria-label="Track of ${item.id}">${stations}</ol>${caption}</div>`;
+}
+
+// Rule SIGNAL-12
+/** The track of a compact row: six small segments, the details in the tooltip */
+function renderMiniTrack(item: WorkItemModel): string {
+  if (!canHaveTasks(item.type)) {
+    return '';
+  }
+  const track = trackOf(item);
+  const title = track.map(stationTitle).join('\n');
+  return `<span class="mini-track" role="img" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}">${track
+    .map((station) => `<span class="mini-station station-${station.state}"></span>`)
+    .join('')}</span>`;
+}
+
 function renderCard(item: WorkItemModel, children: TaskRow[], visibleIds: Set<number>, foldable: boolean): string {
   const classes = [
     'card',
@@ -1028,6 +1096,7 @@ function renderCard(item: WorkItemModel, children: TaskRow[], visibleIds: Set<nu
     </header>
     <div class="title" title="${escapeHtml(item.title)}">${renderAsleep(item)}${escapeHtml(item.title)}</div>
     ${renderParent(item, visibleIds)}
+    ${renderTrack(item)}
     ${renderAlerts(item)}
     ${renderCompletion(item)}
     ${renderBranchList(item)}
@@ -1134,7 +1203,7 @@ function renderCompactCard(item: WorkItemModel, children: TaskRow[]): string {
   )}</span>
       ${stateButton(item.id, item.displayState, item.state)}
     </div>
-    ${signals.length ? `<div class="signals">${signals.join('')}</div>` : ''}
+    <div class="signals">${renderMiniTrack(item)}${signals.join('')}</div>
   </article>`;
 }
 
@@ -2354,13 +2423,223 @@ function renderBaseBranchAlarm(current: ViewModel): string {
     <span class="alarm-hint">Fix it before anything else</span></button>`;
 }
 
+/* ---------- Tabs, sprint strip and the "Needs you" queue (redesign) ---------- */
+
+/** Branches of a completed PR still to delete, once each (a branch can belong to several work items) */
+function deletableBranchCount(current: ViewModel): number {
+  return new Set(current.workItems.flatMap((item) => item.deletableBranches ?? [])).size;
+}
+
+function queueOf(current: ViewModel): ReturnType<typeof nowQueue> {
+  return nowQueue({
+    reviews: current.reviews.requests,
+    myPullRequests: current.pullRequests.items,
+    workItems: cardItems(current),
+    deletableBranches: deletableBranchCount(current),
+    staleWorktrees: current.staleWorktrees,
+    baseBranchBroken: current.baseBranch !== undefined,
+  });
+}
+
+// Rules SPRINT-1..3
+/**
+ * The strip above the tabs: the sprint, the days left and one segment per working day. With teams in different
+ * sprints, the one that ends first (its work is the most urgent)
+ */
+function renderSprintStrip(current: ViewModel): string {
+  const iteration = current.iterations
+    .filter((candidate) => candidate.progress)
+    .sort((a, b) => (a.finishDate ?? '').localeCompare(b.finishDate ?? ''))
+    .at(0);
+  const progress = iteration?.progress;
+  if (!iteration || !progress) {
+    return '';
+  }
+  const segments = Array.from({ length: progress.total }, (_, index) => {
+    let state = 'future';
+    if (index < progress.passed) {
+      state = 'past';
+    } else if (index === progress.passed) {
+      state = 'today';
+    }
+    return `<span class="sprint-day sprint-day-${state}"></span>`;
+  }).join('');
+  const others = current.iterations.length > 1 ? ` · +${current.iterations.length - 1} more` : '';
+  return `<div class="sprint-strip" title="${escapeHtml(progress.tooltip)}">
+    <div class="sprint-head"><span class="sprint-name">${escapeHtml(iteration.name)}</span><span class="sprint-left${
+    progress.hurry ? ' hurry' : ''
+  }">${escapeHtml(progress.text)}</span></div>
+    <div class="sprint-days" role="img" aria-label="${escapeHtml(progress.tooltip)}">${segments}</div>
+    <div class="sprint-teams muted">${escapeHtml(iteration.teams.join(', '))}${escapeHtml(others)}</div>
+  </div>`;
+}
+
+function renderTabs(current: ViewModel): string {
+  const counts = tabCounts({
+    nowCount: queueOf(current).count,
+    workItems: cardItems(current).length,
+    reviews: current.reviews.requests.length,
+    myPullRequests: current.pullRequests.items,
+  });
+  return SIDEBAR_TABS.map((tab) => {
+    const count = counts[tab];
+    const selected = tab === activeTab;
+    return `<button class="tab${
+      selected ? ' selected' : ''
+    }" role="tab" id="tab-button-${tab}" aria-controls="tab-${tab}"
+      aria-selected="${selected}" tabindex="${
+      selected ? 0 : -1
+    }" data-action="setTab" data-tab="${tab}" title="${escapeHtml(count.label)}">${TAB_LABELS[tab]}${
+      count.text ? ` <span class="tab-count${count.urgent ? ' urgent' : ''}">${escapeHtml(count.text)}</span>` : ''
+    }</button>`;
+  }).join('');
+}
+
+const VERB_LABELS: Record<Verb, string> = {
+  review: 'Review',
+  unblock: 'Unblock',
+  fix: 'Fix',
+  ship: 'Ship',
+  clean: 'Clean',
+};
+
+const nowKey = (item: NowItem): string => `${item.verb}:${item.id}`;
+
+/** "PR 11234 · " or "#33849 · " before the detail of a row; nothing for the clean row */
+function nowReference(item: NowItem): string {
+  if (item.verb === 'clean') {
+    return '';
+  }
+  return item.verb === 'fix' ? `#${item.id} · ` : `PR ${item.id} · `;
+}
+
+/** What a row of the queue shows when unfolded: the card the other tabs show for it, with its actions */
+function renderNowBody(item: NowItem, current: ViewModel): string {
+  switch (item.verb) {
+    case 'review': {
+      const request = current.reviews.requests.find((candidate) => candidate.id === item.id);
+      return request ? `<ul class="review-list">${renderReview(request)}</ul>` : '';
+    }
+    case 'unblock':
+    case 'ship': {
+      const pr = current.pullRequests.items.find((candidate) => candidate.id === item.id);
+      return pr ? `<ul class="mypr-list">${renderMyPullRequest(pr, false)}</ul>` : '';
+    }
+    case 'fix': {
+      const workItem = current.workItems.find((candidate) => candidate.id === item.id);
+      if (!workItem) {
+        return '';
+      }
+      const children = taskRowsOf(
+        current.workItems.filter((child) => child.parentId === workItem.id),
+        workItem,
+        current.stateOrder
+      );
+      return renderCard(workItem, children, new Set(), false);
+    }
+    case 'clean':
+      return `<div class="now-clean">${
+        current.staleWorktrees
+          ? '<button class="button small" data-action="cleanUp" data-kind="worktrees">Clean up worktrees…</button>'
+          : ''
+      }${
+        deletableBranchCount(current)
+          ? '<button class="button small" data-action="cleanUp" data-kind="branches">Delete merged branches…</button>'
+          : ''
+      }</div>`;
+  }
+}
+
+function renderNowRow(item: NowItem, current: ViewModel): string {
+  const key = nowKey(item);
+  const expanded = expandedNow.has(key);
+  const urgency = item.urgency ? ` urgency-${item.urgency}` : '';
+  return `<article class="now-row verb-${item.verb}${urgency}${expanded ? ' expanded' : ''}">
+    <button class="now-head" data-action="toggleNow" data-key="${escapeHtml(key)}" aria-expanded="${expanded}">
+      ${icon('chevron', 'chevron')}<span class="verb-chip verb-chip-${item.verb}">${VERB_LABELS[item.verb]}</span>
+      <span class="now-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
+    </button>
+    <p class="now-detail">${escapeHtml(nowReference(item))}${escapeHtml(item.detail)}</p>
+    ${expanded ? `<div class="now-body">${renderNowBody(item, current)}</div>` : ''}
+  </article>`;
+}
+
+/**
+ * Why the queue is empty: "nothing needs you" only once the three sources are loaded, else that they are being
+ * checked or that one failed (with its Retry), since a missing source also gives an empty queue
+ */
+function nowEmptyMessage(current: ViewModel): string {
+  const failed = [
+    current.status === 'error' ? ['your work items', 'refresh'] : undefined,
+    current.reviews.status === 'error' ? ['the reviews', 'checkReviewRequests'] : undefined,
+    current.pullRequests.status === 'error' ? ['your pull requests', 'checkMyPullRequests'] : undefined,
+  ].filter((entry): entry is string[] => entry !== undefined);
+  if (failed.length) {
+    return failed
+      .map(
+        ([what, action]) =>
+          `<p class="message muted">${icon(
+            'warning'
+          )} Unable to check ${what}. <button class="link" data-action="${action}">Retry</button></p>`
+      )
+      .join('');
+  }
+  const loading = [current.status, current.reviews.status, current.pullRequests.status].includes('loading');
+  return loading
+    ? '<p class="message muted">Checking…</p>'
+    : '<p class="message muted">Nothing needs you right now.</p>';
+}
+
+/** The Now tab: what needs the user, then the work items being worked on */
+function renderNow(current: ViewModel): string {
+  const queue = queueOf(current);
+  const rows = queue.items.map((item) => renderNowRow(item, current)).join('');
+  const waiting = queue.items.filter((item) => item.verb !== 'clean').length;
+  const unfoldedFixes = new Set(
+    queue.items.filter((item) => item.verb === 'fix' && expandedNow.has(nowKey(item))).map((item) => item.id)
+  );
+  // A work item unfolded in the queue is not repeated below (one card per work item on the page)
+  const workingOn = cardItems(current).filter((item) => item.workingOn && !unfoldedFixes.has(item.id));
+  const workingOnCards = workingOn
+    .map((item) =>
+      renderCard(
+        item,
+        taskRowsOf(
+          current.workItems.filter((child) => child.parentId === item.id),
+          item,
+          current.stateOrder
+        ),
+        new Set(),
+        false
+      )
+    )
+    .join('');
+  let queueBody = rows;
+  if (!queue.items.length) {
+    queueBody = nowEmptyMessage(current);
+  }
+  return `<section class="now-section" aria-label="Needs you">
+      <h2 class="section-title">Needs you${waiting ? ` · ${waiting}` : ''}</h2>${queueBody}
+    </section>${
+      workingOn.length
+        ? `<section class="now-section working-on-now" aria-label="Working on"><h2 class="section-title">Working on</h2>${workingOnCards}</section>`
+        : ''
+    }`;
+}
+
 function render(): void {
   const app = document.getElementById('app');
   if (!app || !model) {
     return;
   }
   if (!app.childElementCount) {
-    app.innerHTML = `<div id="base-branch"></div><div id="panels"><div id="reviews"></div><div id="my-prs"></div></div>
+    app.innerHTML = `<div id="base-branch"></div><div id="sprint"></div>
+      <div id="tabs" class="tabs" role="tablist" aria-label="Sidebar"></div>
+      <div id="tab-now" class="tab-panel" role="tabpanel" aria-labelledby="tab-button-now"></div>
+      <div id="tab-prs" class="tab-panel" role="tabpanel" aria-labelledby="tab-button-prs">
+        <div id="panels"><div id="reviews"></div><div id="my-prs"></div></div>
+      </div>
+      <div id="tab-work" class="tab-panel" role="tabpanel" aria-labelledby="tab-button-work">
       <div class="toolbar">
         <div class="list-head"><h2 class="list-title">My Work Items</h2><span id="list-tools" class="list-tools"></span></div>
         <div class="search-row">
@@ -2371,7 +2650,24 @@ function render(): void {
       <p id="scope" class="scope"></p>
       <div class="progress" hidden></div>
       <div id="filters" class="filters"></div>
-      <div id="list" class="list"></div>`;
+      <div id="list" class="list"></div>
+      </div>`;
+    // Tabs pattern: the arrows, Home and End move between the tabs (only the selected one is in the Tab order)
+    (document.getElementById('tabs') as HTMLElement).addEventListener('keydown', (event) => {
+      const index = SIDEBAR_TABS.indexOf(activeTab);
+      const moves: Record<string, number> = {
+        ArrowLeft: (index + SIDEBAR_TABS.length - 1) % SIDEBAR_TABS.length,
+        ArrowRight: (index + 1) % SIDEBAR_TABS.length,
+        Home: 0,
+        End: SIDEBAR_TABS.length - 1,
+      };
+      const next = moves[event.key] as number | undefined;
+      if (next !== undefined) {
+        event.preventDefault();
+        // Through the click handler, like a click on the tab (it selects and focuses it)
+        document.getElementById(`tab-button-${SIDEBAR_TABS[next]}`)?.click();
+      }
+    });
     const input = document.getElementById('search') as HTMLInputElement;
     input.value = search;
     input.addEventListener('input', () => {
@@ -2403,19 +2699,28 @@ function render(): void {
   scopeElement.innerHTML = `${countdown}${escapeHtml(scope.text)}`;
   scopeElement.title = scope.tooltip;
   (app.querySelector('.progress') as HTMLElement).hidden = model.status !== 'loading';
+  (document.getElementById('base-branch') as HTMLElement).innerHTML = renderBaseBranchAlarm(model);
+  (document.getElementById('sprint') as HTMLElement).innerHTML = renderSprintStrip(model);
+  (document.getElementById('tabs') as HTMLElement).innerHTML = renderTabs(model);
+  // Only the shown tab has content: the same card (data-card, popover ids) must not be on the page twice
+  for (const tab of SIDEBAR_TABS) {
+    (document.getElementById(`tab-${tab}`) as HTMLElement).hidden = tab !== activeTab;
+  }
+  const work = activeTab === 'work';
   (document.getElementById('filters') as HTMLElement).innerHTML =
-    filtersExpanded && cardItems(model).length ? renderFilters(model) : '';
+    work && filtersExpanded && cardItems(model).length ? renderFilters(model) : '';
   renderFiltersToggle(model);
   const list = document.getElementById('list') as HTMLElement;
   // Animations of the "here" cards and the pulse of their ● are switched by classes (strict CSP: no inline styles)
-  list.className = ['list', ...workingOnAnimationClasses(model.workingOn.animation, model.workingOn.pulseBadge)].join(
-    ' '
-  );
-  list.innerHTML = renderList(model);
+  const animations = workingOnAnimationClasses(model.workingOn.animation, model.workingOn.pulseBadge);
+  list.className = ['list', ...animations].join(' ');
+  list.innerHTML = work ? renderList(model) : '';
   (document.getElementById('list-tools') as HTMLElement).innerHTML = renderListTools(model);
-  (document.getElementById('base-branch') as HTMLElement).innerHTML = renderBaseBranchAlarm(model);
-  (document.getElementById('reviews') as HTMLElement).innerHTML = renderReviews(model);
-  (document.getElementById('my-prs') as HTMLElement).innerHTML = renderMyPullRequests(model);
+  const now = document.getElementById('tab-now') as HTMLElement;
+  now.className = ['tab-panel', ...animations].join(' ');
+  now.innerHTML = activeTab === 'now' ? renderNow(model) : '';
+  (document.getElementById('reviews') as HTMLElement).innerHTML = activeTab === 'prs' ? renderReviews(model) : '';
+  (document.getElementById('my-prs') as HTMLElement).innerHTML = activeTab === 'prs' ? renderMyPullRequests(model) : '';
   sizeReviewBars();
   sizePhaseTimelines();
   pulseChangedReviews(model);
@@ -2425,6 +2730,31 @@ function render(): void {
   if (revealPending()) {
     render();
   }
+}
+
+/** Unfolded rows of the queue that left it are forgotten, so the saved state does not grow */
+function pruneExpandedNow(current: ViewModel): void {
+  const keys = new Set(queueOf(current).items.map(nowKey));
+  const before = expandedNow.size;
+  for (const key of [...expandedNow]) {
+    if (!keys.has(key)) {
+      expandedNow.delete(key);
+    }
+  }
+  if (expandedNow.size !== before) {
+    saveState();
+  }
+}
+
+/** After a tab change, the bars and popovers of the new content are measured again (hidden content measures 0) */
+function setTab(tab: SidebarTab): void {
+  if (tab === activeTab) {
+    return;
+  }
+  activeTab = tab;
+  saveState();
+  render();
+  document.getElementById(`tab-button-${tab}`)?.focus();
 }
 
 function toggleFilter(kind: FilterKind, value: string): void {
@@ -2734,6 +3064,16 @@ document.addEventListener('click', (event) => {
     post({ type: action, kind: kind as CheckoutKind, id: Number(id), branch });
   } else if (action === 'refresh') {
     post({ type: 'refresh' });
+  } else if (action === 'setTab' && isSidebarTab(target.dataset.tab)) {
+    setTab(target.dataset.tab);
+  } else if (action === 'toggleNow' && target.dataset.key) {
+    if (!expandedNow.delete(target.dataset.key)) {
+      expandedNow.add(target.dataset.key);
+    }
+    saveState();
+    render();
+  } else if (action === 'cleanUp' && (kind === 'worktrees' || kind === 'branches')) {
+    post({ type: 'cleanUp', what: kind });
   } else if (action === 'showBaseBranchAlert') {
     post({ type: 'showBaseBranchAlert' });
   } else if (action === 'toggleIteration' && path !== undefined) {
@@ -2900,12 +3240,22 @@ window.addEventListener('message', ({ data }: MessageEvent<ExtensionMessage>) =>
     }
     return;
   }
+  if (data.type === 'showTab') {
+    setTab(data.tab);
+    return;
+  }
   if (data.type === 'setTasksExpanded') {
     setTasksExpanded(data.expanded);
     return;
   }
   if (data.type === 'revealWorkItem') {
     revealId = data.id;
+    // The card is in the Work tab
+    if (activeTab !== 'work') {
+      activeTab = 'work';
+      saveState();
+      render();
+    }
     if (revealPending()) {
       render();
     }
@@ -2920,6 +3270,7 @@ window.addEventListener('message', ({ data }: MessageEvent<ExtensionMessage>) =>
   }
   trackNewReviews(model);
   pruneExpandedPullRequests(model);
+  pruneExpandedNow(model);
   render();
   syncReviewedExpanded();
 });

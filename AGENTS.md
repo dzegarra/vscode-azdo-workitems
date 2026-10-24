@@ -42,6 +42,7 @@ src/requestRecorder.ts    the ONLY place that calls fetch: records every request
 src/requestContext.ts     AsyncLocalStorage "feature" attribution of requests (withFeature)
 docs/RULES.md             decision tables of every rule (IDs referenced by `// Rule <ID>` comments; src/rulesDoc.test.ts)
 src/track.ts               pure (redesign): the six stations of a work item (Branch → PR → CI → Review → Ready to be merged → Done), Rules TRACK-*
+src/sidebarTabs.ts         pure (redesign): the Now / Work / PRs tabs of the sidebar, their counts and the tab a Summary row opens, Rules TABS-*
 src/nowQueue.ts            pure (redesign): the "Needs you" queue under five verbs (review, unblock, fix, ship, clean), Rules NOW-*
 src/pullRequestTasks.ts    pure rules of the PR tasks (reusable tasks, which move on publish / completion, branch of a task row)
 src/taskMenu.ts            pure: the pill of a task row (branches + PRs) and the sections of the picker behind it

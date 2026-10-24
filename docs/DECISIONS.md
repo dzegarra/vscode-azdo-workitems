@@ -144,6 +144,10 @@ The UI is being rebuilt from a design made with all the rules known in advance (
 - **Delivered in phases on one branch**, each passing `npm run check` and reviewed by the user: pure models, sidebar, details panels, status bar / Summary / banners, Track board tab, Sprint timeline tab, Whole team views.
 - **The look is the user's choice**: a personal setting switches between the theme-aware look (VS Code theme variables, default) and the design's own palette and fonts (bundled, never loaded from the network: the webview CSP forbids it).
 - **The Whole team views and the Sprint timeline fetch their extra data (teammates' work and PRs, work item history) only while their tab is open and visible**, cached by immutable keys, so they cost nothing when closed.
+- **The sidebar has three tabs: Now, Work, PRs.** Now answers "what needs me" without scrolling past the boxes, Work is the list as before, PRs the two boxes as before. Only the shown tab is rendered, so a card is never twice on the page (the reveal and popovers find cards by id). The alarm of a broken base branch stays above the tabs. There is no Reviews tab: the PRs tab already holds the reviews, its count starts with them.
+- **The "Needs you" rows unfold in place with the card the other tabs show**, not a new panel: the buttons and pickers of that card keep working there, and the row stays one line when folded.
+- **The sprint strip is always shown**, not only with the fun features: the days left of the sprint matter to everyone; the emoji countdown stays a fun feature.
+- **Station names in the track are not written under each segment**: six names do not fit a narrow sidebar; the segment tooltips name them and one caption names the station to look at.
 - **Personal settings that still mean something are kept; purely cosmetic ones the new design replaces are removed**, each one listed here and in the README when it goes.
 
 ## Fun features (`totalflowx.fun.enabled`)

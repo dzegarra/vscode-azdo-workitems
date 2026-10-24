@@ -1375,6 +1375,7 @@ export class WorkItemsStore {
     | 'reviews'
     | 'tasksCountStyle'
     | 'asleepPulse'
+    | 'staleWorktrees'
     | 'workingOn'
   > {
     const currentBranch = this.repository()?.state.HEAD?.name;
@@ -1388,6 +1389,7 @@ export class WorkItemsStore {
         name: iteration.name,
         path: iteration.path,
         teams,
+        startDate: iteration.attributes?.startDate,
         finishDate: iteration.attributes?.finishDate,
       })),
       workItems,

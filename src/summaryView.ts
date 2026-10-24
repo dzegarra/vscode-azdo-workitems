@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { tabForSummaryRow } from './sidebarTabs';
 import type { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import type { ReviewRequestsWatcher } from './reviewRequestsWatcher';
 import { summaryBadge, SummaryInput, SummaryRow, summaryRows } from './summaryRows';
@@ -8,7 +9,8 @@ import { worktreeLabel } from './worktrees';
 import { CLEAN_UP_WORKTREES_COMMAND, type WorktreeTracker } from './worktreeTracker';
 
 export const SUMMARY_VIEW_ID = 'totalflowx.summary';
-const FOCUS_COMMAND = 'totalflowx.myItems.focus';
+/** Shows the sidebar on a tab (SHOW_SIDEBAR_TAB_COMMAND of workItemsView.ts, not imported: it imports vscode views) */
+const SHOW_TAB_COMMAND = 'totalflowx.showSidebarTab';
 /** Declared here (src/baseBranchAlert.ts registers it): the Summary is built before the alert */
 const BASE_BRANCH_COMMAND = 'totalflowx.showBaseBranchAlert';
 
@@ -63,8 +65,12 @@ function toItem(row: SummaryRow): vscode.TreeItem {
     item.command = { command: BASE_BRANCH_COMMAND, title: 'Show what broke it' };
   } else if (row.id === 'staleWorktrees') {
     item.command = { command: CLEAN_UP_WORKTREES_COMMAND, title: 'Clean up worktrees' };
-  } else if (row.id !== 'nothing' && row.id !== 'cleanBoard') {
-    item.command = { command: FOCUS_COMMAND, title: 'Show the list' };
+  } else {
+    // Rule TABS-4: the tab that lists what the row counts
+    const tab = tabForSummaryRow(row.id);
+    if (tab) {
+      item.command = { command: SHOW_TAB_COMMAND, title: 'Show the list', arguments: [tab] };
+    }
   }
   return item;
 }

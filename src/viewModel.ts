@@ -24,8 +24,9 @@ import type { HoverStyle } from './hoverStyle';
 import type { TaskCountStyle } from './taskCountStyle';
 import type { SoundId } from './sounds';
 import type { BaseBranchBanner } from './baseBranchHealth';
-import type { SprintCountdown } from './sprintCountdown';
+import type { SprintCountdown, SprintProgress } from './sprintCountdown';
 import type { WorkingOnAnimation, WorkingOnLevel } from './workingOn';
+import type { SidebarTab } from './sidebarTabs';
 
 export interface PullRequestModel {
   id: number;
@@ -152,8 +153,12 @@ export interface IterationModel {
   name: string;
   path: string;
   teams: string[];
+  /** First day of the sprint (midnight UTC); undefined when not planned */
+  startDate?: string;
   /** Last day of the sprint (midnight UTC); undefined when not planned */
   finishDate?: string;
+  /** The strip of the sprint above the tabs (Rules SPRINT-1..3); undefined without dates or once over */
+  progress?: SprintProgress;
   /** "🌱 6 days left" (totalflowx.fun.enabled only) */
   countdown?: SprintCountdown;
 }
@@ -206,6 +211,8 @@ export interface ViewModel {
   workingOn: WorkingOnViewModel;
   /** Rule BASE-CI-8: the CI of the base branch is red (undefined: green, off or not known) */
   baseBranch?: BaseBranchBanner;
+  /** Worktrees that can be removed (Rules WORKTREE-STALE-*), for the clean row of the Now tab; 0 when the row is off */
+  staleWorktrees: number;
 }
 
 /** totalflowx.workingOn.* */
@@ -307,6 +314,8 @@ export type WebviewMessage =
       id: number;
       branch?: string;
     }
+  /** The clean row of the Now tab: Clean Up Worktrees… or Delete Branch of a Completed PR (Rule NOW-5) */
+  | { type: 'cleanUp'; what: 'branches' | 'worktrees' }
   | { type: 'checkReviewRequests' }
   | { type: 'checkoutReviewRequest'; pullRequestId: number }
   | { type: 'openReviewRequest' | 'openMyPullRequest'; url: string }
@@ -346,6 +355,8 @@ export type ExtensionMessage =
   | { type: 'setTasksExpanded'; expanded: boolean }
   /** Scrolls to the card of the work item and flashes it, opening its iteration group when collapsed */
   | { type: 'revealWorkItem'; id: number }
+  /** Shows a tab of the sidebar (a Summary row was clicked, Rule TABS-4) */
+  | { type: 'showTab'; tab: SidebarTab }
   /** Confetti (a merged PR) and / or a sound (totalflowx.fun.enabled, totalflowx.fun.sounds) */
   | { type: 'celebrate'; confetti: boolean; sound?: SoundId }
   | { type: 'state'; model: ViewModel };

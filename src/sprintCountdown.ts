@@ -106,3 +106,62 @@ export function isInSprint(date: string, startDate: string | undefined, finishDa
   }
   return at >= start && at < finish + MS_PER_DAY;
 }
+
+export interface SprintProgress {
+  /** Working days of the sprint, first and last day included */
+  total: number;
+  /** Working days already over (before today) */
+  passed: number;
+  /** "4 days left", "Last day" */
+  text: string;
+  /** Under 3 working days left: the text is highlighted */
+  hurry: boolean;
+  tooltip: string;
+}
+
+/** Working days from one calendar day to another (UTC timestamps), both included */
+function workingDaysBetween(from: number, to: number, workingDays: readonly number[]): number {
+  const working = workingDays.length ? workingDays : [0, 1, 2, 3, 4, 5, 6];
+  let count = 0;
+  for (let day = from; day <= to; day += MS_PER_DAY) {
+    if (working.includes(new Date(day).getUTCDay())) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+// Rules SPRINT-1..3
+/**
+ * The strip of the sprint above the sidebar tabs: one segment per working day, the ones already over filled.
+ * Undefined without both dates, or once the sprint is over
+ */
+export function sprintProgress(
+  startDate: string | undefined,
+  finishDate: string | undefined,
+  now: Date,
+  workingDays: readonly number[]
+): SprintProgress | undefined {
+  const start = iterationDay(startDate);
+  const finish = iterationDay(finishDate);
+  const today = localDay(now);
+  if (start === undefined || finish === undefined || finish < start || today > finish) {
+    return undefined;
+  }
+  const total = workingDaysBetween(start, finish, workingDays);
+  // Rule SPRINT-1: the days before today are over; before the sprint starts, none is
+  const passed = today <= start ? 0 : workingDaysBetween(start, today - MS_PER_DAY, workingDays);
+  const left = workingDaysLeft(finishDate, now, workingDays);
+  // Rule SPRINT-2
+  const text = today === finish ? 'Last day' : `${String(left)} day${left === 1 ? '' : 's'} left`;
+  return {
+    total,
+    passed,
+    text,
+    // Rule SPRINT-3
+    hurry: left <= HURRY_DAYS,
+    tooltip: `${formatDay(start)} – ${formatDay(finish)} · ${String(left)} of ${String(
+      total
+    )} working days left, today included`,
+  };
+}

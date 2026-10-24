@@ -78,6 +78,15 @@ describe('nowQueue', () => {
     expect(queue.items).toEqual([{ verb: 'unblock', id: 1, title: 'Mine', detail: 'CI failed · No description' }]);
   });
 
+  it('does not repeat the feedback of a reviewer: the vote is already a reason', () => {
+    // Rule NOW-2
+    const pr = myPr({
+      reviewers: [{ name: 'Jonas', vote: 'waiting', isRequired: true, isContainer: false }],
+      warnings: [{ text: 'Jonas is waiting for you', severity: 'warning', concern: 'feedback' }],
+    });
+    expect(nowQueue(input({ myPullRequests: [pr] })).items.at(0)?.detail).toBe('Waiting for author (Jonas)');
+  });
+
   it('ships only what the user completes: auto-complete and blocked PRs are not', () => {
     // Rule NOW-4
     const queue = nowQueue(

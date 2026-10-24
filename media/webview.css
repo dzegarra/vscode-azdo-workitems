@@ -4012,3 +4012,335 @@ button.task-pill.empty:focus-visible {
     }
   }
 }
+
+/* ---------- Redesign: tabs, sprint strip, "Needs you" queue, track (Rules TABS-*, SPRINT-*, NOW-*, TRACK-*) ---------- */
+
+:root {
+  /* Amber is reserved for "needs you"; red for what is broken; blue in flight; green passed */
+  --needs-you: var(--orange);
+  --broken: var(--red);
+  --in-flight: var(--blue);
+  --passed: var(--green);
+  --pending: color-mix(in srgb, var(--vscode-foreground) 18%, transparent);
+}
+
+.sprint-strip {
+  display: grid;
+  gap: 5px;
+  padding: 10px 12px 8px;
+}
+
+.sprint-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sprint-name {
+  font-weight: 600;
+}
+
+.sprint-left {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sprint-left.hurry {
+  color: var(--needs-you);
+  font-weight: 600;
+}
+
+.sprint-days {
+  display: flex;
+  gap: 3px;
+}
+
+.sprint-day {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--pending);
+}
+
+.sprint-day-past {
+  background: var(--in-flight);
+}
+
+.sprint-day-today {
+  background: color-mix(in srgb, var(--in-flight) 50%, transparent);
+}
+
+.sprint-teams {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tabs {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  gap: 2px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--vscode-sideBar-background);
+}
+
+.tab {
+  display: inline-flex;
+  white-space: nowrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px 6px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--vscode-foreground);
+}
+
+.tab:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.tab.selected {
+  border-bottom-color: var(--vscode-panelTitle-activeBorder, var(--vscode-focusBorder));
+  color: var(--vscode-foreground);
+  font-weight: 600;
+}
+
+.tab-count {
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.tab-count.urgent {
+  color: var(--vscode-badge-foreground);
+  background: var(--vscode-badge-background);
+  font-weight: 600;
+}
+
+/* The toolbar of the Work tab sticks under the tabs */
+#tab-work .toolbar {
+  top: 34px;
+}
+
+.now-section {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px 4px;
+}
+
+.section-title {
+  margin: 0 0 2px;
+  color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-foreground));
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.now-row {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--verb-color, var(--border));
+  border-radius: var(--radius);
+  background: var(--card-bg);
+}
+
+.now-row.verb-review {
+  --verb-color: var(--needs-you);
+}
+
+.now-row.verb-review.urgency-overdue,
+.now-row.verb-fix {
+  --verb-color: var(--broken);
+}
+
+.now-row.verb-unblock {
+  --verb-color: var(--needs-you);
+}
+
+.now-row.verb-ship {
+  --verb-color: var(--passed);
+}
+
+.now-row.verb-clean {
+  --verb-color: var(--pending);
+  border-style: dashed;
+}
+
+.now-head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 8px 2px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.now-head:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+.now-head .chevron {
+  width: 12px;
+  height: 12px;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+
+.now-head[aria-expanded='true'] .chevron {
+  transform: rotate(90deg);
+}
+
+.verb-chip {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: var(--vscode-sideBar-background);
+  background: var(--verb-color);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+.verb-chip-clean {
+  color: var(--vscode-foreground);
+}
+
+.now-title {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.now-detail {
+  margin: 0;
+  padding: 0 8px 7px 32px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.now-row.verb-review.urgency-overdue .now-detail {
+  color: var(--broken);
+}
+
+.now-body {
+  padding: 0 6px 6px;
+}
+
+.now-body .review-list,
+.now-body .mypr-list {
+  margin: 0;
+  padding: 0;
+}
+
+.now-clean {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 0 2px 26px;
+}
+
+/* The track: six stations, each lit by the rules that apply to it; the station to look at in words under them */
+.track {
+  display: grid;
+  gap: 3px;
+  margin: 2px 0;
+}
+
+.track-bars {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.station {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--station-color, var(--pending));
+}
+
+.station.current {
+  outline: 1px solid var(--station-color, var(--vscode-foreground));
+  outline-offset: 1px;
+}
+
+.track-caption {
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-current {
+  color: var(--station-color, var(--vscode-foreground));
+  font-weight: 600;
+}
+
+.station-done {
+  --station-color: var(--passed);
+}
+
+.station-active {
+  --station-color: var(--in-flight);
+}
+
+.station-needsYou {
+  --station-color: var(--needs-you);
+}
+
+.station-broken {
+  --station-color: var(--broken);
+}
+
+.mini-track {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  margin-right: 2px;
+}
+
+.mini-station {
+  width: 8px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--station-color, var(--pending));
+}
+
+@media (forced-colors: active) {
+  .station,
+  .mini-station,
+  .sprint-day {
+    border: 1px solid CanvasText;
+  }
+}

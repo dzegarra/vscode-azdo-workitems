@@ -67,9 +67,11 @@ import {
   LAYOUT_CONTEXT,
   layoutSetting,
   REVEAL_WORK_ITEM_COMMAND,
+  SHOW_SIDEBAR_TAB_COMMAND,
   VIEW_ID,
   WorkItemsViewProvider,
 } from './workItemsView';
+import type { SidebarTab } from './sidebarTabs';
 
 /** Opens the sprint board of a team. When there are several, the user picks one */
 async function openIterationBoard(repository: Repository | undefined, store: WorkItemsStore): Promise<void> {
@@ -148,6 +150,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const notifier = new PullRequestNotifier(context.globalState, store, funJournal, () => celebrate(true, 'merged'));
   const sprintRecap = new SprintRecapPanel(context.extensionUri, store, funJournal);
   const worktreeTracker = new WorktreeTracker(context.globalState, { store, reviews: reviewRequests, myPullRequests });
+  view.setWorktrees(worktreeTracker);
   const worktreesView = new WorktreesView(worktreeTracker);
   const worktreeStatusBar = new WorktreeStatusBar(git, store, worktreeTracker);
   // Native tree view: it exists from the activation, so its badge shows on the activity bar icon from a cold start
@@ -280,6 +283,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     command('totalflowx.useCompactLayout', () => setLayout('compact')),
     command('totalflowx.useLargeLayout', () => setLayout('large')),
     command(REVEAL_WORK_ITEM_COMMAND, (id: number) => view.reveal(id)),
+    command(SHOW_SIDEBAR_TAB_COMMAND, (tab: SidebarTab) => view.showTab(tab)),
     command('totalflowx.expandTasks', () => view.setTasksExpanded(true)),
     command(SHOW_SPRINT_RECAP_COMMAND, (path?: string) => sprintRecap.show(path)),
     funJournal,
@@ -297,6 +301,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     reviewStatusBar,
     summary,
     worktreeTracker,
+    worktreeTracker.onDidChange(() => view.post()),
     worktreesView,
     worktreeStatusBar,
     reviewRequests.onDidChange(() => view.post()),
