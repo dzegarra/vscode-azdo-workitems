@@ -30,7 +30,6 @@ import {
   migratePullRequestStates,
   ExtensionMessage,
   FilterModel,
-  Layout,
   ViewModel,
   WebviewMessage,
 } from './viewModel';
@@ -63,16 +62,8 @@ export function filterSettings(): FilterModel {
 }
 
 export function workingOnSettings(): ViewModel['workingOn'] {
-  const { ignoreFilters, section, animation, pulseBadge } = settings().workingOn;
-  return { ignoreFilters, section, animation, pulseBadge };
-}
-
-export const LAYOUT_CONTEXT = 'totalflowx.layout';
-
-export function layoutSetting(): Layout {
-  return vscode.workspace.getConfiguration(SECTION).get<Layout>('workItems.layout', 'compact') === 'large'
-    ? 'large'
-    : 'compact';
+  const { ignoreFilters, animation, pulseBadge } = settings().workingOn;
+  return { ignoreFilters, animation, pulseBadge };
 }
 
 /** Sidebar view rendering the work items as cards */
@@ -139,7 +130,6 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       // Like the Summary row (SUMMARY-10): only when worktrees.showInSummary is on
       staleWorktrees: this.worktrees && worktreeSettings().showInSummary ? this.worktrees.stale().length : 0,
       alwaysShowAlerts: vscode.workspace.getConfiguration(SECTION).get<boolean>('filter.alwaysShowAlerts', false),
-      layout: layoutSetting(),
       hoverStyle: settings().hoverStyle,
       asleepPulse: settings().asleepPulse,
       popoverDelay: settings().popoverDelay,
@@ -362,12 +352,6 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       case 'openMyPullRequest':
       case 'openReviewRequest':
         await vscode.env.openExternal(vscode.Uri.parse(message.url));
-        return;
-      case 'setLayout':
-        // Personal, like the filters: the view is posted again when the setting changes
-        await vscode.workspace
-          .getConfiguration(SECTION)
-          .update('workItems.layout', message.layout, vscode.ConfigurationTarget.Global);
         return;
       case 'setFilter': {
         // Filters are personal: saved in the user settings. Each write updates settings.json and

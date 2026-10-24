@@ -74,7 +74,6 @@ export function settings() {
       showWorktrees: config.get<boolean>('workingOn.showWorktrees', true),
       includeLinkedWorkItems: config.get<boolean>('workingOn.includeLinkedWorkItems', true),
       ignoreFilters: config.get<boolean>('workingOn.ignoreFilters', true),
-      section: config.get<boolean>('workingOn.section', true),
       animation: normalizeWorkingOnAnimation(config.get<string>('workingOn.animation', 'none')),
       pulseBadge: config.get<boolean>('workingOn.pulseBadge', true),
     },

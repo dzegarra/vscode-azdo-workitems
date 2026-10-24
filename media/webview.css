@@ -896,41 +896,6 @@ button {
   }
 }
 
-/* "Working on" section: a tinted band with a bold heading, unlike the framed panels and the plain iteration headers */
-.working-section {
-  display: grid;
-  gap: var(--gap);
-  margin: 8px -12px 0;
-  padding: 0 12px 10px;
-  border-top: 2px solid var(--working-here);
-  background: linear-gradient(to bottom, color-mix(in srgb, var(--working-here) 13%, transparent), transparent 80px);
-}
-
-.working-section-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 6px 0 0;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.working-section-head .working-glyph {
-  color: var(--working-here);
-}
-
-.working-section-count {
-  min-width: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  color: var(--vscode-button-foreground, #ffffff);
-  background: var(--vscode-button-background, var(--working-here));
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 18px;
-  text-align: center;
-}
-
 /* Brief flash of the card shown from the status bar ("Show in sidebar") */
 .card.reveal-flash {
   animation: reveal-flash 1.5s ease-out;

@@ -1370,7 +1370,6 @@ export class WorkItemsStore {
     | 'coverage'
     | 'popoverDelay'
     | 'hoverStyle'
-    | 'layout'
     | 'pullRequests'
     | 'reviews'
     | 'tasksCountStyle'

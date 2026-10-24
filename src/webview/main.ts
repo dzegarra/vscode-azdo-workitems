@@ -1221,14 +1221,11 @@ function renderCards(items: WorkItemModel[], current: ViewModel): string {
     );
   return items
     .filter((item) => item.parentId === undefined || !visibleIds.has(item.parentId))
-    .map((item) => {
-      if (current.layout === 'large') {
-        return renderCard(item, childrenOf(item), visibleIds, false);
-      }
-      return expandedCards.has(item.id)
+    .map((item) =>
+      expandedCards.has(item.id)
         ? renderCard(item, childrenOf(item), visibleIds, true)
-        : renderCompactCard(item, childrenOf(item));
-    })
+        : renderCompactCard(item, childrenOf(item))
+    )
     .join('');
 }
 
@@ -1269,20 +1266,6 @@ function renderIteration(iteration: IterationModel, items: WorkItemModel[], curr
       ${icon('chevron', 'chevron')}<span class="iteration-name">${escapeHtml(iteration.name)}</span>
       <span class="count">${cards.length}</span>${alerts}${countdownPill(iteration.countdown)}</button></h2>
     ${body}
-  </section>`;
-}
-
-/** Work items being worked on, at the top of the list, under the toolbar and above the iteration groups */
-function renderWorkingOnSection(items: WorkItemModel[], current: ViewModel): string {
-  if (!items.length) {
-    return '';
-  }
-  return `<section class="working-section" aria-label="Working on">
-    <h2 class="working-section-head"><span class="working-glyph" aria-hidden="true">●</span>
-      <span class="working-section-title">Working on</span><span class="working-section-count">${
-        items.length
-      }</span></h2>
-    ${renderCards(items, current)}
   </section>`;
 }
 
@@ -2206,7 +2189,6 @@ function renderList(current: ViewModel): string {
     current.stateOrder
   );
   const hidden = cards.length - visible.length;
-  const split = splitWorkingOn(visible, current.workingOn.section);
   const hiddenNote = hidden
     ? `<p class="muted note">${
         filtersExpanded
@@ -2223,35 +2205,24 @@ function renderList(current: ViewModel): string {
       .map((iteration) =>
         renderIteration(
           iteration,
-          split.rest.filter((item) => item.iterationPath === iteration.path),
+          visible.filter((item) => item.iterationPath === iteration.path),
           current
         )
       )
       .join('');
   } else {
-    body =
-      renderCards(split.rest, current) ||
-      (split.workingOn.length ? '' : '<p class="message muted">No work items match the filters.</p>');
+    body = renderCards(visible, current) || '<p class="message muted">No work items match the filters.</p>';
   }
-  return renderAlertsBanner(current) + renderWorkingOnSection(split.workingOn, current) + body + hiddenNote;
+  return renderAlertsBanner(current) + body + hiddenNote;
 }
 
 /* ---------- Page ---------- */
 
 /** Next to the "My Work Items" title: the layout of the cards and folding all the task lists */
-function renderListTools(current: ViewModel): string {
-  const layoutButton = (layout: ViewModel['layout'], iconName: 'cards' | 'rows', label: string) =>
-    `<button class="icon-button" data-action="setLayout" data-layout="${layout}" aria-pressed="${
-      current.layout === layout
-    }" title="${label}" aria-label="${label}">${icon(iconName)}</button>`;
-  return `<span class="layout-switch" role="group" aria-label="Layout of the work items">${layoutButton(
-    'compact',
-    'rows',
-    'Compact layout'
-  )}${layoutButton('large', 'cards', 'Large layout')}</span>
-    <button class="icon-button" data-action="expandAllTasks" title="Expand all tasks" aria-label="Expand all tasks">${icon(
-      'expandAll'
-    )}</button>
+function renderListTools(): string {
+  return `<button class="icon-button" data-action="expandAllTasks" title="Expand all tasks" aria-label="Expand all tasks">${icon(
+    'expandAll'
+  )}</button>
     <button class="icon-button" data-action="collapseAllTasks" title="Collapse all tasks" aria-label="Collapse all tasks">${icon(
       'collapseAll'
     )}</button>`;
@@ -2599,7 +2570,8 @@ function renderNow(current: ViewModel): string {
     queue.items.filter((item) => item.verb === 'fix' && expandedNow.has(nowKey(item))).map((item) => item.id)
   );
   // A work item unfolded in the queue is not repeated below (one card per work item on the page)
-  const workingOn = cardItems(current).filter((item) => item.workingOn && !unfoldedFixes.has(item.id));
+  // Rule WORKON-3: here first, then the other worktrees
+  const workingOn = splitWorkingOn(cardItems(current)).workingOn.filter((item) => !unfoldedFixes.has(item.id));
   const workingOnCards = workingOn
     .map((item) =>
       renderCard(
@@ -2715,7 +2687,7 @@ function render(): void {
   const animations = workingOnAnimationClasses(model.workingOn.animation, model.workingOn.pulseBadge);
   list.className = ['list', ...animations].join(' ');
   list.innerHTML = work ? renderList(model) : '';
-  (document.getElementById('list-tools') as HTMLElement).innerHTML = renderListTools(model);
+  (document.getElementById('list-tools') as HTMLElement).innerHTML = renderListTools();
   const now = document.getElementById('tab-now') as HTMLElement;
   now.className = ['tab-panel', ...animations].join(' ');
   now.innerHTML = activeTab === 'now' ? renderNow(model) : '';
@@ -3089,13 +3061,6 @@ document.addEventListener('click', (event) => {
       Number(id),
       fromChevron ? () => document.querySelector<HTMLElement>(`.card-chevron[data-id="${id}"]`)?.focus() : undefined
     );
-  } else if (action === 'setLayout' && (layout === 'compact' || layout === 'large')) {
-    // Shown right away; the extension saves it and posts the view again
-    if (model && model.layout !== layout) {
-      model = { ...model, layout };
-      renderMorphing();
-      post({ type: 'setLayout', layout });
-    }
   } else if (action === 'setPanelLayout' && (panel === 'reviews' || panel === 'myPullRequests')) {
     if (layout === 'compact' || layout === 'large') {
       setPanelLayout(panel, layout);

@@ -168,18 +168,14 @@ describe('splitWorkingOn', () => {
   ];
 
   it('moves the work items being worked on to the section: here first, then worktree', () => {
-    const { workingOn, rest } = splitWorkingOn(items, true);
+    const { workingOn, rest } = splitWorkingOn(items);
     expect(workingOn.map((item) => item.id)).toEqual([4, 2, 5]);
     expect(rest.map((item) => item.id)).toEqual([1, 3]);
   });
 
   it('does not duplicate any work item', () => {
-    const { workingOn, rest } = splitWorkingOn(items, true);
+    const { workingOn, rest } = splitWorkingOn(items);
     expect([...workingOn, ...rest].map((item) => item.id).sort()).toEqual([1, 2, 3, 4, 5]);
-  });
-
-  it('keeps everything in place without a section', () => {
-    expect(splitWorkingOn(items, false)).toEqual({ workingOn: [], rest: items });
   });
 });
 

@@ -198,7 +198,6 @@ export interface ViewModel {
   pullRequests: MyPullRequestsModel;
   /** Work items with alerts skip the state / PR / priority filters (totalflowx.filter.alwaysShowAlerts) */
   alwaysShowAlerts: boolean;
-  layout: Layout;
   /** How the cards and PR tiles react to the pointer (totalflowx.appearance.hoverStyle) */
   hoverStyle: HoverStyle;
   /** The cards of forgotten work items pulse in orange (totalflowx.appearance.asleepPulse, Rule REMIND-3) */
@@ -219,8 +218,6 @@ export interface ViewModel {
 export interface WorkingOnViewModel {
   /** The work items being worked on skip the State / PR / Priority filters and the "Show only these" toggle */
   ignoreFilters: boolean;
-  /** They are moved to a "Working on" section at the top of the list */
-  section: boolean;
   /** Animation of the "here" cards (totalflowx.workingOn.animation) */
   animation: WorkingOnAnimation;
   /** The ● of the "here" badge and dot pulses (totalflowx.workingOn.pulseBadge) */
@@ -342,7 +339,7 @@ export type WebviewMessage =
   /** The banner of a broken base branch: the picker of what broke it */
   | { type: 'showBaseBranchAlert' }
   | { type: 'setFilter'; filter: FilterModel }
-  | { type: 'setLayout'; layout: Layout };
+
 
 /** Buttons of a work item: run by id */
 export type WorkItemActionMessage = Exclude<

@@ -12,7 +12,7 @@ Brings the Azure DevOps work of the current sprint into VS Code: your Backlog It
   - PR titles: `[<ids>] <Feature Name>: <description>`, e.g. `[123,554] FUI Administration: Show the network configuration`.
 - **[Current work item](#work-item-of-the-current-branch)** in the status bar, also when you check out a colleague's branch to review it.
 - **[My pull requests](#my-pull-requests)** in the sidebar: reviewers and votes, unresolved comments, conflicts, CI, auto-complete, and the next step before the merge, from the branch policies.
-- **[Two layouts](#layouts)**: compact rows (default) or large cards.
+- **[Compact rows](#layouts)** that unfold into the full card.
 - **[Work item editing](#usage)**: change states, add tasks, and see the full details (description, acceptance criteria, effort, tags, parent, children) in an editor tab.
 - **[Alerts](#alerts)** for the work items that break the team rules (Done with open tasks, missing PR task, blocking tags, empty required fields…), in the cards, the activity bar badge and the status bar. **[Integrated in Build](#integrated-in-build)** can be filled in one click from the last release of the deploy image.
 - **[Dependencies](#dependencies)**: predecessors and successors in the Work Item Details panel, and an interactive map by iteration that highlights the risky ones.
@@ -62,12 +62,12 @@ Within each state, cards are sorted by priority, then severity. The filter chips
 
 ### Layouts
 
-The cards come in two layouts, switched with the **Compact / Large** buttons next to the **My Work Items** title (`totalflowx.workItems.layout`):
+In the **Work** tab every work item is a compact row that unfolds into the full card in place:
 
-- **Compact** (default): two lines per work item. The first one has the type, ID, title and state; the second one only the signals that apply: priority / severity, branch (`current`, or `not deleted` for finished work items), main PR state, CI state of the main PR, task progress (`☑ 2/3`) and alerts (`⚠ 2`). Hover a signal for details. Click a row to expand it into the large card, with its buttons and tasks; click its header to fold it back.
-- **Large**: the full cards described below.
+- **Compact row**: two lines per work item. The first one has the type, ID, title and state; the second one only the signals that apply: priority / severity, branch (`current`, or `not deleted` for finished work items), main PR state, CI state of the main PR, task progress (`☑ 2/3`) and alerts (`⚠ 2`). Hover a signal for details. Click a row to expand it into the large card, with its buttons and tasks; click its header to fold it back.
+- **Full card** (unfolded, and the work items of the Now tab): described below.
 
-Switching layout, unfolding / folding a compact row (work items and both PR boxes), expanding / collapsing the **Waiting for your review** and **My Pull Requests** boxes, and opening / closing the **Tasks** of a card (one, or all with **Expand / Collapse all tasks**) are animated (a box grows or shrinks, the rest slides); each card morphs from one form to the other in about 0.2 s and the rest of the view slides to its new place. Nothing moves when the system asks for reduced motion.
+Unfolding / folding a compact row (work items and both PR boxes), expanding / collapsing the **Waiting for your review** and **My Pull Requests** boxes, and opening / closing the **Tasks** of a card (one, or all with **Expand / Collapse all tasks**) are animated (a box grows or shrinks, the rest slides); each card morphs from one form to the other in about 0.2 s and the rest of the view slides to its new place. Nothing moves when the system asks for reduced motion.
 
 Hovering (or focusing with the keyboard) a work item card or a PR tile does not change its background, so the text keeps its contrast: by default the whole border takes the colour of the tile's left bar and a soft shadow lifts the tile (`totalflowx.appearance.hoverStyle`; see the settings table for `tint` and `accent`).
 
@@ -165,7 +165,7 @@ The work items of the checked-out branch are highlighted: a tinted card with an 
 - **Linked work items**: besides the work item whose ID is in the branch name, the ones linked to the PR of the branch, to the branch itself (Development links) or to a **task** whose branch is the checked-out one are highlighted too (`totalflowx.workingOn.includeLinkedWorkItems`).
 - **Task rows**: in a card's task list, the row of the task whose branch is checked out here has a light blue tint and a bold title; a task whose branch is checked out in another worktree has a thin dashed blue outline (`totalflowx.workingOn.showWorktrees`). Rows keep their height and do not animate; screen readers hear "Checked out here" / "Checked out in a worktree".
 - **Never hidden**: they ignore the State / PR / Priority filters and stay visible in a collapsed iteration group; the Type filter and the search still apply (`totalflowx.workingOn.ignoreFilters`).
-- **Working on section**: they are moved to a section at the top of the list, this window's first (`totalflowx.workingOn.section`).
+- **Working on section**: they are listed, as full cards with their track, under the queue of the **Now** tab, this window's first.
 - **Animation** (optional, only for the card "here"; "In worktree" cards stay still): `totalflowx.workingOn.animation` = `none` (default), `borderLight` (a soft band travels down the thick left border), `runningBorder` (a short bright segment runs around the card border, as thick as the left border on that side), `glow` (a soft blue halo breathes), `stripes` (diagonal stripes slide inside the badge), `rainbow` (the thick left border cycles through the rainbow), `neon` (a neon outline that flickers now and then) or `retro` (faint CRT scanlines roll down the card). `totalflowx.workingOn.pulseBadge` (on by default) makes a halo expand from the **Working on** badge (and from the dot of the compact row) and fade out every 2 s; it combines with any animation. Nothing moves when the system asks for reduced motion.
 
 Turn any of these settings off to keep only the highlight. The status bar item of the current work item has **Show in sidebar**, which scrolls to its card and makes it flash.
@@ -382,7 +382,6 @@ Personal choices (layouts, filters, the look of the cards, the fun features) are
 
 | Setting                                     | Description                                                                                     |
 | ------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `totalflowx.workItems.layout`               | Layout of the cards: `compact` (default) or `large`                                             |
 | `totalflowx.filter.types`                   | Work item types shown (Type chips)                                                              |
 | `totalflowx.filter.hiddenStates`            | States hidden (State chips)                                                                     |
 | `totalflowx.filter.hiddenPullRequestStates` | PR states hidden (PR chips)                                                                     |
@@ -398,7 +397,6 @@ Personal choices (layouts, filters, the look of the cards, the fun features) are
 
 | Setting                                       | Description                                                               |
 | --------------------------------------------- | ------------------------------------------------------------------------- |
-| `totalflowx.workingOn.section`                | List the work items you are working on in a "Working on" section (on)     |
 | `totalflowx.workingOn.ignoreFilters`          | Never hide the work items you are working on (on)                         |
 | `totalflowx.workingOn.showWorktrees`          | Also mark the work items checked out in another worktree (on)             |
 | `totalflowx.workingOn.includeLinkedWorkItems` | Also mark the work items linked to the one of the checked out branch (on) |

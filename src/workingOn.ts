@@ -168,16 +168,10 @@ export function workingOnBadge(level: WorkingOnLevel, worktreePath?: string): Wo
 
 // Rule WORKON-3
 /**
- * Splits the visible cards into the "Working on" section (here first, then worktree; the order of the rest is kept)
- * and the rest. Without a section, nothing moves
+ * Splits the cards into the "Working on" section of the Now tab (here first, then worktree; the order of the rest is
+ * kept) and the rest
  */
-export function splitWorkingOn<T extends { workingOn?: WorkingOnLevel }>(
-  items: T[],
-  section: boolean
-): { workingOn: T[]; rest: T[] } {
-  if (!section) {
-    return { workingOn: [], rest: items };
-  }
+export function splitWorkingOn<T extends { workingOn?: WorkingOnLevel }>(items: T[]): { workingOn: T[]; rest: T[] } {
   const workingOn = items.filter((item) => item.workingOn);
   return {
     workingOn: [

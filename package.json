@@ -145,18 +145,6 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "totalflowx.useCompactLayout",
-        "title": "Use Compact Layout",
-        "category": "Totalflow X",
-        "icon": "$(list-flat)"
-      },
-      {
-        "command": "totalflowx.useLargeLayout",
-        "title": "Use Large Layout",
-        "category": "Totalflow X",
-        "icon": "$(list-unordered)"
-      },
-      {
         "command": "totalflowx.openIterationBoard",
         "title": "Open Iteration Board",
         "category": "Totalflow X",
@@ -433,14 +421,6 @@
       ],
       "commandPalette": [
         {
-          "command": "totalflowx.useCompactLayout",
-          "when": "totalflowx.layout == large"
-        },
-        {
-          "command": "totalflowx.useLargeLayout",
-          "when": "totalflowx.layout == compact"
-        },
-        {
           "command": "totalflowx.checkout",
           "when": "false"
         },
@@ -528,21 +508,6 @@
         "title": "Work Items List",
         "order": 2,
         "properties": {
-          "totalflowx.workItems.layout": {
-            "type": "string",
-            "enum": [
-              "compact",
-              "large"
-            ],
-            "enumDescriptions": [
-              "Two lines per work item: title and state, then small signals (priority, branch, PR, CI, tasks, alerts). Click a row to expand it.",
-              "Full cards with the branch, the PRs, the actions and the task list."
-            ],
-            "default": "compact",
-            "description": "How the work items of the view are shown. Also switchable with the button of the view title.",
-            "scope": "application",
-            "order": 1
-          },
           "totalflowx.filter.types": {
             "type": "array",
             "items": {
@@ -670,12 +635,6 @@
         "title": "Working On",
         "order": 3,
         "properties": {
-          "totalflowx.workingOn.section": {
-            "type": "boolean",
-            "default": true,
-            "description": "List the work items you are working on in a \"Working on\" section at the top of the list, instead of in their iteration group (they keep their highlight).",
-            "order": 1
-          },
           "totalflowx.workingOn.ignoreFilters": {
             "type": "boolean",
             "default": true,

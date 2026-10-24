@@ -119,7 +119,7 @@ The extension enforces or supports these team rules; many features exist because
 
 ## UI choices
 
-- Compact layout is the default for work items and both PR boxes; a compact row unfolds into the full card in place.
+- Work items are always compact rows in the Work tab (the `workItems.layout` setting and its Compact / Large commands were removed with the redesign: the full cards live in the Now tab and unfold in place); the PR boxes keep their compact / large choice. A compact row unfolds into the full card in place.
 - Boxes (Waiting for your review, My Pull Requests) look like framed panels, deliberately different from the iteration group headers.
 - **The PR boxes have no thick left bar; their background and frame colour tell whether they need you, even collapsed.** The 4 px bar is the state bar of the tiles and means nothing on a box. Waiting for your review: red when a required review is overdue, orange when any PR is waiting, neutral when none. My Pull Requests: orange when an active PR needs you (same rule as the tile pulse), blue when there are active PRs (drafts included) and none needs you, neutral otherwise. Completed PRs and the Reviewed list never count. It reuses `countLate` and `needsAttention` (src/panelTone.ts, rules PANEL-TONE-1..2), so it costs no request.
 - **The activity bar badge lives on the native "Summary" tree view, not on the webview view.** VS Code creates (resolves) a webview view only when it is first shown, so on a cold start there is no `WebviewView` to set `badge` on until the user opens the sidebar. A `TreeView` made with `createTreeView` at activation exists immediately, so `src/summaryView.ts` sets its badge (work items with alerts + PRs waiting for review, `src/summaryRows.ts`) at startup and on every change of the store and the watchers. The webview view must not set a badge too: the container would show a double count. Whether the badge of a _collapsed_ tree view reaches the container icon must be confirmed in a real VS Code.
@@ -148,6 +148,7 @@ The UI is being rebuilt from a design made with all the rules known in advance (
 - **The "Needs you" rows unfold in place with the card the other tabs show**, not a new panel: the buttons and pickers of that card keep working there, and the row stays one line when folded.
 - **The sprint strip is always shown**, not only with the fun features: the days left of the sprint matter to everyone; the emoji countdown stays a fun feature.
 - **Station names in the track are not written under each segment**: six names do not fit a narrow sidebar; the segment tooltips name them and one caption names the station to look at.
+- **Removed with the redesign** (no migration, a single user then): `totalflowx.workItems.layout` (and the Use Compact / Large Layout commands) and `totalflowx.workingOn.section` (the Now tab lists the work items being worked on).
 - **Personal settings that still mean something are kept; purely cosmetic ones the new design replaces are removed**, each one listed here and in the README when it goes.
 
 ## Fun features (`totalflowx.fun.enabled`)

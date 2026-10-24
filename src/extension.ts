@@ -64,8 +64,6 @@ import { CHECKOUT_REVIEW_COMMAND, ReviewRequestsWatcher } from './reviewRequests
 import { WorkItemDetailsPanels } from './workItemDetails';
 import { WorkItemEntry, WorkItemsStore } from './workItemsStore';
 import {
-  LAYOUT_CONTEXT,
-  layoutSetting,
   REVEAL_WORK_ITEM_COMMAND,
   SHOW_SIDEBAR_TAB_COMMAND,
   VIEW_ID,
@@ -259,12 +257,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     });
 
-  // The title bar shows the button of the layout the user is not using
-  const updateLayoutContext = () => void vscode.commands.executeCommand('setContext', LAYOUT_CONTEXT, layoutSetting());
-  const setLayout = (layout: 'compact' | 'large') =>
-    vscode.workspace.getConfiguration(SECTION).update('workItems.layout', layout, vscode.ConfigurationTarget.Global);
-  updateLayoutContext();
-
   // Re-render when the checked out branch changes, without reloading from Azure DevOps
   let debounce: NodeJS.Timeout | undefined;
   const watchRepository = (repository: Repository) =>
@@ -280,8 +272,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     ...registerDiagnostics(),
     vscode.window.registerWebviewViewProvider(VIEW_ID, view),
-    command('totalflowx.useCompactLayout', () => setLayout('compact')),
-    command('totalflowx.useLargeLayout', () => setLayout('large')),
     command(REVEAL_WORK_ITEM_COMMAND, (id: number) => view.reveal(id)),
     command(SHOW_SIDEBAR_TAB_COMMAND, (tab: SidebarTab) => view.showTab(tab)),
     command('totalflowx.expandTasks', () => view.setTasksExpanded(true)),
@@ -369,9 +359,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
         view.post();
         return;
-      }
-      if (event.affectsConfiguration(`${SECTION}.workItems.layout`)) {
-        updateLayoutContext();
       }
       if (event.affectsConfiguration(`${SECTION}.workItems.showInReviewState`)) {
         // Display only: the panels redraw what they have, nothing is fetched
