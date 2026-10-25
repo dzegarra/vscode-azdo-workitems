@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { MyPullRequestModel } from './myPullRequests';
 import type { RunModel } from './pipelines';
 import type { ReviewRequestModel } from './reviewRequests';
-import { buildBoard, columnOf, needsYouVerb, shortDeadline, type BoardInput } from './trackBoardModel';
+import { buildBoard, columnOf, needsYouVerb, placementOf, shortDeadline, type BoardInput } from './trackBoardModel';
 import { currentStation, workItemTrack } from './track';
 import type { BranchModel, PullRequestModel, WorkItemModel } from './viewModel';
 
@@ -474,5 +474,205 @@ describe('buildBoard', () => {
     const progress = { total: 10, passed: 8, text: '2 days left', hurry: true, tooltip: 't' };
     const board = buildBoard(input({ iterations: [{ name: 'Sprint 122', progress }] }));
     expect(board.header).toMatchObject({ sprint: 'Sprint 122', left: '2 days left', hurry: true });
+  });
+});
+
+describe('why a work item is in its column (BOARD-16)', () => {
+  const merged = pr({ id: 13912, tone: 'completed', isActive: false, status: 'Completed' });
+  const placeOf = (item: WorkItemModel, mineModel?: MyPullRequestModel) =>
+    placementOf(item, workItemTrack(item, mineModel), item.pullRequests.at(0));
+
+  it('always agrees with the column', () => {
+    const items = [
+      workItem({ state: 'Approved', branches: [], branch: undefined }),
+      workItem({ branches: [], branch: undefined }),
+      workItem(),
+      workItem({ pullRequests: [pr({ tone: 'draft' })] }),
+      workItem({ pullRequests: [pr({ runs: [run('failed')] })] }),
+      workItem({ pullRequests: [pr({ runs: [run('succeeded')] })] }),
+      workItem({ pullRequests: [merged] }),
+      workItem({ state: 'Done', displayState: 'Done' }),
+    ];
+    for (const item of items) {
+      expect(placeOf(item).column).toBe(columnFor(item));
+    }
+  });
+
+  it('says what the not started and the coding work items lack', () => {
+    expect(placeOf(workItem({ state: 'Approved', branches: [], branch: undefined })).reason).toBe(
+      'Not started (Approved), no branch'
+    );
+    expect(placeOf(workItem({ branches: [], branch: undefined })).reason).toBe('Started (Committed), no branch yet');
+    expect(placeOf(workItem()).reason).toBe('Branch ready, no PR yet');
+    expect(
+      placeOf(workItem({ pullRequests: [pr({ id: 7, tone: 'draft' })] }), mine({ id: 7, isDraft: true })).reason
+    ).toBe('Draft PR 7: self-review, then publish');
+  });
+
+  it('names the current station and its detail', () => {
+    const failed = workItem({
+      pullRequests: [pr({ runs: [run('failed', { tests: { total: 10, failed: 2, failedTests: [] } })] })],
+    });
+    expect(placeOf(failed).reason).toMatch(/^Current station: CI — /);
+    expect(placeOf(workItem({ pullRequests: [pr({ runs: [run('succeeded')] })] })).reason).toMatch(
+      /^Current station: Review/
+    );
+  });
+
+  it('explains a published PR that breaks a rule of its own', () => {
+    const item = workItem({ pullRequests: [pr({ runs: [run('running')] })] });
+    const broken = mine({ warnings: [{ text: 'No description', severity: 'warning', concern: 'pullRequest' }] });
+    expect(placeOf(item, broken)).toMatchObject({ column: 'ci' });
+    expect(placeOf(item, broken).reason).toMatch(/^PR 10 is published but .*— the rest of its track is at CI$/);
+  });
+
+  it('says a merged PR with an open task sent the work back to coding', () => {
+    const item = workItem({ pullRequests: [merged] });
+    const tasks = [{ state: 'To Do' }];
+    const reason = placementOf(item, workItemTrack(item, undefined, tasks), merged);
+    expect(reason).toEqual({ column: 'branch', reason: 'PR 13912 merged · 1 task open: back to coding' });
+    const notStarted = workItem({ state: 'Approved', pullRequests: [merged] });
+    expect(placementOf(notStarted, workItemTrack(notStarted), merged).reason).toBe(
+      'PR 13912 merged · Approved: back to the start'
+    );
+  });
+
+  it('says finished and fully passed', () => {
+    expect(placeOf(workItem({ state: 'Done', displayState: 'Done' })).reason).toBe('Finished (Done)');
+    expect(placeOf(workItem({ type: 'Bug', state: 'Ready to Test', displayState: 'Ready to Test' })).reason).toBe(
+      'Finished (Ready to Test)'
+    );
+    expect(placeOf(workItem({ pullRequests: [merged] })).reason).toBe(
+      'Current station: Done — PR merged, move it to Done'
+    );
+    const item = workItem();
+    const passed = workItemTrack(item).map((station) => ({ ...station, state: 'done' as const }));
+    expect(placementOf(item, passed, undefined)).toEqual({ column: 'done', reason: 'Every station passed' });
+  });
+
+  it('titles the drawer line with the column and gives the review cards their own reason', () => {
+    const board = buildBoard(
+      input({
+        workItems: [workItem({ id: 1, pullRequests: [pr({ runs: [run('failed')] })] })],
+        reviews: [
+          review({ id: 50, timeLeft: '5 h left' }),
+          review({ id: 51, details: details({ runs: [run('running')] }) }),
+        ],
+      })
+    );
+    expect(board.work.at(0)?.why.title).toBe('Why CI');
+    expect(board.reviews.map((card) => card.why)).toEqual([
+      { title: 'Why Review', text: 'In review, 5 h left' },
+      { title: 'Why CI', text: 'CI running: the review clock has started' },
+    ]);
+  });
+});
+
+describe('the drawer detail (BOARD-17..19)', () => {
+  const other = pr({
+    id: 11,
+    title: 'Second',
+    repository: 'Common_Translations',
+    otherRepository: true,
+    tone: 'draft',
+  });
+  const followed = pr({
+    id: 10,
+    title: 'First',
+    runs: [run('failed', { tests: { total: 188, failed: 2, failedTests: [] } })],
+  });
+
+  it('lists every PR and marks the one the track follows', () => {
+    // Rule BOARD-17
+    const own = mine({
+      id: 10,
+      readyToMerge: true,
+      reviewers: [{ name: 'Ana Ruiz', vote: 'approved', isRequired: true, isContainer: false }],
+      warnings: [{ text: 'No description', severity: 'warning', concern: 'pullRequest' }],
+    });
+    const board = buildBoard(
+      input({ workItems: [workItem({ pullRequests: [followed, other] })], myPullRequests: [own] })
+    );
+    const prs = board.work.at(0)?.detail.pullRequests ?? [];
+    expect(prs.map((item) => [item.id, item.followed])).toEqual([
+      [10, true],
+      [11, false],
+    ]);
+    expect(prs.at(0)).toMatchObject({
+      ci: { text: expect.stringContaining('2 of 188 tests failed') },
+      reviewers: 'Ana Ruiz ✓',
+      warnings: ['No description'],
+      flags: ['ready to merge'],
+      open: { message: { type: 'openPullRequest', id: 1, pullRequestId: 10 } },
+    });
+    expect(prs.at(1)).toMatchObject({ repository: 'Common_Translations', reviewers: undefined, warnings: [] });
+  });
+
+  it('lists every task, marks the open ones and what keeps a merged PR out of Done', () => {
+    // Rule BOARD-18
+    const merged = pr({ id: 12, tone: 'completed', isActive: false });
+    const board = buildBoard(
+      input({
+        workItems: [
+          workItem({
+            id: 2,
+            pullRequests: [merged],
+            otherTasks: [
+              { id: 5, title: 'Docs', type: 'Task', state: 'Active', assignedTo: 'Jonas Berg', taskPullRequests: [] },
+            ],
+          }),
+          workItem({ id: 3, type: 'Task', parentId: 2, title: 'Code', state: 'Done' }),
+          workItem({ id: 4, type: 'Task', parentId: 2, title: 'Test', state: 'To Do' }),
+          workItem({ id: 6, type: 'Task', parentId: 2, title: 'Gone', state: 'Removed' }),
+        ],
+      })
+    );
+    const tasks = board.work.at(0)?.detail.tasks;
+    expect(tasks?.summary).toBe('1 to do, 1 in progress, 1 done');
+    expect(tasks?.items.map((task) => [task.id, task.open, task.keepsOutOfDone, task.assignee])).toEqual([
+      [3, false, false, undefined],
+      [4, true, true, undefined],
+      [5, true, true, 'Jonas Berg'],
+    ]);
+    expect(board.work.at(0)?.detail.tasks?.items.at(1)?.openDetails.message).toEqual({ type: 'openDetails', id: 4 });
+  });
+
+  it('lists the stations with their state and notes, the facts and the checks', () => {
+    // Rule BOARD-19
+    const item = workItem({
+      state: 'Committed',
+      displayState: 'In review',
+      pullRequests: [followed],
+      blockingTags: ['Blocked'],
+      alerts: [{ rule: 'tasksNotDone', message: 'Tasks are not done' } as WorkItemModel['alerts'][number]],
+      notUpdated: { days: 3, text: 'Not updated for 3 working days' },
+    });
+    const detail = buildBoard(input({ workItems: [item] })).work.at(0)?.detail;
+    expect(detail?.stations).toHaveLength(6);
+    expect(detail?.stations.filter((station) => station.current).map((station) => station.label)).toEqual(['CI']);
+    expect(detail?.stations.at(2)).toMatchObject({ stateText: 'needs you', notes: expect.arrayContaining([]) });
+    expect(detail?.facts).toEqual(
+      expect.arrayContaining([
+        { label: 'State', value: 'In review (Committed)' },
+        { label: 'Not updated', value: 'Not updated for 3 working days', tone: 'needsYou' },
+      ])
+    );
+    expect(detail?.checksTitle).toBe('Before completion');
+    expect(detail?.checks.map((check) => check.text)).toEqual([
+      'Tasks are not done',
+      'Tag Blocked is set: remove it once it no longer applies',
+    ]);
+  });
+
+  it('lists the broken rules of a finished work item and skips empty sections', () => {
+    // Rule BOARD-19
+    const done = workItem({
+      state: 'Done',
+      displayState: 'Done',
+      alerts: [{ rule: 'tasksNotDone', message: 'Tasks are not done' } as WorkItemModel['alerts'][number]],
+    });
+    const detail = buildBoard(input({ workItems: [done] })).work.at(0)?.detail;
+    expect(detail).toMatchObject({ checksTitle: 'Broken rules', pullRequests: [], tasks: undefined });
+    expect(detail?.checks).toEqual([{ severity: 'broken', text: 'Tasks are not done' }]);
   });
 });

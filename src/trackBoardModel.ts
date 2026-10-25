@@ -4,7 +4,7 @@
  * My Pull Requests, review requests) and from the track (src/track.ts), so the board and the sidebar never
  * disagree. Pure, so no "vscode" import: the webview uses the types and the panel builds the model
  */
-import { beforeCompletion } from './beforeCompletion';
+import { beforeCompletion, type CompletionCheck } from './beforeCompletion';
 import { worstRunState } from './compactSignals';
 import { nowQueue, type Verb } from './nowQueue';
 import type { MyPullRequestModel, ReviewerModel } from './myPullRequests';
@@ -12,7 +12,10 @@ import type { RunModel } from './pipelines';
 import type { ReviewRequestModel } from './reviewRequests';
 import type { SprintProgress } from './sprintCountdown';
 import { isFinishedState, isNotStartedState, stateCategory } from './states';
-import { taskProgress } from './taskProgress';
+import { branchLocationText, stationNotes } from './stationNotes';
+import { taskProgress, taskProgressTooltip, type TaskSegmentCategory } from './taskProgress';
+import { stationStateLabel } from './trackHtml';
+import type { PullRequestTone } from './workItemLinks';
 import { currentStation, tasksOf, trackPullRequest, workItemTrack, type Station, type StationState } from './track';
 import { branchActions, type PullRequestModel, type WebviewMessage, type WorkItemModel } from './viewModel';
 
@@ -50,6 +53,66 @@ export interface BoardStation {
   current: boolean;
 }
 
+/** A station of the drawer's list: its state in words and the note lines of the Work Item Details panel */
+export interface BoardStationDetail extends BoardStation {
+  /** "passed", "in progress", "needs you", "breaks a team rule", "not reached" */
+  stateText: string;
+  notes: string[];
+}
+
+/** A PR of the work item, in the drawer */
+export interface BoardPullRequest {
+  id: number;
+  title: string;
+  status: string;
+  tone: PullRequestTone;
+  /** The PR the track follows (TRACK-1) */
+  followed: boolean;
+  /** Only when it is in another repository */
+  repository?: string;
+  ci?: { text: string; tone?: BoardFact['tone'] };
+  /** The user's own PR only: "Ana ✓, Jonas (waits for the author)" */
+  reviewers?: string;
+  /** The user's own PR only: the warnings of My Pull Requests */
+  warnings: string[];
+  /** "ready to merge", "auto-complete set", "conflicts" */
+  flags: string[];
+  open: BoardAction;
+}
+
+/** A task of the work item, in the drawer */
+export interface BoardTask {
+  id: number;
+  title: string;
+  state: string;
+  category: TaskSegmentCategory;
+  /** Only the tasks outside the list know who has them */
+  assignee?: string;
+  /** Not done: an open task sends a merged PR back to coding (TRACK-7) */
+  open: boolean;
+  /** Open, and the PR the track follows is merged: this is what keeps the work item out of Done */
+  keepsOutOfDone: boolean;
+  openDetails: BoardAction;
+}
+
+/** What the drawer shows to explain the column of a work item (BOARD-16) */
+export interface BoardDetail {
+  stations: BoardStationDetail[];
+  pullRequests: BoardPullRequest[];
+  tasks?: { summary: string; items: BoardTask[] };
+  /** State, branches, not updated… */
+  facts: BoardFact[];
+  /** "Before completion", or "Broken rules" for a finished work item */
+  checksTitle: string;
+  checks: CompletionCheck[];
+}
+
+/** "Why CI" and the sentence behind it (BOARD-16) */
+export interface BoardWhy {
+  title: string;
+  text: string;
+}
+
 /** The "NEEDS YOU" box of the drawer */
 export interface BoardNeed {
   /** "CI FAILED", "WAITING FOR THE AUTHOR"… */
@@ -83,7 +146,8 @@ export interface BoardWorkCard {
   action?: BoardAction;
   track: BoardStation[];
   need?: BoardNeed;
-  facts: BoardFact[];
+  why: BoardWhy;
+  detail: BoardDetail;
   /** The rows of the hover summary */
   hover: BoardFact[];
   /** Work items on the board linked to this one: predecessors, successors, duplicates */
@@ -112,6 +176,7 @@ export interface BoardReviewCard {
   current?: boolean;
   /** CI still running: the clock started, the review has not begun */
   ciRunning: boolean;
+  why: BoardWhy;
   facts: BoardFact[];
   hover: BoardFact[];
   /** "19 h of 24 h · due Mon 10:00" */
@@ -213,43 +278,88 @@ function columnOfStation(station: Station): BoardColumnId {
   }
 }
 
-// Rules BOARD-2..5
+/** The column of a work item and the sentence that says why (BOARD-16): one function, so they never disagree */
+export interface Placement {
+  column: BoardColumnId;
+  reason: string;
+}
+
+const stationReason = (station: Station): string =>
+  `Current station: ${station.label}${station.detail ? ` — ${station.detail}` : ''}`;
+
+/** The reason of a published PR that breaks a rule of its own (BOARD-4) */
+function brokenPullRequestReason(pr: PullRequestModel, current: Station, next: Station | undefined): string {
+  const own = `PR ${String(pr.id)} is published but ${current.detail ?? 'breaks a rule'}`;
+  return next ? `${own} — the rest of its track is at ${next.label}` : own;
+}
+
+/** "PR 13912 merged · 1 task open: back to coding" (BOARD-3) */
+function backToCodingReason(current: Station, pr: PullRequestModel | undefined, toStart: boolean): string {
+  const detail = current.detail ?? 'PR merged';
+  const text = pr ? detail.replace(/^PR merged/, `PR ${String(pr.id)} merged`) : detail;
+  return `${text}: back to ${toStart ? 'the start' : 'coding'}`;
+}
+
+// Rules BOARD-2..5, BOARD-16
 /**
- * The column of a work item, from its track so the board agrees with the sidebar. Finished work items go to Done;
- * the current station (TRACK-9) says where an open one is
+ * The column of a work item, from its track so the board agrees with the sidebar, and why. Finished work items go to
+ * Done; the current station (TRACK-9) says where an open one is
  */
-export function columnOf(item: WorkItemModel, track: Station[], pr: PullRequestModel | undefined): BoardColumnId {
+export function placementOf(item: WorkItemModel, track: Station[], pr: PullRequestModel | undefined): Placement {
   // Rule BOARD-5
   if (isFinishedState(item.state)) {
-    return 'done';
+    const broken = item.alerts.length ? ` · ${plural(item.alerts.length, 'rule')} broken` : '';
+    return { column: 'done', reason: `Finished (${item.state})${broken}` };
   }
   const current = currentStation(track);
   // Rule BOARD-5: every station passed
   if (!current) {
-    return 'done';
+    return { column: 'done', reason: 'Every station passed' };
   }
   // Rule BOARD-3 / BOARD-5: a merged PR with work left (Done station pending) goes back to coding
   if (current.id === 'done' && current.state === 'pending') {
-    return isNotStartedState(item.state) ? 'toStart' : 'branch';
+    const toStart = isNotStartedState(item.state);
+    return { column: toStart ? 'toStart' : 'branch', reason: backToCodingReason(current, pr, toStart) };
   }
   switch (current.id) {
     case 'branch':
       // Rule BOARD-3: nothing yet. Not started: To start; started without a branch (created elsewhere): coding
-      return isNotStartedState(item.state) ? 'toStart' : 'branch';
-    case 'pullRequest':
+      return isNotStartedState(item.state)
+        ? { column: 'toStart', reason: `Not started (${item.state}), no branch` }
+        : { column: 'branch', reason: `Started (${item.state}), no branch yet` };
+    case 'pullRequest': {
       // Rule BOARD-4: a draft or no PR yet is coding; a published PR that breaks a rule of its own stays where the
       // rest of its track is
       if (pr && pr.tone !== 'draft' && pr.tone !== 'abandoned') {
         const next = firstOpenAfterPullRequest(track);
-        return next ? columnOfStation(next) : 'done';
+        return {
+          column: next ? columnOfStation(next) : 'done',
+          reason: brokenPullRequestReason(pr, current, next),
+        };
       }
-      return 'branch';
+      if (pr) {
+        return {
+          column: 'branch',
+          reason:
+            pr.tone === 'draft'
+              ? `Draft PR ${String(pr.id)}: self-review, then publish`
+              : `PR ${String(pr.id)} is ${pr.status}: no PR to follow`,
+        };
+      }
+      return { column: 'branch', reason: 'Branch ready, no PR yet' };
+    }
     case 'ci':
     case 'review':
     case 'ready':
     case 'done':
-      return columnOfStation(current);
+      return { column: columnOfStation(current), reason: stationReason(current) };
   }
+}
+
+// Rules BOARD-2..5
+/** The column of a work item (see placementOf) */
+export function columnOf(item: WorkItemModel, track: Station[], pr: PullRequestModel | undefined): BoardColumnId {
+  return placementOf(item, track, pr).column;
 }
 
 // Rule BOARD-9
@@ -558,6 +668,132 @@ function stationsOf(track: Station[], current: Station | undefined): BoardStatio
   }));
 }
 
+// Rule BOARD-17
+/** The drawer's rows for the PRs of the work item: all of them, the followed one marked (BOARD-17) */
+function pullRequestsDetail(
+  item: WorkItemModel,
+  followed: PullRequestModel | undefined,
+  myPullRequests: MyPullRequestModel[]
+): BoardPullRequest[] {
+  return item.pullRequests.map((pr) => {
+    const own = myPullRequests.find((candidate) => candidate.id === pr.id);
+    const ci = ciSummary(runsOf(pr, own));
+    const flags = [
+      own?.readyToMerge ? 'ready to merge' : '',
+      own?.autoComplete ? 'auto-complete set' : '',
+      own?.conflicts ? 'conflicts' : '',
+    ].filter(Boolean);
+    return {
+      id: pr.id,
+      title: pr.title,
+      status: pr.status,
+      tone: pr.tone,
+      followed: pr.id === followed?.id,
+      repository: pr.otherRepository ? pr.repository : undefined,
+      ci: ci ? { text: ci.text, tone: ci.tone } : undefined,
+      reviewers: own?.reviewers.length ? reviewersText(own.reviewers) : undefined,
+      warnings: own?.warnings.map((warning) => warning.text) ?? [],
+      flags,
+      open: { label: 'Open PR', message: { type: 'openPullRequest', id: item.id, pullRequestId: pr.id } },
+    };
+  });
+}
+
+// Rule BOARD-18
+/** All the tasks (own list + other developers'), without the removed ones; open ones marked (BOARD-18) */
+function tasksDetail(
+  item: WorkItemModel,
+  workItems: WorkItemModel[],
+  followed: PullRequestModel | undefined
+): BoardDetail['tasks'] {
+  const own = workItems.filter((child) => child.parentId === item.id && child.type === 'Task');
+  const rows = [
+    ...own.map((task) => ({
+      id: task.id,
+      title: task.title,
+      state: task.state,
+      assignee: undefined as string | undefined,
+    })),
+    ...(item.otherTasks ?? []).map((task) => ({
+      id: task.id,
+      title: task.title,
+      state: task.state,
+      assignee: task.assignedTo,
+    })),
+  ].filter((task) => stateCategory(task.state) !== 'removed');
+  if (!rows.length) {
+    return undefined;
+  }
+  const merged = followed?.tone === 'completed';
+  return {
+    summary: taskProgressTooltip(taskProgress(rows)),
+    items: rows.map((task) => {
+      const category = stateCategory(task.state);
+      const open = category !== 'done';
+      return {
+        ...task,
+        category: category === 'in-progress' || category === 'done' ? category : 'proposed',
+        open,
+        keepsOutOfDone: open && merged,
+        openDetails: { label: 'Details', message: { type: 'openDetails', id: task.id } },
+      };
+    }),
+  };
+}
+
+/** The checks of the work item; a finished one lists the rules it breaks (BOARD-19) */
+function checksOf(item: WorkItemModel): Pick<BoardDetail, 'checks' | 'checksTitle'> {
+  const checks = beforeCompletion(item);
+  if (checks.length || !item.alerts.length) {
+    return { checksTitle: 'Before completion', checks };
+  }
+  return {
+    checksTitle: 'Broken rules',
+    checks: item.alerts.map((alert): CompletionCheck => ({ severity: 'broken', text: alert.message })),
+  };
+}
+
+/** State, branches and the forgotten badge: the facts of the rules that are not a list (BOARD-19) */
+function factsOf(item: WorkItemModel): BoardFact[] {
+  const state = item.displayState === item.state ? item.state : `${item.displayState} (${item.state})`;
+  return [
+    { label: 'State', value: state },
+    ...item.branches.map((branch) => ({
+      label: 'Branch',
+      value: `${branch.name} · ${branchLocationText(branch)}${branch.repository ? ` · ${branch.repository}` : ''}`,
+    })),
+    ...(item.notUpdated ? [{ label: 'Not updated', value: item.notUpdated.text, tone: 'needsYou' as const }] : []),
+  ];
+}
+
+// Rule BOARD-19
+/** What the drawer lists to explain the column (BOARD-16..19) */
+function detailOf(
+  item: WorkItemModel,
+  workItems: WorkItemModel[],
+  track: Station[],
+  current: Station | undefined,
+  followed: PullRequestModel | undefined,
+  mine: MyPullRequestModel | undefined,
+  myPullRequests: MyPullRequestModel[]
+): BoardDetail {
+  const notes = stationNotes({ card: item, mine });
+  return {
+    stations: track.map((station) => ({
+      label: station.label,
+      state: station.state,
+      detail: station.detail,
+      current: station === current,
+      stateText: stationStateLabel(station.state),
+      notes: notes[station.id],
+    })),
+    pullRequests: pullRequestsDetail(item, followed, myPullRequests),
+    tasks: tasksDetail(item, workItems, followed),
+    facts: factsOf(item),
+    ...checksOf(item),
+  };
+}
+
 function relatedIds(item: WorkItemModel): number[] {
   return [
     ...(item.openPredecessors ?? []).map((link) => link.id),
@@ -585,27 +821,13 @@ function workCard(
   const mine = followed ? myPullRequests.find((candidate) => candidate.id === followed.id) : undefined;
   const track = workItemTrack(item, mine, tasksOf(item, workItems));
   const current = isFinishedState(item.state) ? undefined : currentStation(track);
-  const column = columnOf(item, track, followed);
+  const { column, reason } = placementOf(item, track, followed);
   const verb = queueVerbOf(item, queue);
   const runs = runsOf(followed, mine);
   const priority = item.priority ? ` · P${String(item.priority)}` : '';
   const header = `#${String(item.id)}${isBug(item) ? ' · Bug' : ''}${priority}`;
   const tasks = tasksText(item, workItems);
-  const checks = beforeCompletion(item);
   const ci = ciSummary(runs);
-  const facts: BoardFact[] = [
-    ...(item.branch ? [{ label: 'Branch', value: item.branch }] : []),
-    ...(mine && mine.reviewers.length ? [{ label: 'Reviewers', value: reviewersText(mine.reviewers) }] : []),
-    ...(mine && !mine.isDraft ? [{ label: 'Published', value: `${mine.time} ago` }] : []),
-    ...(tasks ? [{ label: 'Tasks', value: tasks }] : []),
-    ...(isFinishedState(item.state)
-      ? []
-      : [
-          checks.length
-            ? { label: 'Completion', value: checks.map((check) => check.text).join(' · '), tone: 'needsYou' as const }
-            : { label: 'Completion', value: 'nothing in the way', tone: 'passed' as const },
-        ]),
-  ];
   const waitsOn = item.openPredecessors?.at(0);
   const hover: BoardFact[] = [
     ...(mine?.next || current?.detail ? [{ label: 'Next', value: mine?.next ?? current?.detail ?? '' }] : []),
@@ -652,7 +874,8 @@ function workCard(
     action: actionOf(item, column, mine),
     track: stationsOf(track, current),
     need: needOf(item, current, followed, mine),
-    facts,
+    why: { title: `Why ${COLUMN_TITLES[column]}`, text: reason },
+    detail: detailOf(item, workItems, track, current, followed, mine, myPullRequests),
     hover,
     related: [],
     checkout,
@@ -706,6 +929,11 @@ function reviewCard(review: ReviewRequestModel): BoardReviewCard {
     elapsed: review.elapsed,
     status: approval ? { text: 'Your approval completes it', tone: 'passed' } : undefined,
     ciRunning,
+    // Rule BOARD-16
+    why: {
+      title: `Why ${ciRunning ? COLUMN_TITLES.ci : COLUMN_TITLES.review}`,
+      text: ciRunning ? 'CI running: the review clock has started' : `In review, ${shortDeadline(review.timeLeft)}`,
+    },
     facts,
     hover: facts,
     deadlineText: `${review.barCaption} · ${review.dueText}`,

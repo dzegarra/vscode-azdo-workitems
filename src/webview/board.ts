@@ -12,8 +12,11 @@ import {
   type BoardKind,
   type BoardMessage,
   type BoardModel,
+  type BoardPullRequest,
   type BoardReviewCard,
   type BoardStation,
+  type BoardTask,
+  type BoardWhy,
   type BoardWorkCard,
 } from '../trackBoardModel';
 
@@ -237,8 +240,108 @@ function footer(buttons: (BoardAction | undefined)[]): string {
     .join('')}</footer>`;
 }
 
-function renderFactsOrNothing(facts: BoardFact[]): string {
-  return facts.length ? factRows(facts) : '<dt>Details</dt><dd>nothing to add yet</dd>';
+function section(title: string, body: string, className = ''): string {
+  return `<section class="bd-sec${className ? ` ${className}` : ''}"><h3 class="bd-sec-title">${escapeHtml(
+    title
+  )}</h3>${body}</section>`;
+}
+
+/** "Why CI": one sentence, the reason the card is in its column */
+function renderWhy(why: BoardWhy): string {
+  return section(why.title, `<p class="bd-why-text">${escapeHtml(why.text)}</p>`, 'bd-why');
+}
+
+/** A button that looks like a link: the buttons are posted by the same code as the footer ones */
+function linkButton(action: BoardAction, text: string, title: string): string {
+  const key = `a${String(actions.size)}`;
+  actions.set(key, action);
+  return `<button class="bd-link" data-act="${key}" title="${escapeHtml(title)}">${escapeHtml(text)}</button>`;
+}
+
+function renderStations(card: BoardWorkCard): string {
+  const rows = card.detail.stations
+    .map((station) => {
+      const detail = station.detail ? ` · ${station.detail}` : '';
+      const lines = station.notes.filter((note) => note !== station.detail);
+      const notes = lines.length
+        ? `<span class="bd-st-notes">${lines.map((note) => escapeHtml(note)).join(' · ')}</span>`
+        : '';
+      return `<li class="bd-st station-${station.state}${station.current ? ' current' : ''}"${
+        station.current ? ' aria-current="step"' : ''
+      }><span class="bd-st-dot" aria-hidden="true"></span><span class="bd-st-name">${escapeHtml(
+        station.label
+      )}</span><span class="bd-st-state">${escapeHtml(station.stateText + detail)}</span>${notes}</li>`;
+    })
+    .join('');
+  return section('Stations', `<ol class="bd-stations">${rows}</ol>`);
+}
+
+function renderPullRequest(pr: BoardPullRequest): string {
+  const pill = `<span class="bd-pill tone-${pr.tone}">${escapeHtml(pr.status)}</span>`;
+  const followed = pr.followed ? '<span class="bd-followed" title="The track follows this PR">tracked</span>' : '';
+  const repository = pr.repository ? `<span class="bd-meta">${escapeHtml(pr.repository)}</span>` : '';
+  const lines = [
+    pr.ci
+      ? `<span class="bd-line${pr.ci.tone ? ` tone-${pr.ci.tone}` : ''}">CI · ${escapeHtml(pr.ci.text)}</span>`
+      : '',
+    pr.reviewers ? `<span class="bd-line">Reviewers · ${escapeHtml(pr.reviewers)}</span>` : '',
+    pr.flags.length ? `<span class="bd-line">${escapeHtml(pr.flags.join(' · '))}</span>` : '',
+    ...pr.warnings.map((warning) => `<span class="bd-line tone-needsYou">${escapeHtml(warning)}</span>`),
+  ].join('');
+  return `<li class="bd-row${pr.followed ? ' followed' : ''}"><div class="bd-row-head">${linkButton(
+    pr.open,
+    `PR ${String(pr.id)}`,
+    'Open the PR'
+  )}${pill}${followed}${repository}</div><span class="bd-row-title">${escapeHtml(pr.title)}</span>${lines}</li>`;
+}
+
+function renderTask(task: BoardTask): string {
+  let flag = '';
+  if (task.keepsOutOfDone) {
+    flag = '<span class="bd-flag">keeps it out of Done</span>';
+  } else if (task.open) {
+    flag = '<span class="bd-flag soft">open</span>';
+  }
+  const who = task.assignee ? `<span class="bd-meta">${escapeHtml(task.assignee)}</span>` : '';
+  return `<li class="bd-row task"><div class="bd-row-head"><span class="bd-dot cat-${
+    task.category
+  }" aria-hidden="true"></span>${linkButton(
+    task.openDetails,
+    `#${String(task.id)}`,
+    'Open the Work Item Details panel'
+  )}<span class="bd-meta">${escapeHtml(task.state)}</span>${who}${flag}</div><span class="bd-row-title">${escapeHtml(
+    task.title
+  )}</span></li>`;
+}
+
+function renderDetail(card: BoardWorkCard): string {
+  const detail = card.detail;
+  const prs = detail.pullRequests.length
+    ? section(
+        detail.pullRequests.length === 1 ? 'Pull request' : 'Pull requests',
+        `<ul class="bd-rows">${detail.pullRequests.map(renderPullRequest).join('')}</ul>`
+      )
+    : '';
+  const tasks = detail.tasks
+    ? section(
+        'Tasks',
+        `<p class="bd-sum">${escapeHtml(detail.tasks.summary)}</p><ul class="bd-rows">${detail.tasks.items
+          .map(renderTask)
+          .join('')}</ul>`
+      )
+    : '';
+  const checks = detail.checks.length
+    ? section(
+        detail.checksTitle,
+        `<ul class="bd-checks">${detail.checks
+          .map((check) => `<li class="${check.severity}">${escapeHtml(check.text)}</li>`)
+          .join('')}</ul>`
+      )
+    : '';
+  return `${renderStations(card)}${prs}${tasks}${section(
+    'Facts',
+    `<dl class="bd-facts">${factRows(detail.facts)}</dl>`
+  )}${checks}`;
 }
 
 function renderWorkDrawer(card: BoardWorkCard): string {
@@ -246,12 +349,9 @@ function renderWorkDrawer(card: BoardWorkCard): string {
   return `<div class="bd-d-head"><span class="bd-d-id">#${String(card.id)}</span><span class="bd-d-sub">${escapeHtml(
     card.subtitle
   )}</span><button class="bd-icon-button" data-close aria-label="Close">×</button></div>
-    <h2 class="bd-d-title">${escapeHtml(card.title)}</h2>${trackBars(card.track, true)}${renderNeed(card)}
-    <dl class="bd-facts">${renderFactsOrNothing(card.facts)}</dl>${footer([
-    card.checkout,
-    card.openPullRequest,
-    details,
-  ])}`;
+    <h2 class="bd-d-title">${escapeHtml(card.title)}</h2>${trackBars(card.track, true)}${renderWhy(
+    card.why
+  )}${renderNeed(card)}${renderDetail(card)}${footer([card.checkout, card.openPullRequest, details])}`;
 }
 
 function renderReviewDrawer(card: BoardReviewCard): string {
@@ -260,13 +360,13 @@ function renderReviewDrawer(card: BoardReviewCard): string {
   } review · ${escapeHtml(
     card.deadline
   )}</span><button class="bd-icon-button" data-close aria-label="Close">×</button></div>
-    <h2 class="bd-d-title">${escapeHtml(card.title)}</h2>
+    <h2 class="bd-d-title">${escapeHtml(card.title)}</h2>${renderWhy(card.why)}
     <div class="bd-deadline-box urgency-${
       card.urgency
     }"><span class="bd-bar-track" aria-hidden="true"><span class="bd-bar-fill" data-elapsed="${String(
     card.elapsed
   )}"></span></span><span class="bd-mono">${escapeHtml(card.deadlineText)}</span></div>
-    <dl class="bd-facts">${renderFactsOrNothing(card.facts)}</dl>${footer([card.checkout, card.openPullRequest])}`;
+    <dl class="bd-facts">${factRows(card.facts)}</dl>${footer([card.checkout, card.openPullRequest])}`;
 }
 
 function selectedCard(): BoardReviewCard | BoardWorkCard | undefined {

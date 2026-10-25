@@ -10,6 +10,9 @@ const STATION_STATE_LABELS: Record<Station['state'], string> = {
   pending: 'not reached',
 };
 
+/** "passed", "in progress", "needs you", "breaks a team rule", "not reached" */
+export const stationStateLabel = (state: Station['state']): string => STATION_STATE_LABELS[state];
+
 export function stationTitle(station: Station): string {
   return `${station.label}: ${STATION_STATE_LABELS[station.state]}${station.detail ? ` · ${station.detail}` : ''}`;
 }

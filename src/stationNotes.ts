@@ -40,6 +40,12 @@ const LOCATION_TEXT: Record<BranchModel['location'], string> = {
 const isPublished = (pr: PullRequestModel | undefined): pr is PullRequestModel =>
   pr !== undefined && pr.tone !== 'draft' && pr.tone !== 'abandoned';
 
+/** "local · in worktree tree-a": where a branch is */
+export function branchLocationText(branch: BranchModel): string {
+  const worktree = branch.worktree?.split(WORKTREE_SEPARATOR).filter(Boolean).at(-1);
+  return [LOCATION_TEXT[branch.location], worktree ? `in worktree ${worktree}` : ''].filter(Boolean).join(' · ');
+}
+
 function branchNotes(card: NotesCard): string[] {
   const name = card.branch ?? card.branches.at(0)?.name;
   if (!name) {
@@ -49,9 +55,7 @@ function branchNotes(card: NotesCard): string[] {
   if (!branch) {
     return [name];
   }
-  const worktree = branch.worktree?.split(WORKTREE_SEPARATOR).filter(Boolean).at(-1);
-  const where = [LOCATION_TEXT[branch.location], worktree ? `in worktree ${worktree}` : ''].filter(Boolean);
-  return [name, where.join(' · ')];
+  return [name, branchLocationText(branch)];
 }
 
 function pullRequestNotes(card: NotesCard, pr: PullRequestModel | undefined, mine?: NotesPullRequest): string[] {
