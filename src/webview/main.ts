@@ -60,7 +60,8 @@ import { splitWorkingOn, WorkingOnLevel, workingOnAnimationClasses, workingOnBad
 import { nowQueue, type NowItem, type Verb } from '../nowQueue';
 import { lookClass } from '../look';
 import { isSidebarTab, SIDEBAR_TABS, TAB_LABELS, tabCounts, type SidebarTab } from '../sidebarTabs';
-import { currentStation, trackPullRequest, workItemTrack, type Station } from '../track';
+import { trackPullRequest, workItemTrack, type Station } from '../track';
+import { renderMiniTrackHtml, renderTrackHtml } from '../trackHtml';
 import type { CompletedPeriod } from '../myPullRequests';
 import type {
   CheckoutKind,
@@ -1015,14 +1016,6 @@ function renderWorkingOn(item: WorkItemModel): string {
  */
 /* ---------- Track (redesign, Rules TRACK-*) ---------- */
 
-const STATION_STATE_LABELS: Record<Station['state'], string> = {
-  done: 'passed',
-  active: 'in progress',
-  needsYou: 'needs you',
-  broken: 'breaks a team rule',
-  pending: 'not reached',
-};
-
 /** The stations of a Backlog Item or Bug, with what My Pull Requests knows of its PR when it is one of the user's */
 function trackOf(item: WorkItemModel): Station[] {
   const followed = trackPullRequest(item);
@@ -1030,44 +1023,14 @@ function trackOf(item: WorkItemModel): Station[] {
   return workItemTrack(item, mine);
 }
 
-function stationTitle(station: Station): string {
-  return `${station.label}: ${STATION_STATE_LABELS[station.state]}${station.detail ? ` · ${station.detail}` : ''}`;
-}
-
-/** The six stations under the title of a large card: one segment each, then the station to look at in words */
+/** The six stations under the title of a large card */
 function renderTrack(item: WorkItemModel): string {
-  if (!canHaveTasks(item.type)) {
-    return '';
-  }
-  const track = trackOf(item);
-  const current = currentStation(track);
-  const stations = track
-    .map(
-      (station) =>
-        `<li class="station station-${station.state}${station === current ? ' current' : ''}" title="${escapeHtml(
-          stationTitle(station)
-        )}"><span class="visually-hidden">${escapeHtml(stationTitle(station))}</span></li>`
-    )
-    .join('');
-  const caption = current
-    ? `<p class="track-caption"><span class="track-current station-${current.state}">${escapeHtml(
-        current.label
-      )}</span>${current.detail ? ` · ${escapeHtml(current.detail)}` : ''}</p>`
-    : '<p class="track-caption">Done</p>';
-  return `<div class="track"><ol class="track-bars" aria-label="Track of ${item.id}">${stations}</ol>${caption}</div>`;
+  return canHaveTasks(item.type) ? renderTrackHtml(trackOf(item), `Track of ${item.id}`) : '';
 }
 
-// Rule SIGNAL-12
-/** The track of a compact row: six small segments, the details in the tooltip */
+/** The track of a compact row (Rule SIGNAL-12) */
 function renderMiniTrack(item: WorkItemModel): string {
-  if (!canHaveTasks(item.type)) {
-    return '';
-  }
-  const track = trackOf(item);
-  const title = track.map(stationTitle).join('\n');
-  return `<span class="mini-track" role="img" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}">${track
-    .map((station) => `<span class="mini-station station-${station.state}"></span>`)
-    .join('')}</span>`;
+  return canHaveTasks(item.type) ? renderMiniTrackHtml(trackOf(item)) : '';
 }
 
 function renderCard(item: WorkItemModel, children: TaskRow[], visibleIds: Set<number>, foldable: boolean): string {

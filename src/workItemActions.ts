@@ -20,6 +20,8 @@ async function runAction(store: WorkItemsStore, message: WorkItemAction): Promis
     case 'openDetails':
     case 'openDependencyMap':
     case 'changeState':
+      await vscode.commands.executeCommand('totalflowx.changeState', message.id, message.state);
+      return;
     case 'addTask':
     case 'clearIntegrationBuild':
     case 'fillIntegrationBuild':

@@ -147,6 +147,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   const notifier = new PullRequestNotifier(context.globalState, store, funJournal, () => celebrate(true, 'merged'));
   const sprintRecap = new SprintRecapPanel(context.extensionUri, store, funJournal);
+  details.setMyPullRequests(myPullRequests);
   const worktreeTracker = new WorktreeTracker(context.globalState, { store, reviews: reviewRequests, myPullRequests });
   view.setWorktrees(worktreeTracker);
   const worktreesView = new WorktreesView(worktreeTracker);
@@ -450,10 +451,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await details.open(workItemId);
       }
     }),
-    command('totalflowx.changeState', async (id?: number) => {
+    command('totalflowx.changeState', async (id?: number, state?: string) => {
       const workItemId = id ?? (await resolveWorkItemEntry(store, undefined))?.workItem.id;
       if (workItemId) {
-        await changeState(store, workItemId);
+        await changeState(store, workItemId, state);
       }
     }),
     command('totalflowx.addTask', async (id?: number) => {

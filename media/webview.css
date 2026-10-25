@@ -4318,6 +4318,7 @@ button.task-pill.empty:focus-visible {
 body.look-totalflow:not([class*='vscode-high-contrast']) {
   --vscode-font-family: 'IBM Plex Sans', system-ui, sans-serif;
   --vscode-sideBar-background: #10141a;
+  --vscode-editor-background: #0e1217;
   --vscode-foreground: #e8ebf1;
   --vscode-descriptionForeground: #a3adbb;
   --vscode-disabledForeground: #8390a1;
@@ -4358,8 +4359,14 @@ body.look-totalflow:not([class*='vscode-high-contrast']) {
   font-family: var(--vscode-font-family);
 }
 
+/* Editor tabs (the Work Item Details panel) sit on the editor background */
+body.look-totalflow:not([class*='vscode-high-contrast']):has(.details-head) {
+  background: var(--vscode-editor-background);
+}
+
 body.look-totalflow.vscode-light {
   --vscode-sideBar-background: #f6f7f9;
+  --vscode-editor-background: #ffffff;
   --vscode-foreground: #12161c;
   --vscode-descriptionForeground: #4a5463;
   --vscode-disabledForeground: #5e6878;
@@ -4398,7 +4405,18 @@ body.look-totalflow.vscode-light {
 
 /* Space Grotesk for the headings and the numbers that matter; IBM Plex Mono for IDs, branches and times */
 body.look-totalflow:not([class*='vscode-high-contrast'])
-  :is(.section-title, .list-title, .sprint-name, .panel-title, .iteration-name, .tab, .tab-count, .verb-chip) {
+  :is(
+    .section-title,
+    .list-title,
+    .sprint-name,
+    .panel-title,
+    .iteration-name,
+    .tab,
+    .tab-count,
+    .verb-chip,
+    h1,
+    .section h2
+  ) {
   font-family: 'Space Grotesk', 'IBM Plex Sans', system-ui, sans-serif;
 }
 

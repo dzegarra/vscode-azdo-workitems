@@ -7,10 +7,12 @@ import { DetailsData, RelatedWorkItem, renderDetailsBody, RICH_TEXT_FIELDS } fro
 import { imageSources, isOrganizationUrl, replaceImageSources } from './richTextImages';
 import { isFigmaExtensionInstalled, openFigmaLinks } from './figma';
 import { findFigmaLinks } from './figmaLinks';
-import { escapeHtml } from './html';
+import { canHaveTasks, escapeHtml } from './html';
 import { isInReview, shownState } from './pullRequestTasks';
 import { dependencyRisk } from './schedule';
 import { WebviewMessage } from './viewModel';
+import type { MyPullRequestModel } from './myPullRequests';
+import { trackPullRequest, workItemTrack } from './track';
 import { runWorkItemAction } from './workItemActions';
 import { WorkItemsStore } from './workItemsStore';
 
@@ -76,6 +78,8 @@ function toRelated({ id, title, type, state, iterationPath }: WorkItem): Related
 export class WorkItemDetailsPanels implements vscode.Disposable {
   private readonly panels = new Map<number, OpenPanel>();
   private readonly subscriptions: vscode.Disposable[];
+  /** The user's PRs, for what the track says about their merge (My Pull Requests is created after the panels) */
+  private ownPullRequests: () => MyPullRequestModel[] = () => [];
 
   constructor(private readonly extensionUri: vscode.Uri, private readonly store: WorkItemsStore) {
     this.subscriptions = [
@@ -92,6 +96,12 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
         }
       }),
     ];
+  }
+
+  /** The track of the panels knows the user's PRs once My Pull Requests exists; it redraws them when they change */
+  setMyPullRequests(source: { models(): { items: MyPullRequestModel[] }; onDidChange: vscode.Event<unknown> }): void {
+    this.ownPullRequests = () => source.models().items;
+    this.subscriptions.push(source.onDidChange(() => this.rerender()));
   }
 
   dispose(): void {
@@ -206,11 +216,21 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
       body = `<p class="error">${escapeHtml(error)}</p>
         <button class="button primary" data-action="reload" data-id="${id}">Retry</button>`;
     } else if (data) {
+      const card = this.store.workItemModel(id);
+      const followed = card && trackPullRequest(card);
       body = renderDetailsBody({
         ...data,
         displayState: shownState(data.state, !!inReview, settings().showInReviewState),
-        card: this.store.workItemModel(id),
+        card,
         figmaInVsCode: isFigmaExtensionInstalled(),
+        // Rules TRACK-*: only for the Backlog Items and Bugs of the list (their branches and PRs are known)
+        track:
+          card && canHaveTasks(card.type)
+            ? workItemTrack(
+                card,
+                this.ownPullRequests().find((pr) => pr.id === followed?.id)
+              )
+            : undefined,
       });
     }
     panel.webview.html = this.page(panel.webview, body);
@@ -227,20 +247,32 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src ${
     webview.cspSource
-  } 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  } 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="${css('fonts.css')}">
   <link rel="stylesheet" href="${css('webview.css')}">
   <link rel="stylesheet" href="${css('details.css')}">
 </head>
-<body>
+<body data-look="${settings().look}">
   ${body}
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
+    // Rule LOOK-1: the look of the sidebar, never over a high contrast theme
+    if (document.body.dataset.look === 'totalflow' && !document.body.className.includes('vscode-high-contrast')) {
+      document.body.classList.add('look-totalflow');
+    }
     document.addEventListener('click', (event) => {
       const target = event.target.closest('[data-action]');
       if (target) {
-        const { action, id, pr, kind, branch } = target.dataset;
-        vscode.postMessage({ type: action, id: Number(id), pullRequestId: pr ? Number(pr) : undefined, kind, branch });
+        const { action, id, pr, kind, branch, state } = target.dataset;
+        vscode.postMessage({
+          type: action,
+          id: Number(id),
+          pullRequestId: pr ? Number(pr) : undefined,
+          kind,
+          branch,
+          state,
+        });
       }
     });
   </script>

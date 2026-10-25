@@ -44,6 +44,9 @@ docs/RULES.md             decision tables of every rule (IDs referenced by `// R
 src/track.ts               pure (redesign): the six stations of a work item (Branch → PR → CI → Review → Ready to be merged → Done), Rules TRACK-*
 src/look.ts                pure (redesign): totalflowx.appearance.look, theme or Totalflow look (media/fonts.css + media/fonts/, OFL), Rule LOOK-1
 src/sidebarTabs.ts         pure (redesign): the Now / Work / PRs tabs of the sidebar, their counts and the tab a Summary row opens, Rules TABS-*
+src/stateSteps.ts          pure (redesign): the state bar of the details panel (flows of Bugs / Backlog Items, testers-only Done), Rules STEPS-*
+src/beforeCompletion.ts    pure (redesign): the "Before completion" checklist of the details panel (alerts + COMPLETE cautions), Rules BEFORE-*
+src/trackHtml.ts           pure (redesign): HTML of the track, shared by the sidebar and the details panel
 src/nowQueue.ts            pure (redesign): the "Needs you" queue under five verbs (review, unblock, fix, ship, clean), Rules NOW-*
 src/pullRequestTasks.ts    pure rules of the PR tasks (reusable tasks, which move on publish / completion, branch of a task row)
 src/taskMenu.ts            pure: the pill of a task row (branches + PRs) and the sections of the picker behind it

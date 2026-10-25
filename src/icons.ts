@@ -31,6 +31,7 @@ export const ICONS = {
   parent: '<path d="M8 13.5v-11M4 6.5l4-4 4 4"/>',
   comment: '<path d="M2.5 3h11v7.5H8l-3 2.5v-2.5H2.5z"/>',
   circle: '<circle cx="8" cy="8" r="5.5" stroke-dasharray="2 2"/>',
+  lock: '<rect x="4" y="7" width="8" height="6.5" rx="1.2"/><path d="M5.8 7V5.3a2.2 2.2 0 0 1 4.4 0V7"/>',
   shield: '<path d="M8 1.8 13 3.6v4c0 3-2.1 5.1-5 6.6-2.9-1.5-5-3.6-5-6.6v-4z"/>',
   trophy: '<path d="M5 2.5h6v4a3 3 0 0 1-6 0zM5 4H2.5a2 2 0 0 0 2.5 3M11 4h2.5A2 2 0 0 1 11 7M8 9.5v2.5M5.5 13.5h5"/>',
   duplicate:

@@ -208,3 +208,176 @@ h1 {
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
 }
+
+/* ---------- Redesign: breadcrumb, state bar, track, Before completion (Rules STEPS-*, TRACK-*, BEFORE-*) ---------- */
+
+.breadcrumb {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.breadcrumb-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.head-line .pill {
+  font-size: 11px;
+}
+
+.state-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.state-bar.single {
+  padding: 0;
+  border: 0;
+}
+
+.step {
+  display: inline-flex;
+  flex: 1 1 110px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+button.step {
+  cursor: pointer;
+}
+
+button.step:hover {
+  background: var(--vscode-list-hoverBackground);
+  color: var(--vscode-foreground);
+}
+
+button.step:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+.step-current {
+  background: var(--vscode-foreground);
+  color: var(--vscode-editor-background);
+  font-weight: 600;
+}
+
+.step-current .step-note {
+  color: inherit;
+  opacity: 0.75;
+}
+
+.step-current.derived {
+  border: 1px dashed var(--in-flight);
+  background: transparent;
+  color: var(--in-flight);
+}
+
+.step.locked {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.step .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.step-note {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.track.named {
+  margin-top: 4px;
+}
+
+.track.named .station {
+  height: 6px;
+}
+
+.track-names {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.track-names li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.before-completion h2 .count {
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  color: var(--vscode-editor-background);
+  background: var(--needs-you);
+  text-align: center;
+}
+
+.before-completion.open {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--needs-you) 45%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--needs-you) 7%, transparent);
+}
+
+.checks {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.4;
+}
+
+.check .icon {
+  flex: none;
+  margin-top: 2px;
+}
+
+.check-broken .icon {
+  color: var(--broken);
+}
+
+.check-caution .icon {
+  color: var(--needs-you);
+}
+
+.check-clear .icon {
+  color: var(--passed);
+}
+
+.check .link {
+  text-align: left;
+}

@@ -9,6 +9,11 @@ import { DependencyRisk, RISK_DESCRIPTIONS } from './schedule';
 import { stateCategory } from './states';
 import { pullRequestTooltip } from './pullRequestModel';
 import { BranchAction, branchActions, type WorkItemModel } from './viewModel';
+import { severityLevel, severityName } from './priority';
+import { stateSteps } from './stateSteps';
+import { beforeCompletion } from './beforeCompletion';
+import type { Station } from './track';
+import { renderTrackHtml } from './trackHtml';
 
 export interface RelatedWorkItem {
   id: number;
@@ -40,6 +45,10 @@ export interface DetailsData {
   figmaLinks?: FigmaLink[];
   /** True when the Figma extension for VS Code is installed */
   figmaInVsCode?: boolean;
+  /** The track of a Backlog Item or Bug of the list (Rules TRACK-*), with what My Pull Requests knows of its PR */
+  track?: Station[];
+  /** Class of the body for the look (Rule LOOK-1), undefined: the theme */
+  lookClass?: string;
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}T/;
@@ -244,6 +253,78 @@ function renderChildren(data: DetailsData): string {
   return renderSection(`Children (${data.children.length})`, list, addTask);
 }
 
+/** Priority and severity, as the sidebar shows them */
+function renderUrgency(fields: Record<string, unknown>): string {
+  const priority = fieldText(fields['Microsoft.VSTS.Common.Priority']);
+  const severity = fieldText(fields['Microsoft.VSTS.Common.Severity']);
+  const level = severityLevel(severity);
+  const pills = [
+    priority ? `<span class="pill urgency-${escapeHtml(priority)}">P${escapeHtml(priority)}</span>` : '',
+    severity
+      ? `<span class="pill urgency-${level ?? 'none'}" title="Severity ${escapeHtml(severity)}">${
+          level ? `S${level} ` : ''
+        }${escapeHtml(severityName(severity))}</span>`
+      : '',
+  ].join('');
+  return pills ? `<span class="urgency">${pills}</span>` : '';
+}
+
+// Rules STEPS-1..5
+/** The states the work item goes through, the current one marked; the moves left to others are locked */
+function renderStateBar(data: DetailsData): string {
+  const steps = stateSteps(data.type, data.state, data.displayState);
+  if (!steps) {
+    return `<div class="state-bar single">${stateButton(data.id, data.displayState ?? data.state, data.state)}</div>`;
+  }
+  const buttons = steps.map((step) => {
+    const label = `${escapeHtml(step.label)}${
+      step.note ? ` <span class="step-note">· ${escapeHtml(step.note)}</span>` : ''
+    }`;
+    if (step.status === 'current' || !step.state) {
+      return `<span class="step step-${step.status}${step.derived ? ' derived' : ''}" aria-current="${
+        step.status === 'current' ? 'step' : 'false'
+      }">${label}</span>`;
+    }
+    if (step.locked) {
+      return `<button class="step step-${step.status} locked" disabled title="${escapeHtml(step.locked)}">${icon(
+        'lock'
+      )}${label}</button>`;
+    }
+    return `<button class="step step-${step.status}" data-action="changeState" data-id="${
+      data.id
+    }" data-state="${escapeHtml(step.state)}" title="Move to ${escapeHtml(step.state)}">${label}</button>`;
+  });
+  return `<nav class="state-bar" aria-label="State">${buttons.join('')}</nav>`;
+}
+
+// Rules BEFORE-1..3
+/** What keeps the work item from being completed, in one list; nothing for closed items or those not in the list */
+function renderBeforeCompletion(data: DetailsData): string {
+  const { card } = data;
+  if (!card || !canHaveTasks(data.type)) {
+    return '';
+  }
+  const checks = beforeCompletion(card);
+  const rows = checks.length
+    ? checks
+        .map(
+          (check) =>
+            `<li class="check check-${check.severity}">${icon(check.severity === 'broken' ? 'warning' : 'circle')}${
+              check.relatedId === undefined
+                ? `<span>${escapeHtml(check.text)}</span>`
+                : `<button class="link" data-action="openDetails" data-id="${check.relatedId}">${escapeHtml(
+                    check.text
+                  )}</button>`
+            }</li>`
+        )
+        .join('')
+    : `<li class="check check-clear">${icon('check')}<span>Nothing in the way</span></li>`;
+  const count = checks.length ? `<span class="count">${checks.length}</span>` : '';
+  return `<section class="section before-completion${
+    checks.length ? ' open' : ''
+  }"><h2><span>Before completion</span>${count}</h2><ul class="checks">${rows}</ul></section>`;
+}
+
 export function renderDetailsBody(data: DetailsData): string {
   const richText = RICH_TEXT_FIELDS.map(([label, name]) => [label, fieldText(data.fields[name])] as const)
     .filter((section): section is readonly [string, string] => !!section[1])
@@ -254,15 +335,25 @@ export function renderDetailsBody(data: DetailsData): string {
     renderDependencies('predecessor', 'Predecessors', data.predecessors, data, 'Does not depend on other work items.'),
     renderDependencies('successor', 'Successors', data.successors, data, 'No work items depend on this one.'),
   ];
+  const breadcrumb = data.parent
+    ? `<nav class="breadcrumb" aria-label="Parent">${escapeHtml(data.parent.type)}
+        <button class="link id" data-action="openDetails" data-id="${data.parent.id}">${data.parent.id}</button>
+        <span class="breadcrumb-title">${escapeHtml(data.parent.title)}</span></nav>`
+    : '';
+  const track = data.track ? renderTrackHtml(data.track, `Track of ${data.id}`, true) : '';
   return `<header class="details-head state-border-${stateCategory(data.displayState ?? data.state)}">
+      ${breadcrumb}
       <div class="head-line">${typeIcon(data.type)}<span class="type">${escapeHtml(data.type)}</span>
-        <span class="id">${data.id}</span>${stateButton(data.id, data.displayState ?? data.state, data.state)}</div>
+        <span class="id">${data.id}</span>${renderUrgency(data.fields)}</div>
       <h1>${escapeHtml(data.title)}</h1>
       ${renderActions(data)}
+      ${renderStateBar(data)}
+      ${track}
     </header>
     <div class="details-grid">
       <main>${richText.join('') || '<p class="muted">No description.</p>'}${hierarchy.join('')}</main>
       <aside>
+        ${renderBeforeCompletion(data)}
         ${renderSection('Development', renderDevelopment(data.card))}
         ${renderSection('Details', renderMeta(data.fields))}
       </aside>

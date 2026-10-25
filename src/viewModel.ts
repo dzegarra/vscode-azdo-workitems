@@ -294,6 +294,8 @@ export type WebviewMessage =
       id: number;
       pullRequestId?: number;
       runId?: number;
+      /** changeState from the state bar of the details panel: the state to move to (Rule STEPS-1); none: the picker */
+      state?: string;
       /** openRun: show this tab of the run (its tests, its coverage) instead of its summary */
       view?: RunView;
       /**
