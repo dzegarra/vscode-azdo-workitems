@@ -16,7 +16,15 @@ import { branchLocationText, stationNotes } from './stationNotes';
 import { taskProgress, taskProgressTooltip, type TaskSegmentCategory } from './taskProgress';
 import { stationStateLabel } from './trackHtml';
 import type { PullRequestTone } from './workItemLinks';
-import { currentStation, tasksOf, trackPullRequest, workItemTrack, type Station, type StationState } from './track';
+import {
+  currentStation,
+  openPullRequests,
+  tasksOf,
+  trackPullRequest,
+  workItemTrack,
+  type Station,
+  type StationState,
+} from './track';
 import { branchActions, type PullRequestModel, type WebviewMessage, type WorkItemModel } from './viewModel';
 
 export type BoardColumnId = 'branch' | 'ci' | 'done' | 'ready' | 'review' | 'toStart';
@@ -99,6 +107,10 @@ export interface BoardTask {
 export interface BoardDetail {
   stations: BoardStationDetail[];
   pullRequests: BoardPullRequest[];
+  /** A split work item (BOARD-20): "Pull requests · 5 open · 3 merged" */
+  pullRequestsTitle?: string;
+  /** A split work item: its merged and abandoned PRs, summarized (they have no card) */
+  closedPullRequests?: { label: string; titles: string };
   tasks?: { summary: string; items: BoardTask[] };
   /** State, branches, not updated… */
   facts: BoardFact[];
@@ -123,9 +135,31 @@ export interface BoardNeed {
   actions: BoardAction[];
 }
 
+/** What a card of a split work item stands for (BOARD-20): one open PR, the tasks to do, or one task without a PR */
+export type CardPart = 'pr' | 'task' | 'tasks';
+
 export interface BoardWorkCard {
   kind: 'work';
+  /** The work item */
   id: number;
+  /** Unique and stable: "67145", "67145:pr:14021", "67145:tasks", "67145:task:70012" (BOARD-20) */
+  key: string;
+  /** Undefined: the one card of a work item with no more than one open PR */
+  part?: CardPart;
+  /** The PR of a PR card */
+  prId?: number;
+  /** The card of the work item itself: the only one, or the one of the PR the track follows (TRACK-1) */
+  primary: boolean;
+  /** Title of the work item (the title of a PR card is the PR's) */
+  itemTitle: string;
+  /** Short tag at the right of the header: "tasks", "no PR yet" */
+  tag?: string;
+  /** A line of small print under the status: the first tasks to do */
+  note?: string;
+  /** "Why on 6 cards" (BOARD-23); only the cards of a split work item */
+  split?: BoardWhy;
+  /** Keys of the other cards of the same work item (BOARD-14) */
+  siblings: string[];
   column: BoardColumnId;
   itemKind: BoardKind;
   title: string;
@@ -775,9 +809,11 @@ function detailOf(
   current: Station | undefined,
   followed: PullRequestModel | undefined,
   mine: MyPullRequestModel | undefined,
-  myPullRequests: MyPullRequestModel[]
+  myPullRequests: MyPullRequestModel[],
+  /** The work item as the card sees it (the PR of a split card): the station notes read it */
+  view: WorkItemModel = item
 ): BoardDetail {
-  const notes = stationNotes({ card: item, mine });
+  const notes = stationNotes({ card: view, mine });
   return {
     stations: track.map((station) => ({
       label: station.label,
@@ -811,24 +847,41 @@ function queueVerbOf(item: WorkItemModel, queue: ReturnType<typeof nowQueue>['it
     ?.verb;
 }
 
-function workCard(
-  item: WorkItemModel,
-  workItems: WorkItemModel[],
-  myPullRequests: MyPullRequestModel[],
-  queue: ReturnType<typeof nowQueue>['items']
-): BoardWorkCard {
-  const followed = trackPullRequest(item);
-  const mine = followed ? myPullRequests.find((candidate) => candidate.id === followed.id) : undefined;
-  const track = workItemTrack(item, mine, tasksOf(item, workItems));
-  const current = isFinishedState(item.state) ? undefined : currentStation(track);
-  const { column, reason } = placementOf(item, track, followed);
-  const verb = queueVerbOf(item, queue);
+interface CardContext {
+  workItems: WorkItemModel[];
+  myPullRequests: MyPullRequestModel[];
+  queue: ReturnType<typeof nowQueue>['items'];
+}
+
+interface CardPlan {
+  key: string;
+  part?: CardPart;
+  primary: boolean;
+  /** The Now queue verb of the card */
+  verb: Verb | undefined;
+  /** The one split card for a PR, or the whole work item's PRs */
+  followed: PullRequestModel | undefined;
+  /** The work item as the card sees it: the PRs of the card, the item-level things only on the primary card */
+  view: WorkItemModel;
+}
+
+/** "[67145] Measurement update" -> "Measurement update" */
+export function pullRequestTitle(title: string): string {
+  return title.replace(/^\[\d+(?:,\s*\d+)*\]\s*/, '');
+}
+
+function buildCard(full: WorkItemModel, plan: CardPlan, ctx: CardContext): BoardWorkCard {
+  const { view, followed, verb } = plan;
+  const mine = followed ? ctx.myPullRequests.find((candidate) => candidate.id === followed.id) : undefined;
+  const track = workItemTrack(view, mine, tasksOf(view, ctx.workItems));
+  const current = isFinishedState(view.state) ? undefined : currentStation(track);
+  const { column, reason } = placementOf(view, track, followed);
   const runs = runsOf(followed, mine);
-  const priority = item.priority ? ` · P${String(item.priority)}` : '';
-  const header = `#${String(item.id)}${isBug(item) ? ' · Bug' : ''}${priority}`;
-  const tasks = tasksText(item, workItems);
+  const priority = view.priority ? ` · P${String(view.priority)}` : '';
+  const header = `#${String(view.id)}${isBug(view) ? ' · Bug' : ''}${priority}`;
+  const tasks = tasksText(view, ctx.workItems);
   const ci = ciSummary(runs);
-  const waitsOn = item.openPredecessors?.at(0);
+  const waitsOn = view.openPredecessors?.at(0);
   const hover: BoardFact[] = [
     ...(mine?.next || current?.detail ? [{ label: 'Next', value: mine?.next ?? current?.detail ?? '' }] : []),
     ...(followed
@@ -855,34 +908,228 @@ function workCard(
         ]
       : []),
   ];
-  const checkout: BoardAction | undefined = branchActions(item).includes('checkout')
-    ? { label: 'Checkout', message: { type: 'checkout', id: item.id } }
-    : undefined;
+  // The checkout button is the work item's (its branch), so only its own card has it
+  const checkout: BoardAction | undefined =
+    plan.primary && branchActions(full).includes('checkout')
+      ? { label: 'Checkout', message: { type: 'checkout', id: full.id } }
+      : undefined;
+  const split = plan.part === 'pr';
   return {
     kind: 'work',
-    id: item.id,
+    id: full.id,
+    key: plan.key,
+    part: plan.part,
+    prId: split ? followed?.id : undefined,
+    primary: plan.primary,
+    itemTitle: full.title,
+    siblings: [],
     column,
-    itemKind: isBug(item) ? 'bug' : 'backlog',
-    title: item.title,
-    header,
-    subtitle: `${isBug(item) ? 'Bug' : 'Backlog Item'}${priority} · ${item.displayState}`,
-    tone: toneOf(item, column, current, verb),
-    status: statusLine(item, column, current, followed, mine),
+    itemKind: isBug(full) ? 'bug' : 'backlog',
+    // Rule BOARD-21: the title of a PR card is the PR's, without the "[67145] " prefix of the naming convention
+    title: split && followed ? pullRequestTitle(followed.title) : full.title,
+    header: split && followed ? `${header} · PR ${String(followed.id)}` : header,
+    subtitle: `${isBug(full) ? 'Bug' : 'Backlog Item'}${priority} · ${full.displayState}`,
+    tone: toneOf(view, column, current, verb),
+    status: statusLine(view, column, current, followed, mine),
     verb: verb && verb !== 'clean' ? needsYouVerb(verb, current, mine, runs) : undefined,
-    asleep: item.notUpdated,
-    here: item.workingOn !== undefined,
-    action: actionOf(item, column, mine),
+    asleep: view.notUpdated,
+    here: view.workingOn !== undefined,
+    action: actionOf(view, column, mine),
     track: stationsOf(track, current),
-    need: needOf(item, current, followed, mine),
+    need: needOf(view, current, followed, mine),
     why: { title: `Why ${COLUMN_TITLES[column]}`, text: reason },
-    detail: detailOf(item, workItems, track, current, followed, mine, myPullRequests),
+    detail: detailOf(full, ctx.workItems, track, current, followed, mine, ctx.myPullRequests, view),
     hover,
     related: [],
     checkout,
     openPullRequest: followed
-      ? { label: 'Open PR', message: { type: 'openPullRequest', id: item.id, pullRequestId: followed.id } }
+      ? { label: 'Open PR', message: { type: 'openPullRequest', id: full.id, pullRequestId: followed.id } }
       : undefined,
   };
+}
+
+interface TaskRow {
+  id: number;
+  title: string;
+  state: string;
+  /** PRs linked to the task */
+  pullRequests: number;
+  branch?: string;
+}
+
+/** All the tasks of a work item (own list + other developers'), not the removed ones */
+function taskRows(item: WorkItemModel, workItems: WorkItemModel[]): TaskRow[] {
+  return [
+    ...workItems
+      .filter((child) => child.parentId === item.id && child.type === 'Task')
+      .map((task) => ({
+        id: task.id,
+        title: task.title,
+        state: task.state,
+        pullRequests: task.taskPullRequests?.length ?? 0,
+        branch: task.taskBranches?.at(0)?.name,
+      })),
+    ...(item.otherTasks ?? []).map((task) => ({
+      id: task.id,
+      title: task.title,
+      state: task.state,
+      pullRequests: task.taskPullRequests.length,
+      branch: task.taskBranches?.at(0)?.name,
+    })),
+  ].filter((task) => stateCategory(task.state) !== 'removed');
+}
+
+// Rule BOARD-23
+/** "5 PRs open, 1 task in progress without a PR, 5 tasks to do. Done when all 15 tasks are." */
+function splitWhy(cards: number, prs: number, noPr: number, toDo: number, total: number): BoardWhy {
+  const parts = [
+    prs ? `${plural(prs, 'PR')} open` : '',
+    noPr ? `${plural(noPr, 'task')} in progress without a PR` : '',
+    toDo ? `${plural(toDo, 'task')} to do` : '',
+  ].filter(Boolean);
+  const done = total === 1 ? 'Done when its task is.' : `Done when all ${String(total)} tasks are.`;
+  return {
+    title: `Why on ${String(cards)} cards`,
+    text: `${parts.join(', ')}.${total ? ` ${done}` : ''}`,
+  };
+}
+
+/** The drawer's PR section of a split work item: the open PRs, then the closed ones in one line (BOARD-17) */
+function splitPullRequestsDetail(
+  full: WorkItemModel,
+  detail: BoardDetail,
+  followed: PullRequestModel | undefined,
+  myPullRequests: MyPullRequestModel[]
+): BoardDetail {
+  const open = new Set(openPullRequests(full).map((pr) => pr.id));
+  const closed = full.pullRequests.filter((pr) => !open.has(pr.id));
+  const merged = closed.filter((pr) => pr.tone === 'completed').length;
+  const abandoned = closed.length - merged;
+  const label = [merged ? `${String(merged)} merged` : '', abandoned ? `${String(abandoned)} abandoned` : '']
+    .filter(Boolean)
+    .join(' · ');
+  return {
+    ...detail,
+    pullRequests: pullRequestsDetail(
+      { ...full, pullRequests: full.pullRequests.filter((pr) => open.has(pr.id)) },
+      followed,
+      myPullRequests
+    ).map((row) => ({ ...row, title: pullRequestTitle(row.title) })),
+    pullRequestsTitle: `Pull requests · ${String(open.size)} open${label ? ` · ${label}` : ''}`,
+    closedPullRequests: closed.length
+      ? { label, titles: closed.map((pr) => pullRequestTitle(pr.title)).join(' · ') }
+      : undefined,
+  };
+}
+
+// Rule BOARD-20
+/**
+ * A work item with 2+ open PRs is split: one card per open PR (BOARD-21), one card for the tasks not started and one
+ * for each task in progress without a PR (BOARD-22). Undefined: the work item keeps its one card
+ */
+function splitCards(full: WorkItemModel, ctx: CardContext): BoardWorkCard[] | undefined {
+  const open = openPullRequests(full);
+  if (isFinishedState(full.state) || open.length < 2) {
+    return undefined;
+  }
+  const followed = trackPullRequest(full);
+  const primaryId = followed && open.some((pr) => pr.id === followed.id) ? followed.id : open[0].id;
+  const rows = taskRows(full, ctx.workItems);
+  const toDo = rows.filter((task) => stateCategory(task.state) === 'proposed');
+  const noPr = rows.filter((task) => stateCategory(task.state) === 'in-progress' && task.pullRequests === 0);
+  const base = (primary: boolean): WorkItemModel =>
+    primary
+      ? full
+      : {
+          ...full,
+          alerts: [],
+          blockingTags: [],
+          openPredecessors: [],
+          workingOn: undefined,
+          notUpdated: undefined,
+        };
+  const prCards = open.map((pr): BoardWorkCard => {
+    const primary = pr.id === primaryId;
+    // Rule BOARD-21
+    const view: WorkItemModel = { ...base(primary), pullRequests: [pr] };
+    const verb = ctx.queue.find((row) =>
+      row.verb === 'fix' ? primary && row.id === full.id : row.verb !== 'review' && row.id === pr.id
+    )?.verb;
+    const card = buildCard(
+      full,
+      { key: `${String(full.id)}:pr:${String(pr.id)}`, part: 'pr', primary, verb, followed: pr, view },
+      ctx
+    );
+    return { ...card, detail: splitPullRequestsDetail(full, card.detail, pr, ctx.myPullRequests) };
+  });
+  // Rule BOARD-22: the cards of the tasks have no PR: the track of the work item without PRs
+  const noPrView: WorkItemModel = { ...base(false), pullRequests: [] };
+  const partCard = (key: string, part: CardPart): BoardWorkCard => {
+    const card = buildCard(
+      full,
+      { key, part, primary: false, verb: undefined, followed: undefined, view: noPrView },
+      ctx
+    );
+    return {
+      ...card,
+      detail: splitPullRequestsDetail(full, card.detail, undefined, ctx.myPullRequests),
+      action: undefined,
+      checkout: undefined,
+      openPullRequest: undefined,
+      need: undefined,
+      verb: undefined,
+      here: false,
+      asleep: undefined,
+      tone: 'neutral',
+    };
+  };
+  const taskCards = noPr.map((task): BoardWorkCard => {
+    const card = partCard(`${String(full.id)}:task:${String(task.id)}`, 'task');
+    return {
+      ...card,
+      column: 'branch',
+      title: task.title,
+      tag: 'no PR yet',
+      status: { text: `task ${task.state} · ${task.branch ? `branch ${task.branch}` : 'no branch'}`, tone: 'normal' },
+      why: { title: `Why ${COLUMN_TITLES.branch}`, text: `Task ${String(task.id)} is ${task.state} and has no PR yet` },
+      hover: [{ label: 'Task', value: `#${String(task.id)} · ${task.state}` }],
+    };
+  });
+  const toDoCards = toDo.length
+    ? [
+        (() => {
+          const card = partCard(`${String(full.id)}:tasks`, 'tasks');
+          const titles = toDo.slice(0, 3).map((task) => task.title);
+          return {
+            ...card,
+            column: 'toStart' as const,
+            tag: 'tasks',
+            status: { text: `${plural(toDo.length, 'task')} to do`, tone: 'normal' as const },
+            note: [...titles, ...(toDo.length > 3 ? [`+${String(toDo.length - 3)}`] : [])].join(' · '),
+            why: {
+              title: `Why ${COLUMN_TITLES.toStart}`,
+              text: `${plural(toDo.length, 'task')} not started: ${toDo.map((task) => task.title).join(' · ')}`,
+            },
+            hover: [{ label: 'Tasks to do', value: toDo.map((task) => task.title).join(' · ') }],
+          };
+        })(),
+      ]
+    : [];
+  const cards = [...prCards, ...taskCards, ...toDoCards];
+  const why = splitWhy(cards.length, open.length, noPr.length, toDo.length, rows.length);
+  return cards.map((card) => ({ ...card, split: why }));
+}
+
+/** The cards of a work item: one, or one per open PR when several are open at once (BOARD-20) */
+function workCards(item: WorkItemModel, ctx: CardContext): BoardWorkCard[] {
+  const split = splitCards(item, ctx);
+  if (split) {
+    return split;
+  }
+  const verb = queueVerbOf(item, ctx.queue);
+  return [
+    buildCard(item, { key: String(item.id), primary: true, verb, followed: trackPullRequest(item), view: item }, ctx),
+  ];
 }
 
 // Rule BOARD-13
@@ -945,13 +1192,16 @@ function reviewCard(review: ReviewRequestModel): BoardReviewCard {
 }
 
 // Rule BOARD-10
-/** The card of the most urgent row of the Now queue (BOARD-9 maps the rows): a work item or a review */
+/**
+ * The card of the most urgent row of the Now queue (BOARD-9 maps the rows): a work item or a review. A PR row finds
+ * the card of that PR first (BOARD-20), else the card of the work item that has it
+ */
 function currentCard(
   queue: ReturnType<typeof nowQueue>['items'],
   work: BoardWorkCard[],
   reviews: BoardReviewCard[],
   items: WorkItemModel[]
-): { kind: 'review' | 'work'; id: number } | undefined {
+): { kind: 'review' | 'work'; key: string } | undefined {
   for (const row of queue) {
     if (row.verb === 'clean') {
       continue;
@@ -959,23 +1209,31 @@ function currentCard(
     if (row.verb === 'review') {
       // A PR whose CI still runs is not yours to review yet: it is never the most urgent card
       if (reviews.some((review) => review.id === row.id && !review.ciRunning)) {
-        return { kind: 'review', id: row.id };
+        return { kind: 'review', key: String(row.id) };
       }
       continue;
+    }
+    const byPullRequest = row.verb === 'fix' ? undefined : work.find((card) => card.prId === row.id);
+    if (byPullRequest) {
+      return { kind: 'work', key: byPullRequest.key };
     }
     const item =
       row.verb === 'fix'
         ? items.find((candidate) => candidate.id === row.id)
         : items.find((candidate) => candidate.pullRequests.some((pr) => pr.id === row.id));
-    if (item && work.some((card) => card.id === item.id)) {
-      return { kind: 'work', id: item.id };
+    const card = item && work.find((candidate) => candidate.id === item.id && candidate.primary);
+    if (card) {
+      return { kind: 'work', key: card.key };
     }
   }
   return undefined;
 }
 
 // Rule BOARD-14
-/** Work items linked to one another, both ways, among the ones on the board */
+/**
+ * Work items linked to one another, both ways, among the ones on the board; and the other cards of the same work item
+ * (a split work item, BOARD-20)
+ */
 function withRelated(cards: BoardWorkCard[], items: WorkItemModel[]): BoardWorkCard[] {
   const onBoard = new Set(cards.map((card) => card.id));
   const links = new Map<number, Set<number>>();
@@ -988,7 +1246,11 @@ function withRelated(cards: BoardWorkCard[], items: WorkItemModel[]): BoardWorkC
   for (const item of items) {
     relatedIds(item).forEach((id) => link(item.id, id));
   }
-  return cards.map((card) => ({ ...card, related: [...(links.get(card.id) ?? [])].sort((a, b) => a - b) }));
+  return cards.map((card) => ({
+    ...card,
+    related: [...(links.get(card.id) ?? [])].sort((a, b) => a - b),
+    siblings: cards.filter((other) => other.id === card.id && other.key !== card.key).map((other) => other.key),
+  }));
 }
 
 function headerOf(iterations: BoardInput['iterations']): BoardModel['header'] {
@@ -1025,7 +1287,7 @@ function columnHint(id: BoardColumnId, maxWaitHours: number): string {
   }
 }
 
-// Rules BOARD-6, BOARD-12
+// Rules BOARD-6, BOARD-12, BOARD-20
 export function buildBoard(input: BoardInput): BoardModel {
   const items = boardItems(input.workItems, input.kinds);
   const queue = nowQueue({
@@ -1035,7 +1297,8 @@ export function buildBoard(input: BoardInput): BoardModel {
     deletableBranches: 0,
     staleWorktrees: 0,
   }).items;
-  const cards = items.map((item) => workCard(item, input.workItems, input.myPullRequests, queue));
+  const context: CardContext = { workItems: input.workItems, myPullRequests: input.myPullRequests, queue };
+  const cards = items.flatMap((item) => workCards(item, context));
   // Rule BOARD-5: finished work items without a broken rule are one dashed card
   const collapsedIds = new Set(
     items.filter((item) => isFinishedState(item.state) && item.alerts.length === 0).map((item) => item.id)
@@ -1047,7 +1310,7 @@ export function buildBoard(input: BoardInput): BoardModel {
   const reviews = input.reviews.map(reviewCard);
   const current = currentCard(queue, shown, reviews, items);
   const work = shown.map((card) =>
-    current?.kind === 'work' && current.id === card.id ? { ...card, current: true } : card
+    current?.kind === 'work' && current.key === card.key ? { ...card, current: true } : card
   );
   const notes =
     input.reviewsStatus === 'error' ? [`The PRs to review could not be checked: ${input.reviewsError ?? 'error'}`] : [];
@@ -1066,7 +1329,7 @@ export function buildBoard(input: BoardInput): BoardModel {
     work,
     summary: { ids: [...collapsedIds] },
     reviews: reviews.map((review) =>
-      current?.kind === 'review' && current.id === review.id ? { ...review, current: true } : review
+      current?.kind === 'review' && current.key === String(review.id) ? { ...review, current: true } : review
     ),
     notes,
     look: input.look,

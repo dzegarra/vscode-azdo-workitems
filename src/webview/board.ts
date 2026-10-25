@@ -33,8 +33,14 @@ interface SavedState {
 
 interface Selection {
   kind: 'review' | 'work';
-  id: number;
+  /** BoardWorkCard.key, or the PR id of a review (a work item has several cards when it is split, BOARD-20) */
+  key: string;
 }
+
+const keyOf = (card: BoardReviewCard | BoardWorkCard): string => (card.kind === 'work' ? card.key : String(card.id));
+
+/** The element of a card */
+const cardSelector = (kind: string, key: string): string => `.bd-card[data-kind="${kind}"][data-key="${key}"]`;
 
 const vscode = acquireVsCodeApi();
 const app = document.getElementById('app');
@@ -94,7 +100,7 @@ function renderWorkCard(card: BoardWorkCard): string {
   if (card.current) {
     classes.push('is-current');
   }
-  if (selected?.kind === 'work' && selected.id === card.id) {
+  if (selected?.kind === 'work' && selected.key === card.key) {
     classes.push('is-selected');
   }
   const asleep = card.asleep
@@ -104,15 +110,19 @@ function renderWorkCard(card: BoardWorkCard): string {
     : '';
   const here = card.here ? '<span class="bd-here">● here</span>' : '';
   const verb = card.verb ? `<span class="bd-verb">${escapeHtml(card.verb)}</span>` : '';
+  const tag = card.tag ? `<span class="bd-tag">${escapeHtml(card.tag)}</span>` : '';
+  const note = card.note ? `<span class="bd-note">${escapeHtml(card.note)}</span>` : '';
   const status = card.status
     ? `<span class="bd-status tone-${card.status.tone}">${escapeHtml(card.status.text)}</span>`
     : '';
   const action = card.action ? actionButton(card.action, `bd-button${card.tone === 'ship' ? ' primary' : ''}`) : '';
   return `<article class="${classes.join(' ')}" role="listitem" tabindex="0" data-kind="work" data-id="${String(
     card.id
-  )}"${card.current ? ' aria-current="true"' : ''} aria-label="${escapeHtml(`${card.header} ${card.title}`)}">
-    <div class="bd-card-head"><span class="bd-id">${escapeHtml(card.header)}</span>${asleep}${here}${verb}</div>
-    <span class="bd-title">${escapeHtml(card.title)}</span>${status}${action}</article>`;
+  )}" data-key="${escapeHtml(card.key)}"${card.current ? ' aria-current="true"' : ''} aria-label="${escapeHtml(
+    `${card.header} ${card.title}`
+  )}">
+    <div class="bd-card-head"><span class="bd-id">${escapeHtml(card.header)}</span>${asleep}${here}${verb}${tag}</div>
+    <span class="bd-title">${escapeHtml(card.title)}</span>${status}${note}${action}</article>`;
 }
 
 function renderReviewCard(card: BoardReviewCard): string {
@@ -123,7 +133,7 @@ function renderReviewCard(card: BoardReviewCard): string {
   if (card.current) {
     classes.push('is-current');
   }
-  if (selected?.kind === 'review' && selected.id === card.id) {
+  if (selected?.kind === 'review' && selected.key === String(card.id)) {
     classes.push('is-selected');
   }
   const body = card.ciRunning
@@ -138,7 +148,9 @@ function renderReviewCard(card: BoardReviewCard): string {
     : '';
   return `<article class="${classes.join(' ')}" role="listitem" tabindex="0" data-kind="review" data-id="${String(
     card.id
-  )}"${card.current ? ' aria-current="true"' : ''} aria-label="${escapeHtml(`${card.header} ${card.title}`)}">
+  )}" data-key="${String(card.id)}"${card.current ? ' aria-current="true"' : ''} aria-label="${escapeHtml(
+    `${card.header} ${card.title}`
+  )}">
     <div class="bd-card-head"><span class="bd-id">${escapeHtml(
       card.header
     )}</span><span class="bd-deadline">${escapeHtml(card.deadline)}</span></div>${body}${
@@ -316,12 +328,18 @@ function renderTask(task: BoardTask): string {
 
 function renderDetail(card: BoardWorkCard): string {
   const detail = card.detail;
-  const prs = detail.pullRequests.length
-    ? section(
-        detail.pullRequests.length === 1 ? 'Pull request' : 'Pull requests',
-        `<ul class="bd-rows">${detail.pullRequests.map(renderPullRequest).join('')}</ul>`
-      )
+  const closed = detail.closedPullRequests
+    ? `<p class="bd-closed"><span class="bd-closed-label">${escapeHtml(
+        detail.closedPullRequests.label
+      )}</span> ${escapeHtml(detail.closedPullRequests.titles)}</p>`
     : '';
+  const prs =
+    detail.pullRequests.length || closed
+      ? section(
+          detail.pullRequestsTitle ?? (detail.pullRequests.length === 1 ? 'Pull request' : 'Pull requests'),
+          `<ul class="bd-rows">${detail.pullRequests.map(renderPullRequest).join('')}</ul>${closed}`
+        )
+      : '';
   const tasks = detail.tasks
     ? section(
         'Tasks',
@@ -338,10 +356,11 @@ function renderDetail(card: BoardWorkCard): string {
           .join('')}</ul>`
       )
     : '';
-  return `${renderStations(card)}${prs}${tasks}${section(
-    'Facts',
-    `<dl class="bd-facts">${factRows(detail.facts)}</dl>`
-  )}${checks}`;
+  const facts = section('Facts', `<dl class="bd-facts">${factRows(detail.facts)}</dl>`);
+  // Rule BOARD-23: the card of the tasks (or of a task) is about the tasks: they come first
+  return card.part === 'tasks' || card.part === 'task'
+    ? `${tasks}${renderStations(card)}${prs}${facts}${checks}`
+    : `${renderStations(card)}${prs}${tasks}${facts}${checks}`;
 }
 
 function renderWorkDrawer(card: BoardWorkCard): string {
@@ -349,9 +368,13 @@ function renderWorkDrawer(card: BoardWorkCard): string {
   return `<div class="bd-d-head"><span class="bd-d-id">#${String(card.id)}</span><span class="bd-d-sub">${escapeHtml(
     card.subtitle
   )}</span><button class="bd-icon-button" data-close aria-label="Close">×</button></div>
-    <h2 class="bd-d-title">${escapeHtml(card.title)}</h2>${trackBars(card.track, true)}${renderWhy(
-    card.why
-  )}${renderNeed(card)}${renderDetail(card)}${footer([card.checkout, card.openPullRequest, details])}`;
+    <h2 class="bd-d-title">${escapeHtml(card.itemTitle)}</h2>${
+    card.split ? section(card.split.title, `<p class="bd-why-text">${escapeHtml(card.split.text)}</p>`, 'bd-split') : ''
+  }${trackBars(card.track, true)}${renderWhy(card.why)}${renderNeed(card)}${renderDetail(card)}${footer([
+    card.checkout,
+    card.openPullRequest,
+    details,
+  ])}`;
 }
 
 function renderReviewDrawer(card: BoardReviewCard): string {
@@ -374,8 +397,8 @@ function selectedCard(): BoardReviewCard | BoardWorkCard | undefined {
     return undefined;
   }
   return selected.kind === 'work'
-    ? model.work.find((card) => card.id === selected?.id)
-    : model.reviews.find((card) => card.id === selected?.id);
+    ? model.work.find((card) => card.key === selected?.key)
+    : model.reviews.find((card) => String(card.id) === selected?.key);
 }
 
 /* ---------- Hover summary ---------- */
@@ -418,15 +441,15 @@ function clearRelated(): void {
 }
 
 function cardOf(element: Element | null): { element: HTMLElement; card: BoardReviewCard | BoardWorkCard } | undefined {
-  const target = element?.closest<HTMLElement>('.bd-card[data-id]');
-  const id = Number(target?.dataset.id);
+  const target = element?.closest<HTMLElement>('.bd-card[data-key]');
+  const key = target?.dataset.key;
   if (!model || !target) {
     return undefined;
   }
   const card =
     target.dataset.kind === 'work'
-      ? model.work.find((candidate) => candidate.id === id)
-      : model.reviews.find((candidate) => candidate.id === id);
+      ? model.work.find((candidate) => candidate.key === key)
+      : model.reviews.find((candidate) => String(candidate.id) === key);
   return card ? { element: target, card } : undefined;
 }
 
@@ -458,8 +481,14 @@ function highlightRelated(card: BoardReviewCard | BoardWorkCard): void {
   if (card.kind !== 'work') {
     return;
   }
+  // Rule BOARD-14: the other cards of the work item, and the cards of the work items linked to it
+  for (const key of card.siblings) {
+    document.querySelector(cardSelector('work', key))?.classList.add('is-related');
+  }
   for (const id of card.related) {
-    document.querySelector(`.bd-card[data-kind="work"][data-id="${String(id)}"]`)?.classList.add('is-related');
+    document
+      .querySelectorAll(`.bd-card[data-kind="work"][data-id="${String(id)}"]`)
+      .forEach((element) => element.classList.add('is-related'));
   }
 }
 
@@ -526,16 +555,15 @@ function render(): void {
     lookClass(model.look, Array.from(document.body.classList)) !== undefined
   );
   const focused = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
-  const focusKey = focused?.closest<HTMLElement>('.bd-card[data-id]');
-  const key = focusKey ? `${focusKey.dataset.kind ?? ''}:${focusKey.dataset.id ?? ''}` : undefined;
+  const focusKey = focused?.closest<HTMLElement>('.bd-card[data-key]');
+  const key = focusKey ? { kind: focusKey.dataset.kind ?? '', key: focusKey.dataset.key ?? '' } : undefined;
   app.innerHTML = `${renderHeader(model)}<div class="bd-main"><div class="bd-scroll">${renderBody(
     model
   )}</div><aside id="bd-drawer" class="bd-drawer" aria-label="Selected card" hidden></aside></div>`;
   sizeBars(app);
   renderDrawer();
   if (key) {
-    const [kind, id] = key.split(':');
-    app.querySelector<HTMLElement>(`.bd-card[data-kind="${kind}"][data-id="${id}"]`)?.focus({ preventScroll: true });
+    app.querySelector<HTMLElement>(cardSelector(key.kind, key.key))?.focus({ preventScroll: true });
   }
 }
 
@@ -545,9 +573,7 @@ function select(next: Selection | undefined): void {
   selected = next;
   document.querySelectorAll('.bd-card.is-selected').forEach((element) => element.classList.remove('is-selected'));
   if (next) {
-    document
-      .querySelector(`.bd-card[data-kind="${next.kind}"][data-id="${String(next.id)}"]`)
-      ?.classList.add('is-selected');
+    document.querySelector(cardSelector(next.kind, next.key))?.classList.add('is-selected');
   }
   renderDrawer();
 }
@@ -582,7 +608,7 @@ document.addEventListener('click', (event) => {
   const found = cardOf(target);
   if (found && found.element.dataset.kind) {
     hidePopover();
-    select({ kind: found.card.kind, id: found.card.id });
+    select({ kind: found.card.kind, key: keyOf(found.card) });
   }
 });
 
@@ -591,20 +617,19 @@ document.addEventListener('keydown', (event) => {
     if (!popover.hidden) {
       endHover();
     } else if (selected) {
-      const kind = selected.kind;
-      const id = selected.id;
+      const { kind, key } = selected;
       select(undefined);
-      document.querySelector<HTMLElement>(`.bd-card[data-kind="${kind}"][data-id="${String(id)}"]`)?.focus();
+      document.querySelector<HTMLElement>(cardSelector(kind, key))?.focus();
     }
     return;
   }
   const target = event.target instanceof HTMLElement ? event.target : null;
-  if ((event.key === 'Enter' || event.key === ' ') && target?.matches('.bd-card[data-id]')) {
+  if ((event.key === 'Enter' || event.key === ' ') && target?.matches('.bd-card[data-key]')) {
     event.preventDefault();
     const found = cardOf(target);
     if (found) {
       hidePopover();
-      select({ kind: found.card.kind, id: found.card.id });
+      select({ kind: found.card.kind, key: keyOf(found.card) });
     }
   }
 });

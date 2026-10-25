@@ -61,7 +61,7 @@ import { splitWorkingOn, WorkingOnLevel, workingOnAnimationClasses, workingOnBad
 import { nowQueue, type NowItem, type Verb } from '../nowQueue';
 import { lookClass } from '../look';
 import { isSidebarTab, SIDEBAR_TABS, TAB_LABELS, tabCounts, type SidebarTab } from '../sidebarTabs';
-import { tasksOf, trackPullRequest, workItemTrack, type Station } from '../track';
+import { tasksOf, trackMore, trackPullRequest, workItemTrack, type Station } from '../track';
 import { renderMiniTrackHtml, renderTrackHtml } from '../trackHtml';
 import type { CompletedPeriod } from '../myPullRequests';
 import type {
@@ -1026,7 +1026,14 @@ function trackOf(item: WorkItemModel): Station[] {
 
 /** The six stations under the title of a large card */
 function renderTrack(item: WorkItemModel): string {
-  return canHaveTasks(item.type) ? renderTrackHtml(trackOf(item), `Track of ${item.id}`) : '';
+  return canHaveTasks(item.type)
+    ? renderTrackHtml(
+        trackOf(item),
+        `Track of ${item.id}`,
+        false,
+        trackMore(item, tasksOf(item, model?.workItems ?? []))
+      )
+    : '';
 }
 
 /** The track of a compact row (Rule SIGNAL-12) */

@@ -312,6 +312,10 @@ button.step.finish .step-note {
   background: var(--card-bg);
 }
 
+.track-box > .track-more {
+  margin: 16px 0 0;
+}
+
 .track-cols {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));

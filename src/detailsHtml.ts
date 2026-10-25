@@ -51,6 +51,8 @@ export interface DetailsData {
   figmaInVsCode?: boolean;
   /** The track of a Backlog Item or Bug of the list (Rules TRACK-*), with what My Pull Requests knows of its PR */
   track?: Station[];
+  /** "+2 PRs · 5 tasks to do": what the track does not show when several PRs are open at once (Rule TRACK-10) */
+  trackMore?: string;
   /** The user's own PR followed by the track (what only My Pull Requests knows: reviewers, runs, auto-complete) */
   ownPullRequest?: NotesPullRequest;
   /** Class of the body for the look (Rule LOOK-1), undefined: the theme */
@@ -457,7 +459,7 @@ function renderTrack(data: DetailsData): string {
         integrationBuild: fieldText(data.fields[INTEGRATION_BUILD]),
       })
     : {};
-  return renderTrackColumnsHtml(data.track, notes, `Track of ${data.id}`);
+  return renderTrackColumnsHtml(data.track, notes, `Track of ${data.id}`, data.trackMore);
 }
 
 // Rules BEFORE-1..3

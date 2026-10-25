@@ -180,6 +180,10 @@ The UI is being rebuilt from a design made with all the rules known in advance (
 
 Work items 37691 (state Approved) and 60840 (one Task not started) showed in Done on the Track board because their PR was merged. The Done station (TRACK-7) now asks for the state and the tasks too: with a not started state or an open task it stays pending ("PR merged · 1 task open") and the card goes back to coding (BOARD-3: To start when not started, else Branch · Draft). Only a started work item with every task done or removed is the user's move to Done. Why: a PR is one slice of the work, not the work item.
 
+### A work item with several open PRs gets one card per PR
+
+Work item 67145 has five PRs in flight at once (one failing CI, one ready to complete) plus tasks not started; a single card in Review hid all that. The stations are a PR's journey, not the work item's, so with 2 or more open PRs (BOARD-20) each PR is a card placed by its own track (BOARD-21), the tasks not started are one card and the tasks In Progress without a PR one card each (BOARD-22). Work items with 0 or 1 open PR are unchanged, so the common case stays as simple as before. Merged PRs leave the board (they are one line in the drawer), and the work item only reaches Done when it is finished (BOARD-5), when its cards become one again. Item-level things (rules broken, blocking tags, predecessors, zZ, "here", Checkout) sit on the card of the PR the track follows, not on every card; the Now queue row of a PR points at that PR's card. The sidebar and the details panel keep one track (TRACK-1) with a "+n PRs" suffix (TRACK-10): they are not a board. A PR card's title drops the `[<id>] ` prefix of the naming convention, since the header already has the id.
+
 ## Fun features (`totalflowx.fun.enabled`)
 
 - **Opt-in, private, never comparative.** Off by default: some people dislike confetti at work, and the sidebar is always visible. Nothing is a leaderboard or compares people: comparisons turn fun into pressure and invite gaming the numbers. The "karma" of the recap only compares the user's own reviews with their own PRs.

@@ -44,6 +44,31 @@ export function trackPullRequest(item: Pick<WorkItemModel, 'pullRequests'>): Pul
   return item.pullRequests.find((pr) => !pr.otherRepository) ?? item.pullRequests.at(0);
 }
 
+// Rule TRACK-10
+/** The PRs of a work item that are not completed nor abandoned (drafts count) */
+export function openPullRequests<T extends Pick<PullRequestModel, 'tone'>>(item: { pullRequests: T[] }): T[] {
+  return item.pullRequests.filter((pr) => pr.tone !== 'completed' && pr.tone !== 'abandoned');
+}
+
+// Rule TRACK-10
+/**
+ * What the track does not show when a work item has several PRs open at once: "+2 PRs · 5 tasks to do". Nothing for
+ * 0 or 1 open PR. The track itself follows one PR (TRACK-1); the Track board shows one card per open PR (BOARD-20)
+ */
+export function trackMore(item: { pullRequests: PullRequestModel[] }, tasks: TrackTask[]): string | undefined {
+  const others = openPullRequests(item).length - 1;
+  if (others < 1) {
+    return undefined;
+  }
+  const toDo = tasks.filter((task) => stateCategory(task.state) === 'proposed').length;
+  return [
+    `+${String(others)} PR${others === 1 ? '' : 's'}`,
+    toDo ? `${String(toDo)} task${toDo === 1 ? '' : 's'} to do` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 // Rule TRACK-2
 function branchStation(item: TrackItem, pr: PullRequestModel | undefined): Station {
   const reached = item.branches.length > 0 || pr !== undefined || isFinishedState(item.state);

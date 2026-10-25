@@ -19,9 +19,10 @@ export function stationTitle(station: Station): string {
 
 /**
  * The six stations: one segment each, then the station to look at in words. `named`: the name of each station
- * under its segment, for wide places (the details panel); a narrow sidebar keeps them in the tooltips
+ * under its segment, for wide places (the details panel); a narrow sidebar keeps them in the tooltips. `more`: what
+ * the track does not show when several PRs are open at once (Rule TRACK-10), after the caption
  */
-export function renderTrackHtml(track: Station[], label: string, named = false): string {
+export function renderTrackHtml(track: Station[], label: string, named = false, more?: string): string {
   const current = currentStation(track);
   const stations = track
     .map(
@@ -49,6 +50,9 @@ export function renderTrackHtml(track: Station[], label: string, named = false):
     caption = `<p class="track-caption"><span class="track-current station-${current.state}">${escapeHtml(
       current.label
     )}</span>${current.detail ? ` · ${escapeHtml(current.detail)}` : ''}</p>`;
+  }
+  if (more) {
+    caption = caption.replace(/<\/p>$/, ` <span class="track-more">${escapeHtml(more)}</span></p>`);
   }
   return `<div class="track${named ? ' named' : ''}"><ol class="track-bars" aria-label="${escapeHtml(
     label
@@ -98,7 +102,9 @@ function renderNotes(station: Station, notes: string[]): string {
 export function renderTrackColumnsHtml(
   track: Station[],
   notes: Partial<Record<StationId, string[]>>,
-  label: string
+  label: string,
+  /** What the track does not show when several PRs are open at once (Rule TRACK-10) */
+  more?: string
 ): string {
   const columns = track
     .map((station, index) => {
@@ -113,7 +119,7 @@ export function renderTrackColumnsHtml(
         <span class="visually-hidden">${escapeHtml(stationTitle(station))}</span></li>`;
     })
     .join('');
-  return `<section class="track-box"><ol class="track-cols" aria-label="${escapeHtml(
-    label
-  )}">${columns}</ol></section>`;
+  return `<section class="track-box"><ol class="track-cols" aria-label="${escapeHtml(label)}">${columns}</ol>${
+    more ? `<p class="track-more">${escapeHtml(more)}</p>` : ''
+  }</section>`;
 }

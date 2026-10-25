@@ -374,6 +374,21 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
   color: var(--passed);
 }
 
+/* Cards of a work item with several open PRs (BOARD-20): a tag at the right of the header, small print under */
+.bd-tag {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.bd-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .bd-button {
   align-self: flex-start;
   height: 24px;
@@ -742,6 +757,28 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
   padding: 8px 10px;
   border-left: 3px solid var(--in-flight);
   background: color-mix(in srgb, var(--in-flight) 8%, var(--bd-drawer));
+}
+
+/* "Why on 6 cards": the work item is on several cards (BOARD-23) */
+.bd-split {
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--in-flight) 50%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--in-flight) 14%, var(--bd-drawer));
+}
+
+.bd-split .bd-sec-title {
+  color: var(--in-flight);
+}
+
+.bd-closed {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.bd-closed-label {
+  font-family: var(--vscode-editor-font-family, monospace);
 }
 
 .bd-why-text {

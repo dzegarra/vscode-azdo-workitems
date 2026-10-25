@@ -66,3 +66,14 @@ describe('renderTrackColumnsHtml', () => {
     expect(html).toContain('aria-label="Track of 1"');
   });
 });
+
+describe('the suffix of several open PRs (TRACK-10)', () => {
+  it('goes after the caption and under the columns, and only when given', () => {
+    expect(renderTrackHtml(track, 'Track of 1', false, '+2 PRs · 5 tasks to do')).toContain(
+      '</span> · failed <span class="track-more">+2 PRs · 5 tasks to do</span></p>'
+    );
+    expect(renderTrackHtml(track, 'Track of 1')).not.toContain('track-more');
+    expect(renderTrackColumnsHtml(track, {}, 'Track of 1', '+1 PR')).toContain('<p class="track-more">+1 PR</p>');
+    expect(renderTrackColumnsHtml(track, {}, 'Track of 1')).not.toContain('track-more');
+  });
+});

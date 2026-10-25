@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { RunModel } from './pipelines';
 import {
   currentStation,
+  openPullRequests,
   tasksOf,
+  trackMore,
   trackPullRequest,
   workItemTrack,
   type TrackItem,
@@ -217,5 +219,23 @@ describe('merged PR with work left', () => {
       { parentId: 1, state: 'Done', type: 'Bug' },
     ]);
     expect(tasks).toHaveLength(2);
+  });
+});
+
+describe('openPullRequests and trackMore (TRACK-10)', () => {
+  const merged = pr({ id: 3, tone: 'completed' });
+  it('ignores merged and abandoned PRs, drafts count', () => {
+    const item = {
+      pullRequests: [pr({ id: 1 }), pr({ id: 2, tone: 'draft' }), merged, pr({ id: 4, tone: 'abandoned' })],
+    };
+    expect(openPullRequests(item).map((p) => p.id)).toEqual([1, 2]);
+  });
+
+  it('says what the track does not show, only with 2+ open PRs', () => {
+    const tasks = [{ state: 'To Do' }, { state: 'New' }, { state: 'Done' }, { state: 'In Progress' }];
+    expect(trackMore({ pullRequests: [pr({ id: 1 })] }, tasks)).toBeUndefined();
+    expect(trackMore({ pullRequests: [pr({ id: 1 }), merged] }, tasks)).toBeUndefined();
+    expect(trackMore({ pullRequests: [pr({ id: 1 }), pr({ id: 2 })] }, tasks)).toBe('+1 PR · 2 tasks to do');
+    expect(trackMore({ pullRequests: [pr({ id: 1 }), pr({ id: 2 }), pr({ id: 3 })] }, [])).toBe('+2 PRs');
   });
 });

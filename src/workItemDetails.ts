@@ -12,7 +12,7 @@ import { isInReview, shownState } from './pullRequestTasks';
 import { dependencyRisk } from './schedule';
 import { WebviewMessage } from './viewModel';
 import type { MyPullRequestModel } from './myPullRequests';
-import { trackPullRequest, workItemTrack } from './track';
+import { trackMore, trackPullRequest, workItemTrack } from './track';
 import { runWorkItemAction } from './workItemActions';
 import { WorkItemsStore } from './workItemsStore';
 
@@ -233,6 +233,11 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
                 ownPullRequest,
                 data.children.filter((child) => child.type === 'Task')
               )
+            : undefined,
+        // Rule TRACK-10
+        trackMore:
+          card && canHaveTasks(card.type)
+            ? trackMore(card, [...data.children.filter((child) => child.type === 'Task'), ...(card.otherTasks ?? [])])
             : undefined,
       });
     }

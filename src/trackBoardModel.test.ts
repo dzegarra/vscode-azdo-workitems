@@ -676,3 +676,107 @@ describe('the drawer detail (BOARD-17..19)', () => {
     expect(detail?.checks).toEqual([{ severity: 'broken', text: 'Tasks are not done' }]);
   });
 });
+
+describe('a work item with several open PRs (BOARD-20..23)', () => {
+  const failed = run('failed', { tests: { total: 5, failed: 1, failedTests: [] } });
+  const task = (id: number, state: string, extra: Partial<WorkItemModel> = {}): WorkItemModel =>
+    workItem({
+      id,
+      title: `T${String(id)}`,
+      type: 'Task',
+      state,
+      displayState: state,
+      parentId: 1,
+      branches: [],
+      branch: undefined,
+      ...extra,
+    });
+  const split = (): BoardInput =>
+    input({
+      workItems: [
+        workItem({
+          id: 1,
+          pullRequests: [
+            pr({ id: 11, title: '[1] Draft one', tone: 'draft', status: 'Draft' }),
+            pr({ id: 12, title: 'Failing', runs: [failed] }),
+            pr({ id: 13, title: 'Merged one', tone: 'completed', status: 'Completed', isActive: false }),
+          ],
+        }),
+        task(21, 'To Do'),
+        task(22, 'To Do'),
+        task(23, 'In Progress'),
+        task(24, 'In Progress', { taskBranches: [{ name: 'feature/t' } as never] }),
+        task(25, 'Done'),
+        workItem({ id: 2, pullRequests: [pr({ id: 30 })] }),
+      ],
+      myPullRequests: [mine({ id: 11, isDraft: true }), mine({ id: 12, runs: [failed] })],
+    });
+
+  it('keeps one card, as before, for 0 or 1 open PR (a merged one does not count)', () => {
+    const board = buildBoard(
+      input({
+        workItems: [
+          workItem({ id: 1 }),
+          workItem({ id: 2, pullRequests: [pr({ id: 30 })] }),
+          workItem({
+            id: 3,
+            pullRequests: [pr({ id: 31 }), pr({ id: 32, tone: 'completed', status: 'Completed', isActive: false })],
+          }),
+        ],
+      })
+    );
+    expect(board.work.map((card) => [card.key, card.part, card.siblings])).toEqual([
+      ['1', undefined, []],
+      ['2', undefined, []],
+      ['3', undefined, []],
+    ]);
+    expect(board.work[1].detail.pullRequestsTitle).toBeUndefined();
+  });
+
+  it('gives one card per open PR, the tasks to do and each task without a PR', () => {
+    const board = buildBoard(split());
+    const cards = board.work.filter((card) => card.id === 1);
+    expect(cards.map((card) => [card.key, card.column, card.header, card.title])).toEqual([
+      ['1:pr:11', 'branch', '#1 · PR 11', 'Draft one'],
+      ['1:pr:12', 'ci', '#1 · PR 12', 'Failing'],
+      ['1:task:23', 'branch', '#1', 'T23'],
+      ['1:task:24', 'branch', '#1', 'T24'],
+      ['1:tasks', 'toStart', '#1', 'Item'],
+    ]);
+    expect(cards[0].status?.text).toBe('Draft PR 11');
+    expect(cards[0].action?.label).toBe('Publish');
+    expect(cards[1].status?.text).toBe('1 test failed');
+    expect(cards[2].status?.text).toBe('task In Progress · no branch');
+    expect(cards[2].tag).toBe('no PR yet');
+    expect(cards[3].status?.text).toBe('task In Progress · branch feature/t');
+    expect(cards[4].tag).toBe('tasks');
+    expect(cards[4].status?.text).toBe('2 tasks to do');
+    expect(cards[4].note).toBe('T21 · T22');
+    expect(cards.some((card) => card.column === 'done')).toBe(false);
+  });
+
+  it('counts cards, links siblings and explains the split in the drawer', () => {
+    const board = buildBoard(split());
+    const cards = board.work.filter((card) => card.id === 1);
+    expect(board.columns.find((column) => column.id === 'branch')?.count).toBe(3);
+    expect(cards[0].siblings).toEqual(['1:pr:12', '1:task:23', '1:task:24', '1:tasks']);
+    expect(cards[0].split).toEqual({
+      title: 'Why on 5 cards',
+      text: '2 PRs open, 2 tasks in progress without a PR, 2 tasks to do. Done when all 5 tasks are.',
+    });
+    expect(cards[0].detail.pullRequestsTitle).toBe('Pull requests · 2 open · 1 merged');
+    expect(cards[0].detail.pullRequests.map((row) => [row.id, row.followed])).toEqual([
+      [11, true],
+      [12, false],
+    ]);
+    expect(cards[0].detail.closedPullRequests).toEqual({ label: '1 merged', titles: 'Merged one' });
+    expect(cards[1].detail.pullRequests.map((row) => row.followed)).toEqual([false, true]);
+    // The single-PR work item has no split box
+    expect(board.work.find((card) => card.id === 2)?.split).toBeUndefined();
+  });
+
+  it('points the current card at the PR of the Now queue row, else at the primary card', () => {
+    const board = buildBoard(split());
+    expect(board.work.filter((card) => card.current).map((card) => card.key)).toEqual(['1:pr:12']);
+  });
+});

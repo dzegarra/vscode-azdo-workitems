@@ -4310,6 +4310,13 @@ button.task-pill.empty:focus-visible {
   white-space: nowrap;
 }
 
+/* Rule TRACK-10: what the track does not show when several PRs are open at once */
+.track-more {
+  color: var(--muted);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+
 .track-current {
   color: var(--station-color, var(--vscode-foreground));
   font-weight: 600;
