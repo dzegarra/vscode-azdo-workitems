@@ -1,6 +1,6 @@
 /** HTML of the track (Rules TRACK-*), shared by the sidebar and the Work Item Details panel. Pure, no "vscode" import */
 import { escapeHtml } from './html';
-import { currentStation, type Station } from './track';
+import { currentStation, type Station, type StationId } from './track';
 
 const STATION_STATE_LABELS: Record<Station['state'], string> = {
   done: 'passed',
@@ -59,4 +59,58 @@ export function renderMiniTrackHtml(track: Station[]): string {
   return `<span class="mini-track" role="img" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}">${track
     .map((station) => `<span class="mini-station station-${station.state}"></span>`)
     .join('')}</span>`;
+}
+
+/** A bare check mark (stroked), for the round markers of the details panel */
+export const CHECK_MARK =
+  '<svg class="mark-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3 3 7-7"/></svg>';
+
+const MARKERS: Record<Station['state'], string> = {
+  done: CHECK_MARK,
+  needsYou: '<span class="mark-text">!</span>',
+  broken: '<span class="mark-text">!</span>',
+  active: '<span class="mark-dot"></span>',
+  pending: '',
+};
+
+function renderNotes(station: Station, notes: string[]): string {
+  return notes
+    .map((note, index) => {
+      const classes = ['note'];
+      if (index === 0 && station.detail) {
+        classes.push('note-lead');
+      }
+      if (index === 0 && station.id === 'branch') {
+        classes.push('note-mono');
+      }
+      return `<span class="${classes.join(' ')}">${escapeHtml(note)}</span>`;
+    })
+    .join('');
+}
+
+/**
+ * The track of the Work Item Details panel: six columns, each with a round marker joined to the next one, the
+ * name of the station and the notes under it. They wrap to three and two columns on narrow panels
+ */
+export function renderTrackColumnsHtml(
+  track: Station[],
+  notes: Partial<Record<StationId, string[]>>,
+  label: string
+): string {
+  const columns = track
+    .map((station, index) => {
+      const connector =
+        index < track.length - 1 ? `<span class="track-link${station.state === 'done' ? ' passed' : ''}"></span>` : '';
+      return `<li class="track-col station-${station.state}" title="${escapeHtml(stationTitle(station))}">
+        <div class="track-head"><span class="marker marker-${station.state}">${
+        MARKERS[station.state]
+      }</span>${connector}</div>
+        <span class="track-name">${escapeHtml(station.label)}</span>
+        ${renderNotes(station, notes[station.id] ?? [])}
+        <span class="visually-hidden">${escapeHtml(stationTitle(station))}</span></li>`;
+    })
+    .join('');
+  return `<section class="track-box"><ol class="track-cols" aria-label="${escapeHtml(
+    label
+  )}">${columns}</ol></section>`;
 }

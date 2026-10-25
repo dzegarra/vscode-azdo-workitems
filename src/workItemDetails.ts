@@ -70,8 +70,8 @@ function isDetailsInReview(details: WorkItem, children: WorkItem[]): boolean {
   return isInReview(details.state, tasks, compilePullRequestTaskPattern(settings().alerts.pullRequestTaskPattern));
 }
 
-function toRelated({ id, title, type, state, iterationPath }: WorkItem): RelatedWorkItem {
-  return { id, title, type, state, iterationPath };
+function toRelated({ id, title, type, state, iterationPath, assignedTo }: WorkItem): RelatedWorkItem {
+  return { id, title, type, state, iterationPath, assignedTo };
 }
 
 /** Editor tabs showing the details of work items, one per work item */
@@ -218,19 +218,15 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
     } else if (data) {
       const card = this.store.workItemModel(id);
       const followed = card && trackPullRequest(card);
+      const ownPullRequest = this.ownPullRequests().find((pr) => pr.id === followed?.id);
       body = renderDetailsBody({
         ...data,
         displayState: shownState(data.state, !!inReview, settings().showInReviewState),
         card,
         figmaInVsCode: isFigmaExtensionInstalled(),
+        ownPullRequest,
         // Rules TRACK-*: only for the Backlog Items and Bugs of the list (their branches and PRs are known)
-        track:
-          card && canHaveTasks(card.type)
-            ? workItemTrack(
-                card,
-                this.ownPullRequests().find((pr) => pr.id === followed?.id)
-              )
-            : undefined,
+        track: card && canHaveTasks(card.type) ? workItemTrack(card, ownPullRequest) : undefined,
       });
     }
     panel.webview.html = this.page(panel.webview, body);

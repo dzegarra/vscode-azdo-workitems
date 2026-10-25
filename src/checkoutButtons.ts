@@ -17,6 +17,8 @@ export interface CheckoutButtonOptions {
   branch?: string;
   /** Icon instead of the text (the rows of the branch list, where the name needs the width): needs `branch` for its labels */
   iconOnly?: boolean;
+  /** The main action of the page (the header of the details panel): the main button is the prominent one */
+  lead?: boolean;
 }
 
 /**
@@ -69,23 +71,19 @@ export function checkoutButton(options: CheckoutButtonOptions): string {
   if (options.iconOnly) {
     return iconCheckoutButton(options);
   }
-  const size = options.small ? ' small' : '';
+  const size = `${options.small ? ' small' : ''}${options.lead ? ' primary cta' : ''}`;
+  const group = `button-group checkout-group${options.lead ? ' lead' : ''}`;
   const branch = options.branch === undefined ? '' : ` data-branch="${escapeHtml(options.branch)}"`;
   if (options.worktree) {
-    return `<span class="button-group checkout-group"><button class="button${size}" data-action="openWorktree" data-kind="${
+    return `<span class="${group}"><button class="button${size}" data-action="openWorktree" data-kind="${
       options.kind
     }" data-id="${options.id}"${branch} title="${escapeHtml(
       `The branch is checked out in a worktree: open ${options.worktree}`
     )}">Open worktree</button>${caretButton(options, 'worktreeMenu', 'More worktree options', branch)}</span>`;
   }
-  return `<span class="button-group checkout-group"><button class="button${size}" ${
-    options.mainAttributes
-  } title="${escapeHtml(options.title)}">Checkout</button>${caretButton(
-    options,
-    'checkoutMenu',
-    'More checkout options',
-    branch
-  )}</span>`;
+  return `<span class="${group}"><button class="button${size}" ${options.mainAttributes} title="${escapeHtml(
+    options.title
+  )}">Checkout</button>${caretButton(options, 'checkoutMenu', 'More checkout options', branch)}</span>`;
 }
 
 /** Pill of a branch that is checked out in another worktree (the tooltip tells where) */

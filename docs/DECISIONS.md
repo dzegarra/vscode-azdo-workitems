@@ -153,6 +153,7 @@ The UI is being rebuilt from a design made with all the rules known in advance (
 - **"Before completion" lists the alerts and the completion cautions together**: they answer the same question (can I complete it?); the alerts stay red and first.
 - **Removed with the redesign** (no migration, a single user then): `totalflowx.workItems.layout` (and the Use Compact / Large Layout commands) and `totalflowx.workingOn.section` (the Now tab lists the work items being worked on).
 - **Personal settings that still mean something are kept; purely cosmetic ones the new design replaces are removed**, each one listed here and in the README when it goes.
+- **The Work Item Details panel follows the approved design (phase 3b)**: header with breadcrumb and prominent action, state bar with one explanation line per type, a six-column track whose notes (`src/stationNotes.ts`) only reword data the panel already has (no request, no rule of their own), Tasks with progress, and a side column. Left out on purpose: the "More actions" picker (the panel handles no picker messages: the Checkout `…` is its only one), the task pills of the sidebar (they stay sidebar-only), and "assigned to you" (the panel does not know the user's identity: it shows the assignee's name). The prominent button is the first branch action that moves the work on; Checkout leads only when there is nothing else.
 
 ## Fun features (`totalflowx.fun.enabled`)
 

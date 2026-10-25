@@ -1,59 +1,466 @@
 body {
-  max-width: 1100px;
+  max-width: 1280px;
   margin: 0 auto;
-  padding: 16px 24px 32px;
+  padding: 32px 40px 48px;
   background: var(--vscode-editor-background);
 }
 
-.details-head {
-  display: grid;
-  gap: 8px;
-  padding: 4px 0 16px 12px;
-  /* The colour comes from the state-border-* class */
-  border-left-width: 3px;
-  border-left-style: solid;
-  border-bottom: 1px solid var(--border);
+@media (max-width: 760px) {
+  body {
+    padding: 16px 16px 32px;
+  }
 }
 
-.head-line {
+.details-page {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* ---------- Header ---------- */
+
+.details-head {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
   color: var(--muted);
+  font-size: 13px;
 }
 
-.head-line .icon {
-  width: 16px;
-  height: 16px;
+.crumb-type {
+  color: var(--muted);
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
-.head-line .id {
+.crumb-id {
   color: var(--vscode-foreground);
-  font-weight: 600;
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
   font-variant-numeric: tabular-nums;
 }
 
-.head-line .state {
-  margin-left: 4px;
-  font-size: 12px;
+.crumb-sep {
+  color: var(--pending);
+}
+
+.breadcrumb-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 24px;
+}
+
+.head-main {
+  display: flex;
+  flex: 999 1 460px;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
 }
 
 h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: clamp(22px, 3.2vw, 34px);
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+
+.head-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.head-meta .urgency {
+  gap: 8px;
+}
+
+.head-meta .pill {
+  padding: 1px 8px;
+  border-radius: 5px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.head-meta .where {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pill.tag-blocking {
+  --pill-color: var(--broken);
+}
+
+.details-head .actions {
+  display: flex;
+  flex: 1 1 260px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.details-head .actions .button {
+  min-height: 32px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 13px;
 }
 
 .details-head .actions .button.ghost {
   margin-left: 0;
 }
 
+.details-head .actions .button.caret {
+  width: 32px;
+  padding: 0;
+}
+
+/* The one prominent button: amber, the colour of "needs you" */
+.details-head .actions .button.cta {
+  min-height: 40px;
+  padding: 0 18px;
+  border-color: transparent;
+  background: var(--needs-you);
+  color: var(--vscode-editor-background);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.details-head .actions .button.cta:hover {
+  background: color-mix(in srgb, var(--needs-you) 85%, var(--vscode-foreground));
+}
+
+.details-head .actions .lead .button.caret {
+  min-height: 40px;
+}
+
+.details-head .actions .lead-danger {
+  min-height: 40px;
+  font-weight: 600;
+}
+
+.button.with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.button.wide {
+  justify-content: center;
+  width: 100%;
+  min-height: 32px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.button-group {
+  display: inline-flex;
+}
+
+.button-group .button:first-child:not(:last-child) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.button.icon-only {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 1px;
+  padding: 2px 6px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+/* Reload: alone, so it is round on both sides */
+.details-head .actions .button.reload {
+  padding: 0 9px;
+  border-radius: 8px;
+}
+
+button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+/* ---------- State bar (Rules STEPS-*) ---------- */
+
+.state-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.state-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-bg);
+}
+
+.state-bar.single {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.step {
+  display: inline-flex;
+  flex: 1 1 120px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+button.step {
+  cursor: pointer;
+}
+
+button.step:hover {
+  background: var(--vscode-list-hoverBackground);
+  color: var(--vscode-foreground);
+}
+
+.step-current {
+  background: var(--vscode-foreground);
+  color: var(--vscode-editor-background);
+  font-weight: 600;
+}
+
+.step-current .step-note {
+  color: inherit;
+  opacity: 0.75;
+}
+
+/* In review: shown, not set */
+.step-current.derived {
+  border: 1px dashed var(--in-flight);
+  background: transparent;
+  color: var(--in-flight);
+}
+
+/* The developer's finish line (a Bug at Ready to Test) */
+button.step.finish {
+  border-color: color-mix(in srgb, var(--passed) 45%, transparent);
+  background: color-mix(in srgb, var(--passed) 12%, transparent);
+  color: var(--passed);
+}
+
+button.step.finish .step-note {
+  color: var(--passed);
+}
+
+.step.locked {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.step .icon {
+  width: 12px;
+  height: 12px;
+}
+
+.step-note {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.state-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ---------- Track (Rules TRACK-*): six columns ---------- */
+
+.track-box {
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card-bg);
+}
+
+.track-cols {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 20px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 1000px) {
+  .track-cols {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .track-box {
+    padding: 16px;
+  }
+
+  .track-cols {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.track-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.track-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.marker {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: var(--vscode-editor-background);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mark-icon {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.marker-done {
+  background: var(--passed);
+}
+
+.marker-needsYou {
+  background: var(--needs-you);
+}
+
+.marker-broken {
+  background: var(--broken);
+}
+
+.marker-active {
+  border: 3px solid var(--in-flight);
+}
+
+.mark-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--in-flight);
+}
+
+.marker-pending {
+  border: 2px dashed var(--muted);
+  opacity: 0.6;
+}
+
+.track-link {
+  flex: 1;
+  height: 2px;
+  background: var(--border);
+}
+
+.track-link.passed {
+  background: var(--passed);
+}
+
+.track-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.track-col.station-pending .track-name {
+  color: var(--muted);
+}
+
+.note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.note-mono {
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.note-lead.note {
+  color: var(--muted);
+}
+
+.station-done .note-lead {
+  color: var(--passed);
+}
+
+.station-needsYou .note-lead {
+  color: var(--needs-you);
+}
+
+.station-broken .note-lead {
+  color: var(--broken);
+}
+
+.station-active .note-lead {
+  color: var(--in-flight);
+}
+
+/* ---------- Layout of the body ---------- */
+
 .details-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 24px;
-  margin-top: 16px;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 28px;
+  align-items: start;
 }
 
 @media (max-width: 760px) {
@@ -62,29 +469,43 @@ h1 {
   }
 }
 
-.section + .section {
-  margin-top: 20px;
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  min-width: 0;
+}
+
+aside {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.section h2,
+.box h2 {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .section h2 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 0 0 8px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
-.section .row + .row {
+.section .row + .row,
+.box .row + .row {
   margin-top: 6px;
 }
 
-.section .row .link {
+.row .link {
   flex: none;
   white-space: nowrap;
 }
@@ -93,6 +514,12 @@ h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.section h2 .button {
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .rich-text {
@@ -119,12 +546,167 @@ h1 {
   color: var(--vscode-textLink-foreground);
 }
 
+.rich-text.acceptance {
+  padding: 16px 18px;
+  border: 1px solid color-mix(in srgb, var(--in-flight) 40%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--in-flight) 10%, transparent);
+}
+
+.rich-text > :first-child {
+  margin-top: 0;
+}
+
+.rich-text > :last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- Tasks ---------- */
+
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+
+.section-head h2 {
+  margin: 0;
+}
+
+.tasks-progress {
+  display: flex;
+  flex: 0 1 220px;
+  gap: 2px;
+  height: 6px;
+}
+
+.tasks-progress .seg {
+  min-width: 6px;
+  border-radius: 3px;
+}
+
+.seg-proposed {
+  background: var(--grey);
+}
+
+.seg-in-progress {
+  background: var(--in-flight);
+}
+
+.seg-done {
+  background: var(--passed);
+}
+
+.section-head .add-task {
+  margin-left: auto;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 13px;
+}
+
+.empty-box {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.task-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  list-style: none;
+}
+
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.task-row + .task-row {
+  border-top: 1px solid var(--border);
+}
+
+.task-dot {
+  flex: none;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot-proposed {
+  border: 2px solid var(--grey);
+}
+
+.dot-in-progress {
+  background: var(--in-flight);
+}
+
+.dot-done {
+  background: var(--passed);
+}
+
+.dot-removed {
+  background: var(--broken);
+}
+
+.task-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-owner {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.task-row .state {
+  flex: none;
+  margin-left: 0;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+/* ---------- Boxes of the side column ---------- */
+
+.box {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-bg);
+}
+
 .meta {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 6px 12px;
-  margin: 0;
-  font-size: 12px;
+  grid-template-columns: minmax(80px, max-content) minmax(0, 1fr);
+  gap: 10px 12px;
+  margin: 0 0 12px;
+  font-size: 13px;
 }
 
 .meta dt {
@@ -136,10 +718,29 @@ h1 {
   overflow-wrap: anywhere;
 }
 
-.meta .tags {
+.meta dd.muted {
+  color: var(--muted);
+}
+
+.open-ado {
+  font-size: 13px;
+}
+
+.box h3 {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
+  margin: 12px 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.box h3:first-of-type {
+  margin-top: 0;
+}
+
+.dependencies .button.wide {
+  margin-top: 14px;
 }
 
 .related {
@@ -154,15 +755,46 @@ h1 {
   color: var(--vscode-errorForeground);
 }
 
-.section h2 .button {
-  margin-left: auto;
-  text-transform: none;
-  letter-spacing: 0;
+.dependency {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 13px;
 }
 
-.head-line button.state {
-  margin-left: 4px;
+.dep-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dep-line .link {
+  flex: none;
   font-size: 12px;
+}
+
+.dep-line .child-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.dep-line .state {
+  flex: none;
+  margin-left: 0;
+}
+
+.dep-labels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.dep-labels .pill.wrap {
+  height: auto;
+  white-space: normal;
 }
 
 .dependency .iteration-name {
@@ -170,10 +802,6 @@ h1 {
   color: var(--muted);
   font-size: 11px;
   white-space: nowrap;
-}
-
-.dependency .child-title {
-  flex: 1;
 }
 
 .pill.risk-late {
@@ -185,170 +813,41 @@ h1 {
   --pill-color: var(--orange);
 }
 
-.button.with-icon {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
+/* ---------- Before completion (Rules BEFORE-*) ---------- */
 
-.button-group {
-  display: inline-flex;
-}
-
-.button-group .button:first-child:not(:last-child) {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-}
-
-.button.icon-only {
-  display: inline-flex;
-  align-items: center;
-  margin-left: 1px;
-  padding: 2px 6px;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-}
-
-/* ---------- Redesign: breadcrumb, state bar, track, Before completion (Rules STEPS-*, TRACK-*, BEFORE-*) ---------- */
-
-.breadcrumb {
+.before-completion h2 {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.breadcrumb-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.head-line .pill {
-  font-size: 11px;
-}
-
-.state-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-.state-bar.single {
-  padding: 0;
-  border: 0;
-}
-
-.step {
-  display: inline-flex;
-  flex: 1 1 110px;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 30px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-button.step {
-  cursor: pointer;
-}
-
-button.step:hover {
-  background: var(--vscode-list-hoverBackground);
+  gap: 8px;
+  margin-bottom: 12px;
   color: var(--vscode-foreground);
-}
-
-button.step:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-}
-
-.step-current {
-  background: var(--vscode-foreground);
-  color: var(--vscode-editor-background);
-  font-weight: 600;
-}
-
-.step-current .step-note {
-  color: inherit;
-  opacity: 0.75;
-}
-
-.step-current.derived {
-  border: 1px dashed var(--in-flight);
-  background: transparent;
-  color: var(--in-flight);
-}
-
-.step.locked {
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.step .icon {
-  width: 12px;
-  height: 12px;
-}
-
-.step-note {
-  color: var(--muted);
-  font-weight: 400;
-}
-
-.track.named {
-  margin-top: 4px;
-}
-
-.track.named .station {
-  height: 6px;
-}
-
-.track-names {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 3px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.track-names li {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-family: inherit;
+  font-size: 17px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .before-completion h2 .count {
   min-width: 16px;
-  padding: 0 5px;
-  border-radius: 8px;
-  color: var(--vscode-editor-background);
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
   background: var(--needs-you);
+  color: var(--vscode-editor-background);
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 600;
   text-align: center;
 }
 
 .before-completion.open {
-  padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--needs-you) 45%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--needs-you) 7%, transparent);
+  border-color: color-mix(in srgb, var(--needs-you) 45%, transparent);
+  background: color-mix(in srgb, var(--needs-you) 8%, var(--vscode-editor-background));
 }
 
 .checks {
   display: grid;
-  gap: 6px;
+  gap: 12px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -357,27 +856,59 @@ button.step:focus-visible {
 .check {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  line-height: 1.4;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
-.check .icon {
+.ring {
+  display: inline-flex;
   flex: none;
-  margin-top: 2px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border: 2px solid var(--needs-you);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
 }
 
-.check-broken .icon {
+.ring-broken {
+  border-color: var(--broken);
   color: var(--broken);
 }
 
-.check-caution .icon {
-  color: var(--needs-you);
+.ring-clear {
+  border: 0;
+  background: var(--passed);
+  color: var(--vscode-editor-background);
 }
 
-.check-clear .icon {
-  color: var(--passed);
+.ring .mark-icon {
+  width: 10px;
+  height: 10px;
+}
+
+.check-clear {
+  color: var(--muted);
 }
 
 .check .link {
   text-align: left;
+}
+
+.error {
+  color: var(--vscode-errorForeground);
+}
+
+/* Totalflow look: mono headings, the heading font for Before completion */
+body.look-totalflow:not([class*='vscode-high-contrast']) :is(.section h2, .box h2, .crumb-type, .crumb-id) {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+body.look-totalflow:not([class*='vscode-high-contrast']) .before-completion h2 {
+  font-family: 'Space Grotesk', 'IBM Plex Sans', system-ui, sans-serif;
 }

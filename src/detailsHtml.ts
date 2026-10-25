@@ -6,14 +6,16 @@ import type { FigmaLink } from './figmaLinks';
 import { fixRelationLabel } from './fixLinks';
 import { icon, typeIcon, typeIdClass } from './icons';
 import { DependencyRisk, RISK_DESCRIPTIONS } from './schedule';
-import { stateCategory } from './states';
+import { normalizeState, stateCategory } from './states';
 import { pullRequestTooltip } from './pullRequestModel';
 import { BranchAction, branchActions, type WorkItemModel } from './viewModel';
 import { severityLevel, severityName } from './priority';
 import { stateSteps } from './stateSteps';
 import { beforeCompletion } from './beforeCompletion';
 import type { Station } from './track';
-import { renderTrackHtml } from './trackHtml';
+import { CHECK_MARK, renderTrackColumnsHtml } from './trackHtml';
+import { stationNotes, type NotesPullRequest } from './stationNotes';
+import { taskProgress, taskProgressTooltip } from './taskProgress';
 
 export interface RelatedWorkItem {
   id: number;
@@ -21,6 +23,8 @@ export interface RelatedWorkItem {
   type: string;
   state: string;
   iterationPath?: string;
+  /** Display name of the assignee */
+  assignedTo?: string;
   /** For predecessors / successors: how risky the dependency is */
   risk?: DependencyRisk;
 }
@@ -47,6 +51,8 @@ export interface DetailsData {
   figmaInVsCode?: boolean;
   /** The track of a Backlog Item or Bug of the list (Rules TRACK-*), with what My Pull Requests knows of its PR */
   track?: Station[];
+  /** The user's own PR followed by the track (what only My Pull Requests knows: reviewers, runs, auto-complete) */
+  ownPullRequest?: NotesPullRequest;
   /** Class of the body for the look (Rule LOOK-1), undefined: the theme */
   lookClass?: string;
 }
@@ -82,6 +88,8 @@ const META_FIELDS: [string, string][] = [
   ['Changed', 'System.ChangedDate'],
 ];
 
+const INTEGRATION_BUILD = 'Microsoft.VSTS.Build.IntegrationBuild';
+
 export const RICH_TEXT_FIELDS: [string, string][] = [
   ['Description', 'System.Description'],
   ['Repro steps', 'Microsoft.VSTS.TCM.ReproSteps'],
@@ -89,19 +97,40 @@ export const RICH_TEXT_FIELDS: [string, string][] = [
   ['Acceptance criteria', 'Microsoft.VSTS.Common.AcceptanceCriteria'],
 ];
 
-function renderMeta(fields: Record<string, unknown>): string {
+const isType = (type: string, name: string): boolean => normalizeState(type) === normalizeState(name);
+
+/** The types whose tasks, track and "Before completion" the panel shows */
+const hasTaskList = (type: string): boolean => isType(type, 'Bug') || isType(type, 'Product Backlog Item');
+
+/** Initials of a display name, for the badge of an assignee: "Ana Ruiz" is "AR" */
+export function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word.slice(0, 1).toUpperCase())
+    .join('');
+}
+
+/** A box of the side column */
+function renderBox(title: string, content: string, className = ''): string {
+  return `<section class="box${className ? ` ${className}` : ''}"><h2>${title}</h2>${content}</section>`;
+}
+
+/** The fields of the work item, label and value, then the link to Azure DevOps */
+function renderMeta(data: DetailsData): string {
+  const { fields } = data;
   const rows = META_FIELDS.map(([label, name]) => [label, fieldText(fields[name])] as const)
     .filter((row): row is readonly [string, string] => row[1] !== undefined)
     .map(([label, value]) => `<dt>${label}</dt><dd>${escapeHtml(value)}</dd>`);
-  const tags = fieldText(fields['System.Tags'])
-    ?.split(';')
-    .map((tag) => tag.trim())
-    .filter(Boolean)
-    .map((tag) => `<span class="pill tone-neutral">${escapeHtml(tag)}</span>`);
-  if (tags?.length) {
-    rows.push(`<dt>Tags</dt><dd class="tags">${tags.join('')}</dd>`);
+  if (isType(data.type, 'Bug')) {
+    const build = fieldText(fields[INTEGRATION_BUILD]);
+    rows.push(
+      `<dt>Integrated in Build</dt><dd${build ? '' : ' class="muted"'}>${build ? escapeHtml(build) : 'empty'}</dd>`
+    );
   }
-  return `<dl class="meta">${rows.join('')}</dl>`;
+  const link = `<button class="link open-ado" data-action="openWorkItem" data-id="${data.id}">Open in Azure DevOps ↗</button>`;
+  return `<dl class="meta">${rows.join('')}</dl>${link}`;
 }
 
 function renderDevelopment(card: WorkItemModel | undefined): string {
@@ -144,45 +173,48 @@ function renderFigmaActions(data: DetailsData): string[] {
   ];
 }
 
-const BRANCH_BUTTONS: Record<BranchAction, (card: WorkItemModel) => string> = {
-  createPullRequest: ({ id }) =>
-    `<button class="button primary" data-action="createPullRequest" data-id="${id}">Create PR</button>`,
-  createBranch: ({ id }) =>
-    `<button class="button primary" data-action="createBranch" data-id="${id}">Create branch</button>`,
-  checkout: ({ id, worktree }) =>
+/** `lead`: the main action of the header, prominent */
+const BRANCH_BUTTONS: Record<BranchAction, (card: WorkItemModel, lead: boolean) => string> = {
+  createPullRequest: ({ id }, lead) =>
+    `<button class="button primary with-icon${
+      lead ? ' cta' : ''
+    }" data-action="createPullRequest" data-id="${id}">${icon('pullRequest')}Create PR</button>`,
+  createBranch: ({ id }, lead) =>
+    `<button class="button primary with-icon${lead ? ' cta' : ''}" data-action="createBranch" data-id="${id}">${icon(
+      'branch'
+    )}Create branch</button>`,
+  checkout: ({ id, worktree }, lead) =>
     checkoutButton({
       kind: 'workItem',
       id,
       mainAttributes: `data-action="checkout" data-id="${id}"`,
       title: 'Switch to the branch of the work item',
       worktree,
+      lead,
     }),
-  deleteBranch: ({ id, deletableBranches }) =>
-    `<button class="button danger" data-action="deleteBranch" data-id="${id}" data-branch="${escapeHtml(
-      deletableBranches?.[0] ?? ''
-    )}"
-      title="The PR is merged: delete the branch, as the team does">Delete branch</button>`,
+  deleteBranch: ({ id, deletableBranches }, lead) =>
+    `<button class="button danger with-icon${
+      lead ? ' lead-danger' : ''
+    }" data-action="deleteBranch" data-id="${id}" data-branch="${escapeHtml(deletableBranches?.[0] ?? '')}"
+      title="The PR is merged: delete the branch, as the team does">${icon('trash')}Delete branch</button>`,
 };
 
 // Rule CARD-BTN-3
 function renderActions(data: DetailsData): string {
   const { card } = data;
+  // Same branch actions as the cards; the prominent button is the first one that moves the work on (Checkout only
+  // when there is nothing else), and it comes first
+  const branchList = card ? branchActions(card) : [];
+  const lead = branchList.find((action) => action !== 'checkout') ?? branchList.at(0);
+  const ordered = lead ? [lead, ...branchList.filter((action) => action !== lead)] : [];
+  const branchButtons = card ? ordered.map((action) => BRANCH_BUTTONS[action](card, action === lead)) : [];
   const actions = [
-    `<button class="button" data-action="openWorkItem" data-id="${data.id}">Open in Azure DevOps</button>`,
-    // Tasks are not shown in the dependency map
-    ...(data.type === 'Task'
-      ? []
-      : [
-          `<button class="button with-icon" data-action="openDependencyMap" data-id="${data.id}">${icon(
-            'graph'
-          )}Dependency map</button>`,
-        ]),
+    ...branchButtons,
     ...renderFigmaActions(data),
+    `<button class="button ghost with-icon" data-action="reload" data-id="${data.id}">${icon(
+      'refresh'
+    )}Reload</button>`,
   ];
-  // Same branch actions as the cards
-  const branchButtons = card ? branchActions(card).map((action) => BRANCH_BUTTONS[action](card)) : [];
-  actions.unshift(...branchButtons);
-  actions.push(`<button class="button ghost" data-action="reload" data-id="${data.id}">Reload</button>`);
   return `<div class="actions">${actions.join('')}</div>`;
 }
 
@@ -198,7 +230,7 @@ function renderSection(title: string, content: string, headerAction = ''): strin
   return `<section class="section"><h2><span>${title}</span>${headerAction}</h2>${content}</section>`;
 }
 
-/** Predecessor / successor, with its iteration and a warning when the dependency is at risk */
+/** Predecessor / successor: its ID, title and state, and under them the labels (fix, risk, iteration) */
 function renderDependency(
   item: RelatedWorkItem,
   iterationNames: Partial<Record<string, string>>,
@@ -211,20 +243,23 @@ function renderDependency(
     : '';
   const risk =
     item.risk && item.risk !== 'ok' && item.risk !== 'done'
-      ? `<span class="pill risk-${item.risk}" title="${RISK_DESCRIPTIONS[item.risk]}">${
+      ? `<span class="pill wrap risk-${item.risk}" title="${RISK_DESCRIPTIONS[item.risk]}">${
           RISK_DESCRIPTIONS[item.risk]
         }</span>`
       : '';
   const fix = fixLabel ? `<span class="pill tone-${fixLabel.tone}">${fixLabel.text}</span>` : '';
-  return `<li class="child dependency">${typeIcon(item.type)}
+  const labels = fix + risk + iteration;
+  return `<li class="dependency"><div class="dep-line">
     <button class="link id${typeIdClass(item.type)}" data-action="openDetails" data-id="${
     item.id
   }" title="Open the Work Item Details panel">${item.id}</button>
-    <span class="child-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>
-    ${fix}${risk}${iteration}${stateButton(item.id, item.state)}</li>`;
+    <span class="child-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</span>${stateButton(
+    item.id,
+    item.state
+  )}</div>${labels ? `<div class="dep-labels">${labels}</div>` : ''}</li>`;
 }
 
-function renderDependencies(
+function renderDependencyList(
   direction: 'predecessor' | 'successor',
   title: string,
   items: RelatedWorkItem[],
@@ -236,10 +271,29 @@ function renderDependencies(
         .map((item) => renderDependency(item, data.iterationNames ?? {}, fixRelationLabel(data, item, direction)))
         .join('')}</ul>`
     : `<p class="muted">${emptyText}</p>`;
-  return renderSection(`${title} (${items.length})`, list);
+  return `<h3>${title} <span class="dep-count">${items.length}</span></h3>${list}`;
 }
 
-/** Children, with a button to add tasks to Backlog Items / Bugs */
+/** Predecessors and successors, with the way to the map (not for Tasks: they are not shown in it) */
+function renderDependencies(data: DetailsData): string {
+  const lists =
+    renderDependencyList(
+      'predecessor',
+      'Predecessors',
+      data.predecessors,
+      data,
+      'Does not depend on other work items.'
+    ) + renderDependencyList('successor', 'Successors', data.successors, data, 'No work items depend on this one.');
+  const map =
+    data.type === 'Task'
+      ? ''
+      : `<button class="button with-icon wide" data-action="openDependencyMap" data-id="${data.id}">${icon(
+          'graph'
+        )}Open dependency map</button>`;
+  return renderBox('Dependencies', lists + map, 'dependencies');
+}
+
+/** Children of the types without a task list (Features, Epics…), with a button to add tasks */
 function renderChildren(data: DetailsData): string {
   const addTask = canHaveTasks(data.type)
     ? `<button class="button ghost small" data-action="addTask" data-id="${data.id}">Add task</button>`
@@ -251,6 +305,39 @@ function renderChildren(data: DetailsData): string {
     ? `<ul class="related">${data.children.map(renderRelated).join('')}</ul>`
     : '<p class="muted">No tasks yet.</p>';
   return renderSection(`Children (${data.children.length})`, list, addTask);
+}
+
+function renderTaskRow(task: RelatedWorkItem): string {
+  const owner = task.assignedTo
+    ? `<span class="task-owner" title="${escapeHtml(task.assignedTo)}" aria-label="${escapeHtml(
+        task.assignedTo
+      )}">${escapeHtml(initials(task.assignedTo))}</span>`
+    : '';
+  return `<li class="task-row"><span class="task-dot dot-${stateCategory(task.state)}" aria-hidden="true"></span>
+    <button class="link id" data-action="openDetails" data-id="${task.id}" title="Open the Work Item Details panel">${
+    task.id
+  }</button>
+    <span class="task-title" title="${escapeHtml(task.title)}">${escapeHtml(task.title)}</span>${owner}${stateButton(
+    task.id,
+    task.state
+  )}</li>`;
+}
+
+/** The tasks of a Backlog Item or a Bug, with a bar of how far they are */
+function renderTasks(data: DetailsData): string {
+  const progress = taskProgress(data.children);
+  const bar = progress.total
+    ? `<div class="tasks-progress" role="img" aria-label="${escapeHtml(
+        taskProgressTooltip(progress)
+      )}" title="${escapeHtml(taskProgressTooltip(progress))}">${progress.segments
+        .map((segment) => `<span class="seg seg-${segment.category}" style="flex: ${segment.count}"></span>`)
+        .join('')}</div>`
+    : '';
+  const list = data.children.length
+    ? `<ul class="task-list">${data.children.map(renderTaskRow).join('')}</ul>`
+    : `<p class="empty-box">No tasks yet. Create PR adds the PR task; work that starts without one raises an alert.</p>`;
+  return `<section class="section tasks"><div class="section-head"><h2>Tasks · ${data.children.length}</h2>${bar}
+    <button class="button ghost small add-task" data-action="addTask" data-id="${data.id}">Add task</button></div>${list}</section>`;
 }
 
 /** Priority and severity, as the sidebar shows them */
@@ -269,6 +356,51 @@ function renderUrgency(fields: Record<string, unknown>): string {
   return pills ? `<span class="urgency">${pills}</span>` : '';
 }
 
+function renderTags(data: DetailsData): string {
+  const blocking = (data.card?.blockingTags ?? []).map((tag) => tag.toLowerCase());
+  return (fieldText(data.fields['System.Tags'])?.split(';') ?? [])
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .map(
+      (tag) =>
+        `<span class="pill ${blocking.includes(tag.toLowerCase()) ? 'tag-blocking' : 'tone-neutral'}"${
+          blocking.includes(tag.toLowerCase()) ? ' title="Blocking tag"' : ''
+        }>${escapeHtml(tag)}</span>`
+    )
+    .join('');
+}
+
+/** Priority, severity, effort and tags as pills, then the sprint and the assignee */
+function renderMetaLine(data: DetailsData): string {
+  const effort = fieldText(data.fields['Microsoft.VSTS.Scheduling.Effort']);
+  const iterationPath = fieldText(data.fields['System.IterationPath']);
+  const iteration = iterationPath
+    ? data.iterationNames?.[iterationPath] ?? iterationPath.split('\\').at(-1)
+    : undefined;
+  const assignee = fieldText(data.fields['System.AssignedTo']);
+  const where = [iteration, assignee].filter(Boolean).map((text) => escapeHtml(text ?? ''));
+  const pills =
+    renderUrgency(data.fields) +
+    (effort ? `<span class="pill tone-neutral">Effort ${escapeHtml(effort)}</span>` : '') +
+    renderTags(data);
+  const text = where.length ? `<span class="where">· ${where.join(' · ')}</span>` : '';
+  return `<div class="head-meta">${pills}${text}</div>`;
+}
+
+function renderBreadcrumb(data: DetailsData): string {
+  const current = `<span class="crumb-type">${escapeHtml(data.type)}</span><span class="crumb-id">${data.id}</span>`;
+  if (!data.parent) {
+    return `<nav class="breadcrumb" aria-label="Work item">${current}</nav>`;
+  }
+  return `<nav class="breadcrumb" aria-label="Parent"><span class="crumb-type">${escapeHtml(data.parent.type)}</span>
+    <button class="link id" data-action="openDetails" data-id="${
+      data.parent.id
+    }" title="Open the Work Item Details panel">${data.parent.id}</button>
+    <span class="breadcrumb-title">${escapeHtml(
+      data.parent.title
+    )}</span><span class="crumb-sep">/</span>${current}</nav>`;
+}
+
 // Rules STEPS-1..5
 /** The states the work item goes through, the current one marked; the moves left to others are locked */
 function renderStateBar(data: DetailsData): string {
@@ -280,6 +412,7 @@ function renderStateBar(data: DetailsData): string {
     const label = `${escapeHtml(step.label)}${
       step.note ? ` <span class="step-note">· ${escapeHtml(step.note)}</span>` : ''
     }`;
+    const finish = step.note === 'your finish line' ? ' finish' : '';
     if (step.status === 'current' || !step.state) {
       return `<span class="step step-${step.status}${step.derived ? ' derived' : ''}" aria-current="${
         step.status === 'current' ? 'step' : 'false'
@@ -290,11 +423,41 @@ function renderStateBar(data: DetailsData): string {
         'lock'
       )}${label}</button>`;
     }
-    return `<button class="step step-${step.status}" data-action="changeState" data-id="${
+    return `<button class="step step-${step.status}${finish}" data-action="changeState" data-id="${
       data.id
     }" data-state="${escapeHtml(step.state)}" title="Move to ${escapeHtml(step.state)}">${label}</button>`;
   });
   return `<nav class="state-bar" aria-label="State">${buttons.join('')}</nav>`;
+}
+
+/** One line under the state bar: the flow of the type and who makes the moves */
+function renderStateHelp(data: DetailsData): string {
+  const lines: string[] = [];
+  if (isType(data.type, 'Bug')) {
+    lines.push(
+      'Bug states: New → Approved → Committed → Ready to Test → Done. A reopened Bug shows ReOpened in the Approved slot and moves on to Committed. Only testers move a Bug to Done.'
+    );
+  } else if (isType(data.type, 'Product Backlog Item')) {
+    lines.push('Backlog Item states: New → Approved → Committed → Done. The developer completes it.');
+    if (stateSteps(data.type, data.state, data.displayState)?.some((step) => step.derived)) {
+      lines.push('In review is derived from the tasks; Azure DevOps still says Committed.');
+    }
+  }
+  return lines.length ? `<p class="state-help">${lines.map(escapeHtml).join(' ')}</p>` : '';
+}
+
+function renderTrack(data: DetailsData): string {
+  if (!data.track) {
+    return '';
+  }
+  const notes = data.card
+    ? stationNotes({
+        card: data.card,
+        mine: data.ownPullRequest,
+        integrationBuild: fieldText(data.fields[INTEGRATION_BUILD]),
+      })
+    : {};
+  return renderTrackColumnsHtml(data.track, notes, `Track of ${data.id}`);
 }
 
 // Rules BEFORE-1..3
@@ -309,7 +472,9 @@ function renderBeforeCompletion(data: DetailsData): string {
     ? checks
         .map(
           (check) =>
-            `<li class="check check-${check.severity}">${icon(check.severity === 'broken' ? 'warning' : 'circle')}${
+            `<li class="check check-${check.severity}"><span class="ring ring-${check.severity}" aria-hidden="true">${
+              check.severity === 'broken' ? '!' : ''
+            }</span>${
               check.relatedId === undefined
                 ? `<span>${escapeHtml(check.text)}</span>`
                 : `<button class="link" data-action="openDetails" data-id="${check.relatedId}">${escapeHtml(
@@ -318,44 +483,45 @@ function renderBeforeCompletion(data: DetailsData): string {
             }</li>`
         )
         .join('')
-    : `<li class="check check-clear">${icon('check')}<span>Nothing in the way</span></li>`;
+    : `<li class="check check-clear"><span class="ring ring-clear" aria-hidden="true">${CHECK_MARK}</span><span>Nothing in the way</span></li>`;
   const count = checks.length ? `<span class="count">${checks.length}</span>` : '';
-  return `<section class="section before-completion${
+  return `<section class="box before-completion${
     checks.length ? ' open' : ''
   }"><h2><span>Before completion</span>${count}</h2><ul class="checks">${rows}</ul></section>`;
 }
 
-export function renderDetailsBody(data: DetailsData): string {
+function renderMain(data: DetailsData): string {
   const richText = RICH_TEXT_FIELDS.map(([label, name]) => [label, fieldText(data.fields[name])] as const)
     .filter((section): section is readonly [string, string] => !!section[1])
-    .map(([label, html]) => renderSection(label, `<div class="rich-text">${sanitizeHtml(html)}</div>`));
-  const hierarchy = [
-    data.parent ? renderSection('Parent', `<ul class="related">${renderRelated(data.parent)}</ul>`) : '',
-    renderChildren(data),
-    renderDependencies('predecessor', 'Predecessors', data.predecessors, data, 'Does not depend on other work items.'),
-    renderDependencies('successor', 'Successors', data.successors, data, 'No work items depend on this one.'),
-  ];
-  const breadcrumb = data.parent
-    ? `<nav class="breadcrumb" aria-label="Parent">${escapeHtml(data.parent.type)}
-        <button class="link id" data-action="openDetails" data-id="${data.parent.id}">${data.parent.id}</button>
-        <span class="breadcrumb-title">${escapeHtml(data.parent.title)}</span></nav>`
-    : '';
-  const track = data.track ? renderTrackHtml(data.track, `Track of ${data.id}`, true) : '';
-  return `<header class="details-head state-border-${stateCategory(data.displayState ?? data.state)}">
-      ${breadcrumb}
-      <div class="head-line">${typeIcon(data.type)}<span class="type">${escapeHtml(data.type)}</span>
-        <span class="id">${data.id}</span>${renderUrgency(data.fields)}</div>
-      <h1>${escapeHtml(data.title)}</h1>
-      ${renderActions(data)}
-      ${renderStateBar(data)}
-      ${track}
+    .map(([label, html]) =>
+      renderSection(
+        label,
+        `<div class="rich-text${label === 'Acceptance criteria' ? ' acceptance' : ''}">${sanitizeHtml(html)}</div>`
+      )
+    );
+  const children = hasTaskList(data.type) ? renderTasks(data) : renderChildren(data);
+  return `<main>${richText.join('') || '<p class="muted">No description.</p>'}${children}</main>`;
+}
+
+export function renderDetailsBody(data: DetailsData): string {
+  return `<div class="details-page">
+    <header class="details-head">
+      ${renderBreadcrumb(data)}
+      <div class="head-row">
+        <div class="head-main"><h1>${escapeHtml(data.title)}</h1>${renderMetaLine(data)}</div>
+        ${renderActions(data)}
+      </div>
     </header>
+    <section class="state-section">${renderStateBar(data)}${renderStateHelp(data)}</section>
+    ${renderTrack(data)}
     <div class="details-grid">
-      <main>${richText.join('') || '<p class="muted">No description.</p>'}${hierarchy.join('')}</main>
+      ${renderMain(data)}
       <aside>
         ${renderBeforeCompletion(data)}
-        ${renderSection('Development', renderDevelopment(data.card))}
-        ${renderSection('Details', renderMeta(data.fields))}
+        ${renderBox('Development', renderDevelopment(data.card))}
+        ${renderDependencies(data)}
+        ${renderBox('Details', renderMeta(data))}
       </aside>
-    </div>`;
+    </div>
+  </div>`;
 }

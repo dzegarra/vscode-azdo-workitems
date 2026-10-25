@@ -94,8 +94,10 @@ Card actions:
 The **Work Item Details panel** of a Backlog Item or a Bug shows:
 
 - a **state bar** with the states it goes through: New, Approved, Committed, Done for Backlog Items (the derived _In review_ shown dashed next to Committed, display only); New, Approved, Committed, Ready to Test, Done for Bugs, where Ready to Test is _your finish line_ and Done is locked (_testers only_), and a Bug the testers reopened shows **ReOpened** in the Approved slot. Removed appears only when the work item is removed. Click a state to move the work item to it (Ready to Test still proposes Integrated in Build);
-- its **track**, with the name of each station (only for the work items of your list, whose branches and PRs are known);
-- **Before completion**: what keeps it from being completed, in one list: its alerts (red), then its open predecessors with who to agree with (click one to open it), blocking tags, empty fields and conventions (orange); _Nothing in the way_ when the list is empty.
+- its **track** as six columns (Branch, Pull request, CI, Review, Ready to be merged, Done / Ready to Test), each with a round marker (passed, needs you, broken, in flight, not reached) and notes under the name: where the branch is (and its worktree), the PR and how long ago it was published, tests and coverage with their change, the required approvals and who is missing, how the merge goes, and for Bugs the Integrated in Build (only for the work items of your list, whose branches and PRs are known);
+- a **header** with the parent and the type and ID as a breadcrumb, the title, pills (priority, severity, Effort, tags, blocking tags in red), the sprint and the assignee, and the actions on the right: one prominent button (Create PR, Create branch, Checkout or Delete branch), the other branch actions, Figma and Reload;
+- **Tasks** (Backlog Items and Bugs) with a progress bar, the assignee's initials, the state button of each task and **Add task**; other types keep the **Children** list;
+- a side column with **Before completion** (what keeps it from being completed, in one list: its alerts (red), then its open predecessors with who to agree with (click one to open it), blocking tags, empty fields and conventions (orange); _Nothing in the way_ when the list is empty), **Development** (branches and PRs), **Dependencies** (predecessors and successors with their risk, and **Open dependency map**) and **Details** (fields, Integrated in Build for Bugs, and **Open in Azure DevOps**).
 
 Organization, project and repository are detected from the `origin` remote.
 
