@@ -14,7 +14,7 @@ import type {
   TimelineSegment,
 } from '../sprintTimelineModel';
 import { toggleCollapsed, visibleRows } from '../timelineGroups';
-import type { BoardAction } from '../trackBoardModel';
+import { COMPLETED_TOOLTIP, type BoardAction } from '../trackBoardModel';
 
 interface VsCodeApi {
   postMessage(message: TimelineMessage): void;
@@ -275,6 +275,9 @@ function renderHeader(current: TimelineModel): string {
     'This + next sprint',
     'Widen the view to the next sprint too: what is already planned there and what will spill over'
   )}</div>
+    <div class="bd-chips" role="group" aria-label="Completed"><button class="bd-chip chip-completed" data-completed aria-pressed="${String(
+      current.showCompleted
+    )}" title="${escapeHtml(COMPLETED_TOOLTIP)}">Completed</button></div>
     <button class="bd-icon-button" data-refresh title="Refresh" aria-label="Refresh">${icon('sync')}</button></header>`;
 }
 
@@ -301,7 +304,13 @@ function renderBody(current: TimelineModel): string {
   }
   const work = current.work.length
     ? visibleRows(current.work, collapsed).map(renderRow).join('')
-    : '<p class="tl-empty-row">None of your work items is in the sprint</p>';
+    : `<p class="tl-empty-row">${
+        current.finished.length ? 'No open work item' : 'None of your work items is in the sprint'
+      }</p>`;
+  // Rule TIMELINE-19
+  const finished = current.finished.length
+    ? section('DONE THIS SPRINT', visibleRows(current.finished, collapsed).map(renderRow).join(''))
+    : '';
   const planned =
     current.range === 'sprintAndNext'
       ? section('PLANNED IN THE NEXT SPRINT', current.planned.rows.map(renderRow).join(''), current.planned.note)
@@ -315,7 +324,7 @@ function renderBody(current: TimelineModel): string {
       current
     )}</div></div>
     <div class="tl-body"><div class="tl-overlay" aria-hidden="true"></div>
-    ${section('MY WORK ITEMS', work)}${planned}${notes}${section(current.reviewsTitle, reviews)}${section(
+    ${section('MY WORK ITEMS', work)}${finished}${planned}${notes}${section(current.reviewsTitle, reviews)}${section(
     'DEVELOP',
     renderDevelop(current.develop)
   )}</div></div>`;
@@ -470,6 +479,11 @@ document.addEventListener('click', (event) => {
   const range = target?.closest<HTMLElement>('[data-range]');
   if (range) {
     post({ type: 'setTimelineRange', range: range.dataset.range === 'sprintAndNext' ? 'sprintAndNext' : 'sprint' });
+    return;
+  }
+  if (target?.closest('[data-completed]')) {
+    // Rule TIMELINE-19
+    post({ type: 'setShowCompleted', show: !(model?.showCompleted ?? true) });
     return;
   }
   if (target?.closest('[data-open-board]')) {

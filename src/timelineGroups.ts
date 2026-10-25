@@ -96,13 +96,16 @@ export interface GroupInput {
   /** The axis: start of its first day, end of its last day */
   from: number;
   to: number;
+  /** Rule TIMELINE-19: false, the merged PRs are only counted: no row, and no group that only they made */
+  showCompleted?: boolean;
 }
 
-// Rule TIMELINE-16
+// Rules TIMELINE-16, TIMELINE-19
 /**
  * The work items that become a group: 2+ PRs drawn (open ones and merged within the axis), or at least one PR merged
  * within the axis while the work item is not finished (the board sends it back to To start / Branch, TRACK-7). A
- * finished work item with a single PR keeps its one row. Keyed by work item id, in the order of its first card
+ * finished work item with a single PR keeps its one row. With the merged PRs hidden (TIMELINE-19) they do not count
+ * for the group, so a work item that was a group only because of them has its one row. Keyed by work item id, in the order of its first card
  */
 export function planGroups(input: GroupInput): Map<number, GroupPlan> {
   const plans = new Map<number, GroupPlan>();
@@ -114,7 +117,7 @@ export function planGroups(input: GroupInput): Map<number, GroupPlan> {
     }
     const cards = input.cards.filter((card) => card.id === id);
     const mergedPrs = item.pullRequests.filter((pr) => pr.tone === 'completed');
-    const merged = mergedPrs
+    const merged = (input.showCompleted === false ? [] : mergedPrs)
       .flatMap((pr) => input.completed.find((candidate) => candidate.id === pr.id) ?? [])
       .filter((pr) => mergedInRange(pr, input.from, input.to))
       .sort((a, b) => a.creationDate.localeCompare(b.creationDate));

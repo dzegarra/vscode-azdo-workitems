@@ -119,6 +119,12 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
   color: var(--vscode-foreground);
 }
 
+.bd-chip[aria-pressed='true'].chip-completed {
+  border-color: var(--passed);
+  background: color-mix(in srgb, var(--passed) 16%, transparent);
+  color: var(--vscode-foreground);
+}
+
 .bd-icon-button {
   display: inline-flex;
   align-items: center;
@@ -427,27 +433,22 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
   background: color-mix(in srgb, var(--passed) 85%, var(--vscode-foreground));
 }
 
-/* The collapsed finished work items */
-.bd-summary {
-  gap: 4px;
-  border-style: dashed;
-  background: transparent;
+/* Finished work items and merged PRs (Rules BOARD-5, BOARD-24): calm, with the green accent of the tone */
+.bd-card.tone-done {
+  background: color-mix(in srgb, var(--passed) 4%, var(--bd-card));
+}
+
+.bd-card.tone-done .bd-title {
   color: var(--muted);
-  cursor: default;
 }
 
-.bd-summary:hover {
-  box-shadow: none;
-  border-color: var(--border);
+.bd-card.is-merged {
+  opacity: 0.78;
+  background: transparent;
 }
 
-.bd-summary .bd-id {
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 11px;
-}
-
-.bd-summary-text {
-  font-size: 12px;
+.bd-card.is-merged .bd-id {
+  color: var(--passed);
 }
 
 /* ---------- PRs you review ---------- */

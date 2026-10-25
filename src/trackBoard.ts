@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
-import { settings, workingDaysSetting } from './config';
+import { setShowCompleted, settings, workingDaysSetting } from './config';
 import type { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import { withFeature } from './requestContext';
 import type { ReviewRequestsWatcher } from './reviewRequestsWatcher';
@@ -48,10 +48,14 @@ export function currentBoard(
     maxWaitHours: reviewSettings().maxWaitHours,
     iterations: base.iterations.map((iteration) => ({
       name: iteration.name,
+      startDate: iteration.startDate,
       finishDate: iteration.finishDate,
       progress: sprintProgress(iteration.startDate, iteration.finishDate, now, workingDaysSetting()),
     })),
     kinds: [...kinds],
+    showCompleted: settings().showCompleted,
+    completed: myPullRequests.completedPullRequests(),
+    now,
     look: settings().look,
     popoverDelay: settings().popoverDelay,
   });
@@ -142,6 +146,11 @@ export class TrackBoardPanel implements vscode.Disposable {
         this.post();
         this.postSelect();
         await this.store.ensureLoaded();
+        return;
+      }
+      if (message.type === 'setShowCompleted') {
+        // Rule BOARD-25: the change of the setting redraws both tabs (extension.ts)
+        await setShowCompleted(message.show);
         return;
       }
       if (message.type === 'setBoardKinds') {

@@ -5,6 +5,7 @@ import { lookClass } from '../look';
 import type { BoardUpdate } from '../trackBoard';
 import {
   ALL_KINDS,
+  COMPLETED_TOOLTIP,
   type BoardAction,
   type BoardColumn,
   type BoardColumnId,
@@ -97,6 +98,9 @@ function trackBars(stations: BoardStation[], named: boolean): string {
 
 function renderWorkCard(card: BoardWorkCard): string {
   const classes = ['bd-card', `tone-${card.tone}`];
+  if (card.merged) {
+    classes.push('is-merged');
+  }
   if (card.current) {
     classes.push('is-current');
   }
@@ -158,12 +162,6 @@ function renderReviewCard(card: BoardReviewCard): string {
   }</article>`;
 }
 
-function renderSummaryCard(ids: number[]): string {
-  return `<article class="bd-card bd-summary" role="listitem"><span class="bd-id">${ids
-    .map((id) => `#${String(id)}`)
-    .join(' · ')}</span><span class="bd-summary-text">${String(ids.length)} Done this sprint</span></article>`;
-}
-
 /* ---------- Board ---------- */
 
 function columnCounts(column: BoardColumn): string {
@@ -193,9 +191,10 @@ function renderRow(columns: BoardColumn[], cell: (id: BoardColumnId) => string):
 
 function renderBoard(current: BoardModel): string {
   const work = (id: BoardColumnId): string => {
-    const cards = current.work.filter((card) => card.column === id).map(renderWorkCard);
-    const summary = id === 'done' && current.summary.ids.length ? [renderSummaryCard(current.summary.ids)] : [];
-    return [...cards, ...summary].join('');
+    return current.work
+      .filter((card) => card.column === id)
+      .map(renderWorkCard)
+      .join('');
   };
   const reviews = (id: BoardColumnId): string =>
     current.reviews
@@ -225,6 +224,9 @@ function renderHeader(current: BoardModel): string {
     <div class="bd-tabs" role="group" aria-label="View"><button class="bd-chip" aria-pressed="true">Track board</button><button class="bd-chip" data-open-timeline aria-pressed="false">Sprint timeline</button></div>
     <span class="bd-scope">Mine + my reviews</span>
     <div class="bd-chips" role="group" aria-label="Type">${chip('backlog', 'Backlog Items')}${chip('bug', 'Bugs')}</div>
+    <div class="bd-chips" role="group" aria-label="Completed"><button class="bd-chip chip-completed" data-completed aria-pressed="${String(
+      current.showCompleted
+    )}" title="${escapeHtml(COMPLETED_TOOLTIP)}">Completed</button></div>
     <button class="bd-icon-button" data-refresh title="Refresh" aria-label="Refresh">${icon('sync')}</button></header>`;
 }
 
@@ -532,7 +534,7 @@ function renderBody(current: BoardModel): string {
     return `<div class="message error"><p>${escapeHtml(current.error ?? 'Unknown error')}</p>
       <button class="button primary" data-refresh>Retry</button></div>`;
   }
-  const empty = !current.work.length && !current.summary.ids.length && !current.reviews.length;
+  const empty = !current.work.length && !current.reviews.length;
   if (current.status === 'loading' && empty) {
     return '<p class="message muted">Checking…</p>';
   }
@@ -596,6 +598,11 @@ document.addEventListener('click', (event) => {
   const chip = target?.closest<HTMLElement>('[data-kind-chip]');
   if (chip) {
     toggleKind(chip.dataset.kindChip === 'bug' ? 'bug' : 'backlog');
+    return;
+  }
+  if (target?.closest('[data-completed]')) {
+    // Rule BOARD-25: the setting is shared with the Sprint timeline; both tabs redraw from it
+    post({ type: 'setShowCompleted', show: !(model?.showCompleted ?? true) });
     return;
   }
   if (target?.closest('[data-open-timeline]')) {

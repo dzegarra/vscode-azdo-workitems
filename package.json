@@ -1600,6 +1600,13 @@
             "markdownDescription": "Short, quiet sounds with the celebrations of `#totalflowx.fun.enabled#` (which must be on too): a rising chime when one of your PRs is merged, a ding when your green CI streak sets a new record, a low \"bonk\" when a failure ends a streak. Played by the sidebar, so only while it is open and visible.",
             "scope": "application",
             "order": 9
+          },
+          "totalflowx.appearance.showCompleted": {
+            "type": "boolean",
+            "default": true,
+            "markdownDescription": "Show the finished work items and the PRs merged in the sprint on the **Track board** and the **Sprint timeline**. The **Completed** button in the header of both tabs changes it. Off: a finished work item that breaks a team rule stays visible.",
+            "scope": "application",
+            "order": 10
           }
         }
       },

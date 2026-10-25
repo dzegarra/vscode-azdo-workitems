@@ -37,7 +37,11 @@ export type BoardKind = 'backlog' | 'bug';
 export const ALL_KINDS: readonly BoardKind[] = ['backlog', 'bug'];
 
 /** Messages of the board: the buttons post the messages of the sidebar, so the same code runs them */
-export type BoardMessage = WebviewMessage | { type: 'openTimeline' } | { type: 'setBoardKinds'; kinds: BoardKind[] };
+export type BoardMessage =
+  | WebviewMessage
+  | { type: 'openTimeline' }
+  | { type: 'setBoardKinds'; kinds: BoardKind[] }
+  | { type: 'setShowCompleted'; show: boolean };
 
 export type CardTone = 'active' | 'broken' | 'done' | 'needsYou' | 'neutral' | 'ship';
 
@@ -154,6 +158,8 @@ export interface BoardWorkCard {
   taskCount?: number;
   /** The card of the work item itself: the only one, or the one of the PR the track follows (TRACK-1) */
   primary: boolean;
+  /** A PR of the work item that was merged in the sprint: a faded card of the Done column (BOARD-24) */
+  merged?: { prId: number; closedAt: string };
   /** Title of the work item (the title of a PR card is the PR's) */
   itemTitle: string;
   /** Short tag at the right of the header: "tasks", "no PR yet" */
@@ -223,16 +229,11 @@ export interface BoardReviewCard {
   openPullRequest: BoardAction;
 }
 
-export interface BoardSummaryCard {
-  /** Finished work items without a broken rule, collapsed into one card */
-  ids: number[];
-}
-
 export interface BoardColumn {
   id: BoardColumnId;
   title: string;
   hint: string;
-  /** Work items in the column, the collapsed ones included */
+  /** Cards of the work items in the column (merged PRs included) */
   count: number;
   /** PRs to review in the column */
   reviewCount: number;
@@ -246,13 +247,25 @@ export interface BoardModel {
   kinds: BoardKind[];
   columns: BoardColumn[];
   work: BoardWorkCard[];
-  summary: BoardSummaryCard;
+  /** Finished work items and merged PRs are shown (Rule BOARD-25) */
+  showCompleted: boolean;
   reviews: BoardReviewCard[];
   /** Why the PRs to review are missing, when they could not be checked */
   notes: string[];
   /** Colours and fonts (Rule LOOK-1) */
   look: 'theme' | 'totalflow';
   popoverDelay: number;
+}
+
+/** Tooltip of the Completed chip of the header of the Track board and of the Sprint timeline (Rule BOARD-25) */
+export const COMPLETED_TOOLTIP =
+  'Show or hide the finished work items and the merged PRs. Hidden, a finished work item that breaks a team rule stays visible.';
+
+/** A merged PR: what the board needs to draw its card */
+export interface MergedPullRequest {
+  id: number;
+  title: string;
+  closedDate: string;
 }
 
 export interface BoardInput {
@@ -264,8 +277,14 @@ export interface BoardInput {
   reviewsStatus: 'error' | 'loading' | 'ready';
   reviewsError?: string;
   maxWaitHours: number;
-  iterations: { name: string; finishDate?: string; progress?: SprintProgress }[];
+  iterations: { name: string; startDate?: string; finishDate?: string; progress?: SprintProgress }[];
   kinds: BoardKind[];
+  /** Rule BOARD-25: show the finished work items and the PRs merged in the sprint */
+  showCompleted: boolean;
+  /** The PRs of the user that were merged (My Pull Requests already has them), for the merged cards (BOARD-24) */
+  completed?: readonly MergedPullRequest[];
+  /** Defaults to the current time */
+  now?: Date;
   look: BoardModel['look'];
   popoverDelay: number;
 }
@@ -282,6 +301,11 @@ const COLUMN_TITLES: Record<BoardColumnId, string> = {
 const isBug = (item: Pick<WorkItemModel, 'type'>): boolean => item.type === 'Bug';
 
 const firstName = (name: string): string => name.split(' ').at(0) ?? name;
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** "Mon 21": the weekday and the day of the month */
+const dayName = (ms: number): string => `${WEEKDAYS[new Date(ms).getDay()]} ${String(new Date(ms).getDate())}`;
 
 const plural = (count: number, noun: string): string => `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
 
@@ -538,7 +562,11 @@ function statusLine(
     if (item.alerts.length) {
       return { text: `${plural(item.alerts.length, 'rule')} broken`, tone: 'broken' };
     }
-    return isBug(item) ? { text: 'Ready to Test · testers next', tone: 'passed' } : undefined;
+    if (isBug(item)) {
+      return { text: 'Ready to Test · testers next', tone: 'passed' };
+    }
+    const changed = Date.parse(item.dates?.stateChanged ?? '');
+    return Number.isNaN(changed) ? undefined : { text: `Done ${dayName(changed)}`, tone: 'passed' };
   }
   if (current?.state === 'broken' && current.detail) {
     return { text: current.detail, tone: 'broken' };
@@ -1293,7 +1321,102 @@ function columnHint(id: BoardColumnId, maxWaitHours: number): string {
   }
 }
 
-// Rules BOARD-6, BOARD-12, BOARD-20
+/** The PRs merged within the sprint count: from its first day, or (dates unknown) the last 14 days */
+const FALLBACK_DAYS = 14;
+
+/** When the merged PRs start to count (BOARD-24): the start of the sprint of the header, else 14 days back */
+export function mergedSince(iterations: BoardInput['iterations'], now: number): number {
+  const header = [...iterations]
+    .filter((candidate) => candidate.progress)
+    .sort((a, b) => (a.finishDate ?? '').localeCompare(b.finishDate ?? ''))
+    .at(0);
+  const start = Date.parse(header?.startDate ?? '');
+  return Number.isNaN(start) ? now - FALLBACK_DAYS * 24 * 3_600_000 : start;
+}
+
+// Rule BOARD-24
+/**
+ * The faded cards of the PRs of a work item that were merged in the sprint, for a work item that is not finished (a
+ * finished one is one card of the Done column): they sit in the Done column and are part of the card family of the
+ * work item (BOARD-14), whose drawer they open (BOARD-23). Abandoned PRs never have one
+ */
+function mergedCards(
+  item: WorkItemModel,
+  own: BoardWorkCard[],
+  completed: readonly MergedPullRequest[],
+  since: number
+): BoardWorkCard[] {
+  const base = own.find((card) => card.primary) ?? own.at(0);
+  if (!base) {
+    return [];
+  }
+  return item.pullRequests
+    .filter((pr) => pr.tone === 'completed')
+    .flatMap((pr) => {
+      const info = completed.find((candidate) => candidate.id === pr.id);
+      const closed = Date.parse(info?.closedDate ?? '');
+      if (!info || Number.isNaN(closed) || closed < since) {
+        return [];
+      }
+      const card: BoardWorkCard = {
+        ...base,
+        key: `${String(item.id)}:merged:${String(pr.id)}`,
+        part: undefined,
+        prId: undefined,
+        taskId: undefined,
+        taskCount: undefined,
+        tag: undefined,
+        note: undefined,
+        primary: false,
+        merged: { prId: pr.id, closedAt: info.closedDate },
+        siblings: [],
+        column: 'done',
+        title: pullRequestTitle(info.title),
+        header: `#${String(item.id)} · ✓ PR ${String(pr.id)}`,
+        tone: 'done',
+        status: { text: `merged ${dayName(closed)}`, tone: 'passed' },
+        verb: undefined,
+        asleep: undefined,
+        here: false,
+        current: undefined,
+        action: undefined,
+        need: undefined,
+        // The PR passed every station: the stations of the card are the ones of this PR, not of the work item
+        track: base.track.map((station) => ({ ...station, state: 'done', detail: undefined, current: false })),
+        detail: {
+          ...base.detail,
+          stations: base.detail.stations.map((station) => ({
+            ...station,
+            state: 'done',
+            detail: undefined,
+            current: false,
+            stateText: stationStateLabel('done'),
+            notes: [],
+          })),
+        },
+        why: { title: `Why ${COLUMN_TITLES.done}`, text: `PR ${String(pr.id)} was merged ${dayName(closed)}` },
+        hover: [{ label: 'PR', value: `${String(pr.id)} · merged ${dayName(closed)}` }],
+        related: [],
+        checkout: undefined,
+        openPullRequest: {
+          label: 'Open PR',
+          message: { type: 'openPullRequest', id: item.id, pullRequestId: pr.id },
+        },
+      };
+      return [card];
+    })
+    .sort((a, b) => Date.parse(b.merged?.closedAt ?? '') - Date.parse(a.merged?.closedAt ?? ''));
+}
+
+/** When a completed card was completed: the state change of a finished work item, the merge of a PR */
+function completedAt(card: BoardWorkCard, items: WorkItemModel[]): number {
+  const at = card.merged
+    ? Date.parse(card.merged.closedAt)
+    : Date.parse(items.find((item) => item.id === card.id)?.dates?.stateChanged ?? '');
+  return Number.isNaN(at) ? 0 : at;
+}
+
+// Rules BOARD-5, BOARD-6, BOARD-12, BOARD-20, BOARD-24, BOARD-25
 export function buildBoard(input: BoardInput): BoardModel {
   const items = boardItems(input.workItems, input.kinds);
   const queue = nowQueue({
@@ -1304,15 +1427,32 @@ export function buildBoard(input: BoardInput): BoardModel {
     staleWorktrees: 0,
   }).items;
   const context: CardContext = { workItems: input.workItems, myPullRequests: input.myPullRequests, queue };
-  const cards = items.flatMap((item) => workCards(item, context));
-  // Rule BOARD-5: finished work items without a broken rule are one dashed card
-  const collapsedIds = new Set(
-    items.filter((item) => isFinishedState(item.state) && item.alerts.length === 0).map((item) => item.id)
-  );
-  const shown = withRelated(
-    cards.filter((card) => !collapsedIds.has(card.id)),
-    items
-  );
+  const since = mergedSince(input.iterations, (input.now ?? new Date()).getTime());
+  // Rule BOARD-25: hidden, the finished work items are not on the board, except the ones that break a rule
+  const isHidden = (item: WorkItemModel): boolean =>
+    !input.showCompleted && isFinishedState(item.state) && item.alerts.length === 0;
+  const cards = items
+    .filter((item) => !isHidden(item))
+    .flatMap((item) => {
+      const own = workCards(item, context);
+      const merged =
+        input.showCompleted && !isFinishedState(item.state) ? mergedCards(item, own, input.completed ?? [], since) : [];
+      const count = own.length + merged.length;
+      const whole = merged.length
+        ? own.map((card) =>
+            card.split ? { ...card, split: { ...card.split, title: `Why on ${String(count)} cards` } } : card
+          )
+        : own;
+      return [...whole, ...merged];
+    });
+  // Rule BOARD-5: the completed cards go last in the Done column, the most recently completed first
+  const isCompleted = (card: BoardWorkCard): boolean =>
+    card.merged !== undefined || isFinishedState(items.find((item) => item.id === card.id)?.state ?? '');
+  const ordered = [
+    ...cards.filter((card) => !isCompleted(card)),
+    ...cards.filter(isCompleted).sort((a, b) => completedAt(b, items) - completedAt(a, items)),
+  ];
+  const shown = withRelated(ordered, items);
   const reviews = input.reviews.map(reviewCard);
   const current = currentCard(queue, shown, reviews, items);
   const work = shown.map((card) =>
@@ -1329,11 +1469,11 @@ export function buildBoard(input: BoardInput): BoardModel {
       id,
       title: COLUMN_TITLES[id],
       hint: columnHint(id, input.maxWaitHours),
-      count: cards.filter((card) => card.column === id).length,
+      count: work.filter((card) => card.column === id).length,
       reviewCount: reviews.filter((review) => review.column === id).length,
     })),
     work,
-    summary: { ids: [...collapsedIds] },
+    showCompleted: input.showCompleted,
     reviews: reviews.map((review) =>
       current?.kind === 'review' && current.key === String(review.id) ? { ...review, current: true } : review
     ),

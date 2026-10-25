@@ -28,6 +28,13 @@ export function compilePullRequestTaskPattern(source: string): RegExp {
   }
 }
 
+/** The Completed chip of the Track board and of the Sprint timeline (Rule BOARD-25): the setting is the user's, for both */
+export async function setShowCompleted(show: boolean): Promise<void> {
+  await vscode.workspace
+    .getConfiguration(SECTION)
+    .update('appearance.showCompleted', show, vscode.ConfigurationTarget.Global);
+}
+
 export function settings() {
   const config = vscode.workspace.getConfiguration(SECTION);
   return {
@@ -69,6 +76,8 @@ export function settings() {
     },
     hoverStyle: normalizeHoverStyle(config.get<string>('appearance.hoverStyle', 'border')),
     look: normalizeLook(config.get<string>('appearance.look', 'theme')),
+    /** Rule BOARD-25: the finished work items and the merged PRs on the Track board and the Sprint timeline */
+    showCompleted: config.get<boolean>('appearance.showCompleted', true),
     asleepPulse: config.get<boolean>('appearance.asleepPulse', true),
     popoverDelay: normalizePopoverDelay(config.get<unknown>('popovers.hoverDelay')),
     tasksCountStyle: normalizeTaskCountStyle(config.get<string>('tasks.countStyle', 'filled')),

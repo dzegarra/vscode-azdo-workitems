@@ -136,6 +136,20 @@ describe('planGroups (TIMELINE-16)', () => {
     expect(group.get(1)?.cards).toEqual([]);
   });
 
+  it('does not count the merged PRs when they are hidden (TIMELINE-19)', () => {
+    const hidden = (workItems: WorkItemModel[], completed: CompletedPullRequestInfo[]) =>
+      planGroups({ cards: [card(1)], workItems, completed, from: day(12), to: day(24), showCompleted: false });
+    // A group only because of its merged PRs is one row again
+    expect(hidden([item(1, { pullRequests: [pr(11, 'completed')] })], [info(11)]).size).toBe(0);
+    expect(hidden([item(1, { pullRequests: [pr(10, 'review'), pr(11, 'completed')] })], [info(11)]).size).toBe(0);
+    // Two open PRs are still a group, without merged rows, but the merged PRs are counted
+    const plans = hidden(
+      [item(1, { pullRequests: [pr(10, 'review'), pr(12, 'review'), pr(11, 'completed')] })],
+      [info(11)]
+    );
+    expect(plans.get(1)).toMatchObject({ merged: [], mergedTotal: 1, openCount: 2 });
+  });
+
   it('is a group when the board split the work item, and ignores merged PRs without dates', () => {
     const items = [item(1, { pullRequests: [pr(10, 'review'), pr(11, 'review'), pr(12, 'completed')] })];
     const plans = plan(items, [card(1, 'pr', '1:pr:10'), card(1, 'pr', '1:pr:11'), card(1, 'tasks', '1:tasks')], []);

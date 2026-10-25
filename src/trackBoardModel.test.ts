@@ -120,6 +120,7 @@ function input(overrides: Partial<BoardInput> = {}): BoardInput {
     maxWaitHours: 24,
     iterations: [],
     kinds: ['backlog', 'bug'],
+    showCompleted: true,
     look: 'theme',
     popoverDelay: 500,
     ...overrides,
@@ -232,18 +233,19 @@ describe('a merged PR with work left (BOARD-3, BOARD-5)', () => {
 });
 
 describe('buildBoard', () => {
-  it('collapses finished work items without broken rules into one card and keeps the broken ones', () => {
-    // Rule BOARD-5
+  it('shows finished work items as full cards, the most recently finished first, and keeps the broken ones red', () => {
+    // Rules BOARD-5, BOARD-25
     const board = buildBoard(
       input({
         workItems: [
-          workItem({ id: 1, state: 'Done', displayState: 'Done' }),
-          workItem({ id: 2, state: 'Done', displayState: 'Done' }),
+          workItem({ id: 1, state: 'Done', displayState: 'Done', dates: { stateChanged: '2026-10-14T10:00:00Z' } }),
+          workItem({ id: 2, state: 'Done', displayState: 'Done', dates: { stateChanged: '2026-10-16T10:00:00Z' } }),
           workItem({
             id: 3,
             type: 'Bug',
             state: 'Ready to Test',
             displayState: 'Ready to Test',
+            dates: { stateChanged: '2026-10-15T10:00:00Z' },
             alerts: [
               { rule: 'noTasks', message: 'a' },
               { rule: 'noTasks', message: 'b' },
@@ -252,10 +254,31 @@ describe('buildBoard', () => {
         ],
       })
     );
-    expect(board.summary.ids).toEqual([1, 2]);
-    expect(board.work.map((card) => card.id)).toEqual([3]);
-    expect(board.work[0]).toMatchObject({ column: 'done', tone: 'broken', status: { text: '2 rules broken' } });
+    expect(board.work.map((card) => card.id)).toEqual([2, 3, 1]);
+    expect(board.work.map((card) => card.tone)).toEqual(['done', 'broken', 'done']);
+    expect(board.work[0]).toMatchObject({ column: 'done', action: undefined, status: { tone: 'passed' } });
+    expect(board.work[0].status?.text).toMatch(/^Done /);
+    expect(board.work[1]).toMatchObject({ status: { text: '2 rules broken' } });
     expect(board.columns.find((column) => column.id === 'done')?.count).toBe(3);
+    expect(board.showCompleted).toBe(true);
+  });
+
+  it('hides the finished work items when the setting is off, except the ones that break a rule', () => {
+    // Rule BOARD-25
+    const board = buildBoard(
+      input({
+        showCompleted: false,
+        workItems: [
+          workItem({ id: 1, state: 'Done', displayState: 'Done' }),
+          workItem({ id: 2, state: 'Done', displayState: 'Done', alerts: [{ rule: 'noTasks', message: 'a' }] }),
+          workItem({ id: 4, state: 'Active', displayState: 'Active' }),
+        ],
+      })
+    );
+    expect(board.work.map((card) => card.id).sort()).toEqual([2, 4]);
+    expect(board.work.find((card) => card.id === 2)).toMatchObject({ tone: 'broken', column: 'done' });
+    expect(board.columns.find((column) => column.id === 'done')?.count).toBe(1);
+    expect(board.showCompleted).toBe(false);
   });
 
   it('counts the work items and the reviews of each column, with the real review deadline in the hint', () => {
@@ -778,5 +801,104 @@ describe('a work item with several open PRs (BOARD-20..23)', () => {
   it('points the current card at the PR of the Now queue row, else at the primary card', () => {
     const board = buildBoard(split());
     expect(board.work.filter((card) => card.current).map((card) => card.key)).toEqual(['1:pr:12']);
+  });
+});
+
+describe('merged PR cards and the Completed setting (BOARD-24, BOARD-25)', () => {
+  const NOW = new Date(2026, 9, 21, 12, 0);
+  const sprint = [
+    {
+      name: 'Sprint 122',
+      startDate: new Date(2026, 9, 12).toISOString(),
+      finishDate: new Date(2026, 9, 23).toISOString(),
+      progress: { text: '2 days left', hurry: false, tooltip: '' } as never,
+    },
+  ];
+  const day = (d: number) => new Date(2026, 9, d, 12, 0).toISOString();
+  const mergedPr = (id: number, title = `[7] Merged ${String(id)}`) =>
+    pr({ id, title, tone: 'completed', status: 'Completed', isActive: false });
+  const completed = [
+    { id: 71, title: '[7] Merged 71', closedDate: day(14) },
+    { id: 72, title: '[7] Merged 72', closedDate: day(16) },
+    { id: 73, title: '[7] Before the sprint', closedDate: day(5) },
+  ];
+  const withMerged = (overrides: Partial<BoardInput> = {}): BoardInput =>
+    input({
+      iterations: sprint,
+      now: NOW,
+      completed,
+      workItems: [
+        workItem({
+          id: 7,
+          state: 'Active',
+          displayState: 'Active',
+          pullRequests: [
+            mergedPr(71),
+            mergedPr(72),
+            mergedPr(73),
+            pr({ id: 74, tone: 'abandoned', status: 'Abandoned' }),
+          ],
+        }),
+      ],
+      ...overrides,
+    });
+
+  it('draws a faded Done card for each PR merged in the sprint, most recent first, never abandoned ones', () => {
+    const board = buildBoard(withMerged());
+    const cards = board.work.filter((card) => card.merged);
+    expect(cards.map((card) => card.merged?.prId)).toEqual([72, 71]);
+    expect(cards[0]).toMatchObject({
+      key: '7:merged:72',
+      header: '#7 · ✓ PR 72',
+      title: 'Merged 72',
+      column: 'done',
+      tone: 'done',
+      primary: false,
+      action: undefined,
+      status: { text: expect.stringMatching(/^merged /) as string, tone: 'passed' },
+    });
+    // The drawer shows this PR: it passed every station
+    expect(cards[0].track.every((station) => station.state === 'done')).toBe(true);
+    // They are part of the family of the work item (BOARD-14) and count in the column
+    const main = board.work.find((card) => card.id === 7 && !card.merged);
+    expect(main?.siblings).toEqual(['7:merged:72', '7:merged:71']);
+    expect(board.columns.find((column) => column.id === 'done')?.count).toBe(3);
+  });
+
+  it('uses the last 14 days when the dates of the sprint are not known', () => {
+    const board = buildBoard(
+      withMerged({ iterations: [], completed: [...completed, { id: 73, title: 'x', closedDate: day(5) }] })
+    );
+    expect(board.work.filter((card) => card.merged).map((card) => card.merged?.prId)).toEqual([72, 71]);
+    const older = buildBoard(withMerged({ iterations: [], now: new Date(2026, 10, 10) }));
+    expect(older.work.some((card) => card.merged)).toBe(false);
+  });
+
+  it('has no merged card for a finished work item (its card is in Done) nor when hidden', () => {
+    const finished = buildBoard(
+      withMerged({
+        workItems: [workItem({ id: 7, state: 'Done', displayState: 'Done', pullRequests: [mergedPr(71)] })],
+      })
+    );
+    expect(finished.work.map((card) => card.key)).toEqual(['7']);
+    const hidden = buildBoard(withMerged({ showCompleted: false }));
+    expect(hidden.work.map((card) => card.key)).toEqual(['7']);
+  });
+
+  it('adds the merged cards to the count of cards of a split work item', () => {
+    const board = buildBoard(
+      withMerged({
+        workItems: [
+          workItem({
+            id: 7,
+            state: 'Active',
+            displayState: 'Active',
+            pullRequests: [pr({ id: 75 }), pr({ id: 76 }), mergedPr(71)],
+          }),
+        ],
+      })
+    );
+    expect(board.work.filter((card) => card.id === 7)).toHaveLength(3);
+    expect(board.work.find((card) => card.part === 'pr')?.split?.title).toBe('Why on 3 cards');
   });
 });

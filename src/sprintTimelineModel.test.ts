@@ -16,7 +16,7 @@ import {
   type PhaseInput,
   type TimelineInput,
 } from './sprintTimelineModel';
-import { buildBoard } from './trackBoardModel';
+import { buildBoard, type BoardInput } from './trackBoardModel';
 import type { PullRequestModel, WorkItemModel } from './viewModel';
 
 const WORKING = [1, 2, 3, 4, 5];
@@ -349,7 +349,8 @@ function timeline(
   items: WorkItemModel[],
   mineModels: MyPullRequestModel[] = [],
   reviews: ReviewRequestModel[] = [],
-  overrides: Partial<TimelineInput> = {}
+  overrides: Partial<TimelineInput> = {},
+  boardOverrides: Partial<BoardInput> = {}
 ) {
   const board = buildBoard({
     status: 'ready',
@@ -360,8 +361,12 @@ function timeline(
     maxWaitHours: 24,
     iterations: [],
     kinds: ['backlog', 'bug'],
+    showCompleted: true,
+    completed: overrides.completedPullRequests,
+    now: NOW,
     look: 'theme',
     popoverDelay: 500,
+    ...boardOverrides,
   });
   return buildSprintTimeline({
     now: NOW,
@@ -753,9 +758,13 @@ describe('groups (TIMELINE-16)', () => {
       [],
       { completedPullRequests: [merged(80, 14, 16)] }
     );
-    expect(rows.work.map((row) => row.key)).toEqual(['8']);
-    const [row] = rows.work;
+    expect(rows.work).toEqual([]);
+    expect(rows.finished.map((row) => row.key)).toEqual(['8']);
+    const [row] = rows.finished;
     expect(row.group).toBeUndefined();
+    expect(row.faded).toBe(true);
+    expect(row.label?.pr).toEqual({ text: 'PR 80', merged: true });
+    expect(row.merged?.text).toBe('✓ done Fr 16');
     expect(row.segments.map((segment) => segment.kind)).toEqual(['coding', 'draft', 'review']);
     expect(row.segments.some((segment) => segment.approximate && segment.kind !== 'coding')).toBe(false);
     expect(rows.mergedWithoutThreads).toEqual([]);
@@ -825,5 +834,63 @@ describe('merged PRs (TIMELINE-17)', () => {
     ).work;
     const row = rows.find((candidate) => candidate.key === 'merged:9:90');
     expect(row?.segments[0].start).toBeCloseTo(2 + 9 / 24);
+  });
+});
+
+describe('completed work items and merged PRs (TIMELINE-19)', () => {
+  const done = (id: number, prs: PullRequestModel[], extra: Partial<WorkItemModel> = {}) =>
+    workItem({
+      id,
+      state: 'Done',
+      displayState: 'Done',
+      dates: { activated: iso(13, 9), stateChanged: iso(16, 17) },
+      pullRequests: prs,
+      ...extra,
+    });
+  const closedPr = (id: number) =>
+    pullRequest({ id, title: `[1] PR ${String(id)}`, tone: 'completed', status: 'Completed' });
+  const open = workItem({ id: 1, pullRequests: [pullRequest({ id: 10 })] });
+
+  it('puts the finished work items after the open ones, in their own list', () => {
+    const model = timeline([done(2, []), open], [mine({ id: 10 })]);
+    expect(model.work.map((row) => row.key)).toEqual(['1']);
+    expect(model.finished.map((row) => row.key)).toEqual(['2']);
+    expect(model.finished[0]).toMatchObject({ faded: true, merged: { text: '✓ done Fr 16' } });
+    expect(model.finished[0].action).toBeUndefined();
+    expect(model.showCompleted).toBe(true);
+  });
+
+  it('makes a group of a finished work item with two merged PRs in range, whose children are the merged PRs', () => {
+    const model = timeline([done(3, [closedPr(31), closedPr(32)])], [], [], {
+      completedPullRequests: [merged(31, 13, 14), merged(32, 14, 16)],
+    });
+    expect(model.work).toEqual([]);
+    expect(model.finished.map((row) => row.key)).toEqual(['group:3', 'merged:3:31', 'merged:3:32']);
+    expect(model.finished[0].faded).toBe(true);
+    expect(model.finished[0].group?.bracket.text).toContain('2 PRs merged');
+    expect(model.finished[0].group?.bracket.text).toContain('✓ done Fr 16');
+    expect(model.finished[0].boardKey).toBe('3');
+  });
+
+  it('hidden: no finished row, no merged row, and a group that only the merged PRs made is one row again', () => {
+    const items = [
+      done(3, [closedPr(31), closedPr(32)], { alerts: [{ rule: 'noTasks', message: 'a' } as never] }),
+      workItem({ id: 5, pullRequests: [pullRequest({ id: 50 }), closedPr(51)] }),
+      done(6, []),
+    ];
+    const info = { completedPullRequests: [merged(31, 13, 14), merged(32, 14, 16), merged(51, 14, 15)] };
+    const model = timeline(items, [mine({ id: 50 })], [], info, { showCompleted: false });
+    // The finished work item that breaks a rule stays visible, as one row
+    expect(model.finished.map((row) => row.key)).toEqual(['3']);
+    expect(model.finished[0].group).toBeUndefined();
+    expect(model.work.map((row) => row.key)).toEqual(['5']);
+    expect(model.showCompleted).toBe(false);
+    expect(model.mergedWithoutThreads).toEqual([]);
+  });
+
+  it('shown, a work item with an open PR and a merged one is a group with the merged row', () => {
+    const items = [workItem({ id: 5, pullRequests: [pullRequest({ id: 50 }), closedPr(51)] })];
+    const model = timeline(items, [mine({ id: 50 })], [], { completedPullRequests: [merged(51, 14, 15)] });
+    expect(model.work.map((row) => row.key)).toEqual(['group:5', 'merged:5:51', '5']);
   });
 });

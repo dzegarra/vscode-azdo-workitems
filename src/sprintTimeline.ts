@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
-import { resolveContext, settings, workingDaysSetting } from './config';
+import { resolveContext, setShowCompleted, settings, workingDaysSetting } from './config';
 import type { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import { withFeature } from './requestContext';
 import type { ReviewRequestsWatcher } from './reviewRequestsWatcher';
@@ -197,6 +197,11 @@ export class SprintTimelinePanel implements vscode.Disposable {
       if (message.type === 'setTimelineRange') {
         this.range = message.range;
         this.post();
+        return;
+      }
+      if (message.type === 'setShowCompleted') {
+        // Rule TIMELINE-19: the change of the setting redraws both tabs (extension.ts)
+        await setShowCompleted(message.show);
         return;
       }
       if (message.type === 'openBoard') {

@@ -34,6 +34,7 @@ export type TimelineMessage =
   | WebviewMessage
   | { type: 'setTimelineRange'; range: TimelineRange }
   | { type: 'openBoard'; key?: string }
+  | { type: 'setShowCompleted'; show: boolean }
   | { type: 'ready' };
 
 export type SegmentKind =
@@ -388,8 +389,9 @@ export interface TimelineRow {
   groupId?: number;
   /** The last row of its group: the tree line ends there */
   lastChild?: boolean;
-  /** A merged PR: faded, with its merge mark */
+  /** A merged PR or a finished work item: faded, with its mark (Rules TIMELINE-17, TIMELINE-19) */
   faded?: boolean;
+  /** "✓ merged We 21" of a merged PR, "✓ done We 21" of a finished work item */
   merged?: { at: number; text: string };
   here?: boolean;
   /** Bug: the header is red */
@@ -428,6 +430,10 @@ export interface TimelineModel {
   /** Where NOW is on the axis; undefined outside of it */
   now?: number;
   work: TimelineRow[];
+  /** Rule TIMELINE-19: the finished work items (and their merged PRs), after the open ones, in "DONE THIS SPRINT" */
+  finished: TimelineRow[];
+  /** The finished work items and the merged PRs are shown (the setting shared with the Track board) */
+  showCompleted: boolean;
   /** The work items planned in the next sprint ("This + next sprint") */
   planned: { rows: TimelineRow[]; note?: string };
   reviews: TimelineRow[];
@@ -521,7 +527,13 @@ function reviewTextOf(card: BoardWorkCard, mine: MyPullRequestModel | undefined)
   const waiting = mine?.reviewers.find(
     (reviewer) => reviewer.isRequired && !reviewer.isContainer && reviewer.vote === 'none'
   );
-  return [ciText, 'review', card.status?.text, waiting ? `waiting for ${firstName(waiting.name)}` : '']
+  // The status of a completed card ("Done Wed 21", "merged ...") is not a state of the review
+  return [
+    ciText,
+    'review',
+    card.column === 'done' ? undefined : card.status?.text,
+    waiting ? `waiting for ${firstName(waiting.name)}` : '',
+  ]
     .filter(Boolean)
     .join(' · ');
 }
@@ -549,6 +561,9 @@ const dayLabel = (ms: number): string => {
   return `${WEEKDAYS[date.getDay()]} ${String(date.getDate())}`;
 };
 
+/** "✓ done We 21", or "✓ done" when the day is not known */
+const doneMark = (at: number | undefined): string => (at === undefined ? '✓ done' : `✓ done ${dayLabel(at)}`);
+
 const workItemTag = (kind: BoardWorkCard['itemKind']): NonNullable<RowLabel['tag']> =>
   kind === 'bug' ? { text: 'BUG', tone: 'bug' } : { text: 'PBI', tone: 'pbi' };
 
@@ -566,7 +581,9 @@ function labelOf(
   if (card.part === 'tasks') {
     return { tag: { text: plural(card.taskCount ?? 0, 'task'), tone: 'task' } };
   }
-  const pill = pr ? { text: `${draft ? 'draft ' : ''}PR ${String(pr.id)}` } : undefined;
+  const pill = pr
+    ? { text: `${draft ? 'draft ' : ''}PR ${String(pr.id)}`, ...(pr.tone === 'completed' ? { merged: true } : {}) }
+    : undefined;
   if (child) {
     return pill ? { pr: pill } : { tag: workItemTag(card.itemKind) };
   }
@@ -751,13 +768,24 @@ function workRow(card: BoardWorkCard, context: RowContext, plan?: GroupPlan): Ti
     return segment ? [segment] : [];
   });
   const action = needsText && card.need ? card.need.actions.at(0) : card.action ?? createPullRequestAction(card, input);
+  const end = segments.at(-1)?.end ?? 0;
+  // Rule TIMELINE-19: a finished work item is faded, with its mark at the day it finished
+  const finishedAt = item && !plan && isFinishedState(item.state) ? instant(item.dates?.stateChanged) : undefined;
+  const done =
+    item && !plan && isFinishedState(item.state)
+      ? {
+          at: finishedAt === undefined ? end : Math.max(axisPosition(finishedAt, days), end),
+          text: doneMark(finishedAt),
+        }
+      : undefined;
   return {
     ...row,
     segments,
     chip: waitsOn ? `⛓ waits on #${String(waitsOn.id)}` : undefined,
     action: action && { ...action, primary: card.tone === 'ship' },
     popover,
-    end: segments.at(-1)?.end ?? 0,
+    ...(done ? { faded: true, merged: done } : {}),
+    end: done ? done.at : end,
   };
 }
 
@@ -862,6 +890,7 @@ function groupRows(plan: GroupPlan, context: RowContext): TimelineRow[] {
   const bracketText = [
     known === undefined ? '' : `active since ${dayLabel(known)}`,
     plan.mergedTotal ? `${plural(plan.mergedTotal, 'PR')} merged` : '',
+    finished ? doneMark(finishedAt) : '',
     finished || !tasks ? '' : doneWhenText(tasks.total),
   ]
     .filter(Boolean)
@@ -886,6 +915,7 @@ function groupRows(plan: GroupPlan, context: RowContext): TimelineRow[] {
     title: item.title,
     label,
     bug: isBugItem(item),
+    ...(finished ? { faded: true } : {}),
     segments: [],
     open: { type: 'openDetails', id: item.id },
     boardKey: (plan.cards.find((card) => card.part === undefined) ?? plan.cards.at(0))?.key,
@@ -1125,7 +1155,7 @@ function withSpill(row: TimelineRow, board: BoardModel, sprintEnd: number, total
   };
 }
 
-// Rules TIMELINE-1, TIMELINE-10, TIMELINE-13, TIMELINE-16
+// Rules TIMELINE-1, TIMELINE-10, TIMELINE-13, TIMELINE-16, TIMELINE-19
 export function buildSprintTimeline(input: TimelineInput): TimelineModel {
   const now = input.now.getTime();
   const { board } = input;
@@ -1151,6 +1181,8 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
       ...base,
       days: [],
       work: [],
+      finished: [],
+      showCompleted: board.showCompleted,
       planned: { rows: [] },
       reviews: [],
       mergedWithoutThreads: [],
@@ -1160,22 +1192,29 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
   }
   const axisStart = days[0].startMs;
   const context: RowContext = { input, days, axisStart, now, pending: new Set() };
+  // The faded cards of the merged PRs are the board's: the timeline draws the merged PRs it has dates for (TIMELINE-17)
+  const cards = board.work.filter((card) => card.merged === undefined);
   const plans = planGroups({
-    cards: board.work,
+    cards,
     workItems: input.workItems,
     completed: input.completedPullRequests ?? [],
     from: axisStart,
     to: days[days.length - 1].endMs,
+    showCompleted: board.showCompleted,
   });
   const work: TimelineRow[] = [];
+  const finished: TimelineRow[] = [];
   const grouped = new Set<number>();
-  for (const card of board.work) {
+  for (const card of cards) {
     const plan = plans.get(card.id);
+    // Rule TIMELINE-19: the finished work items come after the open ones
+    const target = isFinishedState(input.workItems.find((item) => item.id === card.id)?.state ?? '') ? finished : work;
     if (!plan) {
-      work.push(workRow(card, context));
+      target.push(workRow(card, context));
     } else if (!grouped.has(card.id)) {
       grouped.add(card.id);
-      work.push(...groupRows(plan, context));
+      const [group, ...children] = groupRows(plan, context);
+      target.push({ ...group, boardKey: group.boardKey ?? card.key }, ...children);
     }
   }
   const spillFrom = days.findIndex((day) => day.next);
@@ -1196,6 +1235,8 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
     })),
     now: now >= axisStart && position < days.length ? position : undefined,
     work: rows,
+    finished,
+    showCompleted: board.showCompleted,
     planned: plannedRows(input, days, next),
     reviews: input.reviews.map((review) => reviewRow(review, { input, days, now })),
     mergedWithoutThreads: [...context.pending],
