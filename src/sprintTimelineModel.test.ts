@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BaseBranchRun } from './baseBranchHealth';
 import type { MyPullRequestModel } from './myPullRequests';
+import type { CompletedPullRequestInfo } from './timelineGroups';
 import type { ReviewRequestModel } from './reviewRequests';
 import {
   axisPosition,
@@ -386,8 +387,8 @@ describe('buildSprintTimeline', () => {
       workItem({ id: 3, pullRequests: [pullRequest({ id: 31 }), pullRequest({ id: 32 })] }),
     ];
     const model = timeline(items, [mine({ id: 10 }), mine({ id: 31 }), mine({ id: 32 })]);
-    expect(model.work.map((row) => row.key)).toEqual(['1', '2', '3:pr:31', '3:pr:32']);
-    expect(model.work.map((row) => row.id).sort()).toEqual([1, 2, 3, 3]);
+    expect(model.work.map((row) => row.key)).toEqual(['1', '2', 'group:3', '3:pr:31', '3:pr:32']);
+    expect(model.work.map((row) => row.id).sort()).toEqual([1, 2, 3, 3, 3]);
   });
 
   it('draws a work item not started as a dashed outline with its blockers (TIMELINE-9)', () => {
@@ -544,5 +545,285 @@ describe('buildSprintTimeline', () => {
     const model = timeline([], [], [], { sprint: { name: 'S' } });
     expect(model.days).toEqual([]);
     expect(model.notes[0]).toContain('dates of the sprint');
+  });
+});
+
+/* ---------- Labels, groups and merged PRs (TIMELINE-15..18) ---------- */
+
+const task = (id: number, parentId: number, state: string, overrides: Partial<WorkItemModel> = {}): WorkItemModel =>
+  workItem({
+    id,
+    title: `Task ${String(id)}`,
+    type: 'Task',
+    state,
+    displayState: state,
+    parentId,
+    branches: [],
+    branch: undefined,
+    ...overrides,
+  });
+
+const merged = (id: number, created: number, closed: number, extra: Partial<CompletedPullRequestInfo> = {}) =>
+  ({
+    id,
+    title: `[67145] Merged ${String(id)}`,
+    repository: 'User_Interface',
+    repositoryId: 'r',
+    creationDate: iso(created, 9),
+    closedDate: iso(closed, 16),
+    isDraft: false,
+    publishedAt: iso(created, 11),
+    threadsKnown: true,
+    ...extra,
+  } satisfies CompletedPullRequestInfo);
+
+describe('labels (TIMELINE-15)', () => {
+  it('starts the first line with the tag, the id and the PR pill, and the second with the work item title', () => {
+    const rows = timeline(
+      [
+        workItem({ id: 1, title: 'Backlog title', pullRequests: [pullRequest({ id: 10, title: 'PR title' })] }),
+        workItem({ id: 2, title: 'Bug title', type: 'Bug', pullRequests: [pullRequest({ id: 20, tone: 'draft' })] }),
+      ],
+      [mine({ id: 10 }), mine({ id: 20, isDraft: true })]
+    ).work;
+    expect(rows[0].label).toEqual({ tag: { text: 'PBI', tone: 'pbi' }, id: '#1', pr: { text: 'PR 10' } });
+    expect(rows[0].title).toBe('Backlog title');
+    expect(rows[1].label).toEqual({ tag: { text: 'BUG', tone: 'bug' }, id: '#2', pr: { text: 'draft PR 20' } });
+  });
+
+  it('puts the PR pill and the PR title on the rows of a group, without the [id] prefix', () => {
+    const rows = timeline(
+      [workItem({ id: 3, pullRequests: [pullRequest({ id: 31, title: '[3] Mine' }), pullRequest({ id: 32 })] })],
+      [mine({ id: 31 }), mine({ id: 32 })]
+    ).work;
+    expect(rows[1].label).toEqual({ pr: { text: 'PR 31' } });
+    expect(rows[1].title).toBe('Mine');
+  });
+
+  it('puts the pill on the reviews owed', () => {
+    const row = timeline([], [], [review({ id: 50 })]).reviews[0];
+    expect(row.label).toEqual({ pr: { text: 'PR 50' }, meta: 'Ana · required' });
+  });
+});
+
+describe('groups (TIMELINE-16)', () => {
+  const COMPLETED = (id: number): PullRequestModel =>
+    pullRequest({ id, title: `Merged ${String(id)}`, tone: 'completed', status: 'Completed', isActive: false });
+  const items67145 = (canCreate: boolean): WorkItemModel[] => [
+    workItem({
+      id: 67145,
+      title: 'App configuration updated by another user',
+      dates: { activated: iso(13, 9) },
+      pullRequests: [
+        pullRequest({ id: 14021, title: '[67145] Measurement update' }),
+        pullRequest({ id: 14012, title: '[67145] AL update' }),
+        pullRequest({ id: 14008, title: '[67145] Nx config update' }),
+        pullRequest({ id: 14015, title: '[67145] NumericField' }),
+        pullRequest({ id: 14030, title: '[67145] run_all.sh' }),
+        COMPLETED(13801),
+        COMPLETED(13802),
+        COMPLETED(13803),
+      ],
+    }),
+    ...[1, 2, 3, 4, 5].map((n) => task(67200 + n, 67145, 'To Do')),
+    task(67206, 67145, 'In Progress', { canCreatePullRequest: canCreate, dates: { activated: iso(20, 9) } }),
+    task(67207, 67145, 'In Progress', { taskPullRequests: [{ id: 14021 } as never] }),
+    ...Array.from({ length: 8 }, (_, n) => task(67300 + n, 67145, 'Done')),
+  ];
+  const created: Record<number, [number, number]> = {
+    14021: [19, 10],
+    14012: [14, 9],
+    14008: [15, 9],
+    14015: [20, 9],
+    14030: [21, 9],
+  };
+  const mineOf = Object.entries(created).map(([id, [day, hour]]) =>
+    mine({ id: Number(id), stamps: { createdAt: iso(day, hour), publishedAt: iso(day, hour + 2) } })
+  );
+  const completed = [merged(13801, 13, 16), merged(13802, 18, 21), merged(13803, 1, 5)];
+  const build = (canCreate = true) =>
+    timeline(items67145(canCreate), mineOf, [], { completedPullRequests: completed }).work;
+
+  it('puts the work item first and its PRs, tasks and tasks to do under it, in order', () => {
+    const rows = build();
+    expect(rows.map((row) => row.key)).toEqual([
+      'group:67145',
+      'merged:67145:13801',
+      '67145:pr:14012',
+      '67145:pr:14008',
+      'merged:67145:13802',
+      '67145:pr:14021',
+      '67145:pr:14015',
+      '67145:pr:14030',
+      '67145:task:67206',
+      '67145:tasks',
+    ]);
+    expect(rows.slice(1).every((row) => row.groupId === 67145)).toBe(true);
+    expect(rows.at(-1)?.lastChild).toBe(true);
+  });
+
+  it('says what the work item is in its row and its bracket', () => {
+    const [group] = build();
+    expect(group.label).toEqual({
+      tag: { text: 'PBI', tone: 'pbi' },
+      id: '#67145',
+      state: 'Committed · 5 open PRs',
+    });
+    expect(group.title).toBe('App configuration updated by another user');
+    // 3 PRs merged (one of them before the sprint: only counted), 15 tasks
+    expect(group.group?.bracket.text).toBe('active since Tu 13 · 3 PRs merged · done when all 15 tasks are');
+    expect(group.group?.bracket.approximate).toBe(false);
+    expect(group.group?.tasks).toMatchObject({ done: 8, inProgress: 2, toDo: 5, total: 15, text: '8 of 15 tasks' });
+    expect(group.boardKey).toBe('67145:pr:14021');
+  });
+
+  it('tags the tasks and says whose title each row has', () => {
+    const rows = build();
+    const noPr = rows.find((row) => row.key === '67145:task:67206');
+    expect(noPr?.label).toEqual({ tag: { text: 'Task', tone: 'task' } });
+    expect(noPr?.title).toBe('Task 67206');
+    expect(noPr?.segments[0]).toMatchObject({ kind: 'coding', text: 'coding · no PR yet' });
+    expect(rows.at(-1)?.label).toEqual({ tag: { text: '5 tasks', tone: 'task' } });
+    expect(rows.at(-1)?.outline?.text).toContain('5 tasks to do');
+  });
+
+  it('offers Create PR on a task without PR only when the task row of the sidebar does', () => {
+    const find = (rows: ReturnType<typeof build>) => rows.find((row) => row.key === '67145:task:67206');
+    expect(find(build(true))?.action).toMatchObject({
+      label: 'Create PR',
+      message: { type: 'createPullRequest', id: 67145, taskId: 67206 },
+    });
+    expect(find(build(false))?.action).toBeUndefined();
+  });
+
+  it('keeps one thin line per PR for the collapsed group, and counts what needs the user and what is ready', () => {
+    const rows = timeline(
+      [
+        workItem({
+          id: 7,
+          pullRequests: [
+            pullRequest({
+              id: 71,
+              runs: [{ id: 1, pipeline: 'CI', state: 'failed', url: '', finishTime: iso(21, 10) }],
+            }),
+            pullRequest({
+              id: 72,
+              runs: [{ id: 2, pipeline: 'CI', state: 'succeeded', url: '', finishTime: iso(20, 10) }],
+            }),
+            COMPLETED(70),
+          ],
+        }),
+      ],
+      [mine({ id: 71 }), mine({ id: 72, readyToMerge: true, canComplete: true })],
+      [],
+      { completedPullRequests: [merged(70, 13, 15)] }
+    ).work;
+    const group = rows[0].group;
+    expect(group?.lines).toHaveLength(3);
+    expect(group?.lines.filter((line) => line.faded)).toHaveLength(1);
+    expect(group?.lines.every((line) => line.segments.length > 0)).toBe(true);
+    expect(group?.needsYou).toBe(1);
+    expect(group?.ready).toBe(1);
+  });
+
+  it('is a group when a PR was merged and the work item is not finished, with its own card as a row', () => {
+    const rows = timeline([workItem({ id: 9, pullRequests: [COMPLETED(90)] }), task(91, 9, 'To Do')], [], [], {
+      completedPullRequests: [merged(90, 14, 16)],
+    }).work;
+    expect(rows.map((row) => row.key)).toEqual(['group:9', 'merged:9:90', '9']);
+    expect(rows[0].label?.state).toBe('Committed');
+    expect(rows[2].label).toEqual({ tag: { text: 'PBI', tone: 'pbi' } });
+    expect(rows[2].title).toBe('Item');
+    expect(rows[0].group?.bracket.text).toContain('1 PR merged');
+  });
+
+  it('keeps one row for a finished work item with one merged PR, drawn with the dates of the merge', () => {
+    const rows = timeline(
+      [
+        workItem({
+          id: 8,
+          state: 'Done',
+          displayState: 'Done',
+          alerts: [{ rule: 'noTasks', message: 'a' } as never],
+          dates: { activated: iso(13, 9), stateChanged: iso(16, 17) },
+          pullRequests: [COMPLETED(80)],
+        }),
+      ],
+      [],
+      [],
+      { completedPullRequests: [merged(80, 14, 16)] }
+    );
+    expect(rows.work.map((row) => row.key)).toEqual(['8']);
+    const [row] = rows.work;
+    expect(row.group).toBeUndefined();
+    expect(row.segments.map((segment) => segment.kind)).toEqual(['coding', 'draft', 'review']);
+    expect(row.segments.some((segment) => segment.approximate && segment.kind !== 'coding')).toBe(false);
+    expect(rows.mergedWithoutThreads).toEqual([]);
+  });
+
+  it('is not a group for one open PR and one merged before the sprint', () => {
+    const rows = timeline(
+      [workItem({ id: 5, pullRequests: [pullRequest({ id: 50 }), COMPLETED(51)] })],
+      [mine({ id: 50 })],
+      [],
+      { completedPullRequests: [merged(51, 1, 5)] }
+    ).work;
+    expect(rows.map((row) => row.key)).toEqual(['5']);
+  });
+});
+
+describe('merged PRs (TIMELINE-17)', () => {
+  const COMPLETED = pullRequest({
+    id: 90,
+    title: '[9] Merged',
+    tone: 'completed',
+    status: 'Completed',
+    isActive: false,
+  });
+  const group = (info: CompletedPullRequestInfo) =>
+    timeline([workItem({ id: 9, dates: { activated: iso(13, 9) }, pullRequests: [COMPLETED] })], [], [], {
+      completedPullRequests: [info],
+    });
+
+  it('draws a faded row: coding, draft, CI · review up to the merge, and a merged mark', () => {
+    const rows = group(merged(90, 14, 16)).work;
+    const row = rows.find((candidate) => candidate.key === 'merged:9:90');
+    expect(row?.faded).toBe(true);
+    expect(row?.label).toEqual({ pr: { text: 'PR 90', merged: true } });
+    expect(row?.title).toBe('Merged 90');
+    expect(row?.segments.map((segment) => segment.kind)).toEqual(['coding', 'draft', 'review']);
+    expect(row?.segments[0]).toMatchObject({ start: 1 + 9 / 24, end: 2 + 9 / 24 });
+    expect(row?.merged?.text).toBe('✓ merged Fr 16');
+    expect(row?.merged?.at).toBeCloseTo(4 + 16 / 24, 5);
+    expect(row?.action).toBeUndefined();
+    expect(row?.boardKey).toBeUndefined();
+  });
+
+  it('draws one approximate span from the creation to the merge until its threads are read, and asks for them', () => {
+    const model = group(merged(90, 14, 16, { threadsKnown: false, publishedAt: undefined }));
+    const row = model.work.find((candidate) => candidate.key === 'merged:9:90');
+    expect(row?.segments.map((segment) => segment.kind)).toEqual(['coding', 'review']);
+    expect(row?.segments[1].approximate).toBe(true);
+    expect(model.mergedWithoutThreads).toEqual([90]);
+  });
+
+  it('does not draw a PR merged before the axis, nor ask for its threads', () => {
+    const model = group(merged(90, 1, 5, { threadsKnown: false }));
+    expect(model.work.map((row) => row.key)).toEqual(['9']);
+    expect(model.mergedWithoutThreads).toEqual([]);
+  });
+
+  it('starts coding with the linked task when it is in the list', () => {
+    const rows = timeline(
+      [
+        workItem({ id: 9, dates: { activated: iso(13, 9) }, pullRequests: [COMPLETED] }),
+        task(91, 9, 'Done', { dates: { activated: iso(14, 9) }, taskPullRequests: [{ id: 90 } as never] }),
+      ],
+      [],
+      [],
+      { completedPullRequests: [merged(90, 15, 16)] }
+    ).work;
+    const row = rows.find((candidate) => candidate.key === 'merged:9:90');
+    expect(row?.segments[0].start).toBeCloseTo(2 + 9 / 24);
   });
 });

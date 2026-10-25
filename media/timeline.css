@@ -266,6 +266,8 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
 .tl-lane {
   position: relative;
   height: var(--tl-row);
+  /* Nothing of a row (a button, a note) is drawn past the end of its lane */
+  overflow-x: clip;
 }
 
 .tl-seg,
@@ -378,6 +380,26 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   color: var(--vscode-errorForeground, var(--broken));
 }
 
+/* The outline and its button share the lane: the outline gives way, so the button is never clipped (Rule TIMELINE-9) */
+.tl-fill {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tl-fill .tl-outline {
+  position: static;
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+}
+
+.tl-fill .tl-act {
+  flex: none;
+}
+
 .tl-chip {
   position: absolute;
   left: 4px;
@@ -421,11 +443,6 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
 .tl-after.flip {
   padding: 0 6px;
   background: color-mix(in srgb, var(--vscode-editor-background) 85%, transparent);
-}
-
-.tl-after.at-end {
-  inset-inline: auto 6px;
-  padding-left: 0;
 }
 
 .tl-note.tone-overdue {
@@ -537,4 +554,334 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   .tl-act {
     transition: background-color 0.1s;
   }
+}
+
+/* ---------- Labels that say whose title it is (Rule TIMELINE-15) ---------- */
+
+.tl-l1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.tl-l1 .tl-id {
+  flex: none;
+  overflow: visible;
+}
+
+.tl-tag {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+  color: var(--muted);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.tl-tag.tag-bug {
+  background: color-mix(in srgb, var(--broken) 22%, transparent);
+  color: var(--vscode-errorForeground, var(--broken));
+}
+
+.tl-tag.tag-task {
+  border: 1px solid var(--border);
+  background: transparent;
+  line-height: 13px;
+}
+
+.tl-pr {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--in-flight) 55%, transparent);
+  border-radius: 9px;
+  color: var(--vscode-textLink-foreground, var(--in-flight));
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10.5px;
+  line-height: 15px;
+  white-space: nowrap;
+}
+
+.tl-pr.draft {
+  border-style: dashed;
+}
+
+.tl-pr.merged {
+  border-color: color-mix(in srgb, var(--passed) 55%, transparent);
+  color: var(--passed);
+}
+
+.tl-state,
+.tl-meta {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.tl-here {
+  flex: none;
+  color: var(--vscode-textLink-foreground, var(--in-flight));
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.tl-legend {
+  align-items: center;
+}
+
+.tl-key.tl-tagkey {
+  margin-left: auto;
+  gap: 6px;
+}
+
+.tl-swatch.bracket {
+  height: 6px;
+  border: 1.5px solid var(--muted);
+  border-top: 0;
+  border-radius: 0 0 3px 3px;
+}
+
+/* ---------- Groups: a work item with several PRs (Rules TIMELINE-16, TIMELINE-18) ---------- */
+
+.tl-row.in-group {
+  --tl-group: color-mix(in srgb, var(--in-flight) 55%, var(--border));
+  background: color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
+  box-shadow: inset 2px 0 0 var(--tl-group);
+}
+
+.tl-row.in-group .tl-label {
+  padding-left: 8px;
+}
+
+.tl-row.group {
+  --tl-row: 50px;
+}
+
+.tl-row.child {
+  --tl-row: 38px;
+  --tl-bar: 18px;
+  border-bottom-color: color-mix(in srgb, var(--tl-grid) 60%, transparent);
+}
+
+.tl-label.group {
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  padding-left: 8px;
+  cursor: default;
+}
+
+.tl-ltext {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.tl-ltext:focus-visible,
+.tl-chev:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.tl-ltext:hover .tl-title {
+  text-decoration: underline;
+}
+
+.tl-ltext .tl-id {
+  color: var(--vscode-textLink-foreground, var(--in-flight));
+}
+
+.tl-title.strong {
+  font-weight: 600;
+}
+
+.tl-chev {
+  flex: none;
+  width: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.tl-label.child {
+  position: relative;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding-left: 30px;
+}
+
+.tl-row.in-group .tl-label.child {
+  padding-left: 30px;
+}
+
+/* The tree lines that join a row to its group */
+.tl-label.child::before {
+  content: '';
+  position: absolute;
+  left: 15px;
+  top: 0;
+  width: 10px;
+  height: 50%;
+  border-bottom: 1.5px solid var(--tl-group);
+  border-left: 1.5px solid var(--tl-group);
+  border-bottom-left-radius: 4px;
+}
+
+.tl-label.child::after {
+  content: '';
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  bottom: 0;
+  border-left: 1.5px solid var(--tl-group);
+}
+
+.tl-label.child.last::after {
+  display: none;
+}
+
+.tl-label.child .tl-title {
+  min-width: 0;
+}
+
+.tl-row.faded .tl-label,
+.tl-row.faded .tl-lane > .tl-seg {
+  opacity: 0.6;
+}
+
+.tl-note.tone-merged {
+  color: var(--passed);
+}
+
+/* The life of the work item: from its activation to now (or to when it finished) */
+.tl-bracket {
+  position: absolute;
+  top: 20px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 1.5px solid color-mix(in srgb, var(--muted) 80%, transparent);
+  border-top: 0;
+  border-radius: 0 0 3px 3px;
+}
+
+.tl-bracket.approximate {
+  mask-image: linear-gradient(to right, transparent, #000 28px);
+}
+
+.tl-btext {
+  position: absolute;
+  top: 5px;
+  padding-left: 10px;
+  color: var(--vscode-foreground);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.tl-tbar {
+  display: flex;
+  gap: 3px;
+  width: 56px;
+}
+
+.tl-tseg {
+  flex: 1 1 0;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--pending);
+}
+
+.tl-tseg.done {
+  background: var(--passed);
+}
+
+.tl-tseg.in-progress {
+  background: var(--in-flight);
+}
+
+.tl-ttext {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+/* Collapsed: one thin line per PR, and what needs the user */
+.tl-lines {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+
+.tl-line {
+  position: relative;
+  flex: none;
+  height: 3px;
+}
+
+.tl-line.faded {
+  opacity: 0.5;
+}
+
+.tl-lseg {
+  position: absolute;
+  top: 0;
+  height: 3px;
+  background: var(--tl-coding);
+}
+
+.tl-lseg.seg-draft {
+  background: var(--tl-draft);
+}
+
+.tl-lseg.seg-review {
+  background: var(--in-flight);
+}
+
+.tl-lseg.seg-needsYou {
+  background: var(--needs-you);
+}
+
+.tl-lseg.seg-ready {
+  background: var(--passed);
+}
+
+.tl-lseg.seg-asleep {
+  background: color-mix(in srgb, var(--needs-you) 55%, transparent);
+}
+
+.tl-lseg.approximate {
+  mask-image: linear-gradient(to right, transparent, #000 12px);
+}
+
+.tl-gchip {
+  padding: 0 9px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.tl-gchip.needs-you {
+  background: var(--needs-you);
+  color: var(--tl-on-amber);
+}
+
+.tl-gchip.ready {
+  background: var(--passed);
+  color: var(--tl-on-green);
 }

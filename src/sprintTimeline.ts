@@ -34,7 +34,7 @@ interface PlannedState {
  * The Sprint timeline: an editor tab with the work of the sprint on a working-days axis. It draws what the store, My
  * Pull Requests, the review requests and the base branch runs already have. The only request of its own is the list of
  * what the user has planned in the next sprint: one query per load of the work items, only while the tab is visible
- * and shows "This + next sprint" (Rule TIMELINE-14)
+ * and shows "This + next sprint", and the threads of the merged PRs it draws, once per PR (Rule TIMELINE-14)
  */
 export class SprintTimelinePanel implements vscode.Disposable {
   private panel?: vscode.WebviewPanel;
@@ -142,6 +142,7 @@ export class SprintTimelinePanel implements vscode.Disposable {
       schedule: this.store.iterationSchedule,
       range: this.range,
       planned: this.range === 'sprintAndNext' ? this.planned : { status: 'off', items: [] },
+      completedPullRequests: this.myPullRequests.completedPullRequests(),
       base: {
         branch: settings().baseBranch,
         enabled: settings().baseBranchAlert.enabled,
@@ -151,6 +152,14 @@ export class SprintTimelinePanel implements vscode.Disposable {
     });
     const update: TimelineUpdate = { type: 'timeline', model };
     void this.panel.webview.postMessage(update);
+    if (model.mergedWithoutThreads.length) {
+      // Rule TIMELINE-17: the threads of the merged PRs drawn without the draft split, once each
+      void this.myPullRequests.loadMergedThreads(model.mergedWithoutThreads).then((read) => {
+        if (read) {
+          this.post();
+        }
+      });
+    }
   }
 
   /** What the user has planned in the next sprint: one query per load of the work items (cached by that load) */

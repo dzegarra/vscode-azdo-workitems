@@ -10,8 +10,17 @@ import { formatAge, type MyPullRequestModel } from './myPullRequests';
 import type { PullRequestStamps } from './pullRequestTimeline';
 import type { ReviewRequestModel } from './reviewRequests';
 import { iterationKind, type ScheduledIteration } from './schedule';
-import { trackPullRequest } from './track';
-import type { BoardAction, BoardColumnId, BoardModel, BoardWorkCard } from './trackBoardModel';
+import { isFinishedState } from './states';
+import { taskProgress } from './taskProgress';
+import { childRank, mergedInRange, planGroups, type CompletedPullRequestInfo, type GroupPlan } from './timelineGroups';
+import { openPullRequests, tasksOf, trackPullRequest } from './track';
+import {
+  pullRequestTitle,
+  type BoardAction,
+  type BoardColumnId,
+  type BoardModel,
+  type BoardWorkCard,
+} from './trackBoardModel';
 import type { RunModel } from './pipelines';
 import type { WebviewMessage, WorkItemModel } from './viewModel';
 import { addWorkingMs } from './workingTime';
@@ -339,13 +348,49 @@ export interface TimelinePopover {
   actions: { label: string; message: TimelineMessage; primary?: boolean }[];
 }
 
+/** What the first line of a label says (Rule TIMELINE-15): whose title the second line is */
+export interface RowLabel {
+  /** PBI or BUG (the work item's title follows), Task or "5 tasks" (the task's title) */
+  tag?: { text: string; tone: 'bug' | 'pbi' | 'task' };
+  /** "#66280" */
+  id?: string;
+  /** The pill of a PR (the PR's title follows): "PR 13912", "draft PR 13966"; merged: the pill has a ✓ */
+  pr?: { text: string; merged?: boolean };
+  /** A group row: "Committed · 5 open PRs" */
+  state?: string;
+  /** A review row: "Marta · required" */
+  meta?: string;
+}
+
+/** The life of a work item with several PRs (Rule TIMELINE-16): the bracket, its tasks, and what is left when collapsed */
+export interface GroupInfo {
+  bracket: { start: number; end: number; text: string; approximate: boolean };
+  /** The tasks of the work item (own and other developers'), not the removed ones */
+  tasks?: { done: number; inProgress: number; toDo: number; total: number; text: string };
+  /** Collapsed (Rule TIMELINE-18): one thin line per PR */
+  lines: { faded: boolean; segments: Pick<TimelineSegment, 'approximate' | 'end' | 'kind' | 'start'>[] }[];
+  /** Child rows that need the user / wait to be merged: the chips of the collapsed group */
+  needsYou: number;
+  ready: number;
+}
+
 export interface TimelineRow {
   key: string;
   section: 'planned' | 'review' | 'work';
   id: number;
-  /** "#66280 · PR 13912" */
+  /** "PBI · #66280 · PR 13912" (the label is drawn from `label`; this is its plain text) */
   header: string;
   title: string;
+  label?: RowLabel;
+  /** The row is the work item of a group (it has no card on the board) */
+  group?: GroupInfo;
+  /** A row under a group: the id of its work item */
+  groupId?: number;
+  /** The last row of its group: the tree line ends there */
+  lastChild?: boolean;
+  /** A merged PR: faded, with its merge mark */
+  faded?: boolean;
+  merged?: { at: number; text: string };
   here?: boolean;
   /** Bug: the header is red */
   bug?: boolean;
@@ -387,6 +432,8 @@ export interface TimelineModel {
   planned: { rows: TimelineRow[]; note?: string };
   reviews: TimelineRow[];
   reviewsTitle: string;
+  /** Merged PRs drawn without their threads: the panel reads them once (Rule TIMELINE-17) */
+  mergedWithoutThreads: number[];
   develop: { branch: string; spans: DevelopSpan[]; label?: { text: string; at: number }; note?: string };
   notes: string[];
   look: BoardModel['look'];
@@ -411,6 +458,8 @@ export interface TimelineInput {
   schedule?: readonly ScheduledIteration[];
   range: TimelineRange;
   planned: { status: 'error' | 'loading' | 'off' | 'ready'; items: PlannedItem[] };
+  /** The PRs of the user that were merged (My Pull Requests already has them): drawn when merged within the axis */
+  completedPullRequests?: readonly CompletedPullRequestInfo[];
   base: { branch: string; enabled: boolean; runs: readonly BaseBranchRun[]; health?: BaseBranchHealth };
 }
 
@@ -477,31 +526,117 @@ function reviewTextOf(card: BoardWorkCard, mine: MyPullRequestModel | undefined)
     .join(' · ');
 }
 
-/** The PR a card stands for: the one of its PR card, or the one the track follows */
-function cardPullRequest(card: BoardWorkCard, item: WorkItemModel): WorkItemModel['pullRequests'][number] | undefined {
+/** The PR a card stands for: the one of its PR card, or the one the track follows (in a group: the open one) */
+function cardPullRequest(
+  card: BoardWorkCard,
+  item: WorkItemModel,
+  plan: GroupPlan | undefined
+): WorkItemModel['pullRequests'][number] | undefined {
   if (card.part === 'task' || card.part === 'tasks') {
     return undefined;
   }
-  return card.prId === undefined ? trackPullRequest(item) : item.pullRequests.find((pr) => pr.id === card.prId);
+  if (card.prId !== undefined) {
+    return item.pullRequests.find((pr) => pr.id === card.prId);
+  }
+  return plan ? openPullRequests(item).at(0) : trackPullRequest(item);
+}
+
+const plural = (count: number, noun: string): string => `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
+
+/** "We 14": the weekday and the day of the month, as the axis */
+const dayLabel = (ms: number): string => {
+  const date = new Date(ms);
+  return `${WEEKDAYS[date.getDay()]} ${String(date.getDate())}`;
+};
+
+const workItemTag = (kind: BoardWorkCard['itemKind']): NonNullable<RowLabel['tag']> =>
+  kind === 'bug' ? { text: 'BUG', tone: 'bug' } : { text: 'PBI', tone: 'pbi' };
+
+// Rule TIMELINE-15
+/** The first line of a label: the tag says whose title the second line is (the work item's, the PR's, the task's) */
+function labelOf(
+  card: BoardWorkCard,
+  pr: { id: number; tone: string } | undefined,
+  child: boolean,
+  draft: boolean
+): RowLabel {
+  if (card.part === 'task') {
+    return { tag: { text: 'Task', tone: 'task' } };
+  }
+  if (card.part === 'tasks') {
+    return { tag: { text: plural(card.taskCount ?? 0, 'task'), tone: 'task' } };
+  }
+  const pill = pr ? { text: `${draft ? 'draft ' : ''}PR ${String(pr.id)}` } : undefined;
+  if (child) {
+    return pill ? { pr: pill } : { tag: workItemTag(card.itemKind) };
+  }
+  return { tag: workItemTag(card.itemKind), id: `#${String(card.id)}`, pr: pill };
+}
+
+const labelText = (label: RowLabel): string =>
+  [label.tag?.text, label.id, label.pr?.text, label.state].filter(Boolean).join(' · ');
+
+/** The moments of a merged PR in the shape the phases take (no threads: created published) */
+function completedStamps(pr: CompletedPullRequestInfo): NonNullable<PhaseInput['pullRequest']> {
+  return {
+    created: instant(pr.creationDate),
+    published: instant(pr.publishedAt),
+    closed: instant(pr.closedDate),
+    isDraft: false,
+  };
+}
+
+// Rule TIMELINE-9
+/** The "Create PR" button of a task without PR: the one of the task row of the sidebar, under the same condition */
+function createPullRequestAction(card: BoardWorkCard, input: TimelineInput): BoardAction | undefined {
+  if (card.part !== 'task' || card.taskId === undefined) {
+    return undefined;
+  }
+  const taskId = card.taskId;
+  const item = input.workItems.find((candidate) => candidate.id === card.id);
+  const can =
+    input.workItems.find((candidate) => candidate.id === taskId)?.canCreatePullRequest ??
+    item?.otherTasks?.find((candidate) => candidate.id === taskId)?.canCreatePullRequest;
+  return can ? { label: 'Create PR', message: { type: 'createPullRequest', id: card.id, taskId } } : undefined;
+}
+
+const stampsOfCompleted = (pr: CompletedPullRequestInfo): PullRequestStamps => ({
+  createdAt: pr.creationDate,
+  publishedAt: pr.publishedAt,
+  closedAt: pr.closedDate,
+});
+
+interface RowContext {
+  input: TimelineInput;
+  days: TimelineDay[];
+  axisStart: number;
+  now: number;
+  /** The merged PRs drawn without their threads (collected while the rows are built) */
+  pending: Set<number>;
 }
 
 // Rule TIMELINE-1
-function workRow(
-  card: BoardWorkCard,
-  context: { input: TimelineInput; days: TimelineDay[]; axisStart: number; now: number }
-): TimelineRow {
+function workRow(card: BoardWorkCard, context: RowContext, plan?: GroupPlan): TimelineRow {
   const { input, days, axisStart, now } = context;
   const item = input.workItems.find((candidate) => candidate.id === card.id);
-  const pr = item && cardPullRequest(card, item);
+  const pr = item && cardPullRequest(card, item, plan);
   const mine = pr && input.myPullRequests.find((candidate) => candidate.id === pr.id);
-  const stamps = mine?.stamps;
+  // A PR that left My Pull Requests is merged: its dates come from the list of completed PRs (Rule TIMELINE-17)
+  const completed = pr && !mine ? input.completedPullRequests?.find((candidate) => candidate.id === pr.id) : undefined;
+  const stamps = mine?.stamps ?? (completed && stampsOfCompleted(completed));
+  if (completed && !completed.threadsKnown && mergedInRange(completed, axisStart, Infinity)) {
+    context.pending.add(completed.id);
+  }
   const runs = pr?.runs.length ? pr.runs : mine?.runs ?? [];
+  const label = labelOf(card, pr, plan !== undefined, mine?.isDraft ?? pr?.tone === 'draft');
   const row: TimelineRow = {
     key: card.key,
     section: 'work',
     id: card.id,
-    header: card.header,
-    title: card.title,
+    header: labelText(label),
+    title: plan && pr ? pullRequestTitle(pr.title) : card.title,
+    label,
+    groupId: plan?.item.id,
     here: card.here,
     bug: card.itemKind === 'bug',
     segments: [],
@@ -509,8 +644,11 @@ function workRow(
     boardKey: card.key,
     end: 0,
   };
-  // Rule TIMELINE-9: not started, or a task of a split work item without a PR: a dashed outline with the reasons
-  if (card.column === 'toStart' || (!pr && card.column !== 'branch' && card.column !== 'done')) {
+  // Rule TIMELINE-9: not started, or the tasks to do of a split work item: a dashed outline with the reasons
+  if (
+    card.column === 'toStart' ||
+    (!pr && card.part === undefined && card.column !== 'branch' && card.column !== 'done')
+  ) {
     const blocked = item?.blockingTags?.length ? `tag ${item.blockingTags.join(', ')}` : '';
     const waits = item?.openPredecessors?.at(0);
     const text = [
@@ -535,18 +673,21 @@ function workRow(
     ['ci', 'review'].includes(card.column)
       ? card.status.text
       : undefined;
+  // A task without PR starts when the task was activated (else with the work item)
+  const task =
+    card.taskId === undefined ? undefined : input.workItems.find((candidate) => candidate.id === card.taskId);
   let spans = workSpans({
     now,
     axisStart,
     column: card.column,
-    started: instant(item?.dates?.activated),
+    started: instant(task?.dates?.activated ?? item?.dates?.activated),
     finished: card.column === 'done' ? instant(item?.dates?.stateChanged) : undefined,
     pullRequest: stamps
       ? {
           created: instant(stamps.createdAt),
           published: instant(stamps.publishedAt),
           closed: instant(stamps.closedAt),
-          isDraft: mine.isDraft,
+          isDraft: mine?.isDraft ?? false,
         }
       : undefined,
     reviewText: reviewTextOf(card, mine),
@@ -561,6 +702,9 @@ function workRow(
       : undefined,
     readySince: readySince(runs, stamps),
   });
+  if (card.part === 'task') {
+    spans = spans.map((span) => (span.kind === 'coding' ? { ...span, text: 'coding · no PR yet' } : span));
+  }
   // Rule TIMELINE-8
   let popover: TimelinePopover | undefined;
   if (card.asleep && item) {
@@ -594,13 +738,19 @@ function workRow(
       ],
     };
   }
-  // A PR whose dates are not known (another repository, an old one): its work is drawn, but not as a guess of phases
-  const undated = pr && !stamps ? spans.map((span) => ({ ...span, approximate: true })) : spans;
+  // A PR whose dates are not known (another repository, an old one, threads not read yet): its work is drawn, but not
+  // as a guess of phases
+  let undated = spans;
+  if (pr && !stamps) {
+    undated = spans.map((span) => ({ ...span, approximate: true }));
+  } else if (completed && !completed.threadsKnown) {
+    undated = spans.map((span) => (span.kind === 'coding' ? span : { ...span, approximate: true }));
+  }
   const segments = undated.flatMap((span) => {
     const segment = toSegment(span, days);
     return segment ? [segment] : [];
   });
-  const action = needsText && card.need ? card.need.actions.at(0) : card.action;
+  const action = needsText && card.need ? card.need.actions.at(0) : card.action ?? createPullRequestAction(card, input);
   return {
     ...row,
     segments,
@@ -609,6 +759,159 @@ function workRow(
     popover,
     end: segments.at(-1)?.end ?? 0,
   };
+}
+
+// Rule TIMELINE-17
+/** A PR that was merged within the axis: a faded row of its group, with the merge mark and no button */
+function mergedRow(pr: CompletedPullRequestInfo, plan: GroupPlan, context: RowContext): TimelineRow {
+  const { input, days, axisStart, now } = context;
+  const { item } = plan;
+  // Coding starts with the task linked to the PR when it is in the list, else with the work item
+  const linked = input.workItems
+    .filter(
+      (candidate) =>
+        candidate.parentId === item.id &&
+        candidate.type === 'Task' &&
+        candidate.taskPullRequests?.some((taskPr) => taskPr.id === pr.id)
+    )
+    .map((task) => instant(task.dates?.activated))
+    .filter((at): at is number => at !== undefined)
+    .sort((a, b) => a - b)
+    .at(0);
+  const closed = Date.parse(pr.closedDate);
+  if (!pr.threadsKnown) {
+    context.pending.add(pr.id);
+  }
+  const spans = workSpans({
+    now,
+    axisStart,
+    column: 'review',
+    started: linked ?? instant(item.dates?.activated),
+    pullRequest: completedStamps(pr),
+    reviewText: 'CI ✓ · review',
+  }).map((span) => (pr.threadsKnown || span.kind === 'coding' ? span : { ...span, approximate: true }));
+  const segments = spans.flatMap((span) => {
+    const segment = toSegment(span, days);
+    return segment ? [segment] : [];
+  });
+  const at = axisPosition(closed, days);
+  const label: RowLabel = { pr: { text: `PR ${String(pr.id)}`, merged: true } };
+  return {
+    key: `merged:${String(item.id)}:${String(pr.id)}`,
+    section: 'work',
+    id: item.id,
+    header: labelText(label),
+    title: pullRequestTitle(pr.title),
+    label,
+    groupId: item.id,
+    faded: true,
+    merged: { at, text: `✓ merged ${dayLabel(closed)}` },
+    segments,
+    open: { type: 'openDetails', id: item.id },
+    end: at,
+  };
+}
+
+/** Oldest first; a moment that is not known (Infinity) goes last */
+const compareMoments = (a: number, b: number): number => {
+  if (a === b) {
+    return 0;
+  }
+  return a < b ? -1 : 1;
+};
+
+const isBugItem = (item: Pick<WorkItemModel, 'type'>): boolean => item.type === 'Bug';
+
+/** "done when all 15 tasks are" */
+const doneWhenText = (total: number): string =>
+  total === 1 ? 'done when its task is' : `done when all ${String(total)} tasks are`;
+
+// Rule TIMELINE-16
+/** The row of the work item and the rows under it: PRs (open and merged, oldest first), the work item itself, tasks */
+function groupRows(plan: GroupPlan, context: RowContext): TimelineRow[] {
+  const { input, days, axisStart, now } = context;
+  const { item } = plan;
+  const createdOf = (prId: number | undefined): number =>
+    instant(input.myPullRequests.find((candidate) => candidate.id === prId)?.stamps?.createdAt) ?? Infinity;
+  const children = [
+    ...plan.cards.map((card) => {
+      const row = workRow(card, context, plan);
+      const isPr = card.part === 'pr' || (card.part === undefined && plan.openCount > 0);
+      return { rank: childRank(card, isPr), created: createdOf(card.prId ?? openPullRequests(item).at(0)?.id), row };
+    }),
+    ...plan.merged.map((pr) => ({ rank: 0, created: Date.parse(pr.creationDate), row: mergedRow(pr, plan, context) })),
+  ]
+    .sort((a, b) => a.rank - b.rank || compareMoments(a.created, b.created))
+    .map(({ row }, index, all) => ({ ...row, lastChild: index === all.length - 1 }));
+  const finished = isFinishedState(item.state);
+  const activated = instant(item.dates?.activated);
+  const finishedAt = finished ? instant(item.dates?.stateChanged) : undefined;
+  const known = activated !== undefined && activated <= now ? activated : undefined;
+  const start = axisPosition(known === undefined ? axisStart : Math.max(known, axisStart), days);
+  const end = Math.max(axisPosition(finishedAt ?? now, days), start + 0.2);
+  const progress = taskProgress(tasksOf(item, input.workItems));
+  const tasks = progress.total
+    ? {
+        done: progress.done,
+        inProgress: progress.inProgress,
+        toDo: progress.toDo,
+        total: progress.total,
+        text: `${String(progress.done)} of ${plural(progress.total, 'task')}`,
+      }
+    : undefined;
+  const bracketText = [
+    known === undefined ? '' : `active since ${dayLabel(known)}`,
+    plan.mergedTotal ? `${plural(plan.mergedTotal, 'PR')} merged` : '',
+    finished || !tasks ? '' : doneWhenText(tasks.total),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const prRows = children.filter((row) => row.label?.pr);
+  const lastKind = (row: TimelineRow): SegmentKind | undefined => row.segments.at(-1)?.kind;
+  const label: RowLabel = {
+    tag: workItemTag(isBugItem(item) ? 'bug' : 'backlog'),
+    id: `#${String(item.id)}`,
+    state: [
+      item.displayState,
+      plan.openCount ? `${String(plan.openCount)} open ${plan.openCount === 1 ? 'PR' : 'PRs'}` : '',
+    ]
+      .filter(Boolean)
+      .join(' · '),
+  };
+  const group: TimelineRow = {
+    key: `group:${String(item.id)}`,
+    section: 'work',
+    id: item.id,
+    header: labelText(label),
+    title: item.title,
+    label,
+    bug: isBugItem(item),
+    segments: [],
+    open: { type: 'openDetails', id: item.id },
+    boardKey: (plan.cards.find((card) => card.part === undefined) ?? plan.cards.at(0))?.key,
+    end,
+    group: {
+      bracket: {
+        start,
+        end,
+        text: bracketText,
+        approximate: known === undefined || known < axisStart,
+      },
+      tasks,
+      lines: prRows.map((row) => ({
+        faded: row.faded === true,
+        segments: row.segments.map(({ kind, start: from, end: to, approximate }) => ({
+          kind,
+          start: from,
+          end: to,
+          approximate,
+        })),
+      })),
+      needsYou: children.filter((row) => lastKind(row) === 'needsYou').length,
+      ready: children.filter((row) => lastKind(row) === 'ready').length,
+    },
+  };
+  return [group, ...children];
 }
 
 /* ---------- Reviews ---------- */
@@ -651,6 +954,10 @@ function reviewRow(
     section: 'review',
     id: review.id,
     header: `PR ${String(review.id)} · ${firstName(review.author)}${review.isRequired ? ' · required' : ''}`,
+    label: {
+      pr: { text: `PR ${String(review.id)}` },
+      meta: `${firstName(review.author)}${review.isRequired ? ' · required' : ''}`,
+    },
     title: review.title,
     segments,
     note,
@@ -818,7 +1125,7 @@ function withSpill(row: TimelineRow, board: BoardModel, sprintEnd: number, total
   };
 }
 
-// Rules TIMELINE-1, TIMELINE-10, TIMELINE-13
+// Rules TIMELINE-1, TIMELINE-10, TIMELINE-13, TIMELINE-16
 export function buildSprintTimeline(input: TimelineInput): TimelineModel {
   const now = input.now.getTime();
   const { board } = input;
@@ -846,13 +1153,31 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
       work: [],
       planned: { rows: [] },
       reviews: [],
+      mergedWithoutThreads: [],
       develop: { branch: input.base.branch, spans: [] },
       notes: ['The dates of the sprint are not known, so there is no axis to draw'],
     };
   }
   const axisStart = days[0].startMs;
-  const context = { input, days, axisStart, now };
-  const work = board.work.map((card) => workRow(card, context));
+  const context: RowContext = { input, days, axisStart, now, pending: new Set() };
+  const plans = planGroups({
+    cards: board.work,
+    workItems: input.workItems,
+    completed: input.completedPullRequests ?? [],
+    from: axisStart,
+    to: days[days.length - 1].endMs,
+  });
+  const work: TimelineRow[] = [];
+  const grouped = new Set<number>();
+  for (const card of board.work) {
+    const plan = plans.get(card.id);
+    if (!plan) {
+      work.push(workRow(card, context));
+    } else if (!grouped.has(card.id)) {
+      grouped.add(card.id);
+      work.push(...groupRows(plan, context));
+    }
+  }
   const spillFrom = days.findIndex((day) => day.next);
   const rows =
     input.range === 'sprintAndNext' && spillFrom > 0
@@ -873,6 +1198,7 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
     work: rows,
     planned: plannedRows(input, days, next),
     reviews: input.reviews.map((review) => reviewRow(review, { input, days, now })),
+    mergedWithoutThreads: [...context.pending],
     develop: developOf(input, days, now),
     notes: board.notes,
   };

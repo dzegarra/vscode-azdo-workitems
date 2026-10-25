@@ -5,16 +5,21 @@ import { lookClass } from '../look';
 import type { TimelineUpdate } from '../sprintTimeline';
 import type {
   DevelopSpan,
+  GroupInfo,
+  RowLabel,
   TimelineMessage,
   TimelineModel,
   TimelinePopover,
   TimelineRow,
   TimelineSegment,
 } from '../sprintTimelineModel';
+import { toggleCollapsed, visibleRows } from '../timelineGroups';
 import type { BoardAction } from '../trackBoardModel';
 
 interface VsCodeApi {
   postMessage(message: TimelineMessage): void;
+  getState(): unknown;
+  setState(state: unknown): void;
 }
 declare function acquireVsCodeApi(): VsCodeApi;
 
@@ -25,6 +30,15 @@ let lastModel: string | undefined;
 /** The buttons and clicks of the last render: the markup only names them */
 let messages = new Map<string, TimelineMessage>();
 let popovers = new Map<string, TimelinePopover>();
+/** The groups the user collapsed, by work item id (Rule TIMELINE-18): UI-only, kept with the webview state */
+let collapsed: number[] = [];
+
+function loadCollapsed(): number[] {
+  const state = vscode.getState();
+  const saved = state && typeof state === 'object' && 'collapsed' in state ? state.collapsed : undefined;
+  return Array.isArray(saved) ? saved.filter((id): id is number => typeof id === 'number') : [];
+}
+collapsed = loadCollapsed();
 
 const post = (message: TimelineMessage): void => vscode.postMessage(message);
 
@@ -55,36 +69,146 @@ function renderSegment(segment: TimelineSegment, popoverKey?: string): string {
   )}" title="${escapeHtml(segment.tip)}"${attrs}>${escapeHtml(segment.text ?? '')}</span>`;
 }
 
+const tagHtml = (tag: NonNullable<RowLabel['tag']>): string =>
+  `<span class="tl-tag tag-${tag.tone}">${escapeHtml(tag.text)}</span>`;
+
+const pillHtml = (pr: NonNullable<RowLabel['pr']>): string =>
+  `<span class="tl-pr${pr.merged ? ' merged' : ''}${pr.text.startsWith('draft') ? ' draft' : ''}">${
+    pr.merged ? '✓ ' : ''
+  }${escapeHtml(pr.text)}</span>`;
+
+/** Rule TIMELINE-15: the first line of a label starts with the tag that says whose title follows */
+function renderLabel(row: TimelineRow, isCollapsed: boolean): string {
+  const label = row.label;
+  const open = `data-msg="${named(row.open)}" title="Open #${String(row.id)}"`;
+  const here = row.here ? '<span class="tl-here">● here</span>' : '';
+  if (!label) {
+    return `<div class="tl-label" tabindex="0" role="button" ${open}><span class="tl-id${
+      row.bug ? ' bug' : ''
+    }">${escapeHtml(row.header)}</span><span class="tl-title">${escapeHtml(row.title)}</span></div>`;
+  }
+  const head = [
+    label.tag ? tagHtml(label.tag) : '',
+    label.id ? `<span class="tl-id${row.bug ? ' bug' : ''}">${escapeHtml(label.id)}</span>` : '',
+    label.pr ? pillHtml(label.pr) : '',
+    label.state ? `<span class="tl-state">${escapeHtml(label.state)}</span>` : '',
+    label.meta ? `<span class="tl-meta">${escapeHtml(label.meta)}</span>` : '',
+  ].join('');
+  if (row.group) {
+    const verb = isCollapsed ? 'Expand' : 'Collapse';
+    return `<div class="tl-label group"><button class="tl-chev" data-toggle="${String(row.id)}" aria-expanded="${String(
+      !isCollapsed
+    )}" aria-label="${verb} #${String(row.id)}" title="${verb} the group">${
+      isCollapsed ? '▸' : '▾'
+    }</button><div class="tl-ltext" tabindex="0" role="button" ${open}><span class="tl-l1">${head}</span><span class="tl-title strong">${escapeHtml(
+      row.title
+    )}</span></div></div>`;
+  }
+  if (row.groupId !== undefined) {
+    return `<div class="tl-label child${
+      row.lastChild ? ' last' : ''
+    }" tabindex="0" role="button" ${open}>${head}<span class="tl-title">${escapeHtml(row.title)}</span>${here}</div>`;
+  }
+  return `<div class="tl-label" tabindex="0" role="button" ${open}><span class="tl-l1">${head}${here}</span><span class="tl-title">${escapeHtml(
+    row.title
+  )}</span></div>`;
+}
+
+/** The lane of a group: the bracket of its life and its tasks, or (collapsed) one thin line per PR and the chips */
+function renderGroupLane(group: GroupInfo, isCollapsed: boolean): string {
+  if (isCollapsed) {
+    const lines = group.lines
+      .map(
+        (line) =>
+          `<span class="tl-line${line.faded ? ' faded' : ''}">${line.segments
+            .map(
+              (segment) =>
+                `<span class="tl-lseg seg-${segment.kind}${
+                  segment.approximate ? ' approximate' : ''
+                }" data-from="${String(segment.start)}" data-to="${String(segment.end)}"></span>`
+            )
+            .join('')}</span>`
+      )
+      .join('');
+    const chips = [
+      group.needsYou ? `<span class="tl-gchip needs-you">${String(group.needsYou)} needs you</span>` : '',
+      group.ready ? `<span class="tl-gchip ready">${String(group.ready)} ready</span>` : '',
+    ].join('');
+    return `<span class="tl-lines">${lines}</span>${
+      chips ? `<span class="tl-after" data-from="${String(group.bracket.end)}">${chips}</span>` : ''
+    }`;
+  }
+  const { bracket, tasks } = group;
+  const bar = tasks
+    ? `<span class="tl-tbar" aria-hidden="true">${[
+        ['done', tasks.done],
+        ['in-progress', tasks.inProgress],
+        ['to-do', tasks.toDo],
+      ]
+        .filter(([, count]) => Number(count) > 0)
+        .map(([cls, count]) => `<span class="tl-tseg ${String(cls)}" data-grow="${String(count)}"></span>`)
+        .join('')}</span><span class="tl-ttext">${escapeHtml(tasks.text)}</span>`
+    : '';
+  return `<span class="tl-bracket${bracket.approximate ? ' approximate' : ''}" data-from="${String(
+    bracket.start
+  )}" data-to="${String(bracket.end)}"></span>${
+    bracket.text ? `<span class="tl-btext" data-from="${String(bracket.start)}">${escapeHtml(bracket.text)}</span>` : ''
+  }${bar ? `<span class="tl-after" data-from="${String(bracket.end)}">${bar}</span>` : ''}`;
+}
+
 function renderRow(row: TimelineRow): string {
-  const label = `<div class="tl-label" tabindex="0" role="button" data-msg="${named(row.open)}" title="Open #${String(
-    row.id
-  )}"><span class="tl-id${row.bug ? ' bug' : ''}${row.here ? ' here' : ''}">${escapeHtml(row.header)}${
-    row.here ? ' · ● here' : ''
-  }</span><span class="tl-title">${escapeHtml(row.title)}</span></div>`;
+  const isCollapsed = collapsed.includes(row.id);
+  const label = renderLabel(row, isCollapsed);
   let popoverKey: string | undefined;
   if (row.popover) {
     popoverKey = `p${String(popovers.size)}`;
     popovers.set(popoverKey, row.popover);
   }
+  const classes = ['tl-row'];
+  if (row.group) {
+    classes.push('group', 'in-group');
+  } else if (row.groupId !== undefined) {
+    classes.push('child', 'in-group');
+    if (row.lastChild) {
+      classes.push('last');
+    }
+  }
+  if (row.faded) {
+    classes.push('faded');
+  }
+  if (row.group) {
+    return `<div class="${classes.join(' ')}">${label}<div class="tl-lane">${renderGroupLane(
+      row.group,
+      isCollapsed
+    )}</div></div>`;
+  }
   const segments = row.segments
     .map((segment) => renderSegment(segment, segment.kind === 'asleep' ? popoverKey : undefined))
     .join('');
-  const outline = row.outline
-    ? `<span class="tl-outline${row.outline.broken ? ' broken' : ''}">${escapeHtml(row.outline.text)}</span>`
-    : '';
   const chip =
     row.chip && row.segments.at(0) && row.segments[0].start > 1.3
       ? `<span class="tl-chip">${escapeHtml(row.chip)}</span>`
       : '';
   const note = row.note ? `<span class="tl-note tone-${row.note.tone}">${escapeHtml(row.note.text)}</span>` : '';
+  const merged = row.merged
+    ? `<span class="tl-note tone-merged" data-from="${String(row.merged.at)}">${escapeHtml(row.merged.text)}</span>`
+    : '';
   const action = row.action
     ? actionButton(row.action, row.segments.some((segment) => segment.kind === 'needsYou') ? 'needsYou' : 'plain')
     : '';
-  const after =
-    note || action
-      ? `<span class="tl-after${row.outline ? ' at-end' : ''}" data-from="${String(row.end)}">${note}${action}</span>`
-      : '';
-  return `<div class="tl-row">${label}<div class="tl-lane">${chip}${segments}${outline}${after}</div></div>`;
+  if (row.outline) {
+    // Rule TIMELINE-9: the outline and its button share the lane (the outline gives way), so nothing overflows it
+    const outline = `<span class="tl-outline${row.outline.broken ? ' broken' : ''}">${escapeHtml(
+      row.outline.text
+    )}</span>`;
+    return `<div class="${classes.join(
+      ' '
+    )}">${label}<div class="tl-lane">${chip}<div class="tl-fill">${outline}${action}</div></div></div>`;
+  }
+  const after = note || action ? `<span class="tl-after" data-from="${String(row.end)}">${note}${action}</span>` : '';
+  return `<div class="${classes.join(
+    ' '
+  )}">${label}<div class="tl-lane">${chip}${segments}${merged}${after}</div></div>`;
 }
 
 function renderDevelop(develop: TimelineModel['develop']): string {
@@ -116,13 +240,21 @@ function section(title: string, body: string, note?: string): string {
 function renderLegend(): string {
   const item = (cls: string, label: string): string =>
     `<span class="tl-key"><span class="tl-swatch seg-${cls}"></span>${label}</span>`;
+  // Rule TIMELINE-15: the key to the first line of a label
+  const key = `<span class="tl-key tl-tagkey" aria-label="What the first line of a label says">${tagHtml({
+    text: 'PBI',
+    tone: 'pbi',
+  })}${tagHtml({ text: 'BUG', tone: 'bug' })}work item title${pillHtml({ text: 'PR …' })}PR title${tagHtml({
+    text: 'Task',
+    tone: 'task',
+  })}task title</span>`;
   return `<div class="tl-legend" aria-label="Legend">${item('coding', 'coding')}${item(
     'draft',
     'draft · self-review'
   )}${item('review', 'CI · review')}${item('needsYou', 'needs you')}${item('ready', 'ready to be merged')}${item(
     'asleep',
     'no update (zZ)'
-  )}<span class="tl-key dep">⛓ dependency</span></div>`;
+  )}<span class="tl-key"><span class="tl-swatch bracket"></span>life of a work item with several PRs</span><span class="tl-key dep">⛓ dependency</span>${key}</div>`;
 }
 
 function renderHeader(current: TimelineModel): string {
@@ -168,7 +300,7 @@ function renderBody(current: TimelineModel): string {
     return `<p class="message muted">${escapeHtml(current.notes.at(0) ?? 'Nothing to draw')}</p>`;
   }
   const work = current.work.length
-    ? current.work.map(renderRow).join('')
+    ? visibleRows(current.work, collapsed).map(renderRow).join('')
     : '<p class="tl-empty-row">None of your work items is in the sprint</p>';
   const planned =
     current.range === 'sprintAndNext'
@@ -197,11 +329,6 @@ function place(root: HTMLElement, current: TimelineModel): void {
   root.querySelectorAll<HTMLElement>('[data-from]').forEach((element) => {
     const from = Number(element.dataset.from);
     element.style.left = percent(from);
-    if (element.classList.contains('at-end')) {
-      // The button of a row that is only an outline sits at the right end of the lane
-      element.style.left = 'auto';
-      element.style.right = '6px';
-    }
     if (element.dataset.to !== undefined) {
       element.style.width = percent(Number(element.dataset.to) - from);
     }
@@ -209,11 +336,14 @@ function place(root: HTMLElement, current: TimelineModel): void {
   // No room for a note or a button after the bar: it goes over the right end of the lane
   root.querySelectorAll<HTMLElement>('.tl-note, .tl-after').forEach((element) => {
     const lane = element.parentElement?.getBoundingClientRect();
-    if (lane && !element.classList.contains('at-end') && element.getBoundingClientRect().right > lane.right) {
+    if (lane && element.getBoundingClientRect().right > lane.right) {
       element.classList.add('flip');
       element.style.left = 'auto';
       element.style.right = '6px';
     }
+  });
+  root.querySelectorAll<HTMLElement>('[data-grow]').forEach((element) => {
+    element.style.flexGrow = element.dataset.grow ?? '1';
   });
   const overlay = root.querySelector<HTMLElement>('.tl-overlay');
   if (overlay) {
@@ -266,12 +396,13 @@ function render(): void {
   );
   const scroll = app.querySelector('.tl-scroll');
   const scrollLeft = scroll?.scrollLeft ?? 0;
+  const scrollTop = scroll?.scrollTop ?? 0;
   app.innerHTML = `${renderHeader(model)}${renderLegend()}<div class="tl-scroll">${renderBody(model)}</div>`;
   const grid = app.querySelector<HTMLElement>('.tl-grid');
   if (grid) {
     place(grid, model);
     // Wide ranges scroll sideways: the grid is as wide as its days need
-    app.querySelector<HTMLElement>('.tl-scroll')?.scrollTo({ left: scrollLeft });
+    app.querySelector<HTMLElement>('.tl-scroll')?.scrollTo({ left: scrollLeft, top: scrollTop });
   }
 }
 
@@ -325,6 +456,14 @@ document.addEventListener('click', (event) => {
     showPopover(trigger, content);
     return;
   }
+  const toggle = target?.closest<HTMLElement>('[data-toggle]');
+  if (toggle?.dataset.toggle) {
+    // Rule TIMELINE-18
+    collapsed = toggleCollapsed(collapsed, Number(toggle.dataset.toggle));
+    vscode.setState({ collapsed });
+    render();
+    return;
+  }
   if (run(target)) {
     return;
   }
@@ -352,7 +491,10 @@ document.addEventListener('keydown', (event) => {
     return;
   }
   const target = event.target instanceof HTMLElement ? event.target : null;
-  if ((event.key === 'Enter' || event.key === ' ') && target?.matches('.tl-label[data-msg], .tl-seg[data-popover]')) {
+  if (
+    (event.key === 'Enter' || event.key === ' ') &&
+    target?.matches('.tl-label[data-msg], .tl-ltext[data-msg], .tl-seg[data-popover]')
+  ) {
     event.preventDefault();
     target.click();
   }

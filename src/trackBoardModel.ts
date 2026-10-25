@@ -148,6 +148,10 @@ export interface BoardWorkCard {
   part?: CardPart;
   /** The PR of a PR card */
   prId?: number;
+  /** The task of a task card (BOARD-22) */
+  taskId?: number;
+  /** The number of tasks of the tasks-to-do card (BOARD-22) */
+  taskCount?: number;
   /** The card of the work item itself: the only one, or the one of the PR the track follows (TRACK-1) */
   primary: boolean;
   /** Title of the work item (the title of a PR card is the PR's) */
@@ -1088,6 +1092,7 @@ function splitCards(full: WorkItemModel, ctx: CardContext): BoardWorkCard[] | un
     return {
       ...card,
       column: 'branch',
+      taskId: task.id,
       title: task.title,
       tag: 'no PR yet',
       status: { text: `task ${task.state} · ${task.branch ? `branch ${task.branch}` : 'no branch'}`, tone: 'normal' },
@@ -1103,6 +1108,7 @@ function splitCards(full: WorkItemModel, ctx: CardContext): BoardWorkCard[] | un
           return {
             ...card,
             column: 'toStart' as const,
+            taskCount: toDo.length,
             tag: 'tasks',
             status: { text: `${plural(toDo.length, 'task')} to do`, tone: 'normal' as const },
             note: [...titles, ...(toDo.length > 3 ? [`+${String(toDo.length - 3)}`] : [])].join(' · '),
