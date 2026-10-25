@@ -598,7 +598,8 @@ describe('the row of a work item (TIMELINE-15, TIMELINE-16)', () => {
     expect(rows.work).toEqual([]);
     const [row] = rows.finished;
     expect(row).toMatchObject({ faded: true, merged: { text: '✓ done Fr 16' } });
-    expect(kinds(row)).toEqual(['branch', 'pullRequest', 'review']);
+    // The two hours of draft are too short to see (TIMELINE-30): the bar before absorbs them
+    expect(kinds(row)).toEqual(['branch', 'review']);
     expect(row.defaultExpanded).toBe(false);
   });
 
@@ -632,7 +633,7 @@ describe('the row of a work item (TIMELINE-15, TIMELINE-16)', () => {
       { completedPullRequests: [merged(90, 14, 16)] }
     );
     const [row] = model.work;
-    expect(kinds(row)).toEqual(['branch', 'pullRequest', 'review', 'branch']);
+    expect(kinds(row)).toEqual(['branch', 'review', 'branch']);
     expect(row.segments.at(-1)?.end).toBeGreaterThan(row.segments[2].end - 0.001);
   });
 });
@@ -718,7 +719,7 @@ describe('the work item with several PRs (TIMELINE-16, TIMELINE-17)', () => {
       const child = children.find((candidate) => candidate.kind === 'pr' && candidate.prId === id);
       return child?.kind === 'pr' ? child : undefined;
     };
-    expect(pr(14021)?.segments.map((segment) => segment.kind)).toEqual(['implementation', 'draft', 'review']);
+    expect(pr(14021)?.segments.map((segment) => segment.kind)).toEqual(['implementation', 'review']);
     expect(pr(13801)?.action).toBeUndefined();
     // Several PRs: the buttons are on their rows (Show tests on the one whose CI failed)
     expect(pr(14021)?.action).toMatchObject({ label: 'Show tests' });
@@ -870,7 +871,9 @@ describe('the history of the PRs of a row (TIMELINE-28, TIMELINE-29)', () => {
         { id: 1, pipeline: 'CI', state: 'succeeded', url: '', startTime: iso(16, 15, 1), finishTime: iso(16, 16) },
       ],
     }).work[0];
-    expect(kinds(after)).toEqual(['branch', 'pullRequest', 'ci', 'review', 'ready']);
+    // The hour of CI is too short to see (TIMELINE-30): the draft bar absorbs it, its time stays in the tooltip
+    expect(kinds(after)).toEqual(['branch', 'pullRequest', 'review', 'ready']);
+    expect(after.segments[1].tip).toContain('CI');
     // What is left of a guess is the start of the work, which comes from the work item
     expect(after.segments.filter((segment) => segment.approximate).map((segment) => segment.kind)).toEqual(['branch']);
     const pr = after.children?.find((candidate) => candidate.kind === 'pr');

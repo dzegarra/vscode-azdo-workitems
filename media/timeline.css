@@ -846,6 +846,35 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   color: var(--passed);
 }
 
+/* Marks that would touch go to the next row of the strip, and the row of the PR grows with them (Rule TIMELINE-30) */
+.tl-row.child.pr.rows-2 {
+  --tl-row: 70px;
+}
+
+.tl-row.child.pr.rows-3 {
+  --tl-row: 86px;
+}
+
+.tl-row.pr.rows-2 .tl-seg {
+  top: 44px;
+}
+
+.tl-row.pr.rows-3 .tl-seg {
+  top: 60px;
+}
+
+.tl-mk.mr-1 {
+  top: 20px;
+}
+
+.tl-mk.mr-2 {
+  top: 36px;
+}
+
+.tl-mk.static {
+  top: auto;
+}
+
 /* The bar of a PR sits under the strip of its events */
 .tl-row.pr .tl-seg {
   top: 28px;
@@ -927,7 +956,6 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
 }
 
 .tl-mk.mk-push {
-  top: 4px;
   width: 2px;
   min-width: 2px;
   height: 16px;
@@ -1064,6 +1092,12 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   font-size: 10.5px;
   line-height: 14px;
   z-index: 1;
+}
+
+.tl-loading.start {
+  right: auto;
+  left: 8px;
+  bottom: 2px;
 }
 
 .tl-loading.error {

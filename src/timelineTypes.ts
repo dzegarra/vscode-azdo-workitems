@@ -92,6 +92,10 @@ export interface TimelineMarker {
   /** Initials, "+2", "3"; empty for a push */
   text: string;
   tone?: 'fail' | 'pass' | 'running';
+  /** Rule TIMELINE-30: the row of the strip it is on (marks that would touch go to the next row) */
+  row?: number;
+  /** Marks of the same kind at the same moment are one, with their number */
+  count?: number;
   /** The tooltip: who, when, what */
   tip: { title: string; lines: string[] };
 }
@@ -112,6 +116,8 @@ export interface PullRequestChild {
   /** Implementation, draft, review, ready to merge */
   segments: TimelineSegment[];
   markers: TimelineMarker[];
+  /** Rows of the strip of marks (1 to 3): the row of the PR is taller with more */
+  markerRows: number;
   /** "✓ merged Fr 16" */
   merged?: { at: number; text: string };
   action?: BoardAction & { primary: boolean };

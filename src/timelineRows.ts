@@ -22,6 +22,7 @@ import type { PullRequestStamps } from './pullRequestTimeline';
 import { isFinishedState, stateCategory } from './states';
 import type { TeamPullRequestInfo } from './teamData';
 import { axisPosition, type TimelineDay } from './timelineAxis';
+import { layoutMarkers, markerRows, mergeSegments } from './timelineLayout';
 import {
   dateText,
   dayLabel,
@@ -489,7 +490,8 @@ function pullRequestChild(
   draw: PrDraw,
   tasks: readonly TaskFacts[],
   openCount: number,
-  context: RowContext
+  context: RowContext,
+  knownStart?: number
 ): PullRequestChild {
   const { days, axisStart } = context;
   const history = context.input.history?.get(draw.id);
@@ -502,6 +504,7 @@ function pullRequestChild(
     sub: linkedTasksText(draw.id, tasks),
     segments: [],
     markers: [],
+    markerRows: 1,
     history: history?.state ?? 'idle',
     historyRef: draw.ref,
     open: context.team
@@ -511,7 +514,21 @@ function pullRequestChild(
   };
   const { facts } = draw;
   if (!facts) {
-    return { ...base, undated: true };
+    // Its dates are not known: what is known is drawn, approximate (a bar from the start of the work to now)
+    const start = knownStart ?? axisStart;
+    const guess = toSegment(
+      {
+        kind: draw.draft ? 'draft' : 'review',
+        start: Math.max(start, axisStart),
+        end: context.now,
+        text: draw.draft ? 'draft' : 'review',
+        detail: draw.draft ? 'draft · self-review' : 'review',
+        approximate: true,
+        approximateNote: 'The dates of this PR are not known',
+      },
+      days
+    );
+    return { ...base, segments: guess ? [guess] : [], end: guess?.end ?? 0, undated: true };
   }
   const phases = pullRequestPhases(facts, draw.stations);
   const segments = phases.flatMap((phase) => {
@@ -530,12 +547,13 @@ function pullRequestChild(
     );
     return segment ? [segment] : [];
   });
-  const markers = pullRequestEvents(facts).flatMap((event): TimelineMarker[] => {
+  const marks = pullRequestEvents(facts).flatMap((event): TimelineMarker[] => {
     const at = axisPosition(event.at, days);
     return event.at < axisStart || at >= days.length
       ? []
       : [{ kind: event.kind, at, text: event.text, tone: event.tone, tip: { title: event.title, lines: event.lines } }];
   });
+  const markers = layoutMarkers(marks);
   const closedAt = facts.closed;
   const merged =
     draw.merged && closedAt !== undefined
@@ -544,7 +562,15 @@ function pullRequestChild(
   const end = merged?.at ?? segments.at(-1)?.end ?? 0;
   // The buttons of the PRs are on their own row only when there are several (a single PR has them on the work item row)
   const action = !draw.merged && openCount > 1 && !context.team ? pullRequestAction(draw) : undefined;
-  return { ...base, segments, markers, ...(merged ? { merged } : {}), ...(action ? { action } : {}), end };
+  return {
+    ...base,
+    segments: mergeSegments(segments),
+    markers,
+    markerRows: markerRows(markers),
+    ...(merged ? { merged } : {}),
+    ...(action ? { action } : {}),
+    end,
+  };
 }
 
 // Rule TIMELINE-18
@@ -610,7 +636,7 @@ function childrenOf(
 ): TimelineChild[] {
   const prRows = draws
     .filter((draw) => !draw.hidden)
-    .map((draw) => pullRequestChild(item, draw, tasks, openCount, context));
+    .map((draw) => pullRequestChild(item, draw, tasks, openCount, context, workStart(item, draws, tasks)?.at));
   const taskRows = taskChildren(item, tasks, context);
   if (!prRows.length && !taskRows.length) {
     return [
@@ -752,10 +778,12 @@ export function workItemRow(cards: readonly BoardWorkCard[], context: RowContext
       ],
     };
   }
-  const segments = spans.flatMap((span) => {
-    const segment = toSegment(span, days);
-    return segment ? [segment] : [];
-  });
+  const segments = mergeSegments(
+    spans.flatMap((span) => {
+      const segment = toSegment(span, days);
+      return segment ? [segment] : [];
+    })
+  );
   // The button after the bar: with one open PR (or none), the one of its card; with several they are on their rows
   const needsText = card.status && (card.status.tone === 'broken' || card.status.tone === 'needsYou');
   let action: (BoardAction & { primary: boolean }) | undefined;

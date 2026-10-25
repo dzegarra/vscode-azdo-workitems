@@ -107,7 +107,7 @@ const pillHtml = (pr: { text: string; merged?: boolean }): string =>
 
 /** What a marker looks like: the classes the CSS paints and the text inside */
 function markerHtml(marker: TimelineMarker, positioned: boolean): string {
-  const classes = ['tl-mk', `mk-${marker.kind}`];
+  const classes = ['tl-mk', `mk-${marker.kind}`, `mr-${String(marker.row ?? 0)}`];
   if (marker.tone) {
     classes.push(`mk-${marker.tone}`);
   }
@@ -183,11 +183,11 @@ function renderPullRequestChild(child: PullRequestChild, last: boolean): string 
   } else if (child.history === 'error') {
     status = '<span class="tl-loading error">History could not be read</span>';
   } else if (child.undated) {
-    status = '<span class="tl-loading">The dates of this PR are not known</span>';
+    status = '<span class="tl-loading start">dates not known</span>';
   }
-  return `<div class="tl-row child pr${child.merged ? ' faded' : ''}${loading ? ' loading' : ''}" aria-busy="${String(
-    loading
-  )}"><div class="tl-label child${
+  return `<div class="tl-row child pr rows-${String(child.markerRows)}${child.merged ? ' faded' : ''}${
+    loading ? ' loading' : ''
+  }" aria-busy="${String(loading)}"><div class="tl-label child${
     last ? ' last' : ''
   }" tabindex="0" role="button" ${open}><span class="tl-l1">${pillHtml(child.pill)}<span class="tl-title">${escapeHtml(
     child.title
