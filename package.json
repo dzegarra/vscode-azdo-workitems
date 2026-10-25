@@ -522,6 +522,34 @@
             "default": [],
             "description": "Teams whose current iteration is listed. Leave empty to list all the teams you belong to.",
             "order": 5
+          },
+          "totalflowx.teamView.people": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Azure DevOps identity id of the person (the id of the Assigned To field)."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Display name, as the picker shows it."
+                },
+                "uniqueName": {
+                  "type": "string",
+                  "description": "Sign-in name (email). Optional: when missing, the display name is used to find the work items."
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ]
+            },
+            "default": [],
+            "markdownDescription": "People whose work the **Whole team** view of the Track board shows, besides yours. The **People** picker of the board writes this list; you can also edit it by hand. Teams are large and mixed, so you choose who to follow, one by one. Empty: only your own lane. Entries without `id` or `name` are ignored.",
+            "scope": "application",
+            "order": 6
           }
         }
       },

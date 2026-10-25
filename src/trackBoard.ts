@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { setShowCompleted, settings, workingDaysSetting } from './config';
 import { buildTeamBoard } from './teamBoardModel';
+import { parsePeople } from './teamPeople';
 import { groupByPerson, mergedPullRequests, shapeTeamItems, teamOfIteration, waitedOnBy } from './teamData';
 import type { TeamWorkStore } from './teamWorkStore';
 import type { MyPullRequestsWatcher } from './myPullRequestsWatcher';
@@ -103,8 +104,10 @@ export function currentBoard(
       // A reload with data on screen does not show "Loading…": the lanes would jump
       status: teamStatus(team.status, snapshot !== undefined),
       error: team.error,
-      teams: team.teams,
       selected: team.selection,
+      chosen: team.people,
+      candidates: team.candidates,
+      membersLoading: team.membersLoading,
       people: snapshot ? groupByPerson(items, snapshot) : [],
       own: {
         items: own,
@@ -232,8 +235,9 @@ export class TrackBoardPanel implements vscode.Disposable {
         await this.team.setScope(message.scope);
         return;
       }
-      if (message.type === 'setTeamSelection') {
-        await this.team.setSelection(message.teams);
+      if (message.type === 'setTeamPeople') {
+        // Rule TEAM-1: the webview posts the list it shows; what is not a person is dropped
+        await this.team.setPeople(parsePeople(message.people));
         return;
       }
       if (message.type === 'openTeamPullRequest') {

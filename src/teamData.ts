@@ -73,11 +73,10 @@ export interface TeamItem {
 }
 
 export interface TeamPerson {
-  /** Identity id, or "unassigned" */
+  /** Identity id */
   key: string;
   name: string;
   you: boolean;
-  unassigned: boolean;
   items: TeamItem[];
 }
 
@@ -90,8 +89,6 @@ export interface TeamShapeOptions {
   workingDays: readonly number[];
   now: Date;
 }
-
-const UNASSIGNED = 'unassigned';
 
 const stringField = (workItem: WorkItem, name: string): string | undefined => {
   const value = workItem.fields[name];
@@ -216,30 +213,29 @@ export function shapeTeamItems(snapshot: TeamSnapshot, options: TeamShapeOptions
 }
 
 // Rule BOARD-27
-/** Everybody's items grouped by assignee: the user first, the others by name, the unassigned ones last */
+/**
+ * The items grouped by assignee: the user first, the others by name. A work item without assignee is no person's (the
+ * query only brings the people chosen, so this does not happen; it is not drawn)
+ */
 export function groupByPerson(items: TeamItem[], snapshot: TeamSnapshot): TeamPerson[] {
   const assigneeOf = new Map(snapshot.items.map((item) => [item.id, item]));
   const people = new Map<string, TeamPerson>();
   for (const item of items) {
     const source = assigneeOf.get(item.model.id);
-    const key = source?.assigneeId ?? (source?.assignedTo ? `name:${source.assignedTo}` : UNASSIGNED);
+    const key = source?.assigneeId ?? (source?.assignedTo ? `name:${source.assignedTo}` : undefined);
+    if (!key || !source?.assignedTo) {
+      continue;
+    }
     const person = people.get(key) ?? {
       key,
-      name: source?.assignedTo ? shortPersonName(source.assignedTo) : 'Unassigned',
+      name: shortPersonName(source.assignedTo),
       you: snapshot.myId !== undefined && key === snapshot.myId,
-      unassigned: key === UNASSIGNED,
       items: [],
     };
     person.items.push(item);
     people.set(key, person);
   }
-  const rank = (person: TeamPerson): number => {
-    if (person.you) {
-      return 0;
-    }
-    return person.unassigned ? 2 : 1;
-  };
-  return [...people.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  return [...people.values()].sort((a, b) => Number(b.you) - Number(a.you) || a.name.localeCompare(b.name));
 }
 
 /** The PRs merged in the sprint, for the merged cards (BOARD-24) of everybody */
@@ -283,10 +279,38 @@ export function pullRequestsToFetch(
   return [...new Set(linked)].filter((id) => !active.has(id) && !closed.has(id));
 }
 
+// Rule TEAM-3
+/**
+ * From the listing of the PRs completed since the start of the sprint (the whole project's), the ones linked to the
+ * work items shown and really closed on or after that date. The rest of the project's PRs are not kept
+ */
+export function completedLinked<T extends { pullRequestId: number; closedDate?: string; status: string }>(
+  listing: readonly T[],
+  linked: ReadonlySet<number>,
+  since: string
+): T[] {
+  const from = Date.parse(since);
+  return listing.filter(
+    (pr) =>
+      pr.status === 'completed' &&
+      linked.has(pr.pullRequestId) &&
+      (pr.closedDate === undefined || Number.isNaN(from) || Date.parse(pr.closedDate) >= from)
+  );
+}
+
+/** The earliest start of the sprints shown, ISO; undefined when no sprint has dates */
+export function earliestStart(iterations: readonly { startDate?: string }[]): string | undefined {
+  const starts = iterations
+    .map((iteration) => iteration.startDate)
+    .filter((date): date is string => date !== undefined && !Number.isNaN(Date.parse(date)))
+    .sort();
+  return starts.at(0);
+}
+
 // Rule TEAM-8
 /**
  * The data is loaded again only when something it depends on changed since the last attempt: the store loaded
- * again, the teams shown changed, or the user asked (a new attempt key). A failed attempt is not repeated alone
+ * again, the people chosen changed, or the user asked (a new attempt key). A failed attempt is not repeated alone
  */
-export const attemptKey = (storeLoads: number, selection: readonly string[], forced: number): string =>
-  `${String(storeLoads)}|${selection.join(',')}|${String(forced)}`;
+export const attemptKey = (storeLoads: number, personIds: readonly string[], forced: number): string =>
+  `${String(storeLoads)}|${personIds.join(',')}|${String(forced)}`;

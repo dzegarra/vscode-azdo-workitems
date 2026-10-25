@@ -4,8 +4,7 @@
  * Pure, so no "vscode" import
  */
 
-/** `context.globalState` keys: UI choices, shared by both tabs (Rule TEAM-1) */
-export const TEAM_SELECTION_KEY = 'totalflowx.teamView.teams';
+/** `context.globalState` key of the scope: a UI choice, shared by both tabs (Rule TEAM-1) */
 export const TEAM_SCOPE_KEY = 'totalflowx.teamView.scope';
 
 /** "mine": the user's work and reviews; "team": everybody's work in the teams chosen */
@@ -15,32 +14,13 @@ export const parseScope = (value: unknown): TeamScope => (value === 'team' ? 'te
 
 // Rule TEAM-1
 /**
- * The teams shown: the stored choice kept to the teams that still exist; without a (valid) choice, the teams the
- * sidebar lists (`totalflowx.teams`, or all the user's teams when none is set)
+ * The teams whose sprints are read: the ones the sidebar lists (`totalflowx.teams`), or all the teams of the user when
+ * none is set or none exists any more. Not a choice of the view: the people are (src/teamPeople.ts)
  */
-export function resolveSelection(
-  stored: readonly string[] | undefined,
-  available: readonly string[],
-  configured: readonly string[]
-): string[] {
-  const valid = (names: readonly string[]): string[] => available.filter((name) => names.includes(name));
-  const chosen = valid(stored ?? []);
-  if (chosen.length) {
-    return chosen;
-  }
-  const defaults = valid(configured);
-  return defaults.length ? defaults : [...available];
+export function shownTeams(available: readonly string[], configured: readonly string[]): string[] {
+  const chosen = available.filter((name) => configured.includes(name));
+  return chosen.length ? chosen : [...available];
 }
-
-/** The team ticked or unticked; the last one stays (a view without teams shows nothing) */
-export function toggleTeam(selection: readonly string[], available: readonly string[], name: string): string[] {
-  const next = selection.includes(name) ? selection.filter((team) => team !== name) : [...selection, name];
-  return next.length ? available.filter((team) => next.includes(team)) : [...selection];
-}
-
-/** "Teams 3 of 4" */
-export const selectionLabel = (selected: number, total: number): string =>
-  `Teams ${String(selected)} of ${String(total)}`;
 
 const VOWELS = /[aeiou]/i;
 

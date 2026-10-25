@@ -4,7 +4,8 @@
  * others. The Sprint timeline (7b) draws the same people and cards. Pure, so no "vscode" import
  */
 import { describeTimeLeft, timeLeftMs, type ReviewRules } from './reviewRequests';
-import { avatarColour, initials, selectionLabel } from './teamView';
+import { peopleLabel, pickerRows, type PickedPerson } from './teamPeople';
+import { avatarColour, initials } from './teamView';
 import type { TeamItem, TeamPerson, TeamPullRequestInfo } from './teamData';
 import {
   boardCards,
@@ -74,7 +75,6 @@ export interface TeamLane {
   /** 0 to 5: the class of the avatar colour */
   colour: number;
   you: boolean;
-  unassigned: boolean;
   /** "7 items · 3 teams · 3 need you" */
   summary: string;
   /** The compact cards (for "You": only the items the board of the user does not have) */
@@ -97,18 +97,24 @@ export interface TeamInsight {
   text: string;
 }
 
-export interface TeamChoice {
-  name: string;
-  badge: string;
-  selected: boolean;
+/** The picker behind the People button: the chosen people first, then the candidates (the filter is typed in the page) */
+export interface PeoplePicker {
+  /** "People 3" */
+  label: string;
+  selected: PickedPerson[];
+  candidates: PickedPerson[];
+  /** The members of the teams are still being read */
+  loading: boolean;
 }
 
 export interface TeamBoardModel {
   status: 'error' | 'loading' | 'ready';
   error?: string;
-  teams: TeamChoice[];
-  /** "Teams 3 of 4" */
-  teamsLabel: string;
+  /** The teams whose sprints are read */
+  teamCount: number;
+  picker: PeoplePicker;
+  /** Rule TEAM-1: nobody is chosen yet: the lane of the user and a hint */
+  noPeople: boolean;
   /** Several teams are shown: the cards carry their team badge */
   showBadges: boolean;
   people: number;
@@ -123,9 +129,12 @@ export interface TeamBoardModel {
 export interface TeamBoardInput {
   status: TeamBoardModel['status'];
   error?: string;
-  /** The teams of the user and the ones shown */
-  teams: { name: string; badge: string }[];
+  /** The teams whose sprints are read */
   selected: readonly string[];
+  /** The people chosen (setting) and the ones the picker offers besides them */
+  chosen: readonly PickedPerson[];
+  candidates: readonly PickedPerson[];
+  membersLoading?: boolean;
   people: TeamPerson[];
   /** The board of the user: its work items (see boardItems) and the cards already built for them */
   own: { items: WorkItemModel[]; cards: BoardWorkCard[]; collapsedIds: number[]; badges: ReadonlyMap<number, string> };
@@ -360,7 +369,7 @@ export function buildTeamBoard(input: TeamBoardInput): TeamBoardModel {
   const you = input.people.find((person) => person.you);
   // The queue is empty: the verbs are the user's own and only their own cards have them
   const lanePeople: { person: TeamPerson; ownCards?: BoardWorkCard[] }[] = [
-    { person: you ?? { key: 'you', name: 'You', you: true, unassigned: false, items: [] } },
+    { person: you ?? { key: 'you', name: 'You', you: true, items: [] } },
     ...everyone.map((person) => ({ person })),
   ];
   const overdueByColumn = new Map<BoardColumnId, number>();
@@ -421,16 +430,13 @@ export function buildTeamBoard(input: TeamBoardInput): TeamBoardModel {
         }
       });
     }
-    if (!person.unassigned) {
-      load.push({ name: person.you ? 'You' : person.name, items, teams });
-    }
+    load.push({ name: person.you ? 'You' : person.name, items, teams });
     return {
       key: person.key,
       name: person.you ? 'You' : person.name,
       initials: initials(person.you ? input.youName ?? person.name : person.name),
       colour: avatarColour(person.name),
       you: person.you,
-      unassigned: person.unassigned,
       summary: laneSummary(items, teams, needYou, showBadges || teams > 1),
       cards: teamCards,
       collapsedIds,
@@ -482,10 +488,15 @@ export function buildTeamBoard(input: TeamBoardInput): TeamBoardModel {
   return {
     status: input.status,
     error: input.error,
-    teams: input.teams.map((team) => ({ ...team, selected: input.selected.includes(team.name) })),
-    teamsLabel: selectionLabel(input.selected.length, input.teams.length),
+    teamCount: input.selected.length,
+    picker: {
+      label: peopleLabel(input.chosen.length),
+      ...pickerRows(input.chosen, input.candidates),
+      loading: input.membersLoading === true,
+    },
+    noPeople: input.chosen.length === 0,
     showBadges,
-    people: visibleLanes.filter((lane) => !lane.unassigned).length,
+    people: visibleLanes.length,
     workItems: distinctItems.size,
     columns,
     lanes: visibleLanes,

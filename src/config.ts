@@ -8,6 +8,7 @@ import { parseCheckoutMode } from './worktrees';
 import { DEFAULT_COMPLETED_STATES } from './predecessors';
 import { DEFAULT_STATE_ORDER } from './states';
 import { parseWorkingDays } from './workingTime';
+import { parsePeople, type PickedPerson } from './teamPeople';
 import { normalizePopoverDelay } from './popoverDelay';
 import { normalizeHoverStyle } from './hoverStyle';
 import { normalizeCodingStart } from './codingStart';
@@ -36,6 +37,13 @@ export async function setShowCompleted(show: boolean): Promise<void> {
     .update('appearance.showCompleted', show, vscode.ConfigurationTarget.Global);
 }
 
+/** Rule TEAM-1: the people of the Whole team view are saved in the user's settings (the picker writes them) */
+export async function setTeamPeople(people: readonly PickedPerson[]): Promise<void> {
+  await vscode.workspace
+    .getConfiguration(SECTION)
+    .update('teamView.people', [...people], vscode.ConfigurationTarget.Global);
+}
+
 export function settings() {
   const config = vscode.workspace.getConfiguration(SECTION);
   return {
@@ -43,6 +51,8 @@ export function settings() {
     project: config.get<string>('project', ''),
     repository: config.get<string>('repository', ''),
     teams: config.get<string[]>('teams', []),
+    /** Rule TEAM-1: invalid entries are ignored */
+    teamPeople: parsePeople(config.get<unknown>('teamView.people', [])),
     remote: config.get<string>('remote', 'origin'),
     baseBranch: config.get<string>('branches.baseBranch', 'develop'),
     checkoutMode: parseCheckoutMode(config.get<string>('checkout.mode', 'ask')),

@@ -44,14 +44,17 @@ export function buildMyWorkItemsQuery(iterationPaths: string[]): string {
 
 // Rule TEAM-2
 /**
- * WIQL query of the Backlog Items and Bugs (not Removed) of every given iteration, whoever they are assigned to:
- * one query for all the selected teams. The tasks come later, as the children of these work items
+ * WIQL query of the Backlog Items and Bugs (not Removed) of every given iteration that are assigned to one of the
+ * given people (their sign-in names: an identity id matches nothing in `IN`, see AZURE_DEVOPS.md). One query for all
+ * the teams. Without people there is no query (an empty `IN ()` is not valid): the caller does not ask. The tasks
+ * come later, as the children of these work items
  */
-export function buildTeamWorkItemsQuery(iterationPaths: string[]): string {
+export function buildTeamWorkItemsQuery(iterationPaths: string[], people: readonly string[]): string {
   return [
     "SELECT [System.Id] FROM WorkItems WHERE [System.WorkItemType] IN ('Product Backlog Item', 'Bug')",
     "AND [System.State] <> 'Removed'",
     `AND [System.IterationPath] IN (${iterationPaths.map(wiqlString).join(', ')})`,
+    `AND [System.AssignedTo] IN (${people.map(wiqlString).join(', ')})`,
     'ORDER BY [System.Id]',
   ].join(' ');
 }

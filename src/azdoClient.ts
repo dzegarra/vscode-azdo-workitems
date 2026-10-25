@@ -43,8 +43,10 @@ const FEEDS_URL = 'https://feeds.dev.azure.com';
 const NOT_FOUND = 404;
 /** The work items API accepts up to 200 IDs per request */
 const MAX_IDS_PER_REQUEST = 200;
-const ACTIVE_PAGE = 200;
-const MAX_ACTIVE_PULL_REQUESTS = 1000;
+const LISTED_PAGE = 200;
+const MAX_LISTED_PULL_REQUESTS = 1000;
+/** Members of a team asked in one request (the largest team has about 25) */
+const TEAM_MEMBERS_TOP = 1000;
 /** A ref update to this object ID (40 zeros) deletes the branch */
 const DELETED_OBJECT_ID_LENGTH = 40;
 
@@ -253,26 +255,45 @@ export class AzdoClient {
   }
 
   // Rule TEAM-2
-  /** Backlog Items and Bugs of the given iterations, whoever has them (one query, then batches with relations) */
-  async getTeamWorkItems(iterationPaths: string[]): Promise<WorkItem[]> {
-    if (!iterationPaths.length) {
+  /**
+   * Backlog Items and Bugs of the given iterations assigned to the given people (sign-in names): one query, then
+   * batches with relations. Without iterations or people nothing is asked
+   */
+  async getTeamWorkItems(iterationPaths: string[], people: string[]): Promise<WorkItem[]> {
+    if (!iterationPaths.length || !people.length) {
       return [];
     }
     const result = await this.request<{ workItems: { id: number }[] }>(this.url('wit/wiql'), {
       method: 'POST',
-      body: JSON.stringify({ query: buildTeamWorkItemsQuery(iterationPaths) }),
+      body: JSON.stringify({ query: buildTeamWorkItemsQuery(iterationPaths, people) }),
     });
     return this.getWorkItems(result.workItems.map((wi) => wi.id));
   }
 
-  // Rule TEAM-3
-  /** All the active PRs of the project, with their reviewers and last commit: one request per 200 PRs */
-  async getActivePullRequests(): Promise<PullRequestDetails[]> {
+  // Rule TEAM-1
+  /** The members of a team (identity id, display name, sign-in name) */
+  async getTeamMembers(teamId: string): Promise<{ id: string; name: string; uniqueName?: string }[]> {
+    const result = await this.request<{
+      value: { identity: { id: string; displayName: string; uniqueName?: string } }[];
+    }>(
+      `${BASE_URL}/${encodeURIComponent(this.organization)}/_apis/projects/${encodeURIComponent(
+        this.project
+      )}/teams/${encodeURIComponent(teamId)}/members?$top=${TEAM_MEMBERS_TOP}&api-version=${API_VERSION}`
+    );
+    return result.value.map(({ identity }) => ({
+      id: identity.id,
+      name: identity.displayName,
+      uniqueName: identity.uniqueName,
+    }));
+  }
+
+  /** Pages of a listing of the PRs of the project, 200 per request, until a short page or the cap */
+  private async listPullRequests(filter: string): Promise<PullRequestDetails[]> {
     const all: PullRequestDetails[] = [];
-    for (let skip = 0; skip < MAX_ACTIVE_PULL_REQUESTS; skip += ACTIVE_PAGE) {
+    for (let skip = 0; skip < MAX_LISTED_PULL_REQUESTS; skip += LISTED_PAGE) {
       const result = await this.request<{
         value: (Omit<PullRequestDetails, 'reviewers' | 'webUrl'> & Partial<PullRequestDetails>)[];
-      }>(this.url(`git/pullrequests?searchCriteria.status=active&$top=${ACTIVE_PAGE}&$skip=${skip}`));
+      }>(this.url(`git/pullrequests?${filter}&$top=${LISTED_PAGE}&$skip=${skip}`));
       all.push(
         ...result.value.map((pr) => ({
           ...pr,
@@ -280,11 +301,27 @@ export class AzdoClient {
           webUrl: this.pullRequestWebUrlByName(pr.repository.name, pr.pullRequestId),
         }))
       );
-      if (result.value.length < ACTIVE_PAGE) {
+      if (result.value.length < LISTED_PAGE) {
         break;
       }
     }
     return all;
+  }
+
+  // Rule TEAM-3
+  /** All the active PRs of the project, with their reviewers and last commit: one request per 200 PRs */
+  getActivePullRequests(): Promise<PullRequestDetails[]> {
+    return this.listPullRequests('searchCriteria.status=active');
+  }
+
+  // Rule TEAM-3
+  /** The PRs of the project completed since the given ISO date (by closing date): one request per 200 PRs */
+  getCompletedPullRequests(minTime: string): Promise<PullRequestDetails[]> {
+    return this.listPullRequests(
+      `searchCriteria.status=completed&searchCriteria.queryTimeRangeType=closed&searchCriteria.minTime=${encodeURIComponent(
+        minTime
+      )}`
+    );
   }
 
   async getWorkItems(ids: number[]): Promise<WorkItem[]> {

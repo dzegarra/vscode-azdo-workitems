@@ -4,6 +4,8 @@ import { icon } from '../icons';
 import { lookClass } from '../look';
 import type { BoardUpdate } from '../trackBoard';
 import type { TeamBoardModel, TeamCard, TeamLane, TeamMarker } from '../teamBoardModel';
+import { EMPTY_PEOPLE_HINT, pickerRows, shortSignIn, togglePerson, type PickedPerson } from '../teamPeople';
+import { avatarColour, initials, shortPersonName } from '../teamView';
 import {
   ALL_KINDS,
   COMPLETED_TOOLTIP,
@@ -55,8 +57,9 @@ let selected: Selection | undefined;
 let actions = new Map<string, BoardAction>();
 let hoverTimer: number | undefined;
 let lastModel: string | undefined;
-/** The Teams dropdown is open (UI only) */
-let teamsOpen = false;
+/** The People picker is open, and what was typed in its filter box (UI only) */
+let peopleOpen = false;
+let peopleFilter = '';
 
 const post = (message: BoardMessage): void => vscode.postMessage(message);
 
@@ -247,13 +250,13 @@ function renderLane(lane: TeamLane, current: BoardModel, team: TeamBoardModel): 
     const summary = id === 'done' && ids.length ? [renderSummaryCard(ids)] : [];
     return [...own, ...cards, ...loose, ...summary].join('');
   };
-  return `<section class="bd-lane${lane.you ? ' is-you' : ''}${
-    lane.unassigned ? ' is-unassigned' : ''
-  }" aria-label="${escapeHtml(lane.name)}"><div class="bd-lane-head"><span class="bd-avatar colour-${String(
-    lane.colour
-  )}" aria-hidden="true">${escapeHtml(lane.initials)}</span><span class="bd-lane-who"><b>${escapeHtml(
+  return `<section class="bd-lane${lane.you ? ' is-you' : ''}" aria-label="${escapeHtml(
     lane.name
-  )}</b><span class="bd-lane-sum">${escapeHtml(lane.summary)}</span></span></div>${current.columns
+  )}"><div class="bd-lane-head"><span class="bd-avatar colour-${String(lane.colour)}" aria-hidden="true">${escapeHtml(
+    lane.initials
+  )}</span><span class="bd-lane-who"><b>${escapeHtml(lane.name)}</b><span class="bd-lane-sum">${escapeHtml(
+    lane.summary
+  )}</span></span></div>${current.columns
     .map(
       (column) => `<div class="bd-col" role="list" aria-label="${escapeHtml(column.title)}">${cell(column.id)}</div>`
     )
@@ -289,7 +292,8 @@ function renderTeamBoard(current: BoardModel, team: TeamBoardModel): string {
       team.error ?? 'error'
     )} <button class="bd-chip" data-refresh>Retry</button></p>`;
   }
-  return `<div class="bd-table bd-team">${status}${notes}<div class="bd-tgrid bd-heads"><span></span>${heads}</div>${team.lanes
+  const hint = team.noPeople ? `<p class="message muted bd-people-hint">${escapeHtml(EMPTY_PEOPLE_HINT)}</p>` : '';
+  return `<div class="bd-table bd-team">${status}${hint}${notes}<div class="bd-tgrid bd-heads"><span></span>${heads}</div>${team.lanes
     .map((lane) => renderLane(lane, current, team))
     .join(
       ''
@@ -319,34 +323,47 @@ function renderBoard(current: BoardModel): string {
   )}</div>`;
 }
 
-function renderTeamsMenu(current: BoardModel): string {
+function personRow(person: PickedPerson, checked: boolean): string {
+  const hint = shortSignIn(person.uniqueName);
+  return `<label class="bd-person-row"><input type="checkbox" data-person="${escapeHtml(person.id)}"${
+    checked ? ' checked' : ''
+  }><span class="bd-avatar mini colour-${String(
+    avatarColour(shortPersonName(person.name))
+  )}" aria-hidden="true">${escapeHtml(initials(person.name))}</span><span class="bd-person-name">${escapeHtml(
+    shortPersonName(person.name)
+  )}</span>${hint ? `<span class="bd-person-hint">${escapeHtml(hint)}</span>` : ''}</label>`;
+}
+
+/** The rows of the picker for what is typed: the chosen people first, then the candidates (Rule TEAM-1) */
+function renderPeopleRows(team: TeamBoardModel): string {
+  const rows = pickerRows(team.picker.selected, team.picker.candidates, peopleFilter);
+  const chosen = rows.selected.map((person) => personRow(person, true)).join('');
+  const others = rows.candidates.map((person) => personRow(person, false)).join('');
+  const empty =
+    !chosen && !others
+      ? `<p class="bd-people-empty">${
+          team.picker.loading ? 'Reading the members of your teams…' : 'Nobody matches'
+        }</p>`
+      : '';
+  return `${chosen}${chosen && others ? '<hr class="bd-people-sep">' : ''}${others}${empty}`;
+}
+
+function renderPeoplePicker(current: BoardModel): string {
   const team = current.team;
   if (current.scope !== 'team' || !team) {
     return '';
   }
-  const rows = team.teams
-    .map(
-      (choice, index) =>
-        `<label class="bd-team-row"><input type="checkbox" data-team="${escapeHtml(choice.name)}"${
-          choice.selected ? ' checked' : ''
-        }><span class="bd-swatch swatch-${String(
-          index % 6
-        )}" aria-hidden="true"></span><span class="bd-team-name">${escapeHtml(
-          choice.name
-        )}</span><span class="bd-team-badge">${escapeHtml(
-          choice.badge
-        )}</span><button class="bd-only" data-only="${escapeHtml(
-          choice.name
-        )}" title="Show only this team">only</button></label>`
-    )
-    .join('');
-  return `<div class="bd-teams"><button class="bd-teams-button" data-teams-toggle aria-haspopup="true" aria-expanded="${String(
-    teamsOpen
-  )}">Teams<span class="bd-pill-count">${escapeHtml(
-    team.teamsLabel.replace(/^Teams /, '')
-  )}</span></button><div class="bd-teams-menu" role="dialog" aria-label="Choose teams"${
-    teamsOpen ? '' : ' hidden'
-  }>${rows}</div></div>`;
+  return `<div class="bd-people"><button class="bd-people-button" data-people-toggle aria-haspopup="true" aria-expanded="${String(
+    peopleOpen
+  )}">People<span class="bd-pill-count">${String(
+    team.picker.selected.length
+  )}</span><span aria-hidden="true">▾</span></button><div class="bd-people-menu" role="dialog" aria-label="Choose people"${
+    peopleOpen ? '' : ' hidden'
+  }><div class="bd-people-top"><input type="search" class="bd-people-filter" data-people-filter placeholder="Filter people" aria-label="Filter people" autocomplete="off" value="${escapeHtml(
+    peopleFilter
+  )}"><button class="bd-link" data-people-clear${
+    team.picker.selected.length ? '' : ' disabled'
+  }>Clear</button></div><div class="bd-people-list" data-people-list>${renderPeopleRows(team)}</div></div></div>`;
 }
 
 function renderHeader(current: BoardModel): string {
@@ -355,9 +372,9 @@ function renderHeader(current: BoardModel): string {
       kinds.includes(kind)
     )}">${label}</button>`;
   const stats = current.team
-    ? `<span class="bd-stats">${String(current.team.people)} people · ${String(
-        current.team.workItems
-      )} work items</span>`
+    ? `<span class="bd-stats">${String(current.team.people)} ${
+        current.team.people === 1 ? 'person' : 'people'
+      } · ${String(current.team.workItems)} work items</span>`
     : '';
   const left = current.header.left
     ? `<span class="bd-left${current.header.hurry ? ' hurry' : ''}" title="${escapeHtml(
@@ -365,16 +382,14 @@ function renderHeader(current: BoardModel): string {
       )}">${escapeHtml(current.header.left)}</span>`
     : '';
   return `<header class="bd-header"><h1 class="bd-sprint">${escapeHtml(current.header.sprint)}${
-    current.team && current.team.teams.length > 1
-      ? ` · ${String(current.team.teams.filter((choice) => choice.selected).length)} teams`
-      : ''
+    current.team && current.team.teamCount > 1 ? ` · ${String(current.team.teamCount)} teams` : ''
   }</h1>${left}${stats}
     <div class="bd-tabs" role="group" aria-label="View"><button class="bd-chip" aria-pressed="true">Track board</button><button class="bd-chip" data-open-timeline aria-pressed="false">Sprint timeline</button></div>
     <div class="bd-segment" role="group" aria-label="Whose work"><button data-scope="mine" aria-pressed="${String(
       current.scope === 'mine'
     )}">Mine + my reviews</button><button data-scope="team" aria-pressed="${String(
     current.scope === 'team'
-  )}">Whole team</button></div>${renderTeamsMenu(current)}
+  )}">Whole team</button></div>${renderPeoplePicker(current)}
     <div class="bd-chips" role="group" aria-label="Type">${chip('backlog', 'Backlog Items')}${chip('bug', 'Bugs')}</div>
     <div class="bd-chips" role="group" aria-label="Completed"><button class="bd-chip chip-completed" data-completed aria-pressed="${String(
       current.showCompleted
@@ -738,6 +753,10 @@ function render(): void {
   const focused = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
   const focusKey = focused?.closest<HTMLElement>('.bd-card[data-key]');
   const key = focusKey ? { kind: focusKey.dataset.kind ?? '', key: focusKey.dataset.key ?? '' } : undefined;
+  // The People picker keeps its scroll and its focus (the filter box, or the person just ticked) across a redraw
+  const pickerScroll = document.querySelector('[data-people-list]')?.scrollTop ?? 0;
+  const typing = focused?.matches('[data-people-filter]') === true;
+  const person = focused?.dataset.person;
   app.innerHTML = `${renderHeader(model)}<div class="bd-main"><div class="bd-scroll">${renderBody(
     model
   )}</div><aside id="bd-drawer" class="bd-drawer" aria-label="Selected card" hidden></aside></div>`;
@@ -745,6 +764,17 @@ function render(): void {
   renderDrawer();
   if (key) {
     app.querySelector<HTMLElement>(cardSelector(key.kind, key.key))?.focus({ preventScroll: true });
+  }
+  const list = app.querySelector<HTMLElement>('[data-people-list]');
+  if (list && peopleOpen) {
+    list.scrollTop = pickerScroll;
+    const filter = app.querySelector<HTMLInputElement>('[data-people-filter]');
+    if (typing && filter) {
+      filter.focus();
+      filter.setSelectionRange(filter.value.length, filter.value.length);
+    } else if (person) {
+      app.querySelector<HTMLElement>(`input[data-person="${CSS.escape(person)}"]`)?.focus({ preventScroll: true });
+    }
   }
 }
 
@@ -791,19 +821,20 @@ document.addEventListener('click', (event) => {
     post({ type: 'setTeamScope', scope: scope.dataset.scope === 'team' ? 'team' : 'mine' });
     return;
   }
-  if (target?.closest('[data-teams-toggle]')) {
-    teamsOpen = !teamsOpen;
+  if (target?.closest('[data-people-toggle]')) {
+    peopleOpen = !peopleOpen;
     render();
+    if (peopleOpen) {
+      document.querySelector<HTMLInputElement>('[data-people-filter]')?.focus();
+    }
     return;
   }
-  const only = target?.closest<HTMLElement>('[data-only]');
-  if (only?.dataset.only) {
-    event.preventDefault();
-    post({ type: 'setTeamSelection', teams: [only.dataset.only] });
+  if (target?.closest('[data-people-clear]')) {
+    post({ type: 'setTeamPeople', people: [] });
     return;
   }
-  if (teamsOpen && !target?.closest('.bd-teams')) {
-    teamsOpen = false;
+  if (peopleOpen && !target?.closest('.bd-people')) {
+    peopleOpen = false;
     render();
   }
   const chip = target?.closest<HTMLElement>('[data-kind-chip]');
@@ -837,23 +868,33 @@ document.addEventListener('click', (event) => {
 
 document.addEventListener('change', (event) => {
   const target = event.target instanceof HTMLInputElement ? event.target : null;
-  if (!target?.dataset.team) {
+  const picker = model?.team?.picker;
+  if (!target?.dataset.person || !picker) {
     return;
   }
-  const teams = Array.from(document.querySelectorAll<HTMLInputElement>('input[data-team]:checked')).map(
-    (input) => input.dataset.team ?? ''
-  );
-  if (teams.length) {
-    post({ type: 'setTeamSelection', teams });
-  } else {
-    target.checked = true;
+  const person = [...picker.selected, ...picker.candidates].find((candidate) => candidate.id === target.dataset.person);
+  if (person) {
+    // Rule TEAM-1: the setting is written at once; the board redraws when it changes
+    post({ type: 'setTeamPeople', people: togglePerson(picker.selected, person) });
+  }
+});
+
+document.addEventListener('input', (event) => {
+  const target = event.target instanceof HTMLInputElement ? event.target : null;
+  if (!target?.matches('[data-people-filter]') || !model?.team) {
+    return;
+  }
+  peopleFilter = target.value;
+  const list = document.querySelector('[data-people-list]');
+  if (list) {
+    list.innerHTML = renderPeopleRows(model.team);
   }
 });
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
-    if (teamsOpen) {
-      teamsOpen = false;
+    if (peopleOpen) {
+      peopleOpen = false;
       render();
     } else if (!popover.hidden) {
       endHover();

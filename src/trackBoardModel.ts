@@ -12,6 +12,7 @@ import type { RunModel } from './pipelines';
 import type { ReviewRequestModel } from './reviewRequests';
 import type { SprintProgress } from './sprintCountdown';
 import type { TeamBoardModel } from './teamBoardModel';
+import type { PickedPerson } from './teamPeople';
 import type { TeamScope } from './teamView';
 import { isFinishedState, isNotStartedState, stateCategory } from './states';
 import { branchLocationText, stationNotes } from './stationNotes';
@@ -45,7 +46,7 @@ export type BoardMessage =
   | { type: 'setBoardKinds'; kinds: BoardKind[] }
   | { type: 'setShowCompleted'; show: boolean }
   | { type: 'setTeamScope'; scope: 'mine' | 'team' }
-  | { type: 'setTeamSelection'; teams: string[] }
+  | { type: 'setTeamPeople'; people: PickedPerson[] }
   | { type: 'openTeamPullRequest'; url: string };
 
 export type CardTone = 'active' | 'broken' | 'done' | 'needsYou' | 'neutral' | 'ship';

@@ -20,11 +20,16 @@ const reviewer = (name: string, vote = 0, isRequired = true) => ({
 function input(snap: TeamSnapshot, overrides: Partial<TeamBoardInput> = {}): TeamBoardInput {
   return {
     status: 'ready',
-    teams: [
-      { name: 'Platform Team', badge: 'PLT' },
-      { name: 'Interface Apps', badge: 'IA' },
-    ],
     selected: ['Platform Team', 'Interface Apps'],
+    chosen: [
+      { id: 'zed', name: 'Zed Zebra' },
+      { id: 'ana', name: 'Ana Ruiz EXT' },
+    ],
+    candidates: [
+      { id: 'zed', name: 'Zed Zebra' },
+      { id: 'kim', name: 'Kim Lee' },
+      { id: 'amy', name: 'Amy Doe' },
+    ],
     people: groupByPerson(shapeTeamItems(snap, options), snap),
     own: { items: [], cards: [], collapsedIds: [], badges: new Map() },
     reviews: [],
@@ -82,12 +87,12 @@ describe('buildTeamBoard', () => {
     ]),
   });
 
-  it('makes one lane per person: You first, the others by name, the unassigned last', () => {
+  it('makes one lane per person: You first, the others by name; nobody without assignee', () => {
     const model = buildTeamBoard(input(snap));
-    expect(model.lanes.map((lane) => lane.name)).toEqual(['You', 'Ana Ruiz', 'Zed Zebra', 'Unassigned']);
+    expect(model.lanes.map((lane) => lane.name)).toEqual(['You', 'Ana Ruiz', 'Zed Zebra']);
     expect(model.lanes[0].you).toBe(true);
     expect(model.people).toBe(3);
-    expect(model.workItems).toBe(5);
+    expect(model.workItems).toBe(4);
   });
 
   it('places the cards by station and marks approvals, who waits and CI', () => {
@@ -160,7 +165,7 @@ describe('buildTeamBoard', () => {
 
   it('filters by type and hides the lanes without cards', () => {
     const model = buildTeamBoard(input(snap, { kinds: ['bug'] }));
-    expect(model.lanes.map((lane) => lane.name)).toEqual(['You', 'Unassigned']);
+    expect(model.lanes.map((lane) => lane.name)).toEqual(['You']);
   });
 
   it('draws the cards of others calm: orange is for what the user owes', () => {
@@ -173,7 +178,7 @@ describe('buildTeamBoard', () => {
     );
   });
 
-  it('does not count the unassigned as a person nor in the load', () => {
+  it('draws no lane for a work item without assignee', () => {
     const model = buildTeamBoard(input(snap));
     expect(model.people).toBe(3);
     expect(model.insights.find((insight) => insight.kind === 'load')?.text).not.toContain('Unassigned');
@@ -183,10 +188,16 @@ describe('buildTeamBoard', () => {
     expect(buildTeamBoard(input(snap, { youName: 'Daniel Zegarra' })).lanes[0].initials).toBe('DZ');
   });
 
-  it('tells the teams chosen', () => {
-    const model = buildTeamBoard(input(snap, { selected: ['Interface Apps'] }));
-    expect(model.teamsLabel).toBe('Teams 1 of 2');
-    expect(model.teams.map((team) => team.selected)).toEqual([false, true]);
+  it('offers the people chosen first, then the candidates, and hints when nobody is chosen', () => {
+    const model = buildTeamBoard(input(snap));
+    expect(model.picker.label).toBe('People 2');
+    expect(model.picker.selected.map((person) => person.id)).toEqual(['ana', 'zed']);
+    expect(model.picker.candidates.map((person) => person.id)).toEqual(['amy', 'kim']);
+    expect(model.noPeople).toBe(false);
+    const none = buildTeamBoard(input(snapshot(), { chosen: [] }));
+    expect(none.noPeople).toBe(true);
+    expect(none.lanes.map((lane) => lane.name)).toEqual(['You']);
+    expect(none.teamCount).toBe(2);
   });
 
   it('writes the insights: the bottleneck, the items without update and the load', () => {

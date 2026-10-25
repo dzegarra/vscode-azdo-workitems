@@ -1073,11 +1073,11 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
   font-size: 12px;
 }
 
-.bd-teams {
+.bd-people {
   position: relative;
 }
 
-.bd-teams-button {
+.bd-people-button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1091,7 +1091,7 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
   cursor: pointer;
 }
 
-.bd-teams-button[aria-expanded='true'] {
+.bd-people-button[aria-expanded='true'] {
   border-color: var(--vscode-focusBorder);
 }
 
@@ -1103,15 +1103,15 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
   font-size: 11px;
 }
 
-.bd-teams-menu {
+.bd-people-menu {
   position: absolute;
   top: 36px;
   left: 0;
   z-index: 6;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  width: 280px;
+  gap: 4px;
+  width: 300px;
   padding: 6px;
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -1119,30 +1119,93 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
 }
 
-.bd-teams-menu[hidden] {
+.bd-people-menu[hidden] {
   display: none;
 }
 
-.bd-team-row {
+.bd-people-top {
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 30px;
-  padding: 0 10px;
+  gap: 8px;
+}
+
+.bd-people-filter {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--vscode-input-border, var(--border));
+  border-radius: 6px;
+  background: var(--vscode-input-background, transparent);
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  font: inherit;
+  font-size: 12px;
+}
+
+.bd-people-filter:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.bd-link {
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--vscode-textLink-foreground);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.bd-link:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.bd-people-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.bd-people-sep {
+  width: 100%;
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.bd-people-empty {
+  margin: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.bd-people-hint {
+  margin-top: 4px;
+}
+
+.bd-person-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 8px;
   border-radius: 6px;
   font-size: 12px;
   cursor: pointer;
 }
 
-.bd-team-row:hover {
+.bd-person-row:hover {
   background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
 }
 
-.bd-team-row input {
+.bd-person-row input {
   margin: 0;
 }
 
-.bd-team-name {
+.bd-person-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -1150,52 +1213,13 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
   white-space: nowrap;
 }
 
-/* "only" shows on hover or focus of the row, like in the design */
-.bd-only {
-  display: none;
-  height: 22px;
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--bd-card);
-  color: var(--vscode-foreground);
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.bd-team-row:hover .bd-only,
-.bd-team-row:focus-within .bd-only {
-  display: inline-block;
-}
-
-.bd-swatch {
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
-  background: var(--pending);
-}
-
-.swatch-0 {
-  --swatch: var(--in-flight);
-}
-.swatch-1 {
-  --swatch: var(--passed);
-}
-.swatch-2 {
-  --swatch: var(--needs-you);
-}
-.swatch-3 {
-  --swatch: var(--broken);
-}
-.swatch-4 {
-  --swatch: var(--working-here, var(--in-flight));
-}
-.swatch-5 {
-  --swatch: var(--pending);
-}
-
-.bd-swatch {
-  background: var(--swatch, var(--pending));
+.bd-person-hint {
+  max-width: 100px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bd-team-badge {
@@ -1292,6 +1316,12 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
 }
 .bd-avatar.colour-5 {
   --swatch: var(--pending);
+}
+
+.bd-avatar.mini {
+  width: 20px;
+  height: 20px;
+  font-size: 9px;
 }
 
 .is-you .bd-avatar {

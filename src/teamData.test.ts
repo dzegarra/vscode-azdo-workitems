@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   attemptKey,
+  completedLinked,
+  earliestStart,
   groupByPerson,
   mergedPullRequests,
   pullRequestsToFetch,
@@ -58,7 +60,7 @@ describe('shapeTeamItems', () => {
 });
 
 describe('groupByPerson', () => {
-  it('puts the user first, the others by name and the unassigned last', () => {
+  it('puts the user first, the others by name and leaves the unassigned out', () => {
     const items = [
       rawItem(1, { assignedTo: 'Zed Zebra', assigneeId: 'zed' }),
       rawItem(2, { assignedTo: 'Ana Ruiz EXT', assigneeId: 'ana' }),
@@ -67,9 +69,8 @@ describe('groupByPerson', () => {
     ];
     const snap = snapshot({ items });
     const people = groupByPerson(shapeTeamItems(snap, options), snap);
-    expect(people.map((person) => person.name)).toEqual(['Me Myself', 'Ana Ruiz', 'Zed Zebra', 'Unassigned']);
+    expect(people.map((person) => person.name)).toEqual(['Me Myself', 'Ana Ruiz', 'Zed Zebra']);
     expect(people[0].you).toBe(true);
-    expect(people[3].unassigned).toBe(true);
   });
 });
 
@@ -108,10 +109,38 @@ describe('request budget', () => {
     expect(pullRequestsToFetch([1, 2, 2, 3], new Map([[1, 1]]), new Map([[2, 1]]))).toEqual([3]);
   });
 
-  it('loads again only when the store, the teams or a refresh changed', () => {
+  it('loads again only when the store, the people or a refresh changed', () => {
     expect(attemptKey(3, ['A', 'B'], 0)).toBe(attemptKey(3, ['A', 'B'], 0));
     expect(attemptKey(3, ['A'], 0)).not.toBe(attemptKey(4, ['A'], 0));
     expect(attemptKey(3, ['A'], 0)).not.toBe(attemptKey(3, ['B'], 0));
+    expect(attemptKey(3, [], 0)).not.toBe(attemptKey(3, ['A'], 0));
     expect(attemptKey(3, ['A'], 0)).not.toBe(attemptKey(3, ['A'], 1));
+  });
+});
+
+describe('completed PRs of the sprint', () => {
+  const done = (id: number, closedDate?: string) => rawPr(id, { status: 'completed', closedDate });
+  const since = '2026-10-14T00:00:00Z';
+
+  it('keeps the PRs linked to the work items shown and closed since the start of the sprint', () => {
+    const listing = [
+      done(1, '2026-10-15T09:00:00Z'),
+      done(2, '2026-10-16T09:00:00Z'),
+      done(3, '2026-10-01T09:00:00Z'),
+      rawPr(4, { status: 'abandoned', closedDate: '2026-10-16T09:00:00Z' }),
+    ];
+    expect(completedLinked(listing, new Set([1, 3, 4]), since).map((pr) => pr.pullRequestId)).toEqual([1]);
+  });
+
+  it('keeps a linked PR without closing date, and everything when the start is not a date', () => {
+    expect(completedLinked([done(1)], new Set([1]), since)).toHaveLength(1);
+    expect(completedLinked([done(1, '2020-01-01T00:00:00Z')], new Set([1]), 'x')).toHaveLength(1);
+  });
+
+  it('takes the earliest start of the sprints shown', () => {
+    expect(earliestStart([{ startDate: '2026-10-14T00:00:00Z' }, {}, { startDate: '2026-10-07T00:00:00Z' }])).toBe(
+      '2026-10-07T00:00:00Z'
+    );
+    expect(earliestStart([{}])).toBeUndefined();
   });
 });
