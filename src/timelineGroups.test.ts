@@ -68,6 +68,19 @@ describe('completedPullRequestInfos (TIMELINE-17)', () => {
     expect(infos[1]).toMatchObject({ publishedAt: undefined, threadsKnown: false });
   });
 
+  it('takes the last vote from the threads (TIMELINE-7)', () => {
+    const vote = {
+      publishedDate: iso(15, 18),
+      properties: { CodeReviewThreadType: { $value: 'VoteUpdate' }, CodeReviewVoteResult: { $value: '10' } },
+    } as unknown as ThreadResponse;
+    const [known, unknown] = completedPullRequestInfos([
+      { pr: authored({ pullRequestId: 1 }), threads: [vote] },
+      { pr: authored({ pullRequestId: 2 }) },
+    ]);
+    expect(known.lastVoteAt).toBe(iso(15, 18));
+    expect(unknown.lastVoteAt).toBeUndefined();
+  });
+
   it('knows the threads of a PR that was never a draft (no publication)', () => {
     expect(completedPullRequestInfos([{ pr: authored(), threads: [] }])[0]).toMatchObject({ threadsKnown: true });
   });

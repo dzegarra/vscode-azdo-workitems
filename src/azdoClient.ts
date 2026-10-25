@@ -1,5 +1,6 @@
 import { getAccessToken } from './auth';
 import { recordedFetch } from './requestRecorder';
+import { oldestCommitDate, type CommitRef } from './codingStart';
 import { CommitsDiff, hasSkipTag, PullRequestLabel } from './buildNotes';
 import { buildMyWorkItemsQuery, Iteration, mergeTeamIterations, TeamIteration } from './iterations';
 import { PackageVersion } from './integrationBuild';
@@ -15,6 +16,9 @@ import { flattenIterations, IterationNode, ScheduledIteration } from './schedule
 import { parseRelations, PullRequestState, WorkItemLinks, WorkItemRelation } from './workItemLinks';
 
 const API_VERSION = '7.1';
+/** Commits of a PR per request, and the pages read at most (Rule TIMELINE-20) */
+const COMMIT_PAGE_SIZE = 100;
+const COMMIT_PAGES = 5;
 /** The policy evaluations API only exists as a preview: 7.1 is refused */
 const POLICY_API_VERSION = '7.1-preview.1';
 const BASE_URL = 'https://dev.azure.com';
@@ -132,6 +136,14 @@ export class AzdoClient {
     url: string,
     init: { method?: string; body?: string; contentType?: string } = {}
   ): Promise<T> {
+    return (await this.send(url, init)).json as T;
+  }
+
+  /** Like `request`, with the continuation token of the page (header `x-ms-continuationtoken`) */
+  private async send(
+    url: string,
+    init: { method?: string; body?: string; contentType?: string } = {}
+  ): Promise<{ json: unknown; continuation?: string }> {
     const token = await getAccessToken();
     const response = await recordedFetch(url, {
       method: init.method,
@@ -152,7 +164,10 @@ export class AzdoClient {
       }
       throw new Error(`Azure DevOps ${response.status}: ${message || response.statusText}`);
     }
-    return (await response.json()) as T;
+    return {
+      json: (await response.json()) as unknown,
+      continuation: response.headers.get('x-ms-continuationtoken') ?? undefined,
+    };
   }
 
   /**
@@ -781,6 +796,30 @@ export class AzdoClient {
       this.url(`git/repositories/${repositoryId}/pullRequests/${pullRequestId}/threads`)
     );
     return result.value;
+  }
+
+  /**
+   * Author date (ISO) of the oldest commit of the PR (Rule TIMELINE-20). The API lists the commits newest first, 100 a
+   * page (`$top`; `$skip` is ignored) and gives a continuation token in a header: the pages are read (at most
+   * COMMIT_PAGES) and the oldest date of all is kept, whatever the order. Undefined: the PR has no commit
+   */
+  async getPullRequestFirstCommitDate(repositoryId: string, pullRequestId: number): Promise<string | undefined> {
+    const commits: CommitRef[] = [];
+    let continuation: string | undefined;
+    for (let page = 0; page < COMMIT_PAGES; page++) {
+      const token = continuation ? `&continuationToken=${encodeURIComponent(continuation)}` : '';
+      const result = await this.send(
+        this.url(
+          `git/repositories/${repositoryId}/pullRequests/${pullRequestId}/commits?$top=${COMMIT_PAGE_SIZE}${token}`
+        )
+      );
+      commits.push(...((result.json as { value?: CommitRef[] }).value ?? []));
+      continuation = result.continuation;
+      if (!continuation) {
+        break;
+      }
+    }
+    return oldestCommitDate(commits);
   }
 
   /** ID of the latest iteration (push) of the PR; undefined when it has none */

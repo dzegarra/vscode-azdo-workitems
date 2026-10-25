@@ -10,6 +10,7 @@ import { DEFAULT_STATE_ORDER } from './states';
 import { parseWorkingDays } from './workingTime';
 import { normalizePopoverDelay } from './popoverDelay';
 import { normalizeHoverStyle } from './hoverStyle';
+import { normalizeCodingStart } from './codingStart';
 import { normalizeLook } from './look';
 import { normalizeTaskCountStyle } from './taskCountStyle';
 import { normalizeWorkingOnAnimation } from './workingOn';
@@ -79,6 +80,8 @@ export function settings() {
     /** Rule BOARD-25: the finished work items and the merged PRs on the Track board and the Sprint timeline */
     showCompleted: config.get<boolean>('appearance.showCompleted', true),
     asleepPulse: config.get<boolean>('appearance.asleepPulse', true),
+    /** Rule TIMELINE-20: where coding starts on the Sprint timeline */
+    timelineCodingStart: normalizeCodingStart(config.get<string>('appearance.timelineCodingStart', 'earliest')),
     popoverDelay: normalizePopoverDelay(config.get<unknown>('popovers.hoverDelay')),
     tasksCountStyle: normalizeTaskCountStyle(config.get<string>('tasks.countStyle', 'filled')),
     workingOn: {

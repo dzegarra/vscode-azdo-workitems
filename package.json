@@ -1423,7 +1423,15 @@
             "items": {
               "type": "number"
             },
-            "default": [1, 2, 3, 5, 8, 13, 21],
+            "default": [
+              1,
+              2,
+              3,
+              5,
+              8,
+              13,
+              21
+            ],
             "description": "Team convention: the story points (Effort) of a Backlog Item are one of these values. Another value gets a caution before completion. Empty: not checked.",
             "order": 18
           },
@@ -1607,6 +1615,23 @@
             "markdownDescription": "Show the finished work items and the PRs merged in the sprint on the **Track board** and the **Sprint timeline**. The **Completed** button in the header of both tabs changes it. Off: a finished work item that breaks a team rule stays visible.",
             "scope": "application",
             "order": 10
+          },
+          "totalflowx.appearance.timelineCodingStart": {
+            "type": "string",
+            "enum": [
+              "earliest",
+              "firstCommit",
+              "taskActivated"
+            ],
+            "enumDescriptions": [
+              "The earlier of the first commit of the PR and the activation of the Task linked to the PR.",
+              "The first commit of the PR (its author date). Needs one request per PR drawn; without a commit, the activation of the linked Task.",
+              "The moment the Task linked to the PR was activated. Makes no request; without a linked Task, the first commit if it is known."
+            ],
+            "default": "earliest",
+            "markdownDescription": "Where the **coding** bar of a PR starts on the **Sprint timeline**. The first commit alone can come days after the work began, and the activation of the task alone depends on how tidy you are with states, so it depends on how you work. Without the chosen source the other one is used, then the activation of the work item (drawn as approximate), then the start of the sprint.",
+            "scope": "application",
+            "order": 11
           }
         }
       },

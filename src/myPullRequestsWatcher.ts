@@ -16,6 +16,7 @@ import {
   toMyPullRequestModels,
 } from './myPullRequests';
 import { RunModel } from './pipelines';
+import { firstCommitsToAsk, type FirstCommitEntry } from './codingStart';
 import { completedPullRequestInfos, mergedThreadsToAsk, type CompletedPullRequestInfo } from './timelineGroups';
 import type { ThreadResponse } from './reviewThreads';
 import type { FilesChanged } from './reviewCard';
@@ -123,6 +124,12 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
   private readonly mergedThreadsFailed = new Map<number, number>();
   /** Being read now: a second draw of the timeline does not ask them again */
   private readonly mergedThreadsLoading = new Set<number>();
+  /** First commit of the PRs the Sprint timeline draws, by id (Rule TIMELINE-20): a merged PR forever, an open one until its last push changes */
+  private readonly firstCommits = new Map<number, FirstCommitEntry>();
+  /** When the commits of a PR could not be read (retried after MERGED_THREADS_RETRY_MS) */
+  private readonly firstCommitsFailed = new Map<number, number>();
+  /** Being read now: a second draw of the timeline does not ask them again */
+  private readonly firstCommitsLoading = new Set<number>();
 
   constructor(private readonly store: WorkItemsStore, private readonly extras: PullRequestExtrasLoader) {}
 
@@ -170,6 +177,63 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
             return false;
           } finally {
             this.mergedThreadsLoading.delete(pr.id);
+          }
+        })
+      );
+      return loaded.some(Boolean);
+    });
+  }
+
+  // Rule TIMELINE-20
+  /** The first commit (ISO author date) of the PRs read so far, by PR id; no request */
+  firstCommitDates(): ReadonlyMap<number, string> {
+    return new Map([...this.firstCommits].map(([id, entry]) => [id, entry.date]));
+  }
+
+  // Rule TIMELINE-20
+  /**
+   * Reads the first commit of the PRs the timeline draws (`pullRequests/{id}/commits`): one request per PR, de-duplicated
+   * while in flight; a merged PR once, an open one again after a push; a failure is retried after 10 minutes. True when
+   * something was read: the timeline draws again
+   */
+  loadFirstCommits(ids: readonly number[]): Promise<boolean> {
+    return withFeature('sprintTimeline', async () => {
+      const known = this.data.map(({ pr }) => ({
+        id: pr.pullRequestId,
+        completed: pr.status === 'completed',
+        commit: pr.lastMergeSourceCommit?.commitId,
+      }));
+      const wanted = firstCommitsToAsk(
+        ids.filter((id) => !this.firstCommitsLoading.has(id)),
+        known,
+        this.firstCommits,
+        this.firstCommitsFailed,
+        Date.now(),
+        MERGED_THREADS_RETRY_MS
+      );
+      if (!wanted.length) {
+        return false;
+      }
+      const repositories = new Map(this.data.map(({ pr }) => [pr.pullRequestId, pr.repository.id]));
+      wanted.forEach((pr) => this.firstCommitsLoading.add(pr.id));
+      await this.store.whenRepositoryReady();
+      const { client } = resolveContext(this.store.repository());
+      const loaded = await Promise.all(
+        wanted.map(async (pr) => {
+          try {
+            const date = await client.getPullRequestFirstCommitDate(repositories.get(pr.id) ?? '', pr.id);
+            if (!date) {
+              // No commit to read: asked again only after the retry delay, not at every redraw
+              this.firstCommitsFailed.set(pr.id, Date.now());
+              return false;
+            }
+            this.firstCommits.set(pr.id, { commit: pr.commit, date });
+            return true;
+          } catch {
+            this.firstCommitsFailed.set(pr.id, Date.now());
+            return false;
+          } finally {
+            this.firstCommitsLoading.delete(pr.id);
           }
         })
       );

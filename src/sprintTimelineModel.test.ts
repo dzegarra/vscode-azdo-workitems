@@ -688,6 +688,8 @@ describe('groups (TIMELINE-16)', () => {
     expect(noPr?.label).toEqual({ tag: { text: 'Task', tone: 'task' } });
     expect(noPr?.title).toBe('Task 67206');
     expect(noPr?.segments[0]).toMatchObject({ kind: 'coding', text: 'coding · no PR yet' });
+    // Rule TIMELINE-20: a task row without PR keeps the activation of its task (Tu 20), not the work item's (Tu 13)
+    expect(noPr?.segments[0].tip).toContain('Tue 20 Oct, 09:00');
     expect(rows.at(-1)?.label).toEqual({ tag: { text: '5 tasks', tone: 'task' } });
     expect(rows.at(-1)?.outline?.text).toContain('5 tasks to do');
   });
@@ -892,5 +894,152 @@ describe('completed work items and merged PRs (TIMELINE-19)', () => {
     const items = [workItem({ id: 5, pullRequests: [pullRequest({ id: 50 }), closedPr(51)] })];
     const model = timeline(items, [mine({ id: 50 })], [], { completedPullRequests: [merged(51, 14, 15)] });
     expect(model.work.map((row) => row.key)).toEqual(['group:5', 'merged:5:51', '5']);
+  });
+});
+
+describe('ready to be merged on open PRs (TIMELINE-7)', () => {
+  const approved = { createdAt: iso(16, 10), publishedAt: iso(16, 15), lastVoteAt: iso(20, 11) };
+  const readyPr = (id: number) => mine({ id, readyToMerge: true, canComplete: true, stamps: approved });
+  const kinds = (row: { segments: { kind: string }[] } | undefined) => row?.segments.map((segment) => segment.kind);
+
+  it('draws the green span on the single row of a PR in the Ready column', () => {
+    const rows = timeline([workItem({ id: 1, pullRequests: [pullRequest({ id: 10 })] })], [readyPr(10)]).work;
+    expect(rows).toHaveLength(1);
+    expect(kinds(rows[0])).toContain('ready');
+  });
+
+  it('draws the green span on the PR rows of a work item with several PRs', () => {
+    const rows = timeline(
+      [workItem({ id: 3, pullRequests: [pullRequest({ id: 31 }), pullRequest({ id: 32 })] })],
+      [readyPr(31), mine({ id: 32, stamps: approved })]
+    ).work;
+    expect(kinds(rows.find((row) => row.key === '3:pr:31'))).toContain('ready');
+    expect(kinds(rows.find((row) => row.key === '3:pr:32'))).not.toContain('ready');
+  });
+});
+
+const COMPLETED_PR = (id: number): PullRequestModel => {
+  return pullRequest({ id, title: `Merged ${String(id)}`, tone: 'completed', status: 'Completed', isActive: false });
+};
+
+describe('ready to be merged on merged PRs (TIMELINE-7)', () => {
+  const pullRequest = { created: at(16, 10), published: at(16, 15), closed: at(21, 16), isDraft: false };
+  const input: PhaseInput = {
+    now: at(22, 14),
+    axisStart: at(12, 0),
+    column: 'review',
+    started: at(14, 9),
+    pullRequest,
+    reviewText: 'CI ✓ · review',
+  };
+  const shape = (spans: ReturnType<typeof workSpans>) => spans.map((span) => [span.kind, span.start, span.end]);
+
+  it('draws CI · review up to the last vote and green from then to the merge', () => {
+    const spans = workSpans({ ...input, readySince: at(20, 11) });
+    expect(shape(spans).slice(-2)).toEqual([
+      ['review', at(16, 15), at(20, 11)],
+      ['ready', at(20, 11), at(21, 16)],
+    ]);
+    expect(spans.at(-1)?.approximate).toBe(false);
+  });
+
+  it('draws no green span when the moment is not known', () => {
+    expect(workSpans(input).map((span) => span.kind)).toEqual(['coding', 'draft', 'review']);
+    expect(shape(workSpans(input)).at(-1)).toEqual(['review', at(16, 15), at(21, 16)]);
+  });
+
+  it('draws no green span for a vote after the merge', () => {
+    expect(workSpans({ ...input, readySince: at(21, 18) }).map((span) => span.kind)).not.toContain('ready');
+  });
+
+  const kinds = (rows: { key: string; segments: { kind: string }[] }[], key: string) =>
+    rows.find((row) => row.key === key)?.segments.map((segment) => segment.kind);
+  const item = (state = 'Committed') =>
+    workItem({ id: 9, state, displayState: state, dates: { activated: iso(13, 9), stateChanged: iso(21, 17) } });
+
+  it('turns the merged row green from its last vote, and not without one', () => {
+    const voted = timeline([workItem({ id: 9, pullRequests: [COMPLETED_PR(90)] }), task(91, 9, 'To Do')], [], [], {
+      completedPullRequests: [merged(90, 14, 16, { lastVoteAt: iso(15, 18) })],
+    }).work;
+    expect(kinds(voted, 'merged:9:90')).toContain('ready');
+    const unknown = timeline([workItem({ id: 9, pullRequests: [COMPLETED_PR(90)] }), task(91, 9, 'To Do')], [], [], {
+      completedPullRequests: [merged(90, 14, 16)],
+    }).work;
+    expect(kinds(unknown, 'merged:9:90')).not.toContain('ready');
+  });
+
+  it('turns the single row of a finished work item green from its last vote', () => {
+    const rows = timeline([{ ...item('Done'), pullRequests: [COMPLETED_PR(80)] }], [], [], {
+      completedPullRequests: [merged(80, 14, 16, { lastVoteAt: iso(15, 18) })],
+    }).finished;
+    expect(kinds(rows, '9')).toEqual(['coding', 'draft', 'review', 'ready']);
+  });
+});
+
+describe('when coding starts (TIMELINE-20)', () => {
+  const prs = [pullRequest({ id: 71 }), pullRequest({ id: 72 })];
+  const created = (id: number, day: number) =>
+    mine({ id, stamps: { createdAt: iso(day, 10), publishedAt: iso(day, 11) } });
+  const items = [
+    workItem({ id: 7, dates: { activated: iso(12, 9) }, pullRequests: prs }),
+    task(701, 7, 'In Progress', { dates: { activated: iso(14, 9) }, taskPullRequests: [{ id: 71 } as never] }),
+  ];
+  const build = (
+    codingStart: 'earliest' | 'firstCommit' | 'taskActivated',
+    firstCommits: [number, string][] = [
+      [71, iso(13, 15)],
+      [72, iso(19, 9)],
+    ]
+  ) => timeline(items, [created(71, 16), created(72, 20)], [], { codingStart, firstCommits: new Map(firstCommits) });
+  const coding = (model: ReturnType<typeof build>, key: string) => {
+    const row = model.work.find((candidate) => candidate.key === key);
+    return row?.segments.find((segment) => segment.kind === 'coding');
+  };
+  const day = (model: ReturnType<typeof build>, key: string) => coding(model, key)?.start;
+
+  it('draws the coding of each PR of a work item from its own source (earliest)', () => {
+    const model = build('earliest');
+    // PR 71: the first commit (Tu 13) is earlier than the task (We 14); PR 72: no task, the commit (Th 19... Mo 19)
+    expect(coding(model, '7:pr:71')?.tip).toContain('coding since the first commit, Tu 13');
+    expect(coding(model, '7:pr:72')?.tip).toContain('coding since the first commit, Mo 19');
+    expect(day(model, '7:pr:72')).toBeGreaterThan(day(model, '7:pr:71') ?? 0);
+  });
+
+  it('takes the task when it is earlier than the first commit', () => {
+    const model = build('earliest', [[71, iso(15, 9)]]);
+    expect(coding(model, '7:pr:71')?.tip).toContain('coding since task 701 was activated, We 14');
+  });
+
+  it('firstCommit prefers the commit and falls back to the task; taskActivated the reverse and reads no commits', () => {
+    expect(coding(build('firstCommit', [[71, iso(15, 9)]]), '7:pr:71')?.tip).toContain('the first commit, Th 15');
+    expect(coding(build('firstCommit', []), '7:pr:71')?.tip).toContain('task 701');
+    const task_ = build('taskActivated');
+    expect(coding(task_, '7:pr:71')?.tip).toContain('task 701 was activated');
+    expect(task_.firstCommitsWanted).toEqual([]);
+    expect(coding(task_, '7:pr:72')?.tip).toContain('since the work item was activated, approximate');
+    expect(coding(task_, '7:pr:72')?.approximate).toBe(true);
+  });
+
+  it('asks the first commit of the PRs drawn that are not known, only when the setting reads commits', () => {
+    expect(build('earliest', []).firstCommitsWanted.sort()).toEqual([71, 72]);
+    expect(build('firstCommit', [[71, iso(13, 15)]]).firstCommitsWanted).toEqual([72]);
+    expect(build('taskActivated', []).firstCommitsWanted).toEqual([]);
+  });
+
+  it('ignores a first commit after the creation of the PR', () => {
+    const model = build('firstCommit', [[72, iso(21, 9)]]);
+    expect(coding(model, '7:pr:72')?.tip).toContain('since the work item was activated, approximate');
+  });
+
+  it('draws the coding of a merged PR from its first commit or its task', () => {
+    const model = timeline(
+      [workItem({ id: 9, dates: { activated: iso(12, 9) }, pullRequests: [COMPLETED_PR(90)] }), task(91, 9, 'To Do')],
+      [],
+      [],
+      { completedPullRequests: [merged(90, 14, 16)], firstCommits: new Map([[90, iso(13, 9)]]) }
+    );
+    const tip = model.work.find((row) => row.key === 'merged:9:90')?.segments.at(0)?.tip;
+    expect(tip).toContain('coding since the first commit, Tu 13');
+    expect(model.firstCommitsWanted).toEqual([]);
   });
 });

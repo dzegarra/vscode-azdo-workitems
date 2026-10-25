@@ -4,7 +4,7 @@
  * the cards of each person. No "vscode" import
  */
 import type { AuthoredPullRequest } from './myPullRequests';
-import { publicationDate } from './pullRequestTimeline';
+import { publicationDate, pullRequestStamps } from './pullRequestTimeline';
 import type { ThreadResponse } from './reviewThreads';
 import { isFinishedState } from './states';
 import { openPullRequests } from './track';
@@ -22,7 +22,9 @@ export interface CompletedPullRequestInfo {
   isDraft: boolean;
   /** When it left draft for the last time (from its threads); undefined: it was never a draft, or `threadsKnown` is false */
   publishedAt?: string;
-  /** The threads of the PR are known, so `publishedAt` is reliable */
+  /** Latest vote of any kind (from its threads): the PR was ready to be merged from then (Rule TIMELINE-7) */
+  lastVoteAt?: string;
+  /** The threads of the PR are known, so `publishedAt` and `lastVoteAt` are reliable */
   threadsKnown: boolean;
 }
 
@@ -43,6 +45,7 @@ export function completedPullRequestInfos(
             closedDate: pr.closedDate,
             isDraft: false,
             publishedAt: threads ? publicationDate(threads) : undefined,
+            lastVoteAt: threads ? pullRequestStamps(pr, threads).lastVoteAt : undefined,
             threadsKnown: threads !== undefined,
           },
         ]

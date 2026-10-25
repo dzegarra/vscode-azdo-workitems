@@ -5,6 +5,7 @@
  * timestamp is invented, a start that is not known begins at the first day of the sprint and is marked approximate.
  * Pure, so no "vscode" import: the webview uses the types and the panel builds the model
  */
+import { codingStartOf, needsFirstCommit, type CodingStartSetting, type CodingStartSource } from './codingStart';
 import { brokenSince, type BaseBranchHealth, type BaseBranchRun } from './baseBranchHealth';
 import { formatAge, type MyPullRequestModel } from './myPullRequests';
 import type { PullRequestStamps } from './pullRequestTimeline';
@@ -185,6 +186,8 @@ export interface Span {
   approximate?: boolean;
   /** The span began before the sprint */
   fromBefore?: boolean;
+  /** Replaces the usual remark of an approximate start ("it begins with the sprint") */
+  approximateNote?: string;
 }
 
 export interface PhaseInput {
@@ -202,8 +205,34 @@ export interface PhaseInput {
   reviewText: string;
   /** The current station needs the user: since when (undefined: not known) and what to say */
   needsYou?: { text: string; since?: number };
-  /** Since when nothing stops the merge (undefined: not known) */
+  /**
+   * Since when nothing stops the merge (undefined: not known). For a PR that was merged (`pullRequest.closed`) it is
+   * the moment it became ready, and not knowing it draws no green span
+   */
   readySince?: number;
+  /** Where `started` comes from, for a row with a PR (Rule TIMELINE-20); without it the work item's activation, as before */
+  codingFrom?: { source: CodingStartSource; taskId?: number; approximate: boolean };
+}
+
+/** "We 14": the weekday and the day of the month, as the axis */
+const dayLabel = (ms: number): string => {
+  const date = new Date(ms);
+  return `${WEEKDAYS[date.getDay()]} ${String(date.getDate())}`;
+};
+
+/** What the tooltip of the coding span says about its start (Rule TIMELINE-20) */
+function codingDetail(from: PhaseInput['codingFrom'], started: number | undefined): string {
+  if (!from || started === undefined) {
+    return 'coding';
+  }
+  switch (from.source) {
+    case 'firstCommit':
+      return `coding since the first commit, ${dayLabel(started)}`;
+    case 'task':
+      return `coding since task ${String(from.taskId ?? '')} was activated, ${dayLabel(started)}`;
+    case 'workItem':
+      return 'coding since the work item was activated, approximate';
+  }
 }
 
 const instant = (value: string | undefined): number | undefined => {
@@ -219,18 +248,22 @@ const instant = (value: string | undefined): number | undefined => {
 export function workSpans(input: PhaseInput): Span[] {
   const { now, axisStart, pullRequest: pr } = input;
   const spans: Span[] = [];
-  // Rule TIMELINE-3: coding runs from the activation of the work item to the PR (or to now without one)
+  // Rule TIMELINE-3: coding runs from its start (TIMELINE-20) to the creation of the PR (or to now without one)
   const codingEnd = pr?.created ?? input.finished ?? now;
   const known = input.started !== undefined && input.started <= codingEnd ? input.started : undefined;
   const codingStart = known === undefined ? axisStart : Math.max(known, axisStart);
   if (input.column !== 'toStart' && codingEnd > codingStart) {
+    const guess = known === undefined || input.codingFrom?.approximate === true;
     spans.push({
       kind: 'coding',
       start: codingStart,
       end: codingEnd,
-      detail: 'coding',
-      approximate: known === undefined,
+      detail: codingDetail(input.codingFrom, known),
+      approximate: guess,
       fromBefore: known !== undefined && known < axisStart,
+      ...(known !== undefined && guess
+        ? { approximateNote: 'The activation of the work item says nothing of this PR' }
+        : {}),
     });
   }
   if (!pr?.created) {
@@ -246,21 +279,25 @@ export function workSpans(input: PhaseInput): Span[] {
     return spans;
   }
   const end = pr.closed ?? input.finished ?? now;
-  // Rule TIMELINE-7: ready to be merged from the moment nothing stopped it
-  if (input.column === 'ready') {
+  // Rule TIMELINE-7: ready to be merged from the moment nothing stopped it. A PR that was merged was ready from the
+  // moment it was approved (the latest vote or green run) up to the merge; when that is not known there is no green span
+  const completedReady = pr.closed !== undefined && input.readySince !== undefined;
+  if (input.column === 'ready' || completedReady) {
     const since = Math.min(Math.max(input.readySince ?? published, published), end);
-    return [
-      ...spans,
-      { kind: 'review', start: published, end: since, text: input.reviewText, detail: 'CI · review' },
-      {
-        kind: 'ready',
-        start: since,
-        end,
-        text: 'ready to be merged',
-        detail: 'ready to be merged',
-        approximate: input.readySince === undefined,
-      },
-    ];
+    if (since < end) {
+      return [
+        ...spans,
+        { kind: 'review', start: published, end: since, text: input.reviewText, detail: 'CI · review' },
+        {
+          kind: 'ready',
+          start: since,
+          end,
+          text: 'ready to be merged',
+          detail: 'ready to be merged',
+          approximate: input.readySince === undefined,
+        },
+      ];
+    }
   }
   // Rule TIMELINE-6: needs you from the moment the station did
   if (input.needsYou) {
@@ -440,6 +477,8 @@ export interface TimelineModel {
   reviewsTitle: string;
   /** Merged PRs drawn without their threads: the panel reads them once (Rule TIMELINE-17) */
   mergedWithoutThreads: number[];
+  /** Rule TIMELINE-20: the PRs drawn whose first commit is not known yet (empty when the setting does not read commits) */
+  firstCommitsWanted: number[];
   develop: { branch: string; spans: DevelopSpan[]; label?: { text: string; at: number }; note?: string };
   notes: string[];
   look: BoardModel['look'];
@@ -467,6 +506,10 @@ export interface TimelineInput {
   /** The PRs of the user that were merged (My Pull Requests already has them): drawn when merged within the axis */
   completedPullRequests?: readonly CompletedPullRequestInfo[];
   base: { branch: string; enabled: boolean; runs: readonly BaseBranchRun[]; health?: BaseBranchHealth };
+  /** Rule TIMELINE-20: where coding starts (`totalflowx.appearance.timelineCodingStart`); default: the earliest of both */
+  codingStart?: CodingStartSetting;
+  /** Rule TIMELINE-20: author date (ISO) of the oldest commit of each PR, by PR id, of those already read */
+  firstCommits?: ReadonlyMap<number, string>;
 }
 
 const dayText = (ms: number): string =>
@@ -494,7 +537,7 @@ function toSegment(span: Span, days: readonly TimelineDay[]): TimelineSegment | 
       span.fromBefore ? 'since before the sprint' : `${approximate ? 'about ' : ''}${dayText(span.start)}`
     } – ${dayText(span.end)}`,
     span.text && span.text !== span.detail ? span.text : '',
-    approximate ? 'The start is not known: it begins with the sprint' : '',
+    approximate ? span.approximateNote ?? 'The start is not known: it begins with the sprint' : '',
   ]
     .filter(Boolean)
     .join(' · ');
@@ -554,12 +597,6 @@ function cardPullRequest(
 }
 
 const plural = (count: number, noun: string): string => `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
-
-/** "We 14": the weekday and the day of the month, as the axis */
-const dayLabel = (ms: number): string => {
-  const date = new Date(ms);
-  return `${WEEKDAYS[date.getDay()]} ${String(date.getDate())}`;
-};
 
 /** "✓ done We 21", or "✓ done" when the day is not known */
 const doneMark = (at: number | undefined): string => (at === undefined ? '✓ done' : `✓ done ${dayLabel(at)}`);
@@ -621,6 +658,7 @@ const stampsOfCompleted = (pr: CompletedPullRequestInfo): PullRequestStamps => (
   createdAt: pr.creationDate,
   publishedAt: pr.publishedAt,
   closedAt: pr.closedDate,
+  lastVoteAt: pr.lastVoteAt,
 });
 
 interface RowContext {
@@ -630,6 +668,52 @@ interface RowContext {
   now: number;
   /** The merged PRs drawn without their threads (collected while the rows are built) */
   pending: Set<number>;
+  /** The PRs drawn whose first commit is not known yet (Rule TIMELINE-20) */
+  firstCommitsWanted: Set<number>;
+}
+
+// Rule TIMELINE-20
+/** The start of the coding of a PR drawn on a row, and the PR's first commit asked when it is not known yet */
+function codingOfPullRequest(
+  prId: number,
+  item: WorkItemModel | undefined,
+  created: number | undefined,
+  context: RowContext
+): Pick<PhaseInput, 'started' | 'codingFrom'> {
+  const { input } = context;
+  const setting = input.codingStart ?? 'earliest';
+  const firstCommit = needsFirstCommit(setting) ? input.firstCommits?.get(prId) : undefined;
+  if (needsFirstCommit(setting) && firstCommit === undefined) {
+    context.firstCommitsWanted.add(prId);
+  }
+  // The Task linked to the PR (its links include the PR); with several, the one activated first
+  const task = input.workItems
+    .filter(
+      (candidate) =>
+        item !== undefined &&
+        candidate.parentId === item.id &&
+        candidate.type === 'Task' &&
+        candidate.taskPullRequests?.some((taskPr) => taskPr.id === prId)
+    )
+    .flatMap((candidate) => {
+      const activated = instant(candidate.dates?.activated);
+      return activated === undefined ? [] : [{ id: candidate.id, activated }];
+    })
+    .sort((a, b) => a.activated - b.activated)
+    .at(0);
+  const start = codingStartOf({
+    setting,
+    prCreated: created,
+    firstCommit: instant(firstCommit),
+    task,
+    workItemActivated: instant(item?.dates?.activated),
+  });
+  return start
+    ? {
+        started: start.at,
+        codingFrom: { source: start.source, taskId: start.taskId, approximate: start.approximate },
+      }
+    : { started: undefined };
 }
 
 // Rule TIMELINE-1
@@ -693,11 +777,15 @@ function workRow(card: BoardWorkCard, context: RowContext, plan?: GroupPlan): Ti
   // A task without PR starts when the task was activated (else with the work item)
   const task =
     card.taskId === undefined ? undefined : input.workItems.find((candidate) => candidate.id === card.taskId);
+  // Rule TIMELINE-20: a row with a PR starts its coding at the first commit or the linked task; a task row keeps its own
+  const coding: Pick<PhaseInput, 'started' | 'codingFrom'> = pr
+    ? codingOfPullRequest(pr.id, item, instant(stamps?.createdAt), context)
+    : { started: instant(task?.dates?.activated ?? item?.dates?.activated) };
   let spans = workSpans({
     now,
     axisStart,
     column: card.column,
-    started: instant(task?.dates?.activated ?? item?.dates?.activated),
+    ...coding,
     finished: card.column === 'done' ? instant(item?.dates?.stateChanged) : undefined,
     pullRequest: stamps
       ? {
@@ -717,7 +805,9 @@ function workRow(card: BoardWorkCard, context: RowContext, plan?: GroupPlan): Ti
           since: needsYouSince(card.column, runs, stamps),
         }
       : undefined,
-    readySince: readySince(runs, stamps),
+    // Rule TIMELINE-7: a merged PR was ready from its last vote; without a vote event no green span is invented
+    readySince:
+      stamps?.closedAt !== undefined && stamps.lastVoteAt === undefined ? undefined : readySince(runs, stamps),
   });
   if (card.part === 'task') {
     spans = spans.map((span) => (span.kind === 'coding' ? { ...span, text: 'coding · no PR yet' } : span));
@@ -792,31 +882,21 @@ function workRow(card: BoardWorkCard, context: RowContext, plan?: GroupPlan): Ti
 // Rule TIMELINE-17
 /** A PR that was merged within the axis: a faded row of its group, with the merge mark and no button */
 function mergedRow(pr: CompletedPullRequestInfo, plan: GroupPlan, context: RowContext): TimelineRow {
-  const { input, days, axisStart, now } = context;
+  const { days, axisStart, now } = context;
   const { item } = plan;
-  // Coding starts with the task linked to the PR when it is in the list, else with the work item
-  const linked = input.workItems
-    .filter(
-      (candidate) =>
-        candidate.parentId === item.id &&
-        candidate.type === 'Task' &&
-        candidate.taskPullRequests?.some((taskPr) => taskPr.id === pr.id)
-    )
-    .map((task) => instant(task.dates?.activated))
-    .filter((at): at is number => at !== undefined)
-    .sort((a, b) => a - b)
-    .at(0);
   const closed = Date.parse(pr.closedDate);
   if (!pr.threadsKnown) {
     context.pending.add(pr.id);
   }
+  // Rules TIMELINE-20, TIMELINE-7: coding starts at the first commit or the linked task; the PR was ready from its last vote
   const spans = workSpans({
     now,
     axisStart,
     column: 'review',
-    started: linked ?? instant(item.dates?.activated),
+    ...codingOfPullRequest(pr.id, item, instant(pr.creationDate), context),
     pullRequest: completedStamps(pr),
     reviewText: 'CI ✓ · review',
+    readySince: instant(pr.lastVoteAt),
   }).map((span) => (pr.threadsKnown || span.kind === 'coding' ? span : { ...span, approximate: true }));
   const segments = spans.flatMap((span) => {
     const segment = toSegment(span, days);
@@ -1186,12 +1266,13 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
       planned: { rows: [] },
       reviews: [],
       mergedWithoutThreads: [],
+      firstCommitsWanted: [],
       develop: { branch: input.base.branch, spans: [] },
       notes: ['The dates of the sprint are not known, so there is no axis to draw'],
     };
   }
   const axisStart = days[0].startMs;
-  const context: RowContext = { input, days, axisStart, now, pending: new Set() };
+  const context: RowContext = { input, days, axisStart, now, pending: new Set(), firstCommitsWanted: new Set() };
   // The faded cards of the merged PRs are the board's: the timeline draws the merged PRs it has dates for (TIMELINE-17)
   const cards = board.work.filter((card) => card.merged === undefined);
   const plans = planGroups({
@@ -1240,6 +1321,7 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
     planned: plannedRows(input, days, next),
     reviews: input.reviews.map((review) => reviewRow(review, { input, days, now })),
     mergedWithoutThreads: [...context.pending],
+    firstCommitsWanted: [...context.firstCommitsWanted],
     develop: developOf(input, days, now),
     notes: board.notes,
   };

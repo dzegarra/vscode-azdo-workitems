@@ -34,7 +34,8 @@ interface PlannedState {
  * The Sprint timeline: an editor tab with the work of the sprint on a working-days axis. It draws what the store, My
  * Pull Requests, the review requests and the base branch runs already have. The only request of its own is the list of
  * what the user has planned in the next sprint: one query per load of the work items, only while the tab is visible
- * and shows "This + next sprint", and the threads of the merged PRs it draws, once per PR (Rule TIMELINE-14)
+ * and shows "This + next sprint", the threads of the merged PRs it draws, once per PR, and the first commit of the PRs it
+ * draws when the setting needs it (Rule TIMELINE-14)
  */
 export class SprintTimelinePanel implements vscode.Disposable {
   private panel?: vscode.WebviewPanel;
@@ -143,6 +144,8 @@ export class SprintTimelinePanel implements vscode.Disposable {
       range: this.range,
       planned: this.range === 'sprintAndNext' ? this.planned : { status: 'off', items: [] },
       completedPullRequests: this.myPullRequests.completedPullRequests(),
+      codingStart: settings().timelineCodingStart,
+      firstCommits: this.myPullRequests.firstCommitDates(),
       base: {
         branch: settings().baseBranch,
         enabled: settings().baseBranchAlert.enabled,
@@ -152,6 +155,14 @@ export class SprintTimelinePanel implements vscode.Disposable {
     });
     const update: TimelineUpdate = { type: 'timeline', model };
     void this.panel.webview.postMessage(update);
+    if (model.firstCommitsWanted.length) {
+      // Rule TIMELINE-20: the first commit of the PRs drawn, only while the tab is visible and the setting reads commits
+      void this.myPullRequests.loadFirstCommits(model.firstCommitsWanted).then((read) => {
+        if (read) {
+          this.post();
+        }
+      });
+    }
     if (model.mergedWithoutThreads.length) {
       // Rule TIMELINE-17: the threads of the merged PRs drawn without the draft split, once each
       void this.myPullRequests.loadMergedThreads(model.mergedWithoutThreads).then((read) => {

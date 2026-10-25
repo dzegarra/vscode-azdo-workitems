@@ -76,6 +76,7 @@ src/trackBoard.ts         Track board panel (one editor tab, redraws on store / 
 src/sharedMessages.ts     the buttons the sidebar and the Track board share (PR, review and work item actions): both views run them here
 src/workItemsView.ts      sidebar webview provider: builds the ViewModel (src/viewModel.ts) and handles messages
 src/webview/main.ts       sidebar webview (cards, PR boxes, filters); src/webview/dependencies.ts: dependency map; src/webview/board.ts: Track board (media/board.css); src/webview/timeline.ts: Sprint timeline (media/timeline.css)
+src/codingStart.ts        pure: where coding starts on the Sprint timeline (setting appearance.timelineCodingStart, Rule TIMELINE-20), first commit of a PR (parsing, cache rules)
 src/sprintTimeline.ts     Sprint timeline panel (editor tab, dist/timeline.js, media/timeline.css; webview: src/webview/timeline.ts); pure model: src/sprintTimelineModel.ts
                           (rows = cards of the Track board + the dates of the PRs, Rules TIMELINE-*); groups, merged PRs and collapse: src/timelineGroups.ts (pure);
                           its requests: the planned work of the next sprint and, once per PR, the threads of the merged PRs it draws (MyPullRequestsWatcher.loadMergedThreads)
