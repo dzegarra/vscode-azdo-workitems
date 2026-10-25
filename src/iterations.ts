@@ -29,7 +29,7 @@ export function mergeTeamIterations(entries: { team: string; iteration: Iteratio
   return [...byPath.values()];
 }
 
-function wiqlString(value: string): string {
+export function wiqlString(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
@@ -39,5 +39,19 @@ export function buildMyWorkItemsQuery(iterationPaths: string[]): string {
     'SELECT [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me',
     `AND [System.IterationPath] IN (${iterationPaths.map(wiqlString).join(', ')})`,
     'ORDER BY [System.WorkItemType], [System.Id]',
+  ].join(' ');
+}
+
+// Rule TEAM-2
+/**
+ * WIQL query of the Backlog Items and Bugs (not Removed) of every given iteration, whoever they are assigned to:
+ * one query for all the selected teams. The tasks come later, as the children of these work items
+ */
+export function buildTeamWorkItemsQuery(iterationPaths: string[]): string {
+  return [
+    "SELECT [System.Id] FROM WorkItems WHERE [System.WorkItemType] IN ('Product Backlog Item', 'Bug')",
+    "AND [System.State] <> 'Removed'",
+    `AND [System.IterationPath] IN (${iterationPaths.map(wiqlString).join(', ')})`,
+    'ORDER BY [System.Id]',
   ].join(' ');
 }

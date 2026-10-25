@@ -2,7 +2,13 @@ import { getAccessToken } from './auth';
 import { recordedFetch } from './requestRecorder';
 import { oldestCommitDate, type CommitRef } from './codingStart';
 import { CommitsDiff, hasSkipTag, PullRequestLabel } from './buildNotes';
-import { buildMyWorkItemsQuery, Iteration, mergeTeamIterations, TeamIteration } from './iterations';
+import {
+  buildMyWorkItemsQuery,
+  buildTeamWorkItemsQuery,
+  Iteration,
+  mergeTeamIterations,
+  TeamIteration,
+} from './iterations';
 import { PackageVersion } from './integrationBuild';
 import type { RawCoverageFiles, RawCoverageSummary } from './coverage';
 import { BuildRun, pullRequestBranch } from './pipelines';
@@ -37,6 +43,8 @@ const FEEDS_URL = 'https://feeds.dev.azure.com';
 const NOT_FOUND = 404;
 /** The work items API accepts up to 200 IDs per request */
 const MAX_IDS_PER_REQUEST = 200;
+const ACTIVE_PAGE = 200;
+const MAX_ACTIVE_PULL_REQUESTS = 1000;
 /** A ref update to this object ID (40 zeros) deletes the branch */
 const DELETED_OBJECT_ID_LENGTH = 40;
 
@@ -52,6 +60,8 @@ export interface WorkItem {
   state: string;
   iterationPath: string;
   assignedTo?: string;
+  /** Identity id of the assignee (matches `getMyId`) */
+  assigneeId?: string;
   url: string;
   links: WorkItemLinks;
   /** Raw fields, e.g. "System.Tags" or "Microsoft.VSTS.Scheduling.Effort" */
@@ -108,6 +118,8 @@ export interface PullRequestDetails extends PullRequest, PullRequestState {
   /** ISO dates, as every PR response has them */
   creationDate?: string;
   closedDate?: string;
+  /** Last commit of the source branch: the cache key of the CI runs of the whole-team board */
+  lastMergeSourceCommit?: { commitId: string };
 }
 
 export interface Team {
@@ -240,6 +252,41 @@ export class AzdoClient {
     return this.getWorkItems(result.workItems.map((wi) => wi.id));
   }
 
+  // Rule TEAM-2
+  /** Backlog Items and Bugs of the given iterations, whoever has them (one query, then batches with relations) */
+  async getTeamWorkItems(iterationPaths: string[]): Promise<WorkItem[]> {
+    if (!iterationPaths.length) {
+      return [];
+    }
+    const result = await this.request<{ workItems: { id: number }[] }>(this.url('wit/wiql'), {
+      method: 'POST',
+      body: JSON.stringify({ query: buildTeamWorkItemsQuery(iterationPaths) }),
+    });
+    return this.getWorkItems(result.workItems.map((wi) => wi.id));
+  }
+
+  // Rule TEAM-3
+  /** All the active PRs of the project, with their reviewers and last commit: one request per 200 PRs */
+  async getActivePullRequests(): Promise<PullRequestDetails[]> {
+    const all: PullRequestDetails[] = [];
+    for (let skip = 0; skip < MAX_ACTIVE_PULL_REQUESTS; skip += ACTIVE_PAGE) {
+      const result = await this.request<{
+        value: (Omit<PullRequestDetails, 'reviewers' | 'webUrl'> & Partial<PullRequestDetails>)[];
+      }>(this.url(`git/pullrequests?searchCriteria.status=active&$top=${ACTIVE_PAGE}&$skip=${skip}`));
+      all.push(
+        ...result.value.map((pr) => ({
+          ...pr,
+          reviewers: pr.reviewers ?? [],
+          webUrl: this.pullRequestWebUrlByName(pr.repository.name, pr.pullRequestId),
+        }))
+      );
+      if (result.value.length < ACTIVE_PAGE) {
+        break;
+      }
+    }
+    return all;
+  }
+
   async getWorkItems(ids: number[]): Promise<WorkItem[]> {
     if (!ids.length) {
       return [];
@@ -266,6 +313,7 @@ export class AzdoClient {
       state: wi.fields['System.State'],
       iterationPath: wi.fields['System.IterationPath'],
       assignedTo: (wi.fields['System.AssignedTo'] as unknown as { displayName?: string } | undefined)?.displayName,
+      assigneeId: (wi.fields['System.AssignedTo'] as unknown as { id?: string } | undefined)?.id,
       links: parseRelations(wi.relations),
       fields: wi.fields,
       url: this.workItemWebUrl(wi.id),

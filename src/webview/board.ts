@@ -3,6 +3,7 @@ import { escapeHtml } from '../html';
 import { icon } from '../icons';
 import { lookClass } from '../look';
 import type { BoardUpdate } from '../trackBoard';
+import type { TeamBoardModel, TeamCard, TeamLane, TeamMarker } from '../teamBoardModel';
 import {
   ALL_KINDS,
   COMPLETED_TOOLTIP,
@@ -54,6 +55,8 @@ let selected: Selection | undefined;
 let actions = new Map<string, BoardAction>();
 let hoverTimer: number | undefined;
 let lastModel: string | undefined;
+/** The Teams dropdown is open (UI only) */
+let teamsOpen = false;
 
 const post = (message: BoardMessage): void => vscode.postMessage(message);
 
@@ -195,7 +198,108 @@ function renderRow(columns: BoardColumn[], cell: (id: BoardColumnId) => string):
     .join('')}</div>`;
 }
 
+/* ---------- Whole team (Rules BOARD-26..30) ---------- */
+
+function markerHtml(marker: TeamMarker): string {
+  return `<span class="bd-marker tone-${marker.tone}" title="${escapeHtml(marker.title)}">${escapeHtml(
+    marker.text
+  )}</span>`;
+}
+
+function renderTeamCard(card: TeamCard): string {
+  const classes = ['bd-card', 'bd-tcard', `tone-${card.tone}`, `kind-${card.itemKind}`];
+  if (card.merged) {
+    classes.push('is-merged');
+  }
+  if (card.needsYou) {
+    classes.push('needs-you');
+  }
+  const asleep = card.asleep
+    ? `<span class="asleep" role="img" aria-label="${escapeHtml(card.asleep.text)}" title="${escapeHtml(
+        card.asleep.text
+      )}">${icon('sleep')}<span aria-hidden="true">${String(card.asleep.days)}d</span></span>`
+    : '';
+  const part = card.part ? `<span class="bd-part">${escapeHtml(card.part)}</span>` : '';
+  const badge = card.team ? `<span class="bd-team-badge" title="Team">${escapeHtml(card.team)}</span>` : '';
+  const tag = card.tag ? `<span class="bd-tag">${escapeHtml(card.tag)}</span>` : '';
+  const status = card.status
+    ? `<span class="bd-status tone-${card.status.tone}">${escapeHtml(card.status.text)}</span>`
+    : '';
+  const note = card.note ? `<span class="bd-note">${escapeHtml(card.note)}</span>` : '';
+  const markers = card.markers.length ? `<div class="bd-markers">${card.markers.map(markerHtml).join('')}</div>` : '';
+  return `<article class="${classes.join(' ')}" role="listitem" tabindex="0" data-kind="team" data-id="${String(
+    card.id
+  )}" data-key="${escapeHtml(card.key)}" aria-label="${escapeHtml(`${card.idText} ${card.title}`)}">
+    <div class="bd-card-head"><span class="bd-id">${escapeHtml(card.idText)}</span>${part}${asleep}${tag}${badge}</div>
+    <span class="bd-title">${escapeHtml(card.title)}</span>${status}${note}${markers}</article>`;
+}
+
+function renderLane(lane: TeamLane, current: BoardModel, team: TeamBoardModel): string {
+  const cell = (id: BoardColumnId): string => {
+    const own = lane.you ? current.work.filter((card) => card.column === id).map(renderWorkCard) : [];
+    const cards = lane.cards.filter((card) => card.column === id).map(renderTeamCard);
+    const loose = lane.you
+      ? current.reviews
+          .filter((card) => card.column === id && team.looseReviews.includes(card.id))
+          .map(renderReviewCard)
+      : [];
+    const ids = lane.you ? [...current.summary.ids, ...lane.collapsedIds] : lane.collapsedIds;
+    const summary = id === 'done' && ids.length ? [renderSummaryCard(ids)] : [];
+    return [...own, ...cards, ...loose, ...summary].join('');
+  };
+  return `<section class="bd-lane${lane.you ? ' is-you' : ''}${
+    lane.unassigned ? ' is-unassigned' : ''
+  }" aria-label="${escapeHtml(lane.name)}"><div class="bd-lane-head"><span class="bd-avatar colour-${String(
+    lane.colour
+  )}" aria-hidden="true">${escapeHtml(lane.initials)}</span><span class="bd-lane-who"><b>${escapeHtml(
+    lane.name
+  )}</b><span class="bd-lane-sum">${escapeHtml(lane.summary)}</span></span></div>${current.columns
+    .map(
+      (column) => `<div class="bd-col" role="list" aria-label="${escapeHtml(column.title)}">${cell(column.id)}</div>`
+    )
+    .join('')}</section>`;
+}
+
+function renderTeamBoard(current: BoardModel, team: TeamBoardModel): string {
+  const heads = current.columns
+    .map((column) => {
+      const numbers = team.columns.find((candidate) => candidate.id === column.id);
+      const overdue = numbers?.overdue
+        ? `<span class="bd-count overdue">${String(numbers.count)} · ${String(numbers.overdue)} overdue</span>`
+        : `<span class="bd-count">${String(numbers?.count ?? 0)}</span>`;
+      return `<div class="bd-head col-${column.id}"><span class="bd-head-title">${escapeHtml(
+        column.title
+      )}${overdue}</span><span class="bd-hint">${escapeHtml(column.hint)}</span></div>`;
+    })
+    .join('');
+  const insights = team.insights
+    .map(
+      (insight) =>
+        `<p class="bd-insight kind-${insight.kind}"><span class="bd-insight-label">${escapeHtml(
+          insight.label
+        )}</span>${escapeHtml(insight.text)}</p>`
+    )
+    .join('');
+  const notes = current.notes.map((note) => `<p class="message muted">${escapeHtml(note)}</p>`).join('');
+  let status = '';
+  if (team.status === 'loading') {
+    status = '<p class="message muted">Loading the work of the teams…</p>';
+  } else if (team.status === 'error') {
+    status = `<p class="message error">The work of the team could not be loaded: ${escapeHtml(
+      team.error ?? 'error'
+    )} <button class="bd-chip" data-refresh>Retry</button></p>`;
+  }
+  return `<div class="bd-table bd-team">${status}${notes}<div class="bd-tgrid bd-heads"><span></span>${heads}</div>${team.lanes
+    .map((lane) => renderLane(lane, current, team))
+    .join(
+      ''
+    )}<footer class="bd-insights">${insights}<p class="bd-insight kind-note">Others' cards are read-only here: click opens the details panel (or the PR), actions stay with their owner.</p></footer></div>`;
+}
+
 function renderBoard(current: BoardModel): string {
+  if (current.scope === 'team' && current.team) {
+    return renderTeamBoard(current, current.team);
+  }
   const work = (id: BoardColumnId): string => {
     const cards = current.work.filter((card) => card.column === id).map(renderWorkCard);
     const summary = id === 'done' && current.summary.ids.length ? [renderSummaryCard(current.summary.ids)] : [];
@@ -215,19 +319,62 @@ function renderBoard(current: BoardModel): string {
   )}</div>`;
 }
 
+function renderTeamsMenu(current: BoardModel): string {
+  const team = current.team;
+  if (current.scope !== 'team' || !team) {
+    return '';
+  }
+  const rows = team.teams
+    .map(
+      (choice, index) =>
+        `<label class="bd-team-row"><input type="checkbox" data-team="${escapeHtml(choice.name)}"${
+          choice.selected ? ' checked' : ''
+        }><span class="bd-swatch swatch-${String(
+          index % 6
+        )}" aria-hidden="true"></span><span class="bd-team-name">${escapeHtml(
+          choice.name
+        )}</span><span class="bd-team-badge">${escapeHtml(
+          choice.badge
+        )}</span><button class="bd-only" data-only="${escapeHtml(
+          choice.name
+        )}" title="Show only this team">only</button></label>`
+    )
+    .join('');
+  return `<div class="bd-teams"><button class="bd-teams-button" data-teams-toggle aria-haspopup="true" aria-expanded="${String(
+    teamsOpen
+  )}">Teams<span class="bd-pill-count">${escapeHtml(
+    team.teamsLabel.replace(/^Teams /, '')
+  )}</span></button><div class="bd-teams-menu" role="dialog" aria-label="Choose teams"${
+    teamsOpen ? '' : ' hidden'
+  }>${rows}</div></div>`;
+}
+
 function renderHeader(current: BoardModel): string {
   const chip = (kind: BoardKind, label: string): string =>
     `<button class="bd-chip chip-${kind}" data-kind-chip="${kind}" aria-pressed="${String(
       kinds.includes(kind)
     )}">${label}</button>`;
+  const stats = current.team
+    ? `<span class="bd-stats">${String(current.team.people)} people · ${String(
+        current.team.workItems
+      )} work items</span>`
+    : '';
   const left = current.header.left
     ? `<span class="bd-left${current.header.hurry ? ' hurry' : ''}" title="${escapeHtml(
         current.header.tooltip ?? ''
       )}">${escapeHtml(current.header.left)}</span>`
     : '';
-  return `<header class="bd-header"><h1 class="bd-sprint">${escapeHtml(current.header.sprint)}</h1>${left}
+  return `<header class="bd-header"><h1 class="bd-sprint">${escapeHtml(current.header.sprint)}${
+    current.team && current.team.teams.length > 1
+      ? ` · ${String(current.team.teams.filter((choice) => choice.selected).length)} teams`
+      : ''
+  }</h1>${left}${stats}
     <div class="bd-tabs" role="group" aria-label="View"><button class="bd-chip" aria-pressed="true">Track board</button><button class="bd-chip" data-open-timeline aria-pressed="false">Sprint timeline</button></div>
-    <span class="bd-scope">Mine + my reviews</span>
+    <div class="bd-segment" role="group" aria-label="Whose work"><button data-scope="mine" aria-pressed="${String(
+      current.scope === 'mine'
+    )}">Mine + my reviews</button><button data-scope="team" aria-pressed="${String(
+    current.scope === 'team'
+  )}">Whole team</button></div>${renderTeamsMenu(current)}
     <div class="bd-chips" role="group" aria-label="Type">${chip('backlog', 'Backlog Items')}${chip('bug', 'Bugs')}</div>
     <div class="bd-chips" role="group" aria-label="Completed"><button class="bd-chip chip-completed" data-completed aria-pressed="${String(
       current.showCompleted
@@ -424,7 +571,13 @@ popover.setAttribute('role', 'tooltip');
 popover.hidden = true;
 document.body.append(popover);
 
-function popoverContent(card: BoardReviewCard | BoardWorkCard): string {
+function popoverContent(card: AnyCard): string {
+  if (card.kind === 'team') {
+    return `<span class="bd-pop-title">${escapeHtml(card.title)}</span>${trackBars(card.track, true)}
+      <dl class="bd-facts compact">${factRows(card.hover)}</dl><span class="bd-pop-hint">Read-only here: click opens ${
+      card.prUrl && (card.part || card.merged) ? 'the PR' : 'the details'
+    }</span>`;
+  }
   if (card.kind === 'work') {
     return `<span class="bd-pop-title">${escapeHtml(card.title)}</span>${trackBars(card.track, true)}
       <dl class="bd-facts compact">${factRows(
@@ -448,16 +601,27 @@ function clearRelated(): void {
   document.querySelectorAll('.bd-card.is-related').forEach((element) => element.classList.remove('is-related'));
 }
 
-function cardOf(element: Element | null): { element: HTMLElement; card: BoardReviewCard | BoardWorkCard } | undefined {
+type AnyCard = BoardReviewCard | BoardWorkCard | (TeamCard & { kind: 'team' });
+
+function teamCards(): TeamCard[] {
+  return model?.team?.lanes.flatMap((lane) => lane.cards) ?? [];
+}
+
+function cardOf(element: Element | null): { element: HTMLElement; card: AnyCard } | undefined {
   const target = element?.closest<HTMLElement>('.bd-card[data-key]');
   const key = target?.dataset.key;
   if (!model || !target) {
     return undefined;
   }
-  const card =
-    target.dataset.kind === 'work'
-      ? model.work.find((candidate) => candidate.key === key)
-      : model.reviews.find((candidate) => String(candidate.id) === key);
+  let card: AnyCard | undefined;
+  if (target.dataset.kind === 'work') {
+    card = model.work.find((candidate) => candidate.key === key);
+  } else if (target.dataset.kind === 'team') {
+    const found = teamCards().find((candidate) => candidate.key === key);
+    card = found && { ...found, kind: 'team' };
+  } else {
+    card = model.reviews.find((candidate) => String(candidate.id) === key);
+  }
   return card ? { element: target, card } : undefined;
 }
 
@@ -476,7 +640,7 @@ function placePopoverNear(target: HTMLElement): void {
   popover.style.top = `${String(Math.max(8, Math.min(rect.top, viewHeight - 8 - height)))}px`;
 }
 
-function showPopover(target: HTMLElement, card: BoardReviewCard | BoardWorkCard): void {
+function showPopover(target: HTMLElement, card: AnyCard): void {
   popover.className = card.kind === 'review' ? `bd-pop urgency-${card.urgency}` : 'bd-pop';
   popover.innerHTML = popoverContent(card);
   popover.hidden = false;
@@ -484,8 +648,14 @@ function showPopover(target: HTMLElement, card: BoardReviewCard | BoardWorkCard)
   placePopoverNear(target);
 }
 
-function highlightRelated(card: BoardReviewCard | BoardWorkCard): void {
+function highlightRelated(card: AnyCard): void {
   clearRelated();
+  if (card.kind === 'team') {
+    for (const key of card.siblings) {
+      document.querySelector(cardSelector('team', key))?.classList.add('is-related');
+    }
+    return;
+  }
   if (card.kind !== 'work') {
     return;
   }
@@ -500,7 +670,7 @@ function highlightRelated(card: BoardReviewCard | BoardWorkCard): void {
   }
 }
 
-function startHover(element: HTMLElement, card: BoardReviewCard | BoardWorkCard, immediately: boolean): void {
+function startHover(element: HTMLElement, card: AnyCard, immediately: boolean): void {
   hidePopover();
   highlightRelated(card);
   if (immediately || !model?.popoverDelay) {
@@ -538,6 +708,9 @@ function renderBody(current: BoardModel): string {
   if (current.status === 'error') {
     return `<div class="message error"><p>${escapeHtml(current.error ?? 'Unknown error')}</p>
       <button class="button primary" data-refresh>Retry</button></div>`;
+  }
+  if (current.scope === 'team' && current.team) {
+    return renderBoard(current);
   }
   const empty = !current.work.length && !current.summary.ids.length && !current.reviews.length;
   if (current.status === 'loading' && empty) {
@@ -592,6 +765,19 @@ function toggleKind(kind: BoardKind): void {
   post({ type: 'setBoardKinds', kinds });
 }
 
+/** Cards of the user open the drawer; the ones of the others are read-only: the details panel, or the PR (BOARD-26) */
+function openCard(card: AnyCard): void {
+  if (card.kind === 'team') {
+    post(
+      card.prUrl && (card.part || card.merged)
+        ? { type: 'openTeamPullRequest', url: card.prUrl }
+        : { type: 'openDetails', id: card.id }
+    );
+    return;
+  }
+  select({ kind: card.kind, key: keyOf(card) });
+}
+
 document.addEventListener('click', (event) => {
   const target = event.target instanceof Element ? event.target : null;
   const button = target?.closest<HTMLElement>('[data-act]');
@@ -599,6 +785,26 @@ document.addEventListener('click', (event) => {
   if (action) {
     post(action.message);
     return;
+  }
+  const scope = target?.closest<HTMLElement>('[data-scope]');
+  if (scope) {
+    post({ type: 'setTeamScope', scope: scope.dataset.scope === 'team' ? 'team' : 'mine' });
+    return;
+  }
+  if (target?.closest('[data-teams-toggle]')) {
+    teamsOpen = !teamsOpen;
+    render();
+    return;
+  }
+  const only = target?.closest<HTMLElement>('[data-only]');
+  if (only?.dataset.only) {
+    event.preventDefault();
+    post({ type: 'setTeamSelection', teams: [only.dataset.only] });
+    return;
+  }
+  if (teamsOpen && !target?.closest('.bd-teams')) {
+    teamsOpen = false;
+    render();
   }
   const chip = target?.closest<HTMLElement>('[data-kind-chip]');
   if (chip) {
@@ -625,13 +831,31 @@ document.addEventListener('click', (event) => {
   const found = cardOf(target);
   if (found && found.element.dataset.kind) {
     hidePopover();
-    select({ kind: found.card.kind, key: keyOf(found.card) });
+    openCard(found.card);
+  }
+});
+
+document.addEventListener('change', (event) => {
+  const target = event.target instanceof HTMLInputElement ? event.target : null;
+  if (!target?.dataset.team) {
+    return;
+  }
+  const teams = Array.from(document.querySelectorAll<HTMLInputElement>('input[data-team]:checked')).map(
+    (input) => input.dataset.team ?? ''
+  );
+  if (teams.length) {
+    post({ type: 'setTeamSelection', teams });
+  } else {
+    target.checked = true;
   }
 });
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
-    if (!popover.hidden) {
+    if (teamsOpen) {
+      teamsOpen = false;
+      render();
+    } else if (!popover.hidden) {
       endHover();
     } else if (selected) {
       const { kind, key } = selected;
@@ -646,7 +870,7 @@ document.addEventListener('keydown', (event) => {
     const found = cardOf(target);
     if (found) {
       hidePopover();
-      select({ kind: found.card.kind, key: keyOf(found.card) });
+      openCard(found.card);
     }
   }
 });

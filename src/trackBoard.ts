@@ -1,6 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { setShowCompleted, settings, workingDaysSetting } from './config';
+import { buildTeamBoard } from './teamBoardModel';
+import { groupByPerson, mergedPullRequests, shapeTeamItems, teamOfIteration, waitedOnBy } from './teamData';
+import type { TeamWorkStore } from './teamWorkStore';
 import type { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import { withFeature } from './requestContext';
 import type { ReviewRequestsWatcher } from './reviewRequestsWatcher';
@@ -8,7 +11,15 @@ import { reviewSettings } from './reviewRequestsWatcher';
 import { OPEN_SPRINT_TIMELINE_COMMAND } from './sprintTimelineModel';
 import { isSharedMessage, runSharedMessage } from './sharedMessages';
 import { sprintProgress } from './sprintCountdown';
-import { ALL_KINDS, buildBoard, type BoardKind, type BoardMessage, type BoardModel } from './trackBoardModel';
+import {
+  ALL_KINDS,
+  boardItems,
+  buildBoard,
+  mergedSince,
+  type BoardKind,
+  type BoardMessage,
+  type BoardModel,
+} from './trackBoardModel';
 import type { WorkItemsStore } from './workItemsStore';
 
 export const OPEN_TRACK_BOARD_COMMAND = 'totalflowx.openTrackBoard';
@@ -25,6 +36,14 @@ const NO_FILTER = {
   hiddenDuplicates: [],
 };
 
+/** Without data yet the board is loading; a reload with data on screen is not shown (the lanes would jump) */
+function teamStatus(status: TeamWorkStore['status'], hasData: boolean): TeamWorkStore['status'] {
+  if (!hasData) {
+    return status === 'error' ? 'error' : 'loading';
+  }
+  return status === 'loading' ? 'ready' : status;
+}
+
 /**
  * The board as the stores and watchers have it now: the Sprint timeline draws the same cards, so the two tabs never
  * disagree
@@ -33,11 +52,19 @@ export function currentBoard(
   store: WorkItemsStore,
   reviews: ReviewRequestsWatcher,
   myPullRequests: MyPullRequestsWatcher,
-  kinds: readonly BoardKind[] = ALL_KINDS
+  kinds: readonly BoardKind[] = ALL_KINDS,
+  team?: TeamWorkStore
 ): BoardModel {
   const now = new Date();
   const base = store.toViewModel(NO_FILTER);
-  return buildBoard({
+  const iterations = base.iterations.map((iteration) => ({
+    name: iteration.name,
+    startDate: iteration.startDate,
+    finishDate: iteration.finishDate,
+    progress: sprintProgress(iteration.startDate, iteration.finishDate, now, workingDaysSetting()),
+  }));
+  const scope = team?.scope ?? 'mine';
+  const board = buildBoard({
     status: base.status,
     error: base.error,
     workItems: base.workItems,
@@ -46,19 +73,61 @@ export function currentBoard(
     reviewsStatus: reviews.status,
     reviewsError: reviews.error,
     maxWaitHours: reviewSettings().maxWaitHours,
-    iterations: base.iterations.map((iteration) => ({
-      name: iteration.name,
-      startDate: iteration.startDate,
-      finishDate: iteration.finishDate,
-      progress: sprintProgress(iteration.startDate, iteration.finishDate, now, workingDaysSetting()),
-    })),
+    iterations,
     kinds: [...kinds],
     showCompleted: settings().showCompleted,
     completed: myPullRequests.completedPullRequests(),
     now,
     look: settings().look,
     popoverDelay: settings().popoverDelay,
+    scope,
   });
+  if (!team || scope !== 'team') {
+    return board;
+  }
+  // Rules TEAM-1..8, BOARD-26..30
+  const snapshot = team.snapshot;
+  const items = snapshot
+    ? shapeTeamItems(snapshot, {
+        ownIds: new Set(store.workItems.map((entry) => entry.workItem.id)),
+        baseBranch: settings().baseBranch,
+        staleAfterWorkingDays: settings().alerts.staleAfterWorkingDays,
+        workingDays: workingDaysSetting(),
+        now,
+      })
+    : [];
+  const own = boardItems(base.workItems, kinds);
+  return {
+    ...board,
+    team: buildTeamBoard({
+      // A reload with data on screen does not show "Loading…": the lanes would jump
+      status: teamStatus(team.status, snapshot !== undefined),
+      error: team.error,
+      teams: team.teams,
+      selected: team.selection,
+      people: snapshot ? groupByPerson(items, snapshot) : [],
+      own: {
+        items: own,
+        cards: board.work,
+        collapsedIds: board.summary.ids,
+        badges: new Map(snapshot ? own.map((item) => [item.id, teamOfIteration(item.iterationPath, snapshot)]) : []),
+      },
+      reviews: board.reviews,
+      kinds: [...kinds],
+      showCompleted: settings().showCompleted,
+      completed: snapshot ? mergedPullRequests(snapshot) : [],
+      since: mergedSince(iterations, now.getTime()),
+      rules: { ...reviewSettings(), workingDays: workingDaysSetting() },
+      waitedOn: waitedOnBy(
+        store.workItems.map((entry) => ({
+          id: entry.workItem.id,
+          predecessorIds: entry.workItem.links.predecessorIds,
+        }))
+      ),
+      now,
+      youName: store.workItems.at(0)?.workItem.assignedTo?.replace(/\s+EXT$/i, ''),
+    }),
+  };
 }
 
 /**
@@ -78,7 +147,8 @@ export class TrackBoardPanel implements vscode.Disposable {
     private readonly extensionUri: vscode.Uri,
     private readonly store: WorkItemsStore,
     private readonly reviews: ReviewRequestsWatcher,
-    private readonly myPullRequests: MyPullRequestsWatcher
+    private readonly myPullRequests: MyPullRequestsWatcher,
+    private readonly team: TeamWorkStore
   ) {}
 
   dispose(): void {
@@ -108,6 +178,7 @@ export class TrackBoardPanel implements vscode.Disposable {
       panel.webview.onDidReceiveMessage(
         (message: BoardMessage) => void withFeature('trackBoard', () => this.onMessage(message))
       );
+      panel.onDidChangeViewState(() => this.post());
       panel.onDidDispose(() => {
         this.panel = undefined;
         this.ready = false;
@@ -122,9 +193,13 @@ export class TrackBoardPanel implements vscode.Disposable {
     }
     const update: BoardUpdate = {
       type: 'board',
-      model: currentBoard(this.store, this.reviews, this.myPullRequests, this.kinds),
+      model: currentBoard(this.store, this.reviews, this.myPullRequests, this.kinds, this.team),
     };
     void this.panel.webview.postMessage(update);
+    // Rule TEAM-8: the team data is only asked for by a visible tab in "Whole team"
+    if (this.panel.visible && this.team.scope === 'team') {
+      this.team.request();
+    }
   }
 
   private postSelect(): void {
@@ -152,6 +227,24 @@ export class TrackBoardPanel implements vscode.Disposable {
         // Rule BOARD-25: the change of the setting redraws both tabs (extension.ts)
         await setShowCompleted(message.show);
         return;
+      }
+      if (message.type === 'setTeamScope') {
+        await this.team.setScope(message.scope);
+        return;
+      }
+      if (message.type === 'setTeamSelection') {
+        await this.team.setSelection(message.teams);
+        return;
+      }
+      if (message.type === 'openTeamPullRequest') {
+        // Only the PR pages of the organization: the URL comes from a webview
+        if (message.url.startsWith('https://dev.azure.com/')) {
+          await vscode.env.openExternal(vscode.Uri.parse(message.url));
+        }
+        return;
+      }
+      if (message.type === 'refresh') {
+        this.team.forceReload();
       }
       if (message.type === 'setBoardKinds') {
         this.kinds = ALL_KINDS.filter((kind) => message.kinds.includes(kind));

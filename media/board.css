@@ -50,7 +50,7 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
   flex: none;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 14px;
+  gap: 8px 10px;
   padding: 14px 20px 8px;
 }
 
@@ -1040,4 +1040,357 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
   .bd-card.is-current {
     outline: 2px solid Highlight;
   }
+}
+
+/* ---------- Whole team (Rules BOARD-26..30) ---------- */
+
+.bd-segment {
+  display: flex;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bd-card);
+}
+
+.bd-segment button {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.bd-segment button[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
+  color: var(--vscode-foreground);
+}
+
+.bd-stats {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.bd-teams {
+  position: relative;
+}
+
+.bd-teams-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bd-card);
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.bd-teams-button[aria-expanded='true'] {
+  border-color: var(--vscode-focusBorder);
+}
+
+.bd-pill-count {
+  padding: 0 6px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+
+.bd-teams-menu {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 280px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--vscode-editorWidget-background, var(--bd-card));
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+.bd-teams-menu[hidden] {
+  display: none;
+}
+
+.bd-team-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.bd-team-row:hover {
+  background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+}
+
+.bd-team-row input {
+  margin: 0;
+}
+
+.bd-team-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* "only" shows on hover or focus of the row, like in the design */
+.bd-only {
+  display: none;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bd-card);
+  color: var(--vscode-foreground);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.bd-team-row:hover .bd-only,
+.bd-team-row:focus-within .bd-only {
+  display: inline-block;
+}
+
+.bd-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--pending);
+}
+
+.swatch-0 {
+  --swatch: var(--in-flight);
+}
+.swatch-1 {
+  --swatch: var(--passed);
+}
+.swatch-2 {
+  --swatch: var(--needs-you);
+}
+.swatch-3 {
+  --swatch: var(--broken);
+}
+.swatch-4 {
+  --swatch: var(--working-here, var(--in-flight));
+}
+.swatch-5 {
+  --swatch: var(--pending);
+}
+
+.bd-swatch {
+  background: var(--swatch, var(--pending));
+}
+
+.bd-team-badge {
+  padding: 0 4px;
+  border: 1px solid var(--in-flight);
+  border-radius: 3px;
+  color: var(--in-flight);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.bd-tgrid,
+.bd-lane {
+  display: grid;
+  grid-template-columns: 170px repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.bd-team {
+  min-width: 1100px;
+  gap: 0;
+}
+
+.bd-team .bd-heads {
+  padding-bottom: 6px;
+}
+
+.bd-count.overdue {
+  color: var(--broken);
+  font-weight: 600;
+}
+
+.bd-lane {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.bd-lane.is-you {
+  border-radius: 10px;
+  border-bottom: 0;
+  background: color-mix(in srgb, var(--in-flight) 7%, transparent);
+  box-shadow: inset 3px 0 0 var(--needs-you);
+}
+
+.bd-lane-head {
+  position: sticky;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+}
+
+.bd-lane-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.bd-lane-sum {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.bd-avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--swatch, var(--pending)) 35%, var(--bd-card));
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.bd-avatar.colour-0 {
+  --swatch: var(--in-flight);
+}
+.bd-avatar.colour-1 {
+  --swatch: var(--passed);
+}
+.bd-avatar.colour-2 {
+  --swatch: var(--needs-you);
+}
+.bd-avatar.colour-3 {
+  --swatch: var(--broken);
+}
+.bd-avatar.colour-4 {
+  --swatch: var(--working-here, var(--in-flight));
+}
+.bd-avatar.colour-5 {
+  --swatch: var(--pending);
+}
+
+.is-you .bd-avatar {
+  background: var(--needs-you);
+  color: var(--vscode-editor-background);
+}
+
+.bd-tcard {
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.bd-tcard .bd-id {
+  font-weight: 700;
+}
+
+.bd-tcard.kind-backlog .bd-id {
+  color: var(--in-flight);
+}
+
+.bd-tcard.kind-bug .bd-id {
+  color: var(--broken);
+}
+
+.bd-tcard .bd-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 12px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.bd-tcard .bd-team-badge {
+  margin-left: auto;
+}
+
+.bd-tcard .bd-tag {
+  margin-left: 0;
+}
+
+.bd-part {
+  color: var(--muted);
+}
+
+.bd-tcard.needs-you {
+  box-shadow: inset 2px 0 0 var(--needs-you);
+}
+
+.bd-markers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 6px;
+}
+
+.bd-marker {
+  color: var(--muted);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10px;
+}
+
+.bd-marker.tone-needsYou {
+  color: var(--needs-you);
+}
+
+.bd-marker.tone-broken {
+  color: var(--broken);
+  font-weight: 600;
+}
+
+.bd-marker.tone-passed {
+  color: var(--passed);
+}
+
+.bd-insights {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  font-size: 12px;
+}
+
+.bd-insight {
+  margin: 0;
+}
+
+.bd-insight-label {
+  margin-right: 10px;
+  color: var(--muted);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.bd-insight.kind-note {
+  color: var(--muted);
+  font-size: 11px;
 }

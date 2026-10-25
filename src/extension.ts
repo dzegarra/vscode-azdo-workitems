@@ -36,6 +36,7 @@ import { registerDiagnostics } from './diagnostics';
 import { withFeature } from './requestContext';
 import { DependencyMapPanel } from './dependencyMap';
 import { OPEN_SPRINT_TIMELINE_COMMAND, SprintTimelinePanel } from './sprintTimeline';
+import { TeamWorkStore } from './teamWorkStore';
 import { OPEN_TRACK_BOARD_COMMAND, TrackBoardPanel } from './trackBoard';
 import { CurrentWorkItemStatusBar } from './currentWorkItemStatusBar';
 import {
@@ -147,7 +148,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const notifier = new PullRequestNotifier(context.globalState, store, funJournal, () => celebrate(true, 'merged'));
   const sprintRecap = new SprintRecapPanel(context.extensionUri, store, funJournal);
   details.setMyPullRequests(myPullRequests);
-  const trackBoard = new TrackBoardPanel(context.extensionUri, store, reviewRequests, myPullRequests);
+  const teamWork = new TeamWorkStore(context.globalState, store);
+  const trackBoard = new TrackBoardPanel(context.extensionUri, store, reviewRequests, myPullRequests, teamWork);
   const sprintTimeline = new SprintTimelinePanel(context.extensionUri, store, reviewRequests, myPullRequests);
   const worktreeTracker = new WorktreeTracker(context.globalState, { store, reviews: reviewRequests, myPullRequests });
   view.setWorktrees(worktreeTracker);
@@ -301,6 +303,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     notifier,
     pullRequestTaskStarter,
     dependencyMap,
+    teamWork,
+    teamWork.onDidChange(() => trackBoard.post()),
     trackBoard,
     command(OPEN_TRACK_BOARD_COMMAND, (key?: string) => trackBoard.open(key)),
     sprintTimeline,

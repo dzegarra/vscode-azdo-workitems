@@ -11,6 +11,8 @@ import type { MyPullRequestModel, ReviewerModel } from './myPullRequests';
 import type { RunModel } from './pipelines';
 import type { ReviewRequestModel } from './reviewRequests';
 import type { SprintProgress } from './sprintCountdown';
+import type { TeamBoardModel } from './teamBoardModel';
+import type { TeamScope } from './teamView';
 import { isFinishedState, isNotStartedState, stateCategory } from './states';
 import { branchLocationText, stationNotes } from './stationNotes';
 import { taskProgress, taskProgressTooltip, type TaskSegmentCategory } from './taskProgress';
@@ -41,7 +43,10 @@ export type BoardMessage =
   | WebviewMessage
   | { type: 'openTimeline' }
   | { type: 'setBoardKinds'; kinds: BoardKind[] }
-  | { type: 'setShowCompleted'; show: boolean };
+  | { type: 'setShowCompleted'; show: boolean }
+  | { type: 'setTeamScope'; scope: 'mine' | 'team' }
+  | { type: 'setTeamSelection'; teams: string[] }
+  | { type: 'openTeamPullRequest'; url: string };
 
 export type CardTone = 'active' | 'broken' | 'done' | 'needsYou' | 'neutral' | 'ship';
 
@@ -262,6 +267,10 @@ export interface BoardModel {
   /** Colours and fonts (Rule LOOK-1) */
   look: 'theme' | 'totalflow';
   popoverDelay: number;
+  /** The chip of the header (Rule TEAM-1) */
+  scope: TeamScope;
+  /** The whole-team lanes (Rule BOARD-26), with the scope "team" */
+  team?: TeamBoardModel;
 }
 
 /** Tooltip of the Completed chip of the header of the Track board and of the Sprint timeline (Rule BOARD-25) */
@@ -294,6 +303,7 @@ export interface BoardInput {
   now?: Date;
   look: BoardModel['look'];
   popoverDelay: number;
+  scope?: TeamScope;
 }
 
 const COLUMN_TITLES: Record<BoardColumnId, string> = {
@@ -1423,18 +1433,27 @@ function completedAt(card: BoardWorkCard, items: WorkItemModel[]): number {
   return Number.isNaN(at) ? 0 : at;
 }
 
-// Rules BOARD-5, BOARD-6, BOARD-12, BOARD-20, BOARD-24, BOARD-25
-export function buildBoard(input: BoardInput): BoardModel {
-  const items = boardItems(input.workItems, input.kinds);
-  const queue = nowQueue({
-    reviews: input.reviews,
-    myPullRequests: input.myPullRequests,
-    workItems: items,
-    deletableBranches: 0,
-    staleWorktrees: 0,
-  }).items;
-  const context: CardContext = { workItems: input.workItems, myPullRequests: input.myPullRequests, queue };
-  const since = mergedSince(input.iterations, (input.now ?? new Date()).getTime());
+export interface CardsInput {
+  /** The work items to draw (see boardItems) */
+  items: WorkItemModel[];
+  /** Every work item known, for the tasks of the cards */
+  workItems: WorkItemModel[];
+  myPullRequests: MyPullRequestModel[];
+  queue: ReturnType<typeof nowQueue>['items'];
+  showCompleted: boolean;
+  completed: readonly MergedPullRequest[];
+  /** When the merged PRs start to count (see mergedSince) */
+  since: number;
+}
+
+// Rules BOARD-5, BOARD-20, BOARD-24, BOARD-25
+/**
+ * The cards of a set of work items, the completed ones last, and the ids of the finished work items folded into one
+ * dashed card. The board of the user and every lane of the whole-team board (BOARD-26) draw their cards with it
+ */
+export function boardCards(input: CardsInput): { cards: BoardWorkCard[]; collapsedIds: number[] } {
+  const { items } = input;
+  const context: CardContext = { workItems: input.workItems, myPullRequests: input.myPullRequests, queue: input.queue };
   // Rule BOARD-25: hidden, the finished work items fold into one dashed card (BOARD-5), except the ones that break a rule
   const isHidden = (item: WorkItemModel): boolean =>
     !input.showCompleted && isFinishedState(item.state) && item.alerts.length === 0;
@@ -1443,7 +1462,7 @@ export function buildBoard(input: BoardInput): BoardModel {
     .flatMap((item) => {
       const own = workCards(item, context);
       const merged =
-        input.showCompleted && !isFinishedState(item.state) ? mergedCards(item, own, input.completed ?? [], since) : [];
+        input.showCompleted && !isFinishedState(item.state) ? mergedCards(item, own, input.completed, input.since) : [];
       const count = own.length + merged.length;
       const whole = merged.length
         ? own.map((card) =>
@@ -1455,12 +1474,36 @@ export function buildBoard(input: BoardInput): BoardModel {
   // Rule BOARD-5: the completed cards go last in the Done column, the most recently completed first
   const isCompleted = (card: BoardWorkCard): boolean =>
     card.merged !== undefined || isFinishedState(items.find((item) => item.id === card.id)?.state ?? '');
-  const ordered = [
-    ...cards.filter((card) => !isCompleted(card)),
-    ...cards.filter(isCompleted).sort((a, b) => completedAt(b, items) - completedAt(a, items)),
-  ];
+  return {
+    cards: [
+      ...cards.filter((card) => !isCompleted(card)),
+      ...cards.filter(isCompleted).sort((a, b) => completedAt(b, items) - completedAt(a, items)),
+    ],
+    collapsedIds: items.filter(isHidden).map((item) => item.id),
+  };
+}
+
+// Rules BOARD-5, BOARD-6, BOARD-12, BOARD-20, BOARD-24, BOARD-25
+export function buildBoard(input: BoardInput): BoardModel {
+  const items = boardItems(input.workItems, input.kinds);
+  const queue = nowQueue({
+    reviews: input.reviews,
+    myPullRequests: input.myPullRequests,
+    workItems: items,
+    deletableBranches: 0,
+    staleWorktrees: 0,
+  }).items;
+  const since = mergedSince(input.iterations, (input.now ?? new Date()).getTime());
+  const { cards: ordered, collapsedIds } = boardCards({
+    items,
+    workItems: input.workItems,
+    myPullRequests: input.myPullRequests,
+    queue,
+    showCompleted: input.showCompleted,
+    completed: input.completed ?? [],
+    since,
+  });
   const shown = withRelated(ordered, items);
-  const collapsedIds = items.filter(isHidden).map((item) => item.id);
   const reviews = input.reviews.map(reviewCard);
   const current = currentCard(queue, shown, reviews, items);
   const work = shown.map((card) =>
@@ -1489,5 +1532,6 @@ export function buildBoard(input: BoardInput): BoardModel {
     notes,
     look: input.look,
     popoverDelay: input.popoverDelay,
+    scope: input.scope ?? 'mine',
   };
 }

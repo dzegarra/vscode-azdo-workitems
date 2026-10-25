@@ -77,6 +77,10 @@ src/sharedMessages.ts     the buttons the sidebar and the Track board share (PR,
 src/workItemsView.ts      sidebar webview provider: builds the ViewModel (src/viewModel.ts) and handles messages
 src/webview/main.ts       sidebar webview (cards, PR boxes, filters); src/webview/dependencies.ts: dependency map; src/webview/board.ts: Track board (media/board.css); src/webview/timeline.ts: Sprint timeline (media/timeline.css)
 src/codingStart.ts        pure: where coding starts on the Sprint timeline (setting appearance.timelineCodingStart, Rule TIMELINE-20), first commit of a PR (parsing, cache rules)
+src/teamView.ts           pure (phase 7): whole-team scope and selection (globalState keys), team badges, initials, avatar colours, Rule TEAM-1
+src/teamData.ts           pure: raw team snapshot -> WorkItemModel per work item, lanes per person (groupByPerson), cache keys, attempt key, Rules TEAM-5..8
+src/teamBoardModel.ts     pure: the whole-team Track board (lanes, compact cards, markers, insights), Rules BOARD-26..30; the Sprint timeline (7b) reuses people + cards
+src/teamWorkStore.ts      fetches the team data (feature `teamView`, only when a visible tab is in Whole team, attempt key, caches); onDidChange redraws the board
 src/sprintTimeline.ts     Sprint timeline panel (editor tab, dist/timeline.js, media/timeline.css; webview: src/webview/timeline.ts); pure model: src/sprintTimelineModel.ts
                           (rows = cards of the Track board + the dates of the PRs, Rules TIMELINE-*); groups, merged PRs and collapse: src/timelineGroups.ts (pure);
                           its requests: the planned work of the next sprint and, once per PR, the threads of the merged PRs it draws (MyPullRequestsWatcher.loadMergedThreads)
