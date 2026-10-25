@@ -222,6 +222,7 @@ function renderHeader(current: BoardModel): string {
       )}">${escapeHtml(current.header.left)}</span>`
     : '';
   return `<header class="bd-header"><h1 class="bd-sprint">${escapeHtml(current.header.sprint)}</h1>${left}
+    <div class="bd-tabs" role="group" aria-label="View"><button class="bd-chip" aria-pressed="true">Track board</button><button class="bd-chip" data-open-timeline aria-pressed="false">Sprint timeline</button></div>
     <span class="bd-scope">Mine + my reviews</span>
     <div class="bd-chips" role="group" aria-label="Type">${chip('backlog', 'Backlog Items')}${chip('bug', 'Bugs')}</div>
     <button class="bd-icon-button" data-refresh title="Refresh" aria-label="Refresh">${icon('sync')}</button></header>`;
@@ -597,6 +598,10 @@ document.addEventListener('click', (event) => {
     toggleKind(chip.dataset.kindChip === 'bug' ? 'bug' : 'backlog');
     return;
   }
+  if (target?.closest('[data-open-timeline]')) {
+    post({ type: 'openTimeline' });
+    return;
+  }
   if (target?.closest('[data-refresh]')) {
     post({ type: 'refresh' });
     return;
@@ -665,6 +670,12 @@ document.addEventListener('focusout', (event) => {
 });
 
 window.addEventListener('message', (event: MessageEvent<BoardUpdate>) => {
+  // "Open on board" of the Sprint timeline: the card is selected and brought into view
+  if (event.data.type === 'select') {
+    select({ kind: 'work', key: event.data.key });
+    document.querySelector(cardSelector('work', event.data.key))?.scrollIntoView({ block: 'center' });
+    return;
+  }
   // The store posts on every CI poll: an identical model must not close the popover nor reset the drawer
   const text = JSON.stringify(event.data.model);
   if (text === lastModel) {

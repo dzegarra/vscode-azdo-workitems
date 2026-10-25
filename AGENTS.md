@@ -28,7 +28,7 @@ npm run reinstall # package, then uninstall + install it in VS Code (scripts/rei
 npm run format    # prettier on src and media
 ```
 
-- Scripts (`package.json`): `build` (esbuild, 4 bundles: `dist/extension.js` for Node, `dist/webview.js` for the sidebar, `dist/dependencies.js` for the dependency map, `dist/board.js` for the Track board), `watch`, `typecheck` (`tsc --noEmit`), `test` (vitest, `vitest.config.mts`), `package` (`vsce package --no-dependencies …`), `lint` (ESLint, `eslint.config.mjs`: `typescript-eslint` strict type-checked rules plus the conventions below; import resolution is left to `tsc`, formatting to Prettier), `format` (Prettier, `.prettierrc`).
+- Scripts (`package.json`): `build` (esbuild, 5 bundles: `dist/extension.js` for Node, `dist/webview.js` for the sidebar, `dist/dependencies.js` for the dependency map, `dist/board.js` for the Track board, `dist/timeline.js` for the Sprint timeline), `watch`, `typecheck` (`tsc --noEmit`), `test` (vitest, `vitest.config.mts`), `package` (`vsce package --no-dependencies …`), `lint` (ESLint, `eslint.config.mjs`: `typescript-eslint` strict type-checked rules plus the conventions below; import resolution is left to `tsc`, formatting to Prettier), `format` (Prettier, `.prettierrc`).
 - Debug: launch configuration **Run Azure Work Items Extension** (F5) in `.vscode/launch.json` (builds first via the `npm: build` task).
 - Install: `code --install-extension vscode-azdo-workitems-0.1.0.vsix`, then reload the window. `npm run reinstall` does rebuild + uninstall + install in one go (it does not run `npm run check`).
 
@@ -75,7 +75,9 @@ src/funJournalStore.ts    fun journal in the global state (pure recorders: src/f
 src/trackBoard.ts         Track board panel (one editor tab, redraws on store / PR / review events, no request of its own); pure model: src/trackBoardModel.ts (Rules BOARD-*)
 src/sharedMessages.ts     the buttons the sidebar and the Track board share (PR, review and work item actions): both views run them here
 src/workItemsView.ts      sidebar webview provider: builds the ViewModel (src/viewModel.ts) and handles messages
-src/webview/main.ts       sidebar webview (cards, PR boxes, filters); src/webview/dependencies.ts: dependency map; src/webview/board.ts: Track board (media/board.css)
+src/webview/main.ts       sidebar webview (cards, PR boxes, filters); src/webview/dependencies.ts: dependency map; src/webview/board.ts: Track board (media/board.css); src/webview/timeline.ts: Sprint timeline (media/timeline.css)
+src/sprintTimeline.ts     Sprint timeline panel (editor tab, dist/timeline.js, media/timeline.css; webview: src/webview/timeline.ts); pure model: src/sprintTimelineModel.ts
+                          (rows = cards of the Track board + the dates of the PRs, Rules TIMELINE-*); the only request is the planned work of the next sprint
 src/workItemDetails.ts    Work Item Details panel (one editor tab per work item); HTML in src/detailsHtml.ts
 src/dependencyMap.ts      dependency map panel; graph/layout in src/dependencyGraph.ts, iteration model in src/schedule.ts
 src/commands/*.ts         user flows (create branch / PR, checkout + worktrees, delete branch, publish, retarget, …); base branch rules: src/baseBranch.ts (pure)

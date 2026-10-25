@@ -5,6 +5,7 @@ import {
   MAX_TIMELINE_EVENTS,
   publicationDate,
   publishedAt,
+  pullRequestStamps,
   TimelineSource,
 } from './pullRequestTimeline';
 import type { ThreadResponse } from './reviewThreads';
@@ -235,5 +236,38 @@ describe('buildTimeline', () => {
     expect(earlier).toBe(6);
     expect(events[0].text).toBe('25 new commits pushed');
     expect(events.at(-1)?.text).toBe('6 new commits pushed');
+  });
+});
+
+describe('pullRequestStamps (TIMELINE-4..7)', () => {
+  const vote = (id: number, date: string, result: number) =>
+    system(id, date, 'VoteUpdate', `Ana voted ${String(result)}`, { CodeReviewVoteResult: result });
+  const threads = [
+    system(1, '2026-10-05T21:24:00Z', 'IsDraftUpdate', 'Published', { CodeReviewIsDraftNowSet: '0' }),
+    vote(2, '2026-10-06T08:00:00Z', -5),
+    system(3, '2026-10-06T09:00:00Z', 'RefUpdate', 'updated', { CodeReviewRefNewCommitsCount: 1 }),
+    vote(4, '2026-10-06T10:00:00Z', 10),
+  ];
+
+  it('gives the dates the Sprint timeline draws with', () => {
+    expect(pullRequestStamps({ creationDate: '2026-09-30T17:44:00Z' }, threads)).toEqual({
+      createdAt: '2026-09-30T17:44:00Z',
+      publishedAt: '2026-10-05T21:24:00Z',
+      closedAt: undefined,
+      sentBackAt: '2026-10-06T08:00:00Z',
+      lastVoteAt: '2026-10-06T10:00:00Z',
+      lastPushAt: '2026-10-06T09:00:00Z',
+    });
+  });
+
+  it('knows only the creation and the closing without threads', () => {
+    expect(pullRequestStamps({ creationDate: 'c', closedDate: 'x' }, undefined)).toEqual({
+      createdAt: 'c',
+      publishedAt: undefined,
+      closedAt: 'x',
+      sentBackAt: undefined,
+      lastVoteAt: undefined,
+      lastPushAt: undefined,
+    });
   });
 });

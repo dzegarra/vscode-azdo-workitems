@@ -3,6 +3,7 @@
 !dist/webview.js
 !dist/dependencies.js
 !dist/board.js
+!dist/timeline.js
 !media/**
 !package.json
 !README.md

@@ -1,0 +1,540 @@
+/* The Sprint timeline (redesign, Rules TIMELINE-*). The header, chips and buttons are the ones of board.css; the colours
+ * are the tokens of webview.css, so the timeline follows the theme and the Totalflow look. Positions and sizes are set
+ * by the script through CSSOM (strict CSP): --tl-days is the number of working days on the axis */
+
+body.timeline-page {
+  --tl-label: 280px;
+  --tl-row: 46px;
+  --tl-bar: 20px;
+  --tl-grid: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  --tl-coding: color-mix(in srgb, var(--vscode-foreground) 18%, var(--vscode-editor-background));
+  --tl-draft: color-mix(in srgb, var(--in-flight) 32%, var(--vscode-editor-background));
+  --tl-on-solid: #04101f;
+  --tl-on-amber: #1a1200;
+  --tl-on-green: #04170d;
+}
+
+/* Light themes have darker accents: white text reads on them (the Totalflow look keeps its bright accents) */
+body.timeline-page.vscode-light:not(.look-totalflow) {
+  --tl-on-solid: #fff;
+  --tl-on-amber: #fff;
+  --tl-on-green: #fff;
+}
+
+.tl-legend {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  padding: 0 20px 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.tl-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tl-key.dep {
+  color: var(--needs-you);
+}
+
+.tl-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.tl-swatch.seg-coding {
+  background: var(--tl-coding);
+}
+
+.tl-swatch.seg-draft {
+  background: var(--tl-draft);
+}
+
+.tl-swatch.seg-review {
+  background: var(--in-flight);
+}
+
+.tl-swatch.seg-needsYou {
+  background: var(--needs-you);
+}
+
+.tl-swatch.seg-ready {
+  background: var(--passed);
+}
+
+.tl-swatch.seg-asleep {
+  background: transparent;
+  border: 1px solid var(--needs-you);
+}
+
+.tl-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 0 20px 24px;
+  overflow: auto;
+}
+
+.tl-grid {
+  min-width: calc(var(--tl-label) + var(--tl-days, 10) * 64px);
+}
+
+.tl-row {
+  display: grid;
+  grid-template-columns: var(--tl-label) minmax(0, 1fr);
+  align-items: center;
+  height: var(--tl-row);
+  border-bottom: 1px solid var(--tl-grid);
+}
+
+.tl-row-days {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: auto;
+  border-bottom: 1px solid var(--border);
+  background: var(--vscode-editor-background);
+}
+
+.tl-days {
+  display: grid;
+  grid-template-columns: repeat(var(--tl-days, 10), minmax(0, 1fr));
+  color: var(--vscode-disabledForeground, var(--muted));
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+
+.tl-day {
+  padding: 6px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tl-day.week,
+.tl-day.next:first-of-type {
+  border-left: 1px solid var(--border);
+}
+
+.tl-day.today {
+  color: var(--needs-you);
+  font-weight: 600;
+}
+
+.tl-day.next {
+  opacity: 0.85;
+}
+
+/* ---------- Body: the sections and the overlay (week separators, today, NOW) ---------- */
+
+.tl-body {
+  position: relative;
+}
+
+.tl-overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--tl-label);
+  right: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.tl-overlay > span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.tl-weeksep,
+.tl-nextsep {
+  width: 0;
+  border-left: 1px solid var(--border);
+}
+
+.tl-nextsep {
+  border-left-style: dashed;
+}
+
+.tl-todaycol {
+  background: color-mix(in srgb, var(--needs-you) 7%, transparent);
+}
+
+.tl-now {
+  width: 2px;
+  margin-left: -1px;
+  background: var(--needs-you);
+}
+
+.tl-now-flag {
+  position: absolute;
+  top: -2px;
+  padding: 0 6px;
+  transform: translate(-50%, -100%);
+  background: var(--vscode-editor-background);
+  color: var(--needs-you);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.tl-section {
+  margin: 0;
+  padding: 16px 0 4px;
+  color: var(--vscode-disabledForeground, var(--muted));
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.tl-section:first-child {
+  padding-top: 18px;
+}
+
+.tl-empty-row,
+.tl-empty {
+  margin: 0;
+  padding: 8px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tl-empty {
+  padding: 0 0 0 8px;
+}
+
+/* ---------- Labels ---------- */
+
+.tl-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-right: 12px;
+  cursor: pointer;
+}
+
+.tl-label.plain {
+  cursor: default;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tl-label:focus-visible,
+.tl-seg:focus-visible,
+.tl-act:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.tl-id {
+  color: var(--muted);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tl-id.here {
+  color: var(--vscode-textLink-foreground, var(--in-flight));
+}
+
+.tl-id.bug {
+  color: var(--vscode-errorForeground, var(--broken));
+}
+
+.tl-title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tl-label:hover .tl-title {
+  text-decoration: underline;
+}
+
+/* ---------- Lanes and bars ---------- */
+
+.tl-lane {
+  position: relative;
+  height: var(--tl-row);
+}
+
+.tl-seg,
+.tl-dev,
+.tl-outline {
+  position: absolute;
+  top: calc((var(--tl-row) - var(--tl-bar)) / 2);
+  height: var(--tl-bar);
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: var(--tl-bar);
+  padding: 0 8px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tl-seg.seg-coding {
+  background: var(--tl-coding);
+}
+
+.tl-seg.seg-draft {
+  background: var(--tl-draft);
+  padding-left: 6px;
+}
+
+.tl-seg.seg-review {
+  background: var(--in-flight);
+  color: var(--tl-on-solid);
+}
+
+.tl-seg.seg-needsYou {
+  background: var(--needs-you);
+  color: var(--tl-on-amber);
+  font-weight: 600;
+}
+
+.tl-seg.seg-ready {
+  background: var(--passed);
+  color: var(--tl-on-green);
+  font-weight: 600;
+}
+
+.tl-seg.seg-wait {
+  background: var(--tl-draft);
+  top: calc((var(--tl-row) - 16px) / 2);
+  height: 16px;
+}
+
+.tl-seg.seg-dueSoon {
+  top: calc((var(--tl-row) - 16px) / 2);
+  height: 16px;
+  background: var(--waiting);
+}
+
+.tl-seg.seg-overdue {
+  top: calc((var(--tl-row) - 16px) / 2);
+  height: 16px;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--broken) 0 5px,
+    color-mix(in srgb, var(--broken) 70%, #000) 5px 10px
+  );
+  border-radius: 0 4px 4px 0;
+}
+
+.tl-seg.seg-planned {
+  color: var(--muted);
+}
+
+.tl-seg.seg-asleep {
+  border: 2px solid var(--needs-you);
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--needs-you) 24%, var(--vscode-editor-background)) 0 6px,
+    color-mix(in srgb, var(--needs-you) 10%, var(--vscode-editor-background)) 6px 12px
+  );
+  color: var(--needs-you);
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.tl-seg.dashed {
+  border: 1px dashed var(--muted);
+  background: transparent;
+  color: var(--muted);
+}
+
+.tl-seg.seg-wait.dashed {
+  border-color: var(--needs-you);
+  border-radius: 0 4px 4px 0;
+}
+
+/* The start is not known (or began before the sprint): the left edge fades instead of pretending */
+.tl-seg.approximate {
+  mask-image: linear-gradient(to right, transparent, #000 28px);
+}
+
+.tl-outline {
+  inset-inline: 0;
+  width: auto;
+  border: 1px dashed var(--muted);
+  color: var(--muted);
+  line-height: calc(var(--tl-bar) - 2px);
+}
+
+.tl-outline.broken {
+  border-color: var(--broken);
+  color: var(--vscode-errorForeground, var(--broken));
+}
+
+.tl-chip {
+  position: absolute;
+  left: 4px;
+  top: calc((var(--tl-row) - var(--tl-bar)) / 2);
+  height: var(--tl-bar);
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 1px solid var(--needs-you);
+  border-radius: 10px;
+  color: var(--needs-you);
+  font-size: 11px;
+  line-height: calc(var(--tl-bar) - 2px);
+  white-space: nowrap;
+}
+
+.tl-note,
+.tl-after {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: center;
+  height: var(--tl-row);
+  padding-left: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.tl-after {
+  gap: 10px;
+}
+
+.tl-after .tl-note {
+  position: static;
+  height: auto;
+  padding: 0;
+}
+
+.tl-note.flip,
+.tl-after.flip {
+  padding: 0 6px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 85%, transparent);
+}
+
+.tl-after.at-end {
+  inset-inline: auto 6px;
+  padding-left: 0;
+}
+
+.tl-note.tone-overdue {
+  color: var(--vscode-errorForeground, var(--broken));
+}
+
+.tl-note.tone-fresh {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.tl-note.tone-dueSoon {
+  color: var(--needs-you);
+}
+
+.tl-act {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--needs-you);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--needs-you);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.tl-act:not(.needs-you):not(.primary) {
+  border-color: var(--border);
+  color: var(--vscode-foreground);
+}
+
+.tl-act.primary {
+  border-color: var(--passed);
+  background: var(--passed);
+  color: var(--tl-on-green);
+  font-weight: 600;
+}
+
+.tl-row-develop {
+  height: 32px;
+}
+
+.tl-row-develop .tl-lane {
+  height: 32px;
+}
+
+.tl-dev {
+  top: 10px;
+  height: 12px;
+  padding: 0;
+  border-radius: 0;
+}
+
+.tl-dev.green {
+  background: color-mix(in srgb, var(--passed) 45%, var(--vscode-editor-background));
+}
+
+.tl-dev.red {
+  background: var(--broken);
+}
+
+.tl-row-develop .tl-note {
+  height: 32px;
+}
+
+/* ---------- The ASLEEP popover ---------- */
+
+.tl-popover {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 340px;
+  max-width: calc(100vw - 16px);
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--needs-you) 45%, var(--border));
+  border-radius: 10px;
+  background: var(--bd-card, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.45);
+}
+
+.tl-pop-title {
+  color: var(--needs-you);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.tl-pop-text {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.tl-pop-rule {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tl-pop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tl-act {
+    transition: background-color 0.1s;
+  }
+}

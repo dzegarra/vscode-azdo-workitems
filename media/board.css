@@ -71,8 +71,19 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
   font-weight: 600;
 }
 
-.bd-scope {
+.bd-tabs {
+  display: flex;
+  gap: 4px;
   margin-left: auto;
+}
+
+.bd-tabs .bd-chip[aria-pressed='true'] {
+  border-color: var(--vscode-focusBorder);
+  background: color-mix(in srgb, var(--vscode-focusBorder) 16%, transparent);
+  color: var(--vscode-foreground);
+}
+
+.bd-scope {
   padding: 3px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;

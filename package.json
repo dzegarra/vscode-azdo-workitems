@@ -237,6 +237,12 @@
         "icon": "$(project)"
       },
       {
+        "command": "totalflowx.openSprintTimeline",
+        "title": "Open Sprint Timeline",
+        "category": "Totalflow X",
+        "icon": "$(calendar)"
+      },
+      {
         "command": "totalflowx.openDependencyMap",
         "title": "Open Dependency Map",
         "category": "Totalflow X",
@@ -377,14 +383,19 @@
           "group": "navigation@2"
         },
         {
-          "command": "totalflowx.openDependencyMap",
+          "command": "totalflowx.openSprintTimeline",
           "when": "view == totalflowx.myItems",
           "group": "navigation@3"
         },
         {
-          "command": "totalflowx.openIterationBoard",
+          "command": "totalflowx.openDependencyMap",
           "when": "view == totalflowx.myItems",
           "group": "navigation@4"
+        },
+        {
+          "command": "totalflowx.openIterationBoard",
+          "when": "view == totalflowx.myItems",
+          "group": "navigation@5"
         },
         {
           "command": "totalflowx.selectTeams",
@@ -1650,12 +1661,13 @@
     ]
   },
   "scripts": {
-    "build": "npm run build:extension && npm run build:webview && npm run build:dependencies && npm run build:board",
+    "build": "npm run build:extension && npm run build:webview && npm run build:dependencies && npm run build:board && npm run build:timeline",
     "build:extension": "esbuild src/extension.ts --bundle --platform=node --target=node20 --format=cjs --external:vscode --sourcemap --outfile=dist/extension.js",
     "build:webview": "esbuild src/webview/main.ts --bundle --platform=browser --target=es2022 --format=iife --sourcemap --outfile=dist/webview.js",
     "build:dependencies": "esbuild src/webview/dependencies.ts --bundle --platform=browser --target=es2022 --format=iife --sourcemap --outfile=dist/dependencies.js",
     "build:board": "esbuild src/webview/board.ts --bundle --platform=browser --target=es2022 --format=iife --sourcemap --outfile=dist/board.js",
-    "watch": "npm run build:extension -- --watch & npm run build:webview -- --watch & npm run build:dependencies -- --watch & npm run build:board -- --watch & wait",
+    "build:timeline": "esbuild src/webview/timeline.ts --bundle --platform=browser --target=es2022 --format=iife --sourcemap --outfile=dist/timeline.js",
+    "watch": "npm run build:extension -- --watch & npm run build:webview -- --watch & npm run build:dependencies -- --watch & npm run build:board -- --watch & npm run build:timeline -- --watch & wait",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.mts",
     "lint": "eslint .",

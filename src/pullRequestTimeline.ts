@@ -78,6 +78,46 @@ export function publishedAt(pr: Pick<TimelineSource, 'creationDate'>, threads: T
   return publicationDate(threads) ?? pr.creationDate;
 }
 
+/** The moments the Sprint timeline draws a PR with (ISO), from its fields and its threads */
+export interface PullRequestStamps {
+  createdAt: string;
+  /** When it left draft for the last time; undefined when it was never a draft or the threads are unknown */
+  publishedAt?: string;
+  closedAt?: string;
+  /** Latest vote that sent the PR back (waiting for the author, rejected) */
+  sentBackAt?: string;
+  /** Latest vote of any kind */
+  lastVoteAt?: string;
+  /** Latest push to the branch */
+  lastPushAt?: string;
+}
+
+/** The latest published date of the system threads of one type whose vote result satisfies `keep` */
+function latestOf(threads: ThreadResponse[], type: string, keep: (thread: ThreadResponse) => boolean = () => true) {
+  return threads
+    .filter((thread) => threadType(thread) === type && keep(thread))
+    .map((thread) => thread.publishedDate)
+    .sort()
+    .at(-1);
+}
+
+/** Dates of the PR for the Sprint timeline (TIMELINE-*). Unknown threads give the creation and the closing only */
+export function pullRequestStamps(
+  pr: Pick<TimelineSource, 'closedDate' | 'creationDate'>,
+  threads: ThreadResponse[] | undefined
+): PullRequestStamps {
+  const known = threads ?? [];
+  const result = (thread: ThreadResponse): string => property(thread, 'CodeReviewVoteResult');
+  return {
+    createdAt: pr.creationDate,
+    publishedAt: publicationDate(threads),
+    closedAt: pr.closedDate,
+    sentBackAt: latestOf(known, 'VoteUpdate', (thread) => ['-5', '-10'].includes(result(thread))),
+    lastVoteAt: latestOf(known, 'VoteUpdate'),
+    lastPushAt: latestOf(known, 'RefUpdate'),
+  };
+}
+
 /** First comment of a system thread, without the final period */
 function systemText(thread: ThreadResponse): string {
   const content = (thread.comments?.[0]?.content ?? '').trim().replace(/\.$/, '');

@@ -35,6 +35,7 @@ import { addTask, changeState } from './commands/workItemEdits';
 import { registerDiagnostics } from './diagnostics';
 import { withFeature } from './requestContext';
 import { DependencyMapPanel } from './dependencyMap';
+import { OPEN_SPRINT_TIMELINE_COMMAND, SprintTimelinePanel } from './sprintTimeline';
 import { OPEN_TRACK_BOARD_COMMAND, TrackBoardPanel } from './trackBoard';
 import { CurrentWorkItemStatusBar } from './currentWorkItemStatusBar';
 import {
@@ -147,6 +148,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const sprintRecap = new SprintRecapPanel(context.extensionUri, store, funJournal);
   details.setMyPullRequests(myPullRequests);
   const trackBoard = new TrackBoardPanel(context.extensionUri, store, reviewRequests, myPullRequests);
+  const sprintTimeline = new SprintTimelinePanel(context.extensionUri, store, reviewRequests, myPullRequests);
   const worktreeTracker = new WorktreeTracker(context.globalState, { store, reviews: reviewRequests, myPullRequests });
   view.setWorktrees(worktreeTracker);
   const worktreesView = new WorktreesView(worktreeTracker);
@@ -273,11 +275,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       debounce = setTimeout(() => {
         view.post();
         trackBoard.post();
+        sprintTimeline.post();
         // Worktrees created or removed outside VS Code show up with the next change of the repository
         void store.refreshWorktrees().then((changed) => {
           if (changed) {
             view.post();
             trackBoard.post();
+            sprintTimeline.post();
           }
         });
       }, DEBOUNCE_MS);
@@ -298,7 +302,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     pullRequestTaskStarter,
     dependencyMap,
     trackBoard,
-    command(OPEN_TRACK_BOARD_COMMAND, () => trackBoard.open()),
+    command(OPEN_TRACK_BOARD_COMMAND, (key?: string) => trackBoard.open(key)),
+    sprintTimeline,
+    command(OPEN_SPRINT_TIMELINE_COMMAND, () => sprintTimeline.open()),
     pipelineWatcher,
     pipelineStatusBar,
     baseBranchAlert,
@@ -313,17 +319,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     reviewRequests.onDidChange(() => {
       view.post();
       trackBoard.post();
+      sprintTimeline.post();
     }),
     myPullRequests,
     myPullRequestsStatusBar,
     myPullRequests.onDidChange(() => {
       view.post();
       trackBoard.post();
+      sprintTimeline.post();
     }),
     alertsStatus,
     store.onDidChange(() => {
       view.post();
       trackBoard.post();
+      sprintTimeline.post();
       updateAlertsStatus();
     }),
     ...git.repositories.map(watchRepository),
@@ -341,6 +350,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       // The look, the review deadline and the days of the sprint show on the board
       trackBoard.post();
+      sprintTimeline.post();
       // Settings such as reviews.includeOptional change what the Summary counts
       summary.update();
       // Organization / project / repository set in the settings make the git remote unnecessary

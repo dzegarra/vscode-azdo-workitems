@@ -19,7 +19,14 @@ import { branchesToVerify, TaskBranchModel, toTaskBranchModels } from './taskBra
 import { sortTaskPullRequests, TaskPullRequestModel, toTaskPullRequestModel } from './taskPullRequests';
 import { CheckoutKind, FilterModel, ViewModel, WorkItemModel } from './viewModel';
 import { runDetailsLoader } from './runDetailsLoader';
-import { BaseBranchHealth, baseBranchHealth, finishedStates, incidentKey } from './baseBranchHealth';
+import {
+  BaseBranchHealth,
+  baseBranchHealth,
+  baseBranchRuns,
+  finishedStates,
+  incidentKey,
+  type BaseBranchRun,
+} from './baseBranchHealth';
 import {
   BranchRun,
   isActive,
@@ -87,6 +94,20 @@ export interface WorkItemEntry {
   duplicateOf?: WorkItem[];
   /** The work items duplicating it; undefined when they could not be loaded */
   duplicates?: WorkItem[];
+}
+
+const stringField = (workItem: WorkItem, name: string): string | undefined => {
+  const value = workItem.fields[name];
+  return typeof value === 'string' ? value : undefined;
+};
+
+/** The dates the Sprint timeline starts a work item's bar with (they come with the work item: no request) */
+function workItemDates(workItem: WorkItem, lastChanged: string | undefined): NonNullable<WorkItemModel['dates']> {
+  return {
+    activated: stringField(workItem, 'Microsoft.VSTS.Common.ActivatedDate'),
+    stateChanged: stringField(workItem, 'Microsoft.VSTS.Common.StateChangeDate'),
+    changed: lastChanged,
+  };
 }
 
 /** A worktree the extension has just created, and the card or PR it was created from (unknown for a new branch's offer) */
@@ -498,6 +519,14 @@ export class WorkItemsStore {
   iterations: TeamIteration[] = [];
   /** Dates of the iterations of the project, to rate the risk of the predecessors; undefined when not loaded */
   private schedule?: ScheduledIteration[];
+  /** Loads of the work items finished so far: a key for what the Sprint timeline caches per load */
+  loadCount = 0;
+
+  /** Dates of the iterations of the project; undefined when not loaded */
+  get iterationSchedule(): ScheduledIteration[] | undefined {
+    return this.schedule;
+  }
+
   /** Repository open in VS Code, in Azure DevOps; undefined until the first load */
   private repositoryId?: string;
   /** CI runs of the followed PRs, by PR */
@@ -651,8 +680,14 @@ export class WorkItemsStore {
   private baseBranchState?: BaseBranchHealth;
   /** Finished state of the base branch's builds at the last fetch: a re-run keeps its build id (Rule BASE-CI-1) */
   private baseBranchKnownStates: ReadonlyMap<number, RunState> = new Map();
+  /** Finished runs of the base branch at the last fetch, oldest first: the Sprint timeline draws them (no request of its own) */
+  private baseBranchRunList: BaseBranchRun[] = [];
   /** When the runs of the base branch were last fetched */
   private baseBranchFetchedAt = 0;
+
+  get baseBranchHistory(): readonly BaseBranchRun[] {
+    return this.baseBranchRunList;
+  }
 
   /** Whether the CI of the base branch (develop) is red, and which pipelines; undefined: off or not known yet */
   get baseBranch(): BaseBranchHealth | undefined {
@@ -679,6 +714,7 @@ export class WorkItemsStore {
       const builds = await client.getBranchBuilds(repositoryId, branch);
       const known = this.baseBranchKnownStates;
       const health = baseBranchHealth(builds, branch, baseBranchAlert.ignoredPipelines, new Date(), known);
+      this.baseBranchRunList = baseBranchRuns(builds, branch, baseBranchAlert.ignoredPipelines, known);
       this.baseBranchKnownStates = finishedStates(builds, known);
       // Their failed tests or failed step, for the texts (cached by build id)
       const runs = await runDetailsLoader.enrich(
@@ -911,6 +947,7 @@ export class WorkItemsStore {
       this.tracker.branchRuns = branchRuns.branchRuns ?? this.tracker.branchRuns;
       this.tracker.mergeRuns = branchRuns.mergeRuns ?? this.tracker.mergeRuns;
       this.status = 'ready';
+      this.loadCount += 1;
       this.error = undefined;
       this.loadEmitter.fire();
     } catch (error) {
@@ -1283,6 +1320,7 @@ export class WorkItemsStore {
       conventions: completion?.conventions,
       // Rule REMIND-1: only with the alert rules
       notUpdated: completion && this.notUpdatedOf(workItem, lastChanged),
+      dates: workItemDates(workItem, lastChanged),
       ...fixLinks(workItem, predecessors, successors),
       ...duplicateLinks(duplicateOf, duplicates, this.schedule),
       taskPullRequests: workItem.type === 'Task' ? this.taskPullRequests(pullRequests) : [],

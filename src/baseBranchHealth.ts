@@ -157,6 +157,53 @@ export function baseBranchHealth(
   return { branch, broken };
 }
 
+/** A finished run of a pipeline on the base branch, for the history strip of the Sprint timeline */
+export interface BaseBranchRun {
+  buildId: number;
+  definitionId: number;
+  pipeline: string;
+  red: boolean;
+  finishTime: string;
+  /** "Merged PR 13837: …" in its trigger message */
+  pullRequestId?: number;
+}
+
+// Rule TIMELINE-12
+/** The finished, not canceled runs on the branch (the pipelines not ignored), oldest first */
+export function baseBranchRuns(
+  builds: BuildRun[],
+  branch: string,
+  ignoredPipelines: string[],
+  previous: ReadonlyMap<number, RunState> = new Map()
+): BaseBranchRun[] {
+  const ignored = new Set(ignoredPipelines.map((name) => name.trim().toLowerCase()));
+  const stateOf = stateWith(previous);
+  return builds
+    .flatMap((build): BaseBranchRun[] => {
+      const state = stateOf(build);
+      if (
+        build.sourceBranch !== `refs/heads/${branch}` ||
+        ignored.has(build.definition.name.toLowerCase()) ||
+        isActive(state) ||
+        state === 'canceled' ||
+        !build.finishTime
+      ) {
+        return [];
+      }
+      return [
+        {
+          buildId: build.id,
+          definitionId: build.definition.id,
+          pipeline: build.definition.name,
+          red: isRed(state),
+          finishTime: build.finishTime,
+          pullRequestId: mergedPullRequestId(build),
+        },
+      ];
+    })
+    .sort((a, b) => a.finishTime.localeCompare(b.finishTime));
+}
+
 /** One incident per pipeline and breaking build: a later failure of the same red streak is the same incident */
 export function incidentKey(pipeline: Pick<BrokenPipeline, 'brokenBy' | 'definitionId'>): string {
   return `${pipeline.definitionId}:${pipeline.brokenBy.buildId}`;

@@ -37,7 +37,7 @@ export type BoardKind = 'backlog' | 'bug';
 export const ALL_KINDS: readonly BoardKind[] = ['backlog', 'bug'];
 
 /** Messages of the board: the buttons post the messages of the sidebar, so the same code runs them */
-export type BoardMessage = WebviewMessage | { type: 'setBoardKinds'; kinds: BoardKind[] };
+export type BoardMessage = WebviewMessage | { type: 'openTimeline' } | { type: 'setBoardKinds'; kinds: BoardKind[] };
 
 export type CardTone = 'active' | 'broken' | 'done' | 'needsYou' | 'neutral' | 'ship';
 

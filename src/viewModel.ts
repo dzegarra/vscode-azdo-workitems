@@ -137,6 +137,8 @@ export interface WorkItemModel {
   conventions?: string[];
   /** In progress but not updated for a while (REMIND-1): the "zZ" badge of the title. Not a completion issue */
   notUpdated?: NotUpdated;
+  /** Dates of the work item (ISO), for the Sprint timeline: first activation, last state change, last change of it and its tasks */
+  dates?: { activated?: string; stateChanged?: string; changed?: string };
   /** Backlog Items only: the bugs they fix (successors of type Bug). Undefined: not applicable or unknown */
   fixesBugs?: FixLink[];
   /** Bugs only: the Backlog Items that fix them (predecessors). Undefined: not applicable or unknown */

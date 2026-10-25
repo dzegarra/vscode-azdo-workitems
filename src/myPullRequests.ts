@@ -19,7 +19,14 @@ import {
   pullRequestPhases,
   summarizeCompleted,
 } from './pullRequestPhases';
-import { buildTimeline, formatTimelineDate, publishedAt, Timeline } from './pullRequestTimeline';
+import {
+  buildTimeline,
+  formatTimelineDate,
+  publishedAt,
+  pullRequestStamps,
+  type PullRequestStamps,
+  Timeline,
+} from './pullRequestTimeline';
 import type { FilesChanged } from './reviewCard';
 import type { ThreadResponse } from './reviewThreads';
 import { PullRequestReviewer, pullRequestStatus, PullRequestTone } from './workItemLinks';
@@ -738,6 +745,8 @@ export interface MyPullRequestModel {
   time: string;
   /** What happened to the PR, oldest first */
   timeline: Timeline;
+  /** The dates behind the timeline, as ISO strings (the Sprint timeline draws with them) */
+  stamps?: PullRequestStamps;
   /** Linked work items; the type is known for the ones that could be fetched */
   workItems: { id: number; type?: string }[];
   status: string;
@@ -949,6 +958,7 @@ function toModel(
     target: target === baseBranch ? undefined : target,
     workItems: extras.workItems ?? [],
     timeline: buildTimeline(pr, extras.threads, formatDate),
+    stamps: pullRequestStamps(pr, extras.threads),
     status: label,
     tone,
     isDraft: pr.isDraft,
