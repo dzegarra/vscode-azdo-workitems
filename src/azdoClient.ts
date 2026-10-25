@@ -36,6 +36,8 @@ const COVERAGE_API_VERSION = '7.1-preview.1';
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 /** Runs fetched per pull request: enough to find the last run of each pipeline */
 const MAX_BUILDS = 10;
+/** Runs of a PR read for its history on the Sprint timeline (Rule TIMELINE-29): every push queues one per pipeline */
+const MAX_BUILD_HISTORY = 100;
 /** Manual or push runs of the repository in the time window: the team merges about 10 PRs a day */
 const MAX_BRANCH_BUILDS = 50;
 /** Azure Artifacts has its own host */
@@ -461,6 +463,12 @@ export class AzdoClient {
   getPullRequestBuilds(pullRequestId: number): Promise<BuildRun[]> {
     const branch = encodeURIComponent(pullRequestBranch(pullRequestId));
     return this.getBuilds(`branchName=${branch}&$top=${MAX_BUILDS}`);
+  }
+
+  /** Every CI run validating a pull request (its history, Rule TIMELINE-29), newest first */
+  getPullRequestBuildHistory(pullRequestId: number): Promise<BuildRun[]> {
+    const branch = encodeURIComponent(pullRequestBranch(pullRequestId));
+    return this.getBuilds(`branchName=${branch}&$top=${MAX_BUILD_HISTORY}`);
   }
 
   /** Runs of the repository queued by hand by the user since the given time, newest first */

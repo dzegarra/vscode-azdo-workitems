@@ -3,12 +3,15 @@
  * by the script through CSSOM (strict CSP): --tl-days is the number of working days on the axis */
 
 body.timeline-page {
-  --tl-label: 280px;
-  --tl-row: 46px;
+  --tl-label: 300px;
+  --tl-row: 48px;
   --tl-bar: 20px;
   --tl-grid: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  /* Branch and Implementation, Pull request and Draft, CI, Review: the stations of a work item and the phases of a PR */
   --tl-coding: color-mix(in srgb, var(--vscode-foreground) 18%, var(--vscode-editor-background));
   --tl-draft: color-mix(in srgb, var(--in-flight) 32%, var(--vscode-editor-background));
+  --tl-ci: color-mix(in srgb, var(--in-flight) 62%, var(--vscode-editor-background));
+  --tl-tree: color-mix(in srgb, var(--in-flight) 55%, var(--border));
   --tl-on-solid: #04101f;
   --tl-on-amber: #1a1200;
   --tl-on-green: #04170d;
@@ -24,11 +27,33 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
 .tl-legend {
   display: flex;
   flex: none;
-  flex-wrap: wrap;
-  gap: 6px 16px;
+  flex-direction: column;
+  gap: 6px;
   padding: 0 20px 10px;
   color: var(--muted);
   font-size: 11px;
+}
+
+.tl-legend-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 13px;
+}
+
+.tl-legend-title {
+  flex: none;
+  width: 100px;
+  color: var(--vscode-disabledForeground, var(--muted));
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+
+.tl-legend-sep {
+  align-self: stretch;
+  width: 1px;
+  background: var(--border);
 }
 
 .tl-key {
@@ -48,12 +73,18 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   border-radius: 2px;
 }
 
-.tl-swatch.seg-coding {
+.tl-swatch.seg-branch,
+.tl-swatch.seg-implementation {
   background: var(--tl-coding);
 }
 
+.tl-swatch.seg-pullRequest,
 .tl-swatch.seg-draft {
   background: var(--tl-draft);
+}
+
+.tl-swatch.seg-ci {
+  background: var(--tl-ci);
 }
 
 .tl-swatch.seg-review {
@@ -215,6 +246,7 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
 .tl-label {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 2px;
   min-width: 0;
   padding-right: 12px;
@@ -286,13 +318,20 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   text-overflow: ellipsis;
 }
 
-.tl-seg.seg-coding {
+.tl-seg.seg-branch,
+.tl-seg.seg-implementation {
   background: var(--tl-coding);
 }
 
+.tl-seg.seg-pullRequest,
 .tl-seg.seg-draft {
   background: var(--tl-draft);
   padding-left: 6px;
+}
+
+.tl-seg.seg-ci {
+  background: var(--tl-ci);
+  color: var(--tl-on-solid);
 }
 
 .tl-seg.seg-review {
@@ -364,7 +403,8 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
 
 /* The start is not known (or began before the sprint): the left edge fades instead of pretending */
 .tl-seg.approximate {
-  mask-image: linear-gradient(to right, transparent, #000 28px);
+  padding-left: 26px;
+  mask-image: linear-gradient(to right, transparent, #000 24px);
 }
 
 .tl-outline {
@@ -636,10 +676,6 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   white-space: nowrap;
 }
 
-.tl-legend {
-  align-items: center;
-}
-
 .tl-key.tl-tagkey {
   margin-left: auto;
   gap: 6px;
@@ -652,62 +688,64 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   border-radius: 0 0 3px 3px;
 }
 
-/* ---------- Groups: a work item with several PRs (Rules TIMELINE-16, TIMELINE-18) ---------- */
+/* ---------- A work item row and what it expands to (Rules TIMELINE-1, TIMELINE-17, TIMELINE-18) ---------- */
 
-.tl-row.in-group {
-  --tl-group: color-mix(in srgb, var(--in-flight) 55%, var(--border));
-  background: color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
-  box-shadow: inset 2px 0 0 var(--tl-group);
-}
-
-.tl-row.in-group .tl-label {
-  padding-left: 8px;
-}
-
-.tl-row.group {
-  --tl-row: 50px;
-}
-
-.tl-row.child {
-  --tl-row: 38px;
-  --tl-bar: 18px;
-  border-bottom-color: color-mix(in srgb, var(--tl-grid) 60%, transparent);
-}
-
-.tl-label.group {
-  flex-direction: row;
-  align-items: center;
-  gap: 4px;
-  padding-left: 8px;
-  cursor: default;
-}
-
-.tl-ltext {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+.tl-row.wi {
   cursor: pointer;
 }
 
-.tl-ltext:focus-visible,
-.tl-chev:focus-visible {
+.tl-row.wi:hover {
+  background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+}
+
+.tl-row.wi.expanded {
+  background: color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
+}
+
+.tl-label.wi {
+  padding-left: 4px;
+}
+
+.tl-label.wi .tl-l1 {
+  gap: 6px;
+}
+
+.tl-label.wi .tl-title.strong {
+  padding-left: 20px;
+  font-weight: 400;
+}
+
+.tl-row.wi.expanded .tl-label.wi .tl-title.strong {
+  font-weight: 600;
+}
+
+.tl-chev {
+  flex: none;
+  width: 14px;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+.tl-label:focus-visible,
+.tl-id.link:focus-visible {
   outline: 2px solid var(--vscode-focusBorder);
   outline-offset: 2px;
 }
 
-.tl-ltext:hover .tl-title {
+.tl-id.link {
+  cursor: pointer;
+}
+
+.tl-id.link:hover {
   text-decoration: underline;
 }
 
-.tl-id.id-pbi,
-.tl-ltext .tl-id.id-pbi {
+.tl-id.id-pbi {
   color: var(--vscode-textLink-foreground, var(--in-flight));
 }
 
-.tl-id.id-bug,
-.tl-ltext .tl-id.id-bug {
+.tl-id.id-bug {
   color: var(--vscode-errorForeground, var(--broken));
 }
 
@@ -715,57 +753,88 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   font-weight: 600;
 }
 
-.tl-chev {
-  flex: none;
-  width: 16px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font-size: 10px;
-  cursor: pointer;
+/* The children of an expanded row: tinted, with a blue edge, joined to it by tree lines */
+.tl-children {
+  background: color-mix(in srgb, var(--vscode-foreground) 3%, transparent);
+  box-shadow: inset 2px 0 0 var(--tl-tree);
+}
+
+.tl-row.child {
+  --tl-row: 54px;
+  --tl-bar: 16px;
+  border-bottom-color: color-mix(in srgb, var(--tl-grid) 60%, transparent);
+}
+
+.tl-row.child.task,
+.tl-row.child.placeholder {
+  --tl-row: 46px;
+  --tl-bar: 18px;
 }
 
 .tl-label.child {
   position: relative;
-  flex-direction: row;
+  gap: 3px;
+  padding-left: 40px;
+}
+
+.tl-label.child .tl-l1 {
+  display: flex;
   align-items: center;
   gap: 6px;
-  padding-left: 30px;
+  min-width: 0;
 }
 
-.tl-row.in-group .tl-label.child {
-  padding-left: 30px;
+.tl-label.child .tl-title {
+  min-width: 0;
 }
 
-/* The tree lines that join a row to its group */
+.tl-sub {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The tree lines that join a child to its work item */
 .tl-label.child::before {
   content: '';
   position: absolute;
-  left: 15px;
+  left: 17px;
   top: 0;
-  width: 10px;
+  width: 14px;
   height: 50%;
-  border-bottom: 1.5px solid var(--tl-group);
-  border-left: 1.5px solid var(--tl-group);
+  border-bottom: 1.5px solid var(--tl-tree);
+  border-left: 1.5px solid var(--tl-tree);
   border-bottom-left-radius: 4px;
 }
 
 .tl-label.child::after {
   content: '';
   position: absolute;
-  left: 15px;
+  left: 17px;
   top: 50%;
   bottom: 0;
-  border-left: 1.5px solid var(--tl-group);
+  border-left: 1.5px solid var(--tl-tree);
 }
 
 .tl-label.child.last::after {
   display: none;
 }
 
-.tl-label.child .tl-title {
-  min-width: 0;
+.tl-title.empty {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.tl-hint {
+  position: absolute;
+  left: 8px;
+  top: 0;
+  line-height: var(--tl-row);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-style: italic;
 }
 
 .tl-row.faded .tl-label,
@@ -777,124 +846,279 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   color: var(--passed);
 }
 
-/* The life of the work item: from its activation to now (or to when it finished) */
-.tl-bracket {
-  position: absolute;
-  top: 20px;
-  height: 10px;
-  box-sizing: border-box;
-  border: 1.5px solid color-mix(in srgb, var(--muted) 80%, transparent);
-  border-top: 0;
-  border-radius: 0 0 3px 3px;
+/* The bar of a PR sits under the strip of its events */
+.tl-row.pr .tl-seg {
+  top: 28px;
+  height: var(--tl-bar);
+  line-height: var(--tl-bar);
+  font-size: 10.5px;
 }
 
-.tl-bracket.approximate {
-  mask-image: linear-gradient(to right, transparent, #000 28px);
-}
-
-.tl-btext {
-  position: absolute;
-  top: 5px;
-  padding-left: 10px;
-  color: var(--vscode-foreground);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.tl-tbar {
-  display: flex;
-  gap: 3px;
-  width: 56px;
-}
-
-.tl-tseg {
-  flex: 1 1 0;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--pending);
-}
-
-.tl-tseg.done {
-  background: var(--passed);
-}
-
-.tl-tseg.in-progress {
-  background: var(--in-flight);
-}
-
-.tl-ttext {
+.tl-row.pr .tl-seg.seg-implementation,
+.tl-row.pr .tl-seg.seg-draft {
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 400;
 }
 
-/* Collapsed: one thin line per PR, and what needs the user */
-.tl-lines {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 1px;
-}
-
-.tl-line {
-  position: relative;
-  flex: none;
-  height: 3px;
-}
-
-.tl-line.faded {
-  opacity: 0.5;
-}
-
-.tl-lseg {
-  position: absolute;
-  top: 0;
-  height: 3px;
-  background: var(--tl-coding);
-}
-
-.tl-lseg.seg-draft {
-  background: var(--tl-draft);
-}
-
-.tl-lseg.seg-review {
-  background: var(--in-flight);
-}
-
-.tl-lseg.seg-needsYou {
-  background: var(--needs-you);
-}
-
-.tl-lseg.seg-ready {
-  background: var(--passed);
-}
-
-.tl-lseg.seg-asleep {
-  background: color-mix(in srgb, var(--needs-you) 55%, transparent);
-}
-
-.tl-lseg.approximate {
-  mask-image: linear-gradient(to right, transparent, #000 12px);
-}
-
-.tl-gchip {
-  padding: 0 9px;
-  border-radius: 10px;
-  font-size: 11px;
+.tl-row.pr .tl-seg.seg-review,
+.tl-row.pr .tl-seg.seg-ready {
   font-weight: 600;
-  line-height: 20px;
 }
 
-.tl-gchip.needs-you {
+.tl-row.pr .tl-note,
+.tl-row.pr .tl-after {
+  top: 14px;
+  height: 40px;
+}
+
+.tl-row.pr .tl-after {
+  align-items: flex-end;
+  padding-bottom: 6px;
+  top: 0;
+  height: var(--tl-row);
+  align-items: center;
+}
+
+.tl-row.child.task .tl-seg {
+  top: calc((var(--tl-row) - var(--tl-bar)) / 2);
+}
+
+.tl-row.child.task .tl-seg.seg-branch {
+  color: var(--muted);
+}
+
+/* ---------- Events along a PR (Rule TIMELINE-27) ---------- */
+
+.tl-strip {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 24px;
+}
+
+.tl-mk {
+  position: absolute;
+  top: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 16px;
+  min-width: 16px;
+  padding: 0 3px;
+  transform: translateX(-50%);
+  border-radius: 3px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.tl-mk.static {
+  position: static;
+  top: auto;
+  transform: none;
+}
+
+.tl-mk:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+  z-index: 2;
+}
+
+.tl-mk.mk-push {
+  top: 4px;
+  width: 2px;
+  min-width: 2px;
+  height: 16px;
+  padding: 0;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--vscode-foreground) 75%, transparent);
+}
+
+.tl-mk.static.mk-push {
+  display: inline-block;
+}
+
+.tl-mk.mk-ci.mk-pass {
+  background: color-mix(in srgb, var(--passed) 28%, var(--vscode-editor-background));
+  color: var(--passed);
+}
+
+.tl-mk.mk-ci.mk-fail {
+  background: var(--broken);
+  color: #fff;
+}
+
+.tl-mk.mk-ci.mk-running {
+  border: 1px dashed var(--muted);
+  background: transparent;
+  color: var(--muted);
+}
+
+.tl-mk.mk-reviewers {
+  border: 1px solid var(--in-flight);
+  border-radius: 8px;
+  color: var(--vscode-textLink-foreground, var(--in-flight));
+}
+
+.tl-mk.mk-approve,
+.tl-mk.mk-wait,
+.tl-mk.mk-reject {
+  min-width: 18px;
+  border-radius: 9px;
+}
+
+.tl-mk.mk-approve {
+  background: var(--passed);
+  color: var(--tl-on-green);
+}
+
+.tl-mk.mk-wait {
   background: var(--needs-you);
   color: var(--tl-on-amber);
 }
 
-.tl-gchip.ready {
-  background: var(--passed);
-  color: var(--tl-on-green);
+.tl-mk.mk-reject {
+  background: var(--broken);
+  color: #fff;
+}
+
+.tl-mk.mk-autoComplete {
+  border: 1px solid var(--passed);
+  color: var(--passed);
+}
+
+.tl-mk.mk-conflicts {
+  background: color-mix(in srgb, var(--needs-you) 22%, var(--vscode-editor-background));
+  color: var(--needs-you);
+  font-size: 11px;
+}
+
+.tl-mk.mk-comments {
+  border: 1px solid var(--border);
+  color: var(--vscode-foreground);
+  font-weight: 600;
+}
+
+/* The tooltip of a mark: who, when, what */
+.tl-tip {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 340px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bd-card, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.4);
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.tl-tip.tip-wait .tl-tip-title {
+  color: var(--needs-you);
+}
+
+.tl-tip.tip-reject .tl-tip-title {
+  color: var(--vscode-errorForeground, var(--broken));
+}
+
+.tl-tip.tip-push .tl-tip-title,
+.tl-tip.tip-reviewers .tl-tip-title,
+.tl-tip.tip-comments .tl-tip-title,
+.tl-tip.tip-ci .tl-tip-title {
+  color: var(--muted);
+}
+
+.tl-tip-title {
+  color: var(--passed);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+.tl-tip-line:first-of-type {
+  font-weight: 600;
+}
+
+.tl-tip-line:not(:first-of-type) {
+  color: var(--muted);
+}
+
+/* ---------- The history of a PR is being read (Rule TIMELINE-28) ---------- */
+
+.tl-loading {
+  position: absolute;
+  right: 8px;
+  bottom: 3px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--vscode-editor-background) 80%, transparent);
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 14px;
+  z-index: 1;
+}
+
+.tl-loading.error {
+  color: var(--vscode-errorForeground, var(--broken));
+}
+
+.tl-row.pr.loading .tl-seg,
+.tl-row.pr.loading .tl-mk {
+  opacity: 0.55;
+}
+
+.tl-row.pr.loading .tl-lane::after {
+  content: '';
+  position: absolute;
+  inset: 4px 0;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--vscode-foreground) 10%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tl-row.pr.loading .tl-lane::after {
+    animation: tl-shimmer 1.3s linear infinite;
+  }
+}
+
+@keyframes tl-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
+}
+
+.chip-collapse {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.chip-collapse:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.chip-collapse svg {
+  width: 13px;
+  height: 13px;
 }
 
 /* ---------- Whole team (Rules TIMELINE-21..25): one section per person, rows of others compact and read-only ---------- */

@@ -1657,7 +1657,7 @@
               "The moment the Task linked to the PR was activated. Makes no request; without a linked Task, the first commit if it is known."
             ],
             "default": "earliest",
-            "markdownDescription": "Where the **coding** bar of a PR starts on the **Sprint timeline**. The first commit alone can come days after the work began, and the activation of the task alone depends on how tidy you are with states, so it depends on how you work. Without the chosen source the other one is used, then the activation of the work item (drawn as approximate), then the start of the sprint.",
+            "markdownDescription": "Where the **implementation** of a PR starts on the **Sprint timeline** (the first bar of its row, and the start of the **Branch** station of its work item). The first commit alone can come days after the work began, and the activation of the task alone depends on how tidy you are with states, so it depends on how you work. Without the chosen source the other one is used, then the activation of the work item (drawn as approximate), then the start of the sprint.",
             "scope": "application",
             "order": 11
           }

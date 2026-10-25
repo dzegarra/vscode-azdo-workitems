@@ -1,8 +1,8 @@
 /**
  * The Whole team Sprint timeline (redesign phase 7b): one section per person under the axis of the timeline, built from
  * the same cards as the Whole team Track board (teamBoardModel.ts) and drawn by the timeline's own row builders
- * (sprintTimelineModel.ts), so the rows of everybody follow the same rules: groups for a work item with several PRs,
- * merged PRs, tags, Completed on/off, the zZ span. The rows of the others are read-only. Pure, so no "vscode" import
+ * (sprintTimelineModel.ts), so the rows of everybody follow the same rules: stations by work item, expandable
+ * to its PRs, tags, Completed on/off, the zZ span. The rows of the others are read-only. Pure, so no "vscode" import
  */
 import { isFinishedState } from './states';
 import type { ReviewRules } from './reviewRequests';
@@ -22,7 +22,7 @@ import { toTeamCard, type TeamCard, type TeamMarker } from './teamBoardModel';
 import type { TeamPerson } from './teamData';
 import { peopleLabel, pickerRows, type PickedPerson } from './teamPeople';
 import { avatarColour, initials, shortPersonName } from './teamView';
-import { planGroups, type CompletedPullRequestInfo } from './timelineGroups';
+import type { CompletedPullRequestInfo } from './completedPullRequests';
 import { boardCards, boardItems, type BoardKind, type BoardWorkCard } from './trackBoardModel';
 
 /** What the Whole team timeline needs besides the user's own timeline (Rule TIMELINE-21) */
@@ -122,7 +122,7 @@ const readOnlyRow = (row: TimelineRow, note: TimelineRow['note']): TimelineRow =
   action: undefined,
   popover: undefined,
   readOnly: true,
-  ...(note && !row.group && !row.note ? { note } : {}),
+  ...(note && !row.note ? { note } : {}),
 });
 
 interface PersonRows {
@@ -143,7 +143,7 @@ function personRows(
   const items = boardItems(models, team.kinds);
   const showCompleted = input.board.showCompleted;
   const axisStart = days[0].startMs;
-  // The merged PRs are rows of their group (TIMELINE-17), not cards: the board's merged cards are left out
+  // The merged PRs are rows of their work item when it is expanded (TIMELINE-17), not cards: the board's merged cards are left out
   const { cards } = boardCards({
     items,
     workItems: models,
@@ -169,19 +169,9 @@ function personRows(
     days,
     axisStart,
     now,
-    // Their merged PRs are not asked for their threads (no request per PR for everybody, Rule TIMELINE-22)
-    pending: new Set(),
     firstCommitsWanted: new Set(),
   };
-  const plans = planGroups({
-    cards,
-    workItems: models,
-    completed: team.completed,
-    from: axisStart,
-    to: days[days.length - 1].endMs,
-    showCompleted,
-  });
-  const rows = rowsOfCards(cards, plans, context);
+  const rows = rowsOfCards(cards, context);
   const noteOf = (row: TimelineRow): TimelineRow['note'] => {
     const found = teamCards.find(({ card }) => card.key === row.boardKey);
     return found && rowNote(found.card.markers);

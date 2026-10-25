@@ -17,7 +17,7 @@ import {
 } from './myPullRequests';
 import { RunModel } from './pipelines';
 import { firstCommitsToAsk, type FirstCommitEntry } from './codingStart';
-import { completedPullRequestInfos, mergedThreadsToAsk, type CompletedPullRequestInfo } from './timelineGroups';
+import { completedPullRequestInfos, type CompletedPullRequestInfo } from './completedPullRequests';
 import type { ThreadResponse } from './reviewThreads';
 import type { FilesChanged } from './reviewCard';
 import type { PullRequestExtrasLoader } from './pullRequestExtras';
@@ -60,8 +60,8 @@ async function pathExistsIn(root: string, relativePath: string): Promise<boolean
   }
 }
 
-/** A merged PR whose threads could not be read is asked again after this long */
-const MERGED_THREADS_RETRY_MS = 10 * 60 * MS_PER_SECOND;
+/** The first commit of a PR that could not be read is asked again after this long (Rule TIMELINE-20) */
+const FIRST_COMMIT_RETRY_MS = 10 * 60 * MS_PER_SECOND;
 
 const COMPLETED_PERIODS: CompletedPeriod[] = ['hidden', 'day', 'week', 'month'];
 
@@ -118,15 +118,9 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
   /** Threads and linked work items of the completed PRs by id: they barely change, so they are fetched once */
   private readonly completedExtras = new Map<number, Pick<PullRequestExtras, 'threads' | 'workItems'>>();
 
-  /** Threads of the merged PRs the Sprint timeline draws, by id: fetched once, kept for the session (Rule TIMELINE-17) */
-  private readonly mergedThreads = new Map<number, ThreadResponse[]>();
-  /** When the threads of a merged PR could not be read (retried after MERGED_THREADS_RETRY_MS) */
-  private readonly mergedThreadsFailed = new Map<number, number>();
-  /** Being read now: a second draw of the timeline does not ask them again */
-  private readonly mergedThreadsLoading = new Set<number>();
   /** First commit of the PRs the Sprint timeline draws, by id (Rule TIMELINE-20): a merged PR forever, an open one until its last push changes */
   private readonly firstCommits = new Map<number, FirstCommitEntry>();
-  /** When the commits of a PR could not be read (retried after MERGED_THREADS_RETRY_MS) */
+  /** When the commits of a PR could not be read (retried after FIRST_COMMIT_RETRY_MS) */
   private readonly firstCommitsFailed = new Map<number, number>();
   /** Being read now: a second draw of the timeline does not ask them again */
   private readonly firstCommitsLoading = new Set<number>();
@@ -139,49 +133,25 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
     return completedPullRequestInfos(
       this.data.map(({ pr, extras }) => ({
         pr,
-        threads:
-          extras.threads ??
-          this.completedExtras.get(pr.pullRequestId)?.threads ??
-          this.mergedThreads.get(pr.pullRequestId),
+        threads: extras.threads ?? this.completedExtras.get(pr.pullRequestId)?.threads,
       }))
     );
   }
 
-  // Rule TIMELINE-17
+  // Rule TIMELINE-29
   /**
-   * Reads the threads of the merged PRs the timeline draws without them: one request per PR, once (a completed PR does
-   * not change); a failure is retried after 10 minutes. True when something was read: the timeline draws again
+   * The threads of my PRs that are already read, by PR id (the active ones, and the completed ones of the period): the
+   * Sprint timeline draws their history from them and never asks again
    */
-  loadMergedThreads(ids: readonly number[]): Promise<boolean> {
-    return withFeature('sprintTimeline', async () => {
-      const wanted = mergedThreadsToAsk(
-        ids.filter((id) => !this.mergedThreadsLoading.has(id)),
-        this.completedPullRequests(),
-        this.mergedThreadsFailed,
-        Date.now(),
-        MERGED_THREADS_RETRY_MS
-      );
-      if (!wanted.length) {
-        return false;
+  knownThreads(): Map<number, ThreadResponse[]> {
+    const known = new Map<number, ThreadResponse[]>();
+    for (const { pr, extras } of this.data) {
+      const threads = extras.threads ?? this.completedExtras.get(pr.pullRequestId)?.threads;
+      if (threads) {
+        known.set(pr.pullRequestId, threads);
       }
-      wanted.forEach((pr) => this.mergedThreadsLoading.add(pr.id));
-      await this.store.whenRepositoryReady();
-      const { client } = resolveContext(this.store.repository());
-      const loaded = await Promise.all(
-        wanted.map(async (pr) => {
-          try {
-            this.mergedThreads.set(pr.id, await client.getPullRequestThreads(pr.repositoryId, pr.id));
-            return true;
-          } catch {
-            this.mergedThreadsFailed.set(pr.id, Date.now());
-            return false;
-          } finally {
-            this.mergedThreadsLoading.delete(pr.id);
-          }
-        })
-      );
-      return loaded.some(Boolean);
-    });
+    }
+    return known;
   }
 
   // Rule TIMELINE-20
@@ -209,7 +179,7 @@ export class MyPullRequestsWatcher implements vscode.Disposable {
         this.firstCommits,
         this.firstCommitsFailed,
         Date.now(),
-        MERGED_THREADS_RETRY_MS
+        FIRST_COMMIT_RETRY_MS
       );
       if (!wanted.length) {
         return false;

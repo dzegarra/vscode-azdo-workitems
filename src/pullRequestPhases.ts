@@ -51,9 +51,9 @@ export interface PullRequestPhases {
   totalMs: number;
 }
 
-type SystemType = 'publish' | 'draft' | 'push' | 'vote' | 'reset' | 'autoComplete';
+export type SystemType = 'publish' | 'draft' | 'push' | 'vote' | 'reset' | 'autoComplete';
 
-interface SystemEvent {
+export interface SystemEvent {
   at: number;
   type: SystemType;
   vote?: number;
@@ -76,7 +76,7 @@ function voterName(thread: ThreadResponse): string | undefined {
   return identity ?? /^(.+) voted -?\d+/.exec((thread.comments?.[0]?.content ?? '').trim())?.[1];
 }
 
-function toSystemEvent(thread: ThreadResponse): SystemEvent | undefined {
+export function toSystemEvent(thread: ThreadResponse): SystemEvent | undefined {
   const at = Date.parse(thread.publishedDate);
   switch (property(thread, 'CodeReviewThreadType')) {
     case 'IsDraftUpdate':
@@ -106,7 +106,7 @@ function systemEvents(threads: ThreadResponse[], from: number, to: number): Syst
  * Votes that move the PR between phases: the ones of the required reviewers when they voted, otherwise of anybody
  * but the author
  */
-function relevantVoter(pr: PhasesSource, events: SystemEvent[]): (name: string | undefined) => boolean {
+export function relevantVoter(pr: PhasesSource, events: SystemEvent[]): (name: string | undefined) => boolean {
   const required = new Set(pr.reviewers.filter((r) => r.isRequired && !r.isContainer).map((r) => r.displayName));
   if (events.some((event) => event.type === 'vote' && event.voter && required.has(event.voter))) {
     return (name) => !!name && required.has(name);

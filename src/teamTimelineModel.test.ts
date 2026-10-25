@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { groupByPerson, shapeTeamItems, teamCompletedPullRequests, type TeamSnapshot } from './teamData';
+import { historyRefsOf, type TimelineRow } from './sprintTimelineModel';
 import { buildWholeTeamTimeline, rowNote, sectionSummary, type TeamTimelineInput } from './teamTimelineModel';
 import { link, options, rawItem, rawPr, snapshot } from './teamTestData';
 import { buildBoard } from './trackBoardModel';
@@ -87,13 +88,14 @@ describe('buildWholeTeamTimeline', () => {
     expect(build(snapshot(), {}, true, 'mine').team).toBeUndefined();
   });
 
-  it('turns a work item with several PRs into a group of its person (TIMELINE-16)', () => {
+  it('has one read-only row for a work item with several PRs, whose children are the PRs (TIMELINE-16)', () => {
     const snap = snapshot({
       items: [rawItem(5, { links: links([], 20, 21), ...person('Ana Ruiz', 'ana') })],
       pullRequests: [rawPr(20), rawPr(21)],
     });
     const rows = build(snap).team?.sections.at(1)?.rows ?? [];
-    expect(rows.map((row) => row.key)).toEqual(['group:5', '5:pr:21', '5:pr:20']);
+    expect(rows.map((row) => row.key)).toEqual(['5:pr:21']);
+    expect(rows[0].children?.map((child) => child.key).sort()).toEqual(['pr:5:20', 'pr:5:21']);
     expect(rows.every((row) => row.readOnly)).toBe(true);
   });
 
@@ -105,10 +107,12 @@ describe('buildWholeTeamTimeline', () => {
         rawPr(31, { creationDate: d(21) }),
       ],
     });
+    const mergedOf = (rows: TimelineRow[]) =>
+      rows.flatMap((row) => row.children ?? []).filter((child) => child.kind === 'pr' && child.merged !== undefined);
     const withMerged = build(snap).team?.sections.at(1)?.rows ?? [];
-    expect(withMerged.some((row) => row.merged?.text.startsWith('✓ merged'))).toBe(true);
+    expect(mergedOf(withMerged)).toHaveLength(1);
     const hidden = build(snap, {}, false).team?.sections.at(1)?.rows ?? [];
-    expect(hidden.some((row) => row.merged)).toBe(false);
+    expect(mergedOf(hidden)).toEqual([]);
   });
 
   it('puts the finished work items of a person apart (TIMELINE-19)', () => {
@@ -130,13 +134,37 @@ describe('buildWholeTeamTimeline', () => {
       pullRequests: [rawPr(40, { creationDate: d(20) })],
     });
     const model = build(snap);
-    const coding = model.team?.sections
+    const child = model.team?.sections
       .at(1)
       ?.rows.at(0)
-      ?.segments.find((segment) => segment.kind === 'coding');
-    expect(coding?.tip).toContain('task 90');
+      ?.children?.find((candidate) => candidate.kind === 'pr');
+    const implementation =
+      child?.kind === 'pr' ? child.segments.find((segment) => segment.kind === 'implementation') : undefined;
+    expect(implementation?.tip).toContain('task 90');
     expect(model.firstCommitsWanted).toEqual([]);
-    expect(model.mergedWithoutThreads).toEqual([]);
+  });
+
+  it('has expandable rows for the others, collapsed, read-only, whose PRs open in the browser (TIMELINE-23, TEAM-8)', () => {
+    const snap = snapshot({
+      items: [rawItem(12, { links: links([], 50), ...person('Ana Ruiz', 'ana') })],
+      pullRequests: [rawPr(50, { creationDate: d(20) })],
+    });
+    const row = build(snap).team?.sections.at(1)?.rows.at(0);
+    expect(row).toMatchObject({ readOnly: true, expandable: true, defaultExpanded: false, action: undefined });
+    const child = row?.children?.find((candidate) => candidate.kind === 'pr');
+    expect(child?.kind === 'pr' && child.open.type).toBe('openTeamPullRequest');
+    expect(child?.kind === 'pr' && child.action).toBeFalsy();
+    expect(child?.kind === 'pr' && child.historyRef).toMatchObject({ id: 50, closed: false });
+  });
+
+  it('asks the history of the PRs of the rows of others only for the ones that are expanded (TEAM-8)', () => {
+    const snap = snapshot({
+      items: [rawItem(12, { links: links([], 50), ...person('Ana Ruiz', 'ana') })],
+      pullRequests: [rawPr(50, { creationDate: d(20) })],
+    });
+    const model = build(snap);
+    expect(historyRefsOf(model, new Set())).toEqual([]);
+    expect(historyRefsOf(model, new Set([12])).map((ref) => ref.id)).toEqual([50]);
   });
 
   it('lists the asleep items with their owner (TIMELINE-25)', () => {

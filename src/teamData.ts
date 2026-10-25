@@ -11,7 +11,7 @@ import { parsePriority, PRIORITY_FIELD, SEVERITY_FIELD } from './priority';
 import { stateCategory } from './states';
 import { toTaskPullRequestModel } from './taskPullRequests';
 import { shortPersonName } from './teamView';
-import type { CompletedPullRequestInfo } from './timelineGroups';
+import type { CompletedPullRequestInfo } from './completedPullRequests';
 import type { MergedPullRequest } from './trackBoardModel';
 import type { BranchModel, OtherTaskModel, PullRequestModel, WorkItemModel } from './viewModel';
 import { CHANGED_DATE_FIELD, latestChange, notUpdated } from './workItemReminders';
@@ -65,6 +65,9 @@ export interface TeamPullRequestInfo {
   isDraft: boolean;
   conflicts: boolean;
   url: string;
+  /** Rule TIMELINE-29: what the history of the PR is read with (its repository) and keyed by (its last commit) */
+  repositoryId: string;
+  commit?: string;
 }
 
 /** A work item of the team, as the board draws it */
@@ -113,6 +116,8 @@ function pullRequestInfo(pr: PullRequestDetails, snapshot: TeamSnapshot): TeamPu
     isDraft: pr.isDraft,
     conflicts: pr.mergeStatus === 'conflicts',
     url: pr.webUrl,
+    repositoryId: pr.repository.id,
+    commit: pr.lastMergeSourceCommit?.commitId,
   };
 }
 

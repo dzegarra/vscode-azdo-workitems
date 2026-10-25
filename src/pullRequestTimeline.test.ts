@@ -239,7 +239,7 @@ describe('buildTimeline', () => {
   });
 });
 
-describe('pullRequestStamps (TIMELINE-4..7)', () => {
+describe('pullRequestStamps (TIMELINE-16)', () => {
   const vote = (id: number, date: string, result: number) =>
     system(id, date, 'VoteUpdate', `Ana voted ${String(result)}`, { CodeReviewVoteResult: result });
   const threads = [

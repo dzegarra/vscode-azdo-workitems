@@ -85,9 +85,13 @@ src/teamBoardModel.ts     pure: the whole-team Track board (lanes, compact cards
 src/teamWorkStore.ts      fetches the team data (feature `teamView`, only when a visible tab is in Whole team, attempt key, caches); onDidChange redraws the board
 src/teamTimelineModel.ts  pure: Whole team Sprint timeline (a section per person, read-only rows, summaries), Rules TIMELINE-21..26
 src/webview/peoplePicker.ts  the scope switch and People picker shared by the board and timeline webviews (Rules TEAM-1, TIMELINE-21)
-src/sprintTimeline.ts     Sprint timeline panel (editor tab, dist/timeline.js, media/timeline.css; webview: src/webview/timeline.ts); pure model: src/sprintTimelineModel.ts
-                          (rows = cards of the Track board + the dates of the PRs, Rules TIMELINE-*); groups, merged PRs and collapse: src/timelineGroups.ts (pure);
-                          its requests: the planned work of the next sprint and, once per PR, the threads of the merged PRs it draws (MyPullRequestsWatcher.loadMergedThreads)
+src/sprintTimeline.ts     Sprint timeline panel (editor tab, dist/timeline.js, media/timeline.css; webview: src/webview/timeline.ts): one row per work item by station, expandable to its PRs (Rules TIMELINE-*);
+                          requests: the planned work of the next sprint, the first commits and, only for the rows the user expanded, the history of their PRs (src/pullRequestHistory.ts)
+src/sprintTimelineModel.ts pure: reviews, base branch, planned rows, header, `buildSprintTimeline`; types in src/timelineTypes.ts, axis in src/timelineAxis.ts, spans in src/timelineSpans.ts
+src/timelineRows.ts       pure: the work item row (stations over time) and what it expands to (PR rows, tasks, placeholder); src/teamTimelineModel.ts: the same for the other people, read-only
+src/prLifecycle.ts        pure: station of a PR moment by moment, its phases and its events from threads + CI runs (reuses src/pullRequestPhases.ts); src/workItemStations.ts: the station of a work item from its PRs
+src/completedPullRequests.ts pure: the merged PRs the timeline draws (from the list My Pull Requests reads)
+src/prHistoryCache.ts     pure: what to read for the PRs of the expanded rows and when again (immutable keys); src/timelineExpansion.ts: default / remembered expansion, Collapse all
 src/workItemDetails.ts    Work Item Details panel (one editor tab per work item); HTML in src/detailsHtml.ts
 src/dependencyMap.ts      dependency map panel; graph/layout in src/dependencyGraph.ts, iteration model in src/schedule.ts
 src/commands/*.ts         user flows (create branch / PR, checkout + worktrees, delete branch, publish, retarget, …); base branch rules: src/baseBranch.ts (pure)

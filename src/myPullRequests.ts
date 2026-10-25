@@ -736,6 +736,8 @@ export interface MyPullRequestModel {
   title: string;
   repository: string;
   repositoryId: string;
+  /** Last commit of the source branch: the key of the history the Sprint timeline reads (Rule TIMELINE-29) */
+  commit?: string;
   url: string;
   /** Without "refs/heads/" */
   sourceBranch: string;
@@ -952,6 +954,7 @@ function toModel(
     title: pr.title,
     repository: pr.repository.name,
     repositoryId: pr.repository.id,
+    commit: pr.lastMergeSourceCommit?.commitId,
     url: pr.webUrl,
     sourceBranch: stripHeads(pr.sourceRefName),
     // Rule MYPR-CARD-1

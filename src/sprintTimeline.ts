@@ -3,11 +3,13 @@ import * as vscode from 'vscode';
 import { resolveContext, setShowCompleted, settings, workingDaysSetting } from './config';
 import type { WorkItemModel } from './viewModel';
 import type { MyPullRequestsWatcher } from './myPullRequestsWatcher';
+import { PullRequestHistory } from './pullRequestHistory';
 import { withFeature } from './requestContext';
 import type { ReviewRequestsWatcher } from './reviewRequestsWatcher';
 import { reviewSettings } from './reviewRequestsWatcher';
 import { sprintProgress } from './sprintCountdown';
 import {
+  historyRefsOf,
   nextIteration,
   OPEN_SPRINT_TIMELINE_COMMAND,
   type PlannedItem,
@@ -39,8 +41,9 @@ interface PlannedState {
  * The Sprint timeline: an editor tab with the work of the sprint on a working-days axis. It draws what the store, My
  * Pull Requests, the review requests and the base branch runs already have. The only request of its own is the list of
  * what the user has planned in the next sprint: one query per load of the work items, only while the tab is visible
- * and shows "This + next sprint", the threads of the merged PRs it draws, once per PR, and the first commit of the PRs it
- * draws when the setting needs it (Rule TIMELINE-14)
+ * and shows "This + next sprint", the first commit of the PRs it draws when the setting needs it (Rule TIMELINE-14), and
+ * the history of the PRs of the rows the user expanded: their threads (not asked for my own PRs, My Pull Requests has
+ * them) and the whole history of their CI runs, only while the tab is visible (Rule TIMELINE-29)
  */
 export class SprintTimelinePanel implements vscode.Disposable {
   private panel?: vscode.WebviewPanel;
@@ -49,6 +52,10 @@ export class SprintTimelinePanel implements vscode.Disposable {
   private planned: PlannedState = { status: 'off', items: [] };
   /** "<load>:<path>" of the last query, so a load of the work items asks once */
   private plannedKey?: string;
+  /** Rule TIMELINE-18: the work items whose rows are expanded in the webview (it tells us when they change) */
+  private expanded = new Set<number>();
+  /** Rule TIMELINE-29: the history of the PRs of the expanded rows */
+  private readonly history: PullRequestHistory;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -56,7 +63,13 @@ export class SprintTimelinePanel implements vscode.Disposable {
     private readonly reviews: ReviewRequestsWatcher,
     private readonly myPullRequests: MyPullRequestsWatcher,
     private readonly team: TeamWorkStore
-  ) {}
+  ) {
+    this.history = new PullRequestHistory(
+      store,
+      () => myPullRequests.knownThreads(),
+      () => this.post()
+    );
+  }
 
   dispose(): void {
     this.panel?.dispose();
@@ -96,6 +109,8 @@ export class SprintTimelinePanel implements vscode.Disposable {
       panel.onDidDispose(() => {
         this.panel = undefined;
         this.ready = false;
+        // A new tab starts with its own rows collapsed or expanded: it tells which
+        this.expanded = new Set();
       });
     });
   }
@@ -162,16 +177,8 @@ export class SprintTimelinePanel implements vscode.Disposable {
     };
   }
 
-  /** Draws the timeline again from what the store and the watchers have now */
-  post(): void {
-    if (!this.panel || !this.ready || !this.panel.visible) {
-      return;
-    }
-    const sprint = this.sprint();
-    const next = sprint && nextIteration(sprint, this.store.iterationSchedule);
-    if (this.range === 'sprintAndNext' && next) {
-      void this.loadPlanned(next.path);
-    }
+  /** The model from what the store and the watchers have now, with the history read so far */
+  private buildModel(sprint: ReturnType<SprintTimelinePanel['sprint']>): TimelineModel {
     const base = this.store.baseBranch;
     const workItems = this.store.toViewModel({
       types: [],
@@ -181,7 +188,7 @@ export class SprintTimelinePanel implements vscode.Disposable {
       hiddenPredecessorStates: [],
       hiddenDuplicates: [],
     }).workItems;
-    const model = buildWholeTeamTimeline({
+    return buildWholeTeamTimeline({
       now: new Date(),
       workingDays: workingDaysSetting(),
       maxWaitHours: reviewSettings().maxWaitHours,
@@ -198,6 +205,7 @@ export class SprintTimelinePanel implements vscode.Disposable {
       completedPullRequests: this.myPullRequests.completedPullRequests(),
       codingStart: settings().timelineCodingStart,
       firstCommits: this.myPullRequests.firstCommitDates(),
+      history: this.history.snapshot(),
       base: {
         branch: settings().baseBranch,
         enabled: settings().baseBranchAlert.enabled,
@@ -205,6 +213,24 @@ export class SprintTimelinePanel implements vscode.Disposable {
         health: base,
       },
     });
+  }
+
+  /** Draws the timeline again from what the store and the watchers have now */
+  post(): void {
+    if (!this.panel || !this.ready || !this.panel.visible) {
+      return;
+    }
+    const sprint = this.sprint();
+    const next = sprint && nextIteration(sprint, this.store.iterationSchedule);
+    if (this.range === 'sprintAndNext' && next) {
+      void this.loadPlanned(next.path);
+    }
+    let model = this.buildModel(sprint);
+    // Rule TIMELINE-29: the history of the PRs of the expanded rows, only while the tab is visible; the rows say they
+    // are loading in this very draw
+    if (this.history.request(historyRefsOf(model, this.expanded))) {
+      model = this.buildModel(sprint);
+    }
     const update: TimelineUpdate = { type: 'timeline', model };
     void this.panel.webview.postMessage(update);
     // Rule TIMELINE-26: the team data is only asked for by a visible tab in "Whole team"
@@ -214,14 +240,6 @@ export class SprintTimelinePanel implements vscode.Disposable {
     if (model.firstCommitsWanted.length) {
       // Rule TIMELINE-20: the first commit of the PRs drawn, only while the tab is visible and the setting reads commits
       void this.myPullRequests.loadFirstCommits(model.firstCommitsWanted).then((read) => {
-        if (read) {
-          this.post();
-        }
-      });
-    }
-    if (model.mergedWithoutThreads.length) {
-      // Rule TIMELINE-17: the threads of the merged PRs drawn without the draft split, once each
-      void this.myPullRequests.loadMergedThreads(model.mergedWithoutThreads).then((read) => {
         if (read) {
           this.post();
         }
@@ -264,6 +282,19 @@ export class SprintTimelinePanel implements vscode.Disposable {
       if (message.type === 'setTimelineRange') {
         this.range = message.range;
         this.post();
+        return;
+      }
+      if (message.type === 'setExpanded') {
+        // Rule TIMELINE-18: the webview posts the expanded work items when they change; their PRs' history is read now
+        this.expanded = new Set(message.ids.filter((id) => Number.isInteger(id)));
+        this.post();
+        return;
+      }
+      if (message.type === 'openTeamPullRequest') {
+        // Only the PR pages of the organization: the URL comes from a webview
+        if (message.url.startsWith('https://dev.azure.com/')) {
+          await vscode.env.openExternal(vscode.Uri.parse(message.url));
+        }
         return;
       }
       if (message.type === 'setTeamScope') {
