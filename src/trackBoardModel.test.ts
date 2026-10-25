@@ -263,7 +263,7 @@ describe('buildBoard', () => {
     expect(board.showCompleted).toBe(true);
   });
 
-  it('hides the finished work items when the setting is off, except the ones that break a rule', () => {
+  it('folds the finished work items into one card when the setting is off, except the ones that break a rule', () => {
     // Rule BOARD-25
     const board = buildBoard(
       input({
@@ -277,7 +277,8 @@ describe('buildBoard', () => {
     );
     expect(board.work.map((card) => card.id).sort()).toEqual([2, 4]);
     expect(board.work.find((card) => card.id === 2)).toMatchObject({ tone: 'broken', column: 'done' });
-    expect(board.columns.find((column) => column.id === 'done')?.count).toBe(1);
+    expect(board.summary.ids).toEqual([1]);
+    expect(board.columns.find((column) => column.id === 'done')?.count).toBe(2);
     expect(board.showCompleted).toBe(false);
   });
 
@@ -883,6 +884,15 @@ describe('merged PR cards and the Completed setting (BOARD-24, BOARD-25)', () =>
     expect(finished.work.map((card) => card.key)).toEqual(['7']);
     const hidden = buildBoard(withMerged({ showCompleted: false }));
     expect(hidden.work.map((card) => card.key)).toEqual(['7']);
+    expect(hidden.work.some((card) => card.merged)).toBe(false);
+    const folded = buildBoard(
+      withMerged({
+        showCompleted: false,
+        workItems: [workItem({ id: 7, state: 'Done', displayState: 'Done', pullRequests: [mergedPr(71)] })],
+      })
+    );
+    expect(folded.work).toEqual([]);
+    expect(folded.summary.ids).toEqual([7]);
   });
 
   it('adds the merged cards to the count of cards of a split work item', () => {

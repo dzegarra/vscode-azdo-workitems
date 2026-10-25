@@ -162,6 +162,12 @@ function renderReviewCard(card: BoardReviewCard): string {
   }</article>`;
 }
 
+function renderSummaryCard(ids: number[]): string {
+  return `<article class="bd-card bd-summary" role="listitem"><span class="bd-id">${ids
+    .map((id) => `#${String(id)}`)
+    .join(' · ')}</span><span class="bd-summary-text">${String(ids.length)} Done this sprint</span></article>`;
+}
+
 /* ---------- Board ---------- */
 
 function columnCounts(column: BoardColumn): string {
@@ -191,10 +197,9 @@ function renderRow(columns: BoardColumn[], cell: (id: BoardColumnId) => string):
 
 function renderBoard(current: BoardModel): string {
   const work = (id: BoardColumnId): string => {
-    return current.work
-      .filter((card) => card.column === id)
-      .map(renderWorkCard)
-      .join('');
+    const cards = current.work.filter((card) => card.column === id).map(renderWorkCard);
+    const summary = id === 'done' && current.summary.ids.length ? [renderSummaryCard(current.summary.ids)] : [];
+    return [...cards, ...summary].join('');
   };
   const reviews = (id: BoardColumnId): string =>
     current.reviews
@@ -534,7 +539,7 @@ function renderBody(current: BoardModel): string {
     return `<div class="message error"><p>${escapeHtml(current.error ?? 'Unknown error')}</p>
       <button class="button primary" data-refresh>Retry</button></div>`;
   }
-  const empty = !current.work.length && !current.reviews.length;
+  const empty = !current.work.length && !current.summary.ids.length && !current.reviews.length;
   if (current.status === 'loading' && empty) {
     return '<p class="message muted">Checking…</p>';
   }

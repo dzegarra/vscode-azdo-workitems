@@ -433,6 +433,29 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
   background: color-mix(in srgb, var(--passed) 85%, var(--vscode-foreground));
 }
 
+/* The collapsed finished work items (Completed setting off, Rule BOARD-5) */
+.bd-summary {
+  gap: 4px;
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+}
+
+.bd-summary:hover {
+  box-shadow: none;
+  border-color: var(--border);
+}
+
+.bd-summary .bd-id {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+
+.bd-summary-text {
+  font-size: 12px;
+}
+
 /* Finished work items and merged PRs (Rules BOARD-5, BOARD-24): calm, with the green accent of the tone */
 .bd-card.tone-done {
   background: color-mix(in srgb, var(--passed) 4%, var(--bd-card));

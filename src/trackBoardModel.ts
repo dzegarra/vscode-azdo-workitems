@@ -229,11 +229,16 @@ export interface BoardReviewCard {
   openPullRequest: BoardAction;
 }
 
+export interface BoardSummaryCard {
+  /** Finished work items without a broken rule, collapsed into one dashed card (Completed setting off, BOARD-5) */
+  ids: number[];
+}
+
 export interface BoardColumn {
   id: BoardColumnId;
   title: string;
   hint: string;
-  /** Cards of the work items in the column (merged PRs included) */
+  /** Cards of the work items in the column (merged PRs and the collapsed finished work items included) */
   count: number;
   /** PRs to review in the column */
   reviewCount: number;
@@ -247,6 +252,8 @@ export interface BoardModel {
   kinds: BoardKind[];
   columns: BoardColumn[];
   work: BoardWorkCard[];
+  /** Finished work items without a broken rule folded into one card; only with the Completed setting off */
+  summary: BoardSummaryCard;
   /** Finished work items and merged PRs are shown (Rule BOARD-25) */
   showCompleted: boolean;
   reviews: BoardReviewCard[];
@@ -259,7 +266,7 @@ export interface BoardModel {
 
 /** Tooltip of the Completed chip of the header of the Track board and of the Sprint timeline (Rule BOARD-25) */
 export const COMPLETED_TOOLTIP =
-  'Show or hide the finished work items and the merged PRs. Hidden, a finished work item that breaks a team rule stays visible.';
+  'Show or hide the finished work items and the merged PRs. Hidden, the finished work items fold into one card, and one that breaks a team rule keeps its own card.';
 
 /** A merged PR: what the board needs to draw its card */
 export interface MergedPullRequest {
@@ -1428,7 +1435,7 @@ export function buildBoard(input: BoardInput): BoardModel {
   }).items;
   const context: CardContext = { workItems: input.workItems, myPullRequests: input.myPullRequests, queue };
   const since = mergedSince(input.iterations, (input.now ?? new Date()).getTime());
-  // Rule BOARD-25: hidden, the finished work items are not on the board, except the ones that break a rule
+  // Rule BOARD-25: hidden, the finished work items fold into one dashed card (BOARD-5), except the ones that break a rule
   const isHidden = (item: WorkItemModel): boolean =>
     !input.showCompleted && isFinishedState(item.state) && item.alerts.length === 0;
   const cards = items
@@ -1453,6 +1460,7 @@ export function buildBoard(input: BoardInput): BoardModel {
     ...cards.filter(isCompleted).sort((a, b) => completedAt(b, items) - completedAt(a, items)),
   ];
   const shown = withRelated(ordered, items);
+  const collapsedIds = items.filter(isHidden).map((item) => item.id);
   const reviews = input.reviews.map(reviewCard);
   const current = currentCard(queue, shown, reviews, items);
   const work = shown.map((card) =>
@@ -1469,10 +1477,11 @@ export function buildBoard(input: BoardInput): BoardModel {
       id,
       title: COLUMN_TITLES[id],
       hint: columnHint(id, input.maxWaitHours),
-      count: work.filter((card) => card.column === id).length,
+      count: work.filter((card) => card.column === id).length + (id === 'done' ? collapsedIds.length : 0),
       reviewCount: reviews.filter((review) => review.column === id).length,
     })),
     work,
+    summary: { ids: collapsedIds },
     showCompleted: input.showCompleted,
     reviews: reviews.map((review) =>
       current?.kind === 'review' && current.key === String(review.id) ? { ...review, current: true } : review
