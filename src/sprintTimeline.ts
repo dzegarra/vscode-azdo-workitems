@@ -1,13 +1,13 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { resolveContext, setShowCompleted, settings, workingDaysSetting } from './config';
+import type { WorkItemModel } from './viewModel';
 import type { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import { withFeature } from './requestContext';
 import type { ReviewRequestsWatcher } from './reviewRequestsWatcher';
 import { reviewSettings } from './reviewRequestsWatcher';
 import { sprintProgress } from './sprintCountdown';
 import {
-  buildSprintTimeline,
   nextIteration,
   OPEN_SPRINT_TIMELINE_COMMAND,
   type PlannedItem,
@@ -16,8 +16,13 @@ import {
   type TimelineRange,
 } from './sprintTimelineModel';
 import { stateCategory } from './states';
+import { groupByPerson, shapeTeamItems, teamCompletedPullRequests, teamOfIteration, waitedOnBy } from './teamData';
+import { parsePeople } from './teamPeople';
+import { buildWholeTeamTimeline, type TeamTimelineInput } from './teamTimelineModel';
+import type { TeamWorkStore } from './teamWorkStore';
+import { ALL_KINDS, boardItems } from './trackBoardModel';
 import { isSharedMessage, runSharedMessage } from './sharedMessages';
-import { currentBoard, OPEN_TRACK_BOARD_COMMAND } from './trackBoard';
+import { currentBoard, OPEN_TRACK_BOARD_COMMAND, teamStatus } from './trackBoard';
 import type { WorkItemsStore } from './workItemsStore';
 
 export { OPEN_SPRINT_TIMELINE_COMMAND };
@@ -49,7 +54,8 @@ export class SprintTimelinePanel implements vscode.Disposable {
     private readonly extensionUri: vscode.Uri,
     private readonly store: WorkItemsStore,
     private readonly reviews: ReviewRequestsWatcher,
-    private readonly myPullRequests: MyPullRequestsWatcher
+    private readonly myPullRequests: MyPullRequestsWatcher,
+    private readonly team: TeamWorkStore
   ) {}
 
   dispose(): void {
@@ -113,6 +119,49 @@ export class SprintTimelinePanel implements vscode.Disposable {
     );
   }
 
+  // Rules TIMELINE-21..24
+  /** What the Whole team timeline needs, from the data the store of the team already has (no request here) */
+  private teamInput(workItems: WorkItemModel[]): TeamTimelineInput | undefined {
+    if (this.team.scope !== 'team') {
+      return undefined;
+    }
+    const now = new Date();
+    const snapshot = this.team.snapshot;
+    const items = snapshot
+      ? shapeTeamItems(snapshot, {
+          ownIds: new Set(this.store.workItems.map((entry) => entry.workItem.id)),
+          baseBranch: settings().baseBranch,
+          staleAfterWorkingDays: settings().alerts.staleAfterWorkingDays,
+          workingDays: workingDaysSetting(),
+          now,
+        })
+      : [];
+    return {
+      status: teamStatus(this.team.status, snapshot !== undefined),
+      error: this.team.error,
+      teamCount: this.team.selection.length,
+      chosen: this.team.people,
+      candidates: this.team.candidates,
+      membersLoading: this.team.membersLoading,
+      people: snapshot ? groupByPerson(items, snapshot) : [],
+      completed: snapshot ? teamCompletedPullRequests(snapshot) : [],
+      kinds: [...ALL_KINDS],
+      rules: { ...reviewSettings(), workingDays: workingDaysSetting() },
+      waitedOn: waitedOnBy(
+        this.store.workItems.map((entry) => ({
+          id: entry.workItem.id,
+          predecessorIds: entry.workItem.links.predecessorIds,
+        }))
+      ),
+      ownBadges: new Map(
+        snapshot
+          ? boardItems(workItems, ALL_KINDS).map((item) => [item.id, teamOfIteration(item.iterationPath, snapshot)])
+          : []
+      ),
+      youName: this.store.workItems.at(0)?.workItem.assignedTo?.replace(/\s+EXT$/i, ''),
+    };
+  }
+
   /** Draws the timeline again from what the store and the watchers have now */
   post(): void {
     if (!this.panel || !this.ready || !this.panel.visible) {
@@ -124,19 +173,22 @@ export class SprintTimelinePanel implements vscode.Disposable {
       void this.loadPlanned(next.path);
     }
     const base = this.store.baseBranch;
-    const model = buildSprintTimeline({
+    const workItems = this.store.toViewModel({
+      types: [],
+      hiddenStates: [],
+      hiddenPullRequestStates: [],
+      hiddenPriorities: [],
+      hiddenPredecessorStates: [],
+      hiddenDuplicates: [],
+    }).workItems;
+    const model = buildWholeTeamTimeline({
       now: new Date(),
       workingDays: workingDaysSetting(),
       maxWaitHours: reviewSettings().maxWaitHours,
       board: currentBoard(this.store, this.reviews, this.myPullRequests),
-      workItems: this.store.toViewModel({
-        types: [],
-        hiddenStates: [],
-        hiddenPullRequestStates: [],
-        hiddenPriorities: [],
-        hiddenPredecessorStates: [],
-        hiddenDuplicates: [],
-      }).workItems,
+      workItems,
+      scope: this.team.scope,
+      team: this.teamInput(workItems),
       myPullRequests: this.myPullRequests.models().items,
       reviews: this.reviews.models(),
       sprint,
@@ -155,6 +207,10 @@ export class SprintTimelinePanel implements vscode.Disposable {
     });
     const update: TimelineUpdate = { type: 'timeline', model };
     void this.panel.webview.postMessage(update);
+    // Rule TIMELINE-26: the team data is only asked for by a visible tab in "Whole team"
+    if (this.team.scope === 'team') {
+      this.team.request();
+    }
     if (model.firstCommitsWanted.length) {
       // Rule TIMELINE-20: the first commit of the PRs drawn, only while the tab is visible and the setting reads commits
       void this.myPullRequests.loadFirstCommits(model.firstCommitsWanted).then((read) => {
@@ -209,6 +265,18 @@ export class SprintTimelinePanel implements vscode.Disposable {
         this.range = message.range;
         this.post();
         return;
+      }
+      if (message.type === 'setTeamScope') {
+        await this.team.setScope(message.scope);
+        return;
+      }
+      if (message.type === 'setTeamPeople') {
+        // Rule TEAM-1: the webview posts the list it shows; what is not a person is dropped
+        await this.team.setPeople(parsePeople(message.people));
+        return;
+      }
+      if (message.type === 'refresh') {
+        this.team.forceReload();
       }
       if (message.type === 'setShowCompleted') {
         // Rule TIMELINE-19: the change of the setting redraws both tabs (extension.ts)

@@ -14,6 +14,10 @@ import { iterationKind, type ScheduledIteration } from './schedule';
 import { isFinishedState } from './states';
 import { taskProgress } from './taskProgress';
 import { childRank, mergedInRange, planGroups, type CompletedPullRequestInfo, type GroupPlan } from './timelineGroups';
+import type { PeoplePicker } from './teamBoardModel';
+import type { PickedPerson } from './teamPeople';
+import type { TeamPullRequestInfo } from './teamData';
+import type { TeamTimelineInput } from './teamTimelineModel';
 import { openPullRequests, tasksOf, trackPullRequest } from './track';
 import {
   pullRequestTitle,
@@ -36,6 +40,8 @@ export type TimelineMessage =
   | { type: 'setTimelineRange'; range: TimelineRange }
   | { type: 'openBoard'; key?: string }
   | { type: 'setShowCompleted'; show: boolean }
+  | { type: 'setTeamScope'; scope: 'mine' | 'team' }
+  | { type: 'setTeamPeople'; people: PickedPerson[] }
   | { type: 'ready' };
 
 export type SegmentKind =
@@ -447,6 +453,8 @@ export interface TimelineRow {
   open: TimelineMessage;
   /** The card of the Track board */
   boardKey?: string;
+  /** Rule TIMELINE-23: a row of another person: compact label, no button, no popover */
+  readOnly?: boolean;
   /** Where the bar ends, in days: the button and the note go after it */
   end: number;
 }
@@ -458,10 +466,49 @@ export interface DevelopSpan {
   tip: string;
 }
 
+/** The person header and rows of a section of the Whole team timeline (Rules TIMELINE-21..25) */
+export interface TimelineSection {
+  key: string;
+  /** "You", or the name of the person */
+  name: string;
+  initials: string;
+  /** 0 to 5: the class of the avatar colour */
+  colour: number;
+  you: boolean;
+  /** "5 open · PLT IA" */
+  meta: string;
+  /** "2 need you · 1 asleep", "waiting on reviewers" */
+  summary: string;
+  /** Rows of the person: compact and read-only (the user's own rows are `work`, `finished` and `planned` of the model) */
+  rows: TimelineRow[];
+  /** Rule TIMELINE-19, per person: the finished work items, after the open ones */
+  finished: TimelineRow[];
+}
+
+/** The Whole team part of the timeline (Rule TIMELINE-21) */
+export interface TimelineTeam {
+  status: 'error' | 'loading' | 'ready';
+  error?: string;
+  picker: PeoplePicker;
+  /** Nobody is chosen: the section of the user and the hint */
+  noPeople: boolean;
+  /** Several teams are read */
+  teamCount: number;
+  /** Sections shown (the user's first) */
+  sections: TimelineSection[];
+  /** Open work items of every section */
+  openItems: number;
+  /** Rule TIMELINE-25: the asleep work items, with the owner: "you" or a first name */
+  asleep: { id: number; owner: string }[];
+}
+
 export interface TimelineModel {
   status: 'error' | 'loading' | 'ready';
   error?: string;
   range: TimelineRange;
+  /** The scope chip: the user's work (default) or the whole team (the rows of the others are in `team`) */
+  scope: 'mine' | 'team';
+  team?: TimelineTeam;
   header: { sprint: string; dates?: string; left?: string; hurry: boolean };
   days: Pick<TimelineDay, 'date' | 'label' | 'last' | 'next' | 'today' | 'weekStart'>[];
   /** Where NOW is on the axis; undefined outside of it */
@@ -510,6 +557,9 @@ export interface TimelineInput {
   codingStart?: CodingStartSetting;
   /** Rule TIMELINE-20: author date (ISO) of the oldest commit of each PR, by PR id, of those already read */
   firstCommits?: ReadonlyMap<number, string>;
+  /** Rule TIMELINE-21: the scope of the tab; "team" adds the sections of the people chosen (src/teamTimelineModel.ts) */
+  scope?: 'mine' | 'team';
+  team?: TeamTimelineInput;
 }
 
 const dayText = (ms: number): string =>
@@ -554,7 +604,7 @@ function toSegment(span: Span, days: readonly TimelineDay[]): TimelineSegment | 
 const firstName = (name: string): string => name.split(' ').at(0) ?? name;
 
 /** "CI ✓ · review · 1 of 2 approvals · waiting for Ana" */
-function reviewTextOf(card: BoardWorkCard, mine: MyPullRequestModel | undefined): string {
+function reviewTextOf(card: BoardWorkCard, mine: Pick<MyPullRequestModel, 'reviewers'> | undefined): string {
   const ci = card.hover.find((fact) => fact.label === 'CI')?.value ?? '';
   let ciText = 'CI';
   if (ci.includes('passed')) {
@@ -654,6 +704,12 @@ function createPullRequestAction(card: BoardWorkCard, input: TimelineInput): Boa
   return can ? { label: 'Create PR', message: { type: 'createPullRequest', id: card.id, taskId } } : undefined;
 }
 
+const stampsOfTeam = (pr: TeamPullRequestInfo): PullRequestStamps => ({
+  createdAt: pr.createdAt,
+  publishedAt: pr.publishedAt,
+  closedAt: pr.closedAt,
+});
+
 const stampsOfCompleted = (pr: CompletedPullRequestInfo): PullRequestStamps => ({
   createdAt: pr.creationDate,
   publishedAt: pr.publishedAt,
@@ -661,8 +717,10 @@ const stampsOfCompleted = (pr: CompletedPullRequestInfo): PullRequestStamps => (
   lastVoteAt: pr.lastVoteAt,
 });
 
-interface RowContext {
+export interface RowContext {
   input: TimelineInput;
+  /** Rule TIMELINE-23: the rows of another person: their PRs, as the whole-team data has them (no My Pull Requests) */
+  team?: { pullRequests: ReadonlyMap<number, TeamPullRequestInfo> };
   days: TimelineDay[];
   axisStart: number;
   now: number;
@@ -682,12 +740,14 @@ function codingOfPullRequest(
 ): Pick<PhaseInput, 'started' | 'codingFrom'> {
   const { input } = context;
   const setting = input.codingStart ?? 'earliest';
-  const firstCommit = needsFirstCommit(setting) ? input.firstCommits?.get(prId) : undefined;
-  if (needsFirstCommit(setting) && firstCommit === undefined) {
+  // Rule TIMELINE-24: the PRs of others are never asked for their commits (one request per PR for everybody)
+  const readsCommits = needsFirstCommit(setting) && !context.team;
+  const firstCommit = readsCommits ? input.firstCommits?.get(prId) : undefined;
+  if (readsCommits && firstCommit === undefined) {
     context.firstCommitsWanted.add(prId);
   }
   // The Task linked to the PR (its links include the PR); with several, the one activated first
-  const task = input.workItems
+  const own = input.workItems
     .filter(
       (candidate) =>
         item !== undefined &&
@@ -695,10 +755,18 @@ function codingOfPullRequest(
         candidate.type === 'Task' &&
         candidate.taskPullRequests?.some((taskPr) => taskPr.id === prId)
     )
-    .flatMap((candidate) => {
-      const activated = instant(candidate.dates?.activated);
-      return activated === undefined ? [] : [{ id: candidate.id, activated }];
-    })
+    .map((candidate) => ({ id: candidate.id, activated: instant(candidate.dates?.activated) }));
+  const others = context.team
+    ? (item?.otherTasks ?? [])
+        .filter(
+          (candidate) => candidate.type === 'Task' && candidate.taskPullRequests.some((taskPr) => taskPr.id === prId)
+        )
+        .map((candidate) => ({ id: candidate.id, activated: instant(candidate.activated) }))
+    : [];
+  const task = [...own, ...others]
+    .flatMap((candidate) =>
+      candidate.activated === undefined ? [] : [{ id: candidate.id, activated: candidate.activated }]
+    )
     .sort((a, b) => a.activated - b.activated)
     .at(0);
   const start = codingStartOf({
@@ -717,19 +785,25 @@ function codingOfPullRequest(
 }
 
 // Rule TIMELINE-1
-function workRow(card: BoardWorkCard, context: RowContext, plan?: GroupPlan): TimelineRow {
+export function workRow(card: BoardWorkCard, context: RowContext, plan?: GroupPlan): TimelineRow {
   const { input, days, axisStart, now } = context;
   const item = input.workItems.find((candidate) => candidate.id === card.id);
   const pr = item && cardPullRequest(card, item, plan);
   const mine = pr && input.myPullRequests.find((candidate) => candidate.id === pr.id);
+  // Rule TIMELINE-22: the PR of another person, as the whole-team data has it
+  const theirs = pr && !mine ? context.team?.pullRequests.get(pr.id) : undefined;
   // A PR that left My Pull Requests is merged: its dates come from the list of completed PRs (Rule TIMELINE-17)
   const completed = pr && !mine ? input.completedPullRequests?.find((candidate) => candidate.id === pr.id) : undefined;
-  const stamps = mine?.stamps ?? (completed && stampsOfCompleted(completed));
+  const stamps =
+    mine?.stamps ??
+    (theirs && !completed ? stampsOfTeam(theirs) : undefined) ??
+    (completed && stampsOfCompleted(completed));
   if (completed && !completed.threadsKnown && mergedInRange(completed, axisStart, Infinity)) {
     context.pending.add(completed.id);
   }
   const runs = pr?.runs.length ? pr.runs : mine?.runs ?? [];
-  const label = labelOf(card, pr, plan !== undefined, mine?.isDraft ?? pr?.tone === 'draft');
+  const isDraft = mine?.isDraft ?? theirs?.isDraft ?? false;
+  const label = labelOf(card, pr, plan !== undefined, mine?.isDraft ?? theirs?.isDraft ?? pr?.tone === 'draft');
   const row: TimelineRow = {
     key: card.key,
     section: 'work',
@@ -775,12 +849,15 @@ function workRow(card: BoardWorkCard, context: RowContext, plan?: GroupPlan): Ti
       ? card.status.text
       : undefined;
   // A task without PR starts when the task was activated (else with the work item)
-  const task =
-    card.taskId === undefined ? undefined : input.workItems.find((candidate) => candidate.id === card.taskId);
+  const taskActivated =
+    card.taskId === undefined
+      ? undefined
+      : input.workItems.find((candidate) => candidate.id === card.taskId)?.dates?.activated ??
+        item?.otherTasks?.find((candidate) => candidate.id === card.taskId)?.activated;
   // Rule TIMELINE-20: a row with a PR starts its coding at the first commit or the linked task; a task row keeps its own
   const coding: Pick<PhaseInput, 'started' | 'codingFrom'> = pr
     ? codingOfPullRequest(pr.id, item, instant(stamps?.createdAt), context)
-    : { started: instant(task?.dates?.activated ?? item?.dates?.activated) };
+    : { started: instant(taskActivated ?? item?.dates?.activated) };
   let spans = workSpans({
     now,
     axisStart,
@@ -792,10 +869,10 @@ function workRow(card: BoardWorkCard, context: RowContext, plan?: GroupPlan): Ti
           created: instant(stamps.createdAt),
           published: instant(stamps.publishedAt),
           closed: instant(stamps.closedAt),
-          isDraft: mine?.isDraft ?? false,
+          isDraft,
         }
       : undefined,
-    reviewText: reviewTextOf(card, mine),
+    reviewText: reviewTextOf(card, mine ?? theirs),
     needsYou: needsText
       ? {
           text:
@@ -857,7 +934,10 @@ function workRow(card: BoardWorkCard, context: RowContext, plan?: GroupPlan): Ti
     const segment = toSegment(span, days);
     return segment ? [segment] : [];
   });
-  const action = needsText && card.need ? card.need.actions.at(0) : card.action ?? createPullRequestAction(card, input);
+  const action =
+    needsText && card.need
+      ? card.need.actions.at(0)
+      : card.action ?? (context.team ? undefined : createPullRequestAction(card, input));
   const end = segments.at(-1)?.end ?? 0;
   // Rule TIMELINE-19: a finished work item is faded, with its mark at the day it finished
   const finishedAt = item && !plan && isFinishedState(item.state) ? instant(item.dates?.stateChanged) : undefined;
@@ -881,7 +961,7 @@ function workRow(card: BoardWorkCard, context: RowContext, plan?: GroupPlan): Ti
 
 // Rule TIMELINE-17
 /** A PR that was merged within the axis: a faded row of its group, with the merge mark and no button */
-function mergedRow(pr: CompletedPullRequestInfo, plan: GroupPlan, context: RowContext): TimelineRow {
+export function mergedRow(pr: CompletedPullRequestInfo, plan: GroupPlan, context: RowContext): TimelineRow {
   const { days, axisStart, now } = context;
   const { item } = plan;
   const closed = Date.parse(pr.closedDate);
@@ -936,11 +1016,14 @@ const doneWhenText = (total: number): string =>
 
 // Rule TIMELINE-16
 /** The row of the work item and the rows under it: PRs (open and merged, oldest first), the work item itself, tasks */
-function groupRows(plan: GroupPlan, context: RowContext): TimelineRow[] {
+export function groupRows(plan: GroupPlan, context: RowContext): TimelineRow[] {
   const { input, days, axisStart, now } = context;
   const { item } = plan;
   const createdOf = (prId: number | undefined): number =>
-    instant(input.myPullRequests.find((candidate) => candidate.id === prId)?.stamps?.createdAt) ?? Infinity;
+    instant(
+      input.myPullRequests.find((candidate) => candidate.id === prId)?.stamps?.createdAt ??
+        (prId === undefined ? undefined : context.team?.pullRequests.get(prId)?.createdAt)
+    ) ?? Infinity;
   const children = [
     ...plan.cards.map((card) => {
       const row = workRow(card, context, plan);
@@ -1214,7 +1297,12 @@ function headerOf(input: TimelineInput, board: BoardModel): TimelineModel['heade
 
 // Rule TIMELINE-10
 /** An open work item gets a dashed "spills over" extension past the end of the sprint (a projection, not a date) */
-function withSpill(row: TimelineRow, board: BoardModel, sprintEnd: number, total: number): TimelineRow {
+export function withSpill(
+  row: TimelineRow,
+  board: Pick<BoardModel, 'work'>,
+  sprintEnd: number,
+  total: number
+): TimelineRow {
   const card = board.work.find((candidate) => candidate.key === row.key);
   if (!card || ['done', 'ready', 'toStart'].includes(card.column) || row.outline) {
     return row;
@@ -1235,10 +1323,8 @@ function withSpill(row: TimelineRow, board: BoardModel, sprintEnd: number, total
   };
 }
 
-// Rules TIMELINE-1, TIMELINE-10, TIMELINE-13, TIMELINE-16, TIMELINE-19
-export function buildSprintTimeline(input: TimelineInput): TimelineModel {
-  const now = input.now.getTime();
-  const { board } = input;
+/** The working days of the axis, and the next sprint when the range asks for it (Rules TIMELINE-2, TIMELINE-10) */
+export function axisOf(input: TimelineInput): { days: TimelineDay[]; next: ReturnType<typeof nextIteration> } {
   const next = input.sprint
     ? nextIteration({ name: input.sprint.name, finishDate: input.sprint.finishDate }, input.schedule)
     : undefined;
@@ -1248,12 +1334,48 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
     start && finish
       ? buildAxis(start, finish, input.workingDays, input.now, input.range === 'sprintAndNext' ? next : undefined)
       : [];
+  return { days, next };
+}
+
+// Rules TIMELINE-1, TIMELINE-16, TIMELINE-19
+/** The rows of a list of cards, a work item with several PRs as a group; the finished work items go apart, after the open ones */
+export function rowsOfCards(
+  cards: readonly BoardWorkCard[],
+  plans: ReadonlyMap<number, GroupPlan>,
+  context: RowContext
+): { work: TimelineRow[]; finished: TimelineRow[] } {
+  const work: TimelineRow[] = [];
+  const finished: TimelineRow[] = [];
+  const grouped = new Set<number>();
+  for (const card of cards) {
+    const plan = plans.get(card.id);
+    // Rule TIMELINE-19: the finished work items come after the open ones
+    const target = isFinishedState(context.input.workItems.find((item) => item.id === card.id)?.state ?? '')
+      ? finished
+      : work;
+    if (!plan) {
+      target.push(workRow(card, context));
+    } else if (!grouped.has(card.id)) {
+      grouped.add(card.id);
+      const [group, ...children] = groupRows(plan, context);
+      target.push({ ...group, boardKey: group.boardKey ?? card.key }, ...children);
+    }
+  }
+  return { work, finished };
+}
+
+// Rules TIMELINE-1, TIMELINE-10, TIMELINE-13, TIMELINE-16, TIMELINE-19
+export function buildSprintTimeline(input: TimelineInput): TimelineModel {
+  const now = input.now.getTime();
+  const { board } = input;
+  const { days, next } = axisOf(input);
   const base = {
     status: board.status,
     error: board.error,
     range: input.range,
     header: headerOf(input, board),
     look: board.look,
+    scope: input.scope ?? 'mine',
     reviewsTitle: `REVIEWS YOU OWE · ${String(input.maxWaitHours)} WORKING HOURS FROM PUBLISH`,
   };
   if (!days.length) {
@@ -1283,21 +1405,7 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
     to: days[days.length - 1].endMs,
     showCompleted: board.showCompleted,
   });
-  const work: TimelineRow[] = [];
-  const finished: TimelineRow[] = [];
-  const grouped = new Set<number>();
-  for (const card of cards) {
-    const plan = plans.get(card.id);
-    // Rule TIMELINE-19: the finished work items come after the open ones
-    const target = isFinishedState(input.workItems.find((item) => item.id === card.id)?.state ?? '') ? finished : work;
-    if (!plan) {
-      target.push(workRow(card, context));
-    } else if (!grouped.has(card.id)) {
-      grouped.add(card.id);
-      const [group, ...children] = groupRows(plan, context);
-      target.push({ ...group, boardKey: group.boardKey ?? card.key }, ...children);
-    }
-  }
+  const { work, finished } = rowsOfCards(cards, plans, context);
   const spillFrom = days.findIndex((day) => day.next);
   const rows =
     input.range === 'sprintAndNext' && spillFrom > 0

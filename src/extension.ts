@@ -150,7 +150,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   details.setMyPullRequests(myPullRequests);
   const teamWork = new TeamWorkStore(context.globalState, store);
   const trackBoard = new TrackBoardPanel(context.extensionUri, store, reviewRequests, myPullRequests, teamWork);
-  const sprintTimeline = new SprintTimelinePanel(context.extensionUri, store, reviewRequests, myPullRequests);
+  const sprintTimeline = new SprintTimelinePanel(context.extensionUri, store, reviewRequests, myPullRequests, teamWork);
   const worktreeTracker = new WorktreeTracker(context.globalState, { store, reviews: reviewRequests, myPullRequests });
   view.setWorktrees(worktreeTracker);
   const worktreesView = new WorktreesView(worktreeTracker);
@@ -304,7 +304,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     pullRequestTaskStarter,
     dependencyMap,
     teamWork,
-    teamWork.onDidChange(() => trackBoard.post()),
+    teamWork.onDidChange(() => {
+      trackBoard.post();
+      sprintTimeline.post();
+    }),
     trackBoard,
     command(OPEN_TRACK_BOARD_COMMAND, (key?: string) => trackBoard.open(key)),
     sprintTimeline,

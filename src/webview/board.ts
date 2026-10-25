@@ -4,8 +4,15 @@ import { icon } from '../icons';
 import { lookClass } from '../look';
 import type { BoardUpdate } from '../trackBoard';
 import type { TeamBoardModel, TeamCard, TeamLane, TeamMarker } from '../teamBoardModel';
-import { EMPTY_PEOPLE_HINT, pickerRows, shortSignIn, togglePerson, type PickedPerson } from '../teamPeople';
-import { avatarColour, initials, shortPersonName } from '../teamView';
+import { EMPTY_PEOPLE_HINT } from '../teamPeople';
+import {
+  closePickerOnEscape,
+  rememberPicker,
+  renderPeoplePicker,
+  renderScope,
+  restorePicker,
+  startPeoplePicker,
+} from './peoplePicker';
 import {
   ALL_KINDS,
   COMPLETED_TOOLTIP,
@@ -57,9 +64,6 @@ let selected: Selection | undefined;
 let actions = new Map<string, BoardAction>();
 let hoverTimer: number | undefined;
 let lastModel: string | undefined;
-/** The People picker is open, and what was typed in its filter box (UI only) */
-let peopleOpen = false;
-let peopleFilter = '';
 
 const post = (message: BoardMessage): void => vscode.postMessage(message);
 
@@ -323,49 +327,6 @@ function renderBoard(current: BoardModel): string {
   )}</div>`;
 }
 
-function personRow(person: PickedPerson, checked: boolean): string {
-  const hint = shortSignIn(person.uniqueName);
-  return `<label class="bd-person-row"><input type="checkbox" data-person="${escapeHtml(person.id)}"${
-    checked ? ' checked' : ''
-  }><span class="bd-avatar mini colour-${String(
-    avatarColour(shortPersonName(person.name))
-  )}" aria-hidden="true">${escapeHtml(initials(person.name))}</span><span class="bd-person-name">${escapeHtml(
-    shortPersonName(person.name)
-  )}</span>${hint ? `<span class="bd-person-hint">${escapeHtml(hint)}</span>` : ''}</label>`;
-}
-
-/** The rows of the picker for what is typed: the chosen people first, then the candidates (Rule TEAM-1) */
-function renderPeopleRows(team: TeamBoardModel): string {
-  const rows = pickerRows(team.picker.selected, team.picker.candidates, peopleFilter);
-  const chosen = rows.selected.map((person) => personRow(person, true)).join('');
-  const others = rows.candidates.map((person) => personRow(person, false)).join('');
-  const empty =
-    !chosen && !others
-      ? `<p class="bd-people-empty">${
-          team.picker.loading ? 'Reading the members of your teams…' : 'Nobody matches'
-        }</p>`
-      : '';
-  return `${chosen}${chosen && others ? '<hr class="bd-people-sep">' : ''}${others}${empty}`;
-}
-
-function renderPeoplePicker(current: BoardModel): string {
-  const team = current.team;
-  if (current.scope !== 'team' || !team) {
-    return '';
-  }
-  return `<div class="bd-people"><button class="bd-people-button" data-people-toggle aria-haspopup="true" aria-expanded="${String(
-    peopleOpen
-  )}">People<span class="bd-pill-count">${String(
-    team.picker.selected.length
-  )}</span><span aria-hidden="true">▾</span></button><div class="bd-people-menu" role="dialog" aria-label="Choose people"${
-    peopleOpen ? '' : ' hidden'
-  }><div class="bd-people-top"><input type="search" class="bd-people-filter" data-people-filter placeholder="Filter people" aria-label="Filter people" autocomplete="off" value="${escapeHtml(
-    peopleFilter
-  )}"><button class="bd-link" data-people-clear${
-    team.picker.selected.length ? '' : ' disabled'
-  }>Clear</button></div><div class="bd-people-list" data-people-list>${renderPeopleRows(team)}</div></div></div>`;
-}
-
 function renderHeader(current: BoardModel): string {
   const chip = (kind: BoardKind, label: string): string =>
     `<button class="bd-chip chip-${kind}" data-kind-chip="${kind}" aria-pressed="${String(
@@ -385,11 +346,7 @@ function renderHeader(current: BoardModel): string {
     current.team && current.team.teamCount > 1 ? ` · ${String(current.team.teamCount)} teams` : ''
   }</h1>${left}${stats}
     <div class="bd-tabs" role="group" aria-label="View"><button class="bd-chip" aria-pressed="true">Track board</button><button class="bd-chip" data-open-timeline aria-pressed="false">Sprint timeline</button></div>
-    <div class="bd-segment" role="group" aria-label="Whose work"><button data-scope="mine" aria-pressed="${String(
-      current.scope === 'mine'
-    )}">Mine + my reviews</button><button data-scope="team" aria-pressed="${String(
-    current.scope === 'team'
-  )}">Whole team</button></div>${renderPeoplePicker(current)}
+    ${renderScope(current.scope)}${renderPeoplePicker(current.scope === 'team' ? current.team?.picker : undefined)}
     <div class="bd-chips" role="group" aria-label="Type">${chip('backlog', 'Backlog Items')}${chip('bug', 'Bugs')}</div>
     <div class="bd-chips" role="group" aria-label="Completed"><button class="bd-chip chip-completed" data-completed aria-pressed="${String(
       current.showCompleted
@@ -754,9 +711,7 @@ function render(): void {
   const focusKey = focused?.closest<HTMLElement>('.bd-card[data-key]');
   const key = focusKey ? { kind: focusKey.dataset.kind ?? '', key: focusKey.dataset.key ?? '' } : undefined;
   // The People picker keeps its scroll and its focus (the filter box, or the person just ticked) across a redraw
-  const pickerScroll = document.querySelector('[data-people-list]')?.scrollTop ?? 0;
-  const typing = focused?.matches('[data-people-filter]') === true;
-  const person = focused?.dataset.person;
+  const picker = rememberPicker();
   app.innerHTML = `${renderHeader(model)}<div class="bd-main"><div class="bd-scroll">${renderBody(
     model
   )}</div><aside id="bd-drawer" class="bd-drawer" aria-label="Selected card" hidden></aside></div>`;
@@ -765,17 +720,7 @@ function render(): void {
   if (key) {
     app.querySelector<HTMLElement>(cardSelector(key.kind, key.key))?.focus({ preventScroll: true });
   }
-  const list = app.querySelector<HTMLElement>('[data-people-list]');
-  if (list && peopleOpen) {
-    list.scrollTop = pickerScroll;
-    const filter = app.querySelector<HTMLInputElement>('[data-people-filter]');
-    if (typing && filter) {
-      filter.focus();
-      filter.setSelectionRange(filter.value.length, filter.value.length);
-    } else if (person) {
-      app.querySelector<HTMLElement>(`input[data-person="${CSS.escape(person)}"]`)?.focus({ preventScroll: true });
-    }
-  }
+  restorePicker(app, picker);
 }
 
 /* ---------- Events ---------- */
@@ -816,27 +761,6 @@ document.addEventListener('click', (event) => {
     post(action.message);
     return;
   }
-  const scope = target?.closest<HTMLElement>('[data-scope]');
-  if (scope) {
-    post({ type: 'setTeamScope', scope: scope.dataset.scope === 'team' ? 'team' : 'mine' });
-    return;
-  }
-  if (target?.closest('[data-people-toggle]')) {
-    peopleOpen = !peopleOpen;
-    render();
-    if (peopleOpen) {
-      document.querySelector<HTMLInputElement>('[data-people-filter]')?.focus();
-    }
-    return;
-  }
-  if (target?.closest('[data-people-clear]')) {
-    post({ type: 'setTeamPeople', people: [] });
-    return;
-  }
-  if (peopleOpen && !target?.closest('.bd-people')) {
-    peopleOpen = false;
-    render();
-  }
   const chip = target?.closest<HTMLElement>('[data-kind-chip]');
   if (chip) {
     toggleKind(chip.dataset.kindChip === 'bug' ? 'bug' : 'backlog');
@@ -866,37 +790,12 @@ document.addEventListener('click', (event) => {
   }
 });
 
-document.addEventListener('change', (event) => {
-  const target = event.target instanceof HTMLInputElement ? event.target : null;
-  const picker = model?.team?.picker;
-  if (!target?.dataset.person || !picker) {
-    return;
-  }
-  const person = [...picker.selected, ...picker.candidates].find((candidate) => candidate.id === target.dataset.person);
-  if (person) {
-    // Rule TEAM-1: the setting is written at once; the board redraws when it changes
-    post({ type: 'setTeamPeople', people: togglePerson(picker.selected, person) });
-  }
-});
-
-document.addEventListener('input', (event) => {
-  const target = event.target instanceof HTMLInputElement ? event.target : null;
-  if (!target?.matches('[data-people-filter]') || !model?.team) {
-    return;
-  }
-  peopleFilter = target.value;
-  const list = document.querySelector('[data-people-list]');
-  if (list) {
-    list.innerHTML = renderPeopleRows(model.team);
-  }
-});
-
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
-    if (peopleOpen) {
-      peopleOpen = false;
-      render();
-    } else if (!popover.hidden) {
+    if (closePickerOnEscape({ render })) {
+      return;
+    }
+    if (!popover.hidden) {
       endHover();
     } else if (selected) {
       const { kind, key } = selected;
@@ -964,6 +863,8 @@ window.addEventListener('message', (event: MessageEvent<BoardUpdate>) => {
 });
 
 window.addEventListener('resize', hidePopover);
+
+startPeoplePicker({ post, picker: () => (model?.scope === 'team' ? model.team?.picker : undefined), render });
 
 // The saved types first, so the first model already has them
 post({ type: 'setBoardKinds', kinds });

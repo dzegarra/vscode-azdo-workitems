@@ -38,7 +38,7 @@ const NO_FILTER = {
 };
 
 /** Without data yet the board is loading; a reload with data on screen is not shown (the lanes would jump) */
-function teamStatus(status: TeamWorkStore['status'], hasData: boolean): TeamWorkStore['status'] {
+export function teamStatus(status: TeamWorkStore['status'], hasData: boolean): TeamWorkStore['status'] {
   if (!hasData) {
     return status === 'error' ? 'error' : 'loading';
   }

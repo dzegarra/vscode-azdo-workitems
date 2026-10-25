@@ -11,6 +11,7 @@ import { parsePriority, PRIORITY_FIELD, SEVERITY_FIELD } from './priority';
 import { stateCategory } from './states';
 import { toTaskPullRequestModel } from './taskPullRequests';
 import { shortPersonName } from './teamView';
+import type { CompletedPullRequestInfo } from './timelineGroups';
 import type { MergedPullRequest } from './trackBoardModel';
 import type { BranchModel, OtherTaskModel, PullRequestModel, WorkItemModel } from './viewModel';
 import { CHANGED_DATE_FIELD, latestChange, notUpdated } from './workItemReminders';
@@ -55,6 +56,11 @@ export interface TeamPullRequestInfo {
   author?: string;
   /** Rule TEAM-6: when reviewers were asked to review (creation, or the end of the draft) */
   publishedAt: string;
+  /** Rule TIMELINE-22: creation of the PR (the Sprint timeline draws the PRs of others from it) */
+  createdAt: string;
+  /** Rule TIMELINE-22: completion or abandon date, for a closed PR */
+  closedAt?: string;
+  status: PullRequestDetails['status'];
   reviewers: ReviewerModel[];
   isDraft: boolean;
   conflicts: boolean;
@@ -100,6 +106,9 @@ function pullRequestInfo(pr: PullRequestDetails, snapshot: TeamSnapshot): TeamPu
     id: pr.pullRequestId,
     author: pr.createdBy?.displayName && shortPersonName(pr.createdBy.displayName),
     publishedAt: snapshot.publishedAt.get(pr.pullRequestId) ?? pr.creationDate ?? new Date(0).toISOString(),
+    createdAt: pr.creationDate ?? new Date(0).toISOString(),
+    closedAt: pr.closedDate,
+    status: pr.status,
     reviewers: reviewerModels({ reviewers: pr.reviewers, createdBy: { id: pr.createdBy?.id } }, snapshot.myId),
     isDraft: pr.isDraft,
     conflicts: pr.mergeStatus === 'conflicts',
@@ -155,6 +164,7 @@ export function shapeTeamItems(snapshot: TeamSnapshot, options: TeamShapeOptions
           type: task.type,
           state: task.state,
           assignedTo: task.assignedTo,
+          activated: stringField(task, 'Microsoft.VSTS.Common.ActivatedDate'),
           taskPullRequests: taskPullRequests(task),
         })
       );
@@ -243,6 +253,30 @@ export function mergedPullRequests(snapshot: TeamSnapshot): MergedPullRequest[] 
   return snapshot.pullRequests.flatMap((pr) =>
     pr.status === 'completed' && pr.closedDate
       ? [{ id: pr.pullRequestId, title: pr.title, closedDate: pr.closedDate }]
+      : []
+  );
+}
+
+// Rule TIMELINE-22
+/**
+ * The PRs of the snapshot that were completed, in the shape the Sprint timeline draws a merged PR. Their threads are not
+ * read for everybody (no request per PR), so `threadsKnown` is false: the phases after the coding are approximate
+ */
+export function teamCompletedPullRequests(snapshot: Pick<TeamSnapshot, 'pullRequests'>): CompletedPullRequestInfo[] {
+  return snapshot.pullRequests.flatMap((pr) =>
+    pr.status === 'completed' && pr.closedDate && pr.creationDate
+      ? [
+          {
+            id: pr.pullRequestId,
+            title: pr.title,
+            repository: pr.repository.name,
+            repositoryId: pr.repository.id,
+            creationDate: pr.creationDate,
+            closedDate: pr.closedDate,
+            isDraft: false,
+            threadsKnown: false,
+          },
+        ]
       : []
   );
 }

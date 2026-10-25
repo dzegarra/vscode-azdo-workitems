@@ -896,3 +896,115 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   background: var(--passed);
   color: var(--tl-on-green);
 }
+
+/* ---------- Whole team (Rules TIMELINE-21..25): one section per person, rows of others compact and read-only ---------- */
+
+.tl-swatch.seg-overdue {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--broken) 0 4px,
+    color-mix(in srgb, var(--broken) 70%, #000) 4px 8px
+  );
+}
+
+.tl-section.sub {
+  padding-top: 10px;
+}
+
+.tl-row.tl-person {
+  --tl-row: 44px;
+  margin-top: 14px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+}
+
+.tl-row.tl-person:first-of-type {
+  margin-top: 0;
+}
+
+.tl-plabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 12px 0 8px;
+}
+
+.tl-pname {
+  flex: none;
+  font-size: 13px;
+}
+
+.tl-pmeta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-row.tl-person.you .bd-avatar {
+  background: var(--needs-you);
+  color: var(--vscode-editor-background);
+}
+
+.tl-psummary {
+  padding: 0 12px;
+  color: var(--vscode-disabledForeground, var(--muted));
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-row.compact {
+  --tl-row: 34px;
+}
+
+.tl-label.compact {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding-left: 8px;
+}
+
+.tl-label.compact .tl-id {
+  flex: none;
+  overflow: visible;
+  font-weight: 700;
+}
+
+.tl-label.compact .tl-title {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.tl-label.compact .tl-pr {
+  flex: none;
+}
+
+.tl-footer {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  padding: 8px 20px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.tl-fkey {
+  color: var(--needs-you);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.tl-fnote {
+  margin-left: auto;
+}

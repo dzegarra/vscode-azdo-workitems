@@ -83,6 +83,8 @@ src/concurrency.ts        pure: mapLimit, at most 6 requests in flight in any on
 src/teamData.ts           pure: raw team snapshot -> WorkItemModel per work item, lanes per person (groupByPerson), cache keys, attempt key, Rules TEAM-5..8
 src/teamBoardModel.ts     pure: the whole-team Track board (lanes, compact cards, markers, insights), Rules BOARD-26..30; the Sprint timeline (7b) reuses people + cards
 src/teamWorkStore.ts      fetches the team data (feature `teamView`, only when a visible tab is in Whole team, attempt key, caches); onDidChange redraws the board
+src/teamTimelineModel.ts  pure: Whole team Sprint timeline (a section per person, read-only rows, summaries), Rules TIMELINE-21..26
+src/webview/peoplePicker.ts  the scope switch and People picker shared by the board and timeline webviews (Rules TEAM-1, TIMELINE-21)
 src/sprintTimeline.ts     Sprint timeline panel (editor tab, dist/timeline.js, media/timeline.css; webview: src/webview/timeline.ts); pure model: src/sprintTimelineModel.ts
                           (rows = cards of the Track board + the dates of the PRs, Rules TIMELINE-*); groups, merged PRs and collapse: src/timelineGroups.ts (pure);
                           its requests: the planned work of the next sprint and, once per PR, the threads of the merged PRs it draws (MyPullRequestsWatcher.loadMergedThreads)

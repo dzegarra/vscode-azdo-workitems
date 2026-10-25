@@ -11,10 +11,22 @@ import type {
   TimelineModel,
   TimelinePopover,
   TimelineRow,
+  TimelineSection,
   TimelineSegment,
+  TimelineTeam,
 } from '../sprintTimelineModel';
+import { EMPTY_PEOPLE_HINT } from '../teamPeople';
 import { toggleCollapsed, visibleRows } from '../timelineGroups';
 import { COMPLETED_TOOLTIP, type BoardAction } from '../trackBoardModel';
+import {
+  avatarHtml,
+  closePickerOnEscape,
+  rememberPicker,
+  renderPeoplePicker,
+  renderScope,
+  restorePicker,
+  startPeoplePicker,
+} from './peoplePicker';
 
 interface VsCodeApi {
   postMessage(message: TimelineMessage): void;
@@ -109,6 +121,14 @@ function renderLabel(row: TimelineRow, isCollapsed: boolean): string {
       row.title
     )}</span></div></div>`;
   }
+  if (row.readOnly && row.groupId === undefined) {
+    // Rule TIMELINE-23: the rows of others are one line: the id, the short title and the PR
+    return `<div class="tl-label compact" tabindex="0" role="button" ${open}><span class="tl-id${
+      label.tag?.tone === 'bug' ? ' id-bug' : ' id-pbi'
+    }">${escapeHtml(label.id ?? '')}</span><span class="tl-title">${escapeHtml(row.title)}</span>${
+      label.pr ? pillHtml(label.pr) : ''
+    }</div>`;
+  }
   if (row.groupId !== undefined) {
     return `<div class="tl-label child${
       row.lastChild ? ' last' : ''
@@ -170,6 +190,9 @@ function renderRow(row: TimelineRow): string {
     popovers.set(popoverKey, row.popover);
   }
   const classes = ['tl-row'];
+  if (row.readOnly && row.groupId === undefined && !row.group) {
+    classes.push('compact');
+  }
   if (row.group) {
     classes.push('group', 'in-group');
   } else if (row.groupId !== undefined) {
@@ -236,13 +259,13 @@ function renderDevelop(develop: TimelineModel['develop']): string {
   )}</span></div><div class="tl-lane">${spans}${label}${note}</div></div>`;
 }
 
-function section(title: string, body: string, note?: string): string {
-  return `<h2 class="tl-section">${escapeHtml(title)}</h2>${
+function section(title: string, body: string, note?: string, sub = false): string {
+  return `<h2 class="tl-section${sub ? ' sub' : ''}">${escapeHtml(title)}</h2>${
     note ? `<p class="tl-empty-row">${escapeHtml(note)}</p>` : ''
   }${body}`;
 }
 
-function renderLegend(): string {
+function renderLegend(team: boolean): string {
   const item = (cls: string, label: string): string =>
     `<span class="tl-key"><span class="tl-swatch seg-${cls}"></span>${label}</span>`;
   // Rule TIMELINE-15: the key to the first line of a label
@@ -256,7 +279,10 @@ function renderLegend(): string {
   return `<div class="tl-legend" aria-label="Legend">${item('coding', 'coding')}${item(
     'draft',
     'draft · self-review'
-  )}${item('review', 'CI · review')}${item('needsYou', 'needs you')}${item('ready', 'ready to be merged')}${item(
+  )}${item('review', 'CI · review')}${item('needsYou', team ? 'needs its owner' : 'needs you')}${item(
+    'ready',
+    'ready to be merged'
+  )}${team ? item('overdue', 'review overdue') : ''}${item(
     'asleep',
     'no update (zZ)'
   )}<span class="tl-key"><span class="tl-swatch bracket"></span>life of a work item with several PRs</span><span class="tl-key dep">⛓ dependency</span>${key}</div>`;
@@ -270,11 +296,18 @@ function renderHeader(current: TimelineModel): string {
   const left = current.header.left
     ? `<span class="bd-left${current.header.hurry ? ' hurry' : ''}">${escapeHtml(current.header.left)}</span>`
     : '';
-  return `<header class="bd-header"><h1 class="bd-sprint">${escapeHtml(current.header.sprint)}</h1>${
+  const team = current.scope === 'team' ? current.team : undefined;
+  const stats = team
+    ? `<span class="bd-stats">${String(team.sections.length)} ${
+        team.sections.length === 1 ? 'person' : 'people'
+      } shown · ${String(team.openItems)} open items</span>`
+    : '';
+  const teams = team && team.teamCount > 1 ? ` · ${String(team.teamCount)} teams` : '';
+  return `<header class="bd-header"><h1 class="bd-sprint">${escapeHtml(current.header.sprint)}${teams}</h1>${
     current.header.dates ? `<span class="bd-left">${escapeHtml(current.header.dates)}</span>` : ''
-  }${left}
+  }${left}${stats}
     <div class="bd-tabs" role="group" aria-label="View"><button class="bd-chip" data-open-board aria-pressed="false">Track board</button><button class="bd-chip" aria-pressed="true">Sprint timeline</button></div>
-    <span class="bd-scope">Mine + my reviews</span>
+    ${renderScope(current.scope)}${renderPeoplePicker(team?.picker)}
     <div class="bd-chips" role="group" aria-label="Range">${range('sprint', 'This sprint')}${range(
     'sprintAndNext',
     'This + next sprint',
@@ -297,6 +330,37 @@ function renderDays(current: TimelineModel): string {
     .join('');
 }
 
+/** Rule TIMELINE-21: the header of a person's section: avatar, name, what they have, and a sentence in the lane */
+function renderPersonHeader(person: TimelineSection): string {
+  return `<div class="tl-row tl-person${person.you ? ' you' : ''}"><div class="tl-plabel">${avatarHtml(
+    person.initials,
+    person.colour
+  )}<b class="tl-pname">${escapeHtml(person.name)}</b><span class="tl-pmeta">${escapeHtml(
+    person.meta
+  )}</span></div><div class="tl-psummary">${escapeHtml(person.summary)}</div></div>`;
+}
+
+/** The lines under the header while the data of the team is not there yet, or could not be read */
+function teamStatusHtml(team: TimelineTeam): string {
+  if (team.status === 'loading') {
+    return '<p class="message muted">Loading the work of the teams…</p>';
+  }
+  if (team.status === 'error') {
+    return `<p class="message error">The work of the team could not be loaded: ${escapeHtml(
+      team.error ?? 'error'
+    )} <button class="bd-chip" data-refresh>Retry</button></p>`;
+  }
+  return team.noPeople ? `<p class="message muted bd-people-hint">${escapeHtml(EMPTY_PEOPLE_HINT)}</p>` : '';
+}
+
+/** Rule TIMELINE-25: what is asleep, and who owns the read-only rows */
+function renderFooter(team: TimelineTeam): string {
+  const asleep = team.asleep.length
+    ? team.asleep.map((entry) => `#${String(entry.id)} (${escapeHtml(entry.owner)})`).join(' · ')
+    : 'nothing: every item in progress was updated';
+  return `<footer class="tl-footer"><span class="tl-fkey">ASLEEP</span><span class="tl-fasleep">${asleep}</span><span class="tl-fnote">Rows of other people are read-only · hover a bar for its details</span></footer>`;
+}
+
 function renderBody(current: TimelineModel): string {
   if (current.status === 'loading' && !current.days.length) {
     return '<p class="message muted">Loading the sprint…</p>';
@@ -307,32 +371,55 @@ function renderBody(current: TimelineModel): string {
   if (!current.days.length) {
     return `<p class="message muted">${escapeHtml(current.notes.at(0) ?? 'Nothing to draw')}</p>`;
   }
+  const team = current.scope === 'team' ? current.team : undefined;
+  const youSection = team?.sections.find((person) => person.you);
+  const mine = (row: TimelineRow): string => renderRow(row);
   const work = current.work.length
-    ? visibleRows(current.work, collapsed).map(renderRow).join('')
+    ? visibleRows(current.work, collapsed).map(mine).join('')
     : `<p class="tl-empty-row">${
         current.finished.length ? 'No open work item' : 'None of your work items is in the sprint'
       }</p>`;
   // Rule TIMELINE-19
   const finished = current.finished.length
-    ? section('DONE THIS SPRINT', visibleRows(current.finished, collapsed).map(renderRow).join(''))
+    ? section('DONE THIS SPRINT', visibleRows(current.finished, collapsed).map(renderRow).join(''), undefined, !!team)
     : '';
   const planned =
     current.range === 'sprintAndNext'
-      ? section('PLANNED IN THE NEXT SPRINT', current.planned.rows.map(renderRow).join(''), current.planned.note)
+      ? section(
+          'PLANNED IN THE NEXT SPRINT',
+          current.planned.rows.map(renderRow).join(''),
+          current.planned.note,
+          !!team
+        )
       : '';
   const reviews = current.reviews.length
     ? current.reviews.map(renderRow).join('')
     : '<p class="tl-empty-row">No review is waiting for you</p>';
   const notes = current.notes.map((note) => `<p class="message muted">${escapeHtml(note)}</p>`).join('');
-  return `<div class="tl-grid">
-    <div class="tl-row tl-row-days"><div class="tl-label plain"></div><div class="tl-days">${renderDays(
-      current
-    )}</div></div>
-    <div class="tl-body"><div class="tl-overlay" aria-hidden="true"></div>
-    ${section('MY WORK ITEMS', work)}${finished}${planned}${notes}${section(current.reviewsTitle, reviews)}${section(
-    'DEVELOP',
-    renderDevelop(current.develop)
+  const days = `<div class="tl-row tl-row-days"><div class="tl-label plain"></div><div class="tl-days">${renderDays(
+    current
   )}</div></div>`;
+  const develop = section('DEVELOP', renderDevelop(current.develop), undefined, !!team);
+  const reviewsSection = section(current.reviewsTitle, reviews, undefined, !!team);
+  if (!team) {
+    return `<div class="tl-grid">${days}<div class="tl-body"><div class="tl-overlay" aria-hidden="true"></div>
+    ${section('MY WORK ITEMS', work)}${finished}${planned}${notes}${reviewsSection}${develop}</div></div>`;
+  }
+  // Rule TIMELINE-21: one section per person, the user's first with the rows, buttons and popovers of the "mine" timeline
+  const others = team.sections
+    .filter((person) => !person.you)
+    .map((person) => {
+      const done = person.finished.length
+        ? section('DONE THIS SPRINT', visibleRows(person.finished, collapsed).map(renderRow).join(''), undefined, true)
+        : '';
+      return `${renderPersonHeader(person)}${visibleRows(person.rows, collapsed).map(renderRow).join('')}${done}`;
+    })
+    .join('');
+  const extra = youSection ? visibleRows(youSection.rows, collapsed).map(renderRow).join('') : '';
+  return `<div class="tl-grid">${days}<div class="tl-body"><div class="tl-overlay" aria-hidden="true"></div>
+    ${teamStatusHtml(team)}${
+    youSection ? renderPersonHeader(youSection) : ''
+  }${work}${extra}${finished}${planned}${notes}${reviewsSection}${others}${develop}</div></div>`;
 }
 
 /** Positions and sizes come from the model in days: they are set after the markup is in place (strict CSP) */
@@ -408,10 +495,15 @@ function render(): void {
     'look-totalflow',
     lookClass(model.look, Array.from(document.body.classList)) !== undefined
   );
+  const picker = rememberPicker();
   const scroll = app.querySelector('.tl-scroll');
   const scrollLeft = scroll?.scrollLeft ?? 0;
   const scrollTop = scroll?.scrollTop ?? 0;
-  app.innerHTML = `${renderHeader(model)}${renderLegend()}<div class="tl-scroll">${renderBody(model)}</div>`;
+  const team = model.scope === 'team' ? model.team : undefined;
+  app.innerHTML = `${renderHeader(model)}${renderLegend(team !== undefined)}<div class="tl-scroll">${renderBody(
+    model
+  )}</div>${team ? renderFooter(team) : ''}`;
+  restorePicker(app, picker);
   const grid = app.querySelector<HTMLElement>('.tl-grid');
   if (grid) {
     place(grid, model);
@@ -506,7 +598,9 @@ document.addEventListener('click', (event) => {
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
-    hidePopover();
+    if (!closePickerOnEscape({ render })) {
+      hidePopover();
+    }
     return;
   }
   const target = event.target instanceof HTMLElement ? event.target : null;
@@ -531,5 +625,7 @@ window.addEventListener('message', (event: MessageEvent<TimelineUpdate>) => {
 });
 
 window.addEventListener('resize', hidePopover);
+
+startPeoplePicker({ post, picker: () => (model?.scope === 'team' ? model.team?.picker : undefined), render });
 
 post({ type: 'ready' });

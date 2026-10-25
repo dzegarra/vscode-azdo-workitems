@@ -206,7 +206,7 @@ function waits(info: TeamPullRequestInfo): TeamMarker | undefined {
  */
 function otherReview(
   info: TeamPullRequestInfo,
-  rules: TeamBoardInput['rules'],
+  rules: MarkerInput['rules'],
   now: Date
 ): { marker: TeamMarker; overdue: boolean } | undefined {
   const pending = info.reviewers.find(
@@ -239,13 +239,19 @@ function partText(card: BoardWorkCard): string | undefined {
   return card.part === 'pr' && card.prId !== undefined ? `PR ${String(card.prId)}` : undefined;
 }
 
+/** What the markers of a card read of the board's input (also built by the Sprint timeline, Rule TIMELINE-23) */
+export type MarkerInput = Pick<TeamBoardInput, 'now' | 'reviews' | 'rules' | 'waitedOn'>;
+
 interface CardContext {
   item: TeamItem | undefined;
-  input: TeamBoardInput;
+  input: MarkerInput;
   badge: string | undefined;
 }
 
-function toTeamCard(card: BoardWorkCard, { item, input, badge }: CardContext): { card: TeamCard; overdue: boolean } {
+export function toTeamCard(
+  card: BoardWorkCard,
+  { item, input, badge }: CardContext
+): { card: TeamCard; overdue: boolean } {
   const prId = cardPullRequestId(card);
   const info = item?.pullRequests.find((candidate) => candidate.id === prId);
   const markers: TeamMarker[] = [];
@@ -325,7 +331,7 @@ function toTeamCard(card: BoardWorkCard, { item, input, badge }: CardContext): {
 }
 
 /** Marks the other cards of the same work item as related (BOARD-14), as the board of the user does */
-function withSiblings(cards: BoardWorkCard[]): BoardWorkCard[] {
+export function withSiblings(cards: BoardWorkCard[]): BoardWorkCard[] {
   return cards.map((card) => ({
     ...card,
     siblings: cards.filter((other) => other.id === card.id && other.key !== card.key).map((other) => other.key),
