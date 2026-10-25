@@ -17,11 +17,12 @@ const COMMANDS = {
 async function runAction(store: WorkItemsStore, message: WorkItemAction): Promise<void> {
   const entry = store.find(message.id);
   switch (message.type) {
-    case 'openDetails':
-    case 'openDependencyMap':
     case 'changeState':
+      // From the state bar of the details panel: the state to move to (Rule STEPS-1); none: the picker
       await vscode.commands.executeCommand('totalflowx.changeState', message.id, message.state);
       return;
+    case 'openDetails':
+    case 'openDependencyMap':
     case 'addTask':
     case 'clearIntegrationBuild':
     case 'fillIntegrationBuild':
