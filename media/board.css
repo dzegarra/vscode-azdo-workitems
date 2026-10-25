@@ -1106,12 +1106,13 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
 .bd-people-menu {
   position: absolute;
   top: 36px;
-  left: 0;
+  /* Anchored to the right of the button: the picker sits at the right end of the header */
+  right: 0;
   z-index: 6;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  width: 300px;
+  width: min(300px, calc(100vw - 32px));
   padding: 6px;
   border: 1px solid var(--border);
   border-radius: 10px;
