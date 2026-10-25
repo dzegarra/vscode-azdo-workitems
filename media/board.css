@@ -1,0 +1,749 @@
+/* The Track board (redesign, Rules BOARD-*). Colours are the tokens of webview.css, so the board follows the theme and
+ * the Totalflow look; nothing here sets a colour of its own except through them */
+
+body.board-page {
+  --bd-card: color-mix(
+    in srgb,
+    var(--vscode-editor-foreground, var(--vscode-foreground)) 5%,
+    var(--vscode-editor-background)
+  );
+  --bd-drawer: color-mix(
+    in srgb,
+    var(--vscode-editor-foreground, var(--vscode-foreground)) 3%,
+    var(--vscode-editor-background)
+  );
+  padding: 0;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+}
+
+body.board-page.look-totalflow:not([class*='vscode-high-contrast']) {
+  --bd-card: #161b22;
+  --bd-drawer: #10141a;
+  background: var(--vscode-editor-background);
+}
+
+body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast']) {
+  --bd-card: #f6f7f9;
+  --bd-drawer: #f6f7f9;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- Header ---------- */
+
+.bd-header {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 14px 20px 8px;
+}
+
+.bd-sprint {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.bd-left {
+  color: var(--muted);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+}
+
+.bd-left.hurry {
+  color: var(--needs-you);
+  font-weight: 600;
+}
+
+.bd-scope {
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.bd-chips {
+  display: flex;
+  gap: 4px;
+}
+
+.bd-chip {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.bd-chip[aria-pressed='true'].chip-backlog {
+  border-color: var(--in-flight);
+  background: color-mix(in srgb, var(--in-flight) 16%, transparent);
+  color: var(--vscode-foreground);
+}
+
+.bd-chip[aria-pressed='true'].chip-bug {
+  border-color: var(--broken);
+  background: color-mix(in srgb, var(--broken) 16%, transparent);
+  color: var(--vscode-foreground);
+}
+
+.bd-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.bd-icon-button:hover {
+  background: var(--card-hover);
+  color: var(--vscode-foreground);
+}
+
+.bd-chip:focus-visible,
+.bd-icon-button:focus-visible,
+.bd-button:focus-visible,
+.bd-card:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+/* ---------- Layout: the board and the drawer ---------- */
+
+.bd-main {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.bd-scroll {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 20px 24px;
+  overflow: auto;
+}
+
+.bd-table {
+  display: grid;
+  gap: 10px;
+  min-width: 940px;
+}
+
+.bd-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.bd-heads {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--vscode-editor-background);
+}
+
+.bd-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 2px;
+  border-bottom: 2px solid var(--pending);
+}
+
+.bd-head.col-branch,
+.bd-head.col-ci,
+.bd-head.col-review {
+  border-bottom-color: var(--in-flight);
+}
+
+.bd-head.col-ready,
+.bd-head.col-done {
+  border-bottom-color: var(--passed);
+}
+
+.bd-head-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.bd-count {
+  color: var(--muted);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-weight: 400;
+}
+
+.bd-hint {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.bd-row-label {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.bd-row-reviews {
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  text-transform: none;
+}
+
+.bd-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 4px;
+}
+
+/* ---------- Cards ---------- */
+
+.bd-card {
+  --tone: var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--tone);
+  border-radius: 8px;
+  background: var(--bd-card);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.bd-card.tone-needsYou {
+  --tone: var(--needs-you);
+  background: color-mix(in srgb, var(--needs-you) 8%, var(--bd-card));
+}
+
+.bd-card.tone-broken {
+  --tone: var(--broken);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--broken) 30%, transparent);
+}
+
+.bd-card.tone-active {
+  --tone: var(--in-flight);
+  background: color-mix(in srgb, var(--in-flight) 8%, var(--bd-card));
+}
+
+.bd-card.tone-done,
+.bd-card.tone-ship {
+  --tone: var(--passed);
+}
+
+.bd-card.tone-ship {
+  background: color-mix(in srgb, var(--passed) 8%, var(--bd-card));
+}
+
+.bd-card.tone-neutral {
+  --tone: var(--border);
+}
+
+/* The lift: the border takes its state colour and a soft shadow shows; the background never changes */
+.bd-card:hover,
+.bd-card:focus-visible {
+  border-color: var(--tone-lift, var(--tone));
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.bd-card.tone-neutral:hover,
+.bd-card.tone-neutral:focus-visible {
+  --tone-lift: var(--in-flight);
+}
+
+.bd-card.is-current {
+  border-width: 2px;
+  padding: 9px;
+  border-color: var(--needs-you);
+  background: color-mix(in srgb, var(--needs-you) 12%, var(--bd-card));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--needs-you) 18%, transparent);
+}
+
+.bd-card.is-selected {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+/* Linked to the hovered card: predecessors, successors, duplicates */
+.bd-card.is-related {
+  outline: 1px dashed var(--vscode-foreground);
+  outline-offset: 3px;
+}
+
+.bd-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  color: var(--muted);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+
+.bd-card-head .asleep {
+  margin: 0 0 0 auto;
+}
+
+.bd-here {
+  margin-left: auto;
+  color: var(--in-flight);
+}
+
+.bd-card-head .asleep + .bd-here,
+.bd-card-head .asleep + .bd-verb {
+  margin-left: 6px;
+}
+
+.bd-id,
+.bd-here,
+.bd-verb,
+.bd-deadline {
+  white-space: nowrap;
+}
+
+.bd-verb,
+.bd-deadline {
+  margin-left: auto;
+  color: var(--needs-you);
+  font-weight: 600;
+}
+
+.bd-card.tone-ship .bd-verb {
+  color: var(--passed);
+}
+
+.bd-card.tone-broken .bd-id {
+  color: var(--broken);
+}
+
+.bd-title {
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.bd-status {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.bd-status.tone-needsYou {
+  color: var(--needs-you);
+}
+
+.bd-status.tone-broken {
+  color: var(--broken);
+}
+
+.bd-status.tone-passed {
+  color: var(--passed);
+}
+
+.bd-button {
+  align-self: flex-start;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--in-flight);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--in-flight);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.bd-button:hover {
+  background: color-mix(in srgb, var(--in-flight) 15%, transparent);
+}
+
+.bd-button.primary {
+  border-color: var(--passed);
+  background: var(--passed);
+  color: var(--vscode-editor-background);
+  font-weight: 600;
+}
+
+.bd-button.primary:hover {
+  background: color-mix(in srgb, var(--passed) 85%, var(--vscode-foreground));
+}
+
+/* The collapsed finished work items */
+.bd-summary {
+  gap: 4px;
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+}
+
+.bd-summary:hover {
+  box-shadow: none;
+  border-color: var(--border);
+}
+
+.bd-summary .bd-id {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+
+.bd-summary-text {
+  font-size: 12px;
+}
+
+/* ---------- PRs you review ---------- */
+
+.bd-review.urgency-overdue {
+  --tone: var(--broken);
+  background: color-mix(in srgb, var(--broken) 8%, var(--bd-card));
+}
+
+.bd-review.urgency-overdue .bd-deadline {
+  color: var(--broken);
+}
+
+.bd-review.urgency-dueSoon {
+  --tone: var(--waiting);
+  background: color-mix(in srgb, var(--waiting) 8%, var(--bd-card));
+}
+
+.bd-review.urgency-dueSoon .bd-deadline {
+  color: var(--waiting);
+}
+
+.bd-review.is-muted {
+  --tone: var(--border);
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+}
+
+.bd-review.is-muted .bd-deadline {
+  color: var(--muted);
+}
+
+.bd-bar-track {
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--pending);
+}
+
+.bd-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--passed);
+}
+
+.urgency-dueSoon .bd-bar-fill {
+  background: var(--waiting);
+}
+
+.urgency-overdue .bd-bar-fill {
+  background: var(--broken);
+}
+
+.bd-mono {
+  color: var(--muted);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+
+/* ---------- Track with names (drawer and hover) ---------- */
+
+.bd-track {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bd-station {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bd-station .bd-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--station-color, var(--pending));
+}
+
+.bd-station-name {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.bd-station.current .bd-station-name {
+  color: var(--station-color, var(--vscode-foreground));
+  font-weight: 600;
+}
+
+/* ---------- Drawer ---------- */
+
+.bd-drawer {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 16px;
+  width: 420px;
+  padding: 18px 20px;
+  overflow: auto;
+  border-left: 1px solid var(--border);
+  background: var(--bd-drawer);
+}
+
+.bd-drawer[hidden] {
+  display: none;
+}
+
+.bd-d-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bd-d-id {
+  color: var(--in-flight);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.bd-d-sub {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.bd-d-head .bd-icon-button {
+  margin-left: auto;
+}
+
+.bd-d-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.bd-need {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--needs-you) 45%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--needs-you) 10%, var(--bd-drawer));
+}
+
+.bd-label {
+  color: var(--needs-you);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.bd-need-tests {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--vscode-errorForeground);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.bd-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.bd-need .bd-button {
+  align-self: auto;
+  height: 30px;
+  padding: 0 12px;
+  border-color: var(--needs-you);
+  color: var(--needs-you);
+  font-size: 12px;
+}
+
+.bd-need .bd-button.primary {
+  background: var(--needs-you);
+  color: var(--vscode-editor-background);
+}
+
+.bd-facts {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 8px 10px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.bd-facts dt {
+  color: var(--muted);
+}
+
+.bd-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.bd-facts dd.tone-passed {
+  color: var(--passed);
+}
+
+.bd-facts dd.tone-needsYou {
+  color: var(--needs-you);
+}
+
+.bd-facts dd.tone-broken {
+  color: var(--broken);
+}
+
+.bd-d-foot {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.bd-button.wide {
+  flex: 1;
+  align-self: auto;
+  height: 32px;
+  border-color: var(--border);
+  color: var(--vscode-foreground);
+  font-size: 12px;
+}
+
+.bd-button.wide:hover {
+  background: var(--card-hover);
+}
+
+.bd-deadline-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ---------- Hover summary ---------- */
+
+.bd-pop {
+  position: fixed;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-editor-background));
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.bd-pop[hidden] {
+  display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .bd-pop {
+    animation: bd-pop-in 0.12s ease-out;
+  }
+}
+
+@keyframes bd-pop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.bd-pop-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.bd-pop-hint {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.bd-facts.compact {
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 5px 10px;
+}
+
+.bd-pop .bd-station-name {
+  font-size: 9px;
+}
+
+.bd-pop .bd-station .bd-bar {
+  height: 4px;
+}
+
+/* ---------- Narrow panels: the drawer becomes a bottom sheet ---------- */
+
+@media (max-width: 900px) {
+  .bd-drawer {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 5;
+    width: auto;
+    max-height: 70%;
+    border-top: 1px solid var(--border);
+    border-left: 0;
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.4);
+  }
+}
+
+@media (forced-colors: active) {
+  .bd-card {
+    border-color: CanvasText;
+  }
+
+  .bd-card.is-current {
+    outline: 2px solid Highlight;
+  }
+}

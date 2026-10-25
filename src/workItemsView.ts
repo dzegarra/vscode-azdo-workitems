@@ -17,14 +17,11 @@ import { CoverageRecordsStore } from './coverageRecordsStore';
 import {
   ADD_BUILD_NOTES_SKIP_TAG_COMMAND,
   RETARGET_PULL_REQUEST_COMMAND,
-  COMPLETE_PULL_REQUEST_COMMAND,
   RESTART_PULL_REQUEST_MERGE_COMMAND,
-  CHECKOUT_MY_PULL_REQUEST_COMMAND,
   MyPullRequestsWatcher,
   myPullRequestSettings,
-  PUBLISH_PULL_REQUEST_COMMAND,
 } from './myPullRequestsWatcher';
-import { CHECKOUT_REVIEW_COMMAND, ReviewRequestsWatcher, reviewSettings } from './reviewRequestsWatcher';
+import { ReviewRequestsWatcher, reviewSettings } from './reviewRequestsWatcher';
 import {
   changedFilterKeys,
   migratePullRequestStates,
@@ -38,7 +35,7 @@ import { baseBranchBanner } from './baseBranchHealth';
 import { BASE_BRANCH_ACTION_COMMAND, type BaseBranchAlert, SHOW_BASE_BRANCH_COMMAND } from './baseBranchAlert';
 import { sprintCountdown, sprintProgress } from './sprintCountdown';
 import type { WorktreeTracker } from './worktreeTracker';
-import { runWorkItemAction } from './workItemActions';
+import { isSharedMessage, runSharedMessage } from './sharedMessages';
 import { WorkItemsStore } from './workItemsStore';
 import { CLEAN_UP_WORKTREES_COMMAND } from './worktreeTracker';
 import type { SidebarTab } from './sidebarTabs';
@@ -271,6 +268,14 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async onMessage(message: WebviewMessage): Promise<void> {
+    // The buttons shared with the Track board
+    if (isSharedMessage(message)) {
+      await runSharedMessage(
+        { store: this.store, reviews: this.reviews, myPullRequests: this.myPullRequests },
+        message
+      );
+      return;
+    }
     switch (message.type) {
       case 'ready':
         this.ready = true;
@@ -291,29 +296,19 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
           message.what === 'worktrees' ? CLEAN_UP_WORKTREES_COMMAND : DELETE_BRANCH_COMMAND
         );
         return;
-      case 'refresh':
-        await Promise.all([this.store.refresh(), this.reviews.poll(true), this.myPullRequests.poll()]);
-        return;
       case 'checkReviewRequests':
         await this.reviews.poll(true);
-        return;
-      case 'checkoutReviewRequest':
-        await vscode.commands.executeCommand(CHECKOUT_REVIEW_COMMAND, message.pullRequestId);
         return;
       case 'checkMyPullRequests':
         await this.myPullRequests.poll();
         return;
       case 'checkoutMyPullRequest':
-        await vscode.commands.executeCommand(CHECKOUT_MY_PULL_REQUEST_COMMAND, message.pullRequestId);
-        return;
+      case 'completeMyPullRequest':
       case 'publishMyPullRequest':
-        await vscode.commands.executeCommand(PUBLISH_PULL_REQUEST_COMMAND, message.pullRequestId);
+        // Run above with the other shared buttons: these share a message type with the PR buttons kept here
         return;
       case 'retargetMyPullRequest':
         await vscode.commands.executeCommand(RETARGET_PULL_REQUEST_COMMAND, message.pullRequestId);
-        break;
-      case 'completeMyPullRequest':
-        await vscode.commands.executeCommand(COMPLETE_PULL_REQUEST_COMMAND, message.pullRequestId);
         break;
       case 'restartMyPullRequestMerge':
         await vscode.commands.executeCommand(RESTART_PULL_REQUEST_MERGE_COMMAND, message.pullRequestId);
@@ -363,10 +358,6 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       case 'showActions':
         await this.showActions(message.title, message.sections);
         return;
-      case 'openMyPullRequest':
-      case 'openReviewRequest':
-        await vscode.env.openExternal(vscode.Uri.parse(message.url));
-        return;
       case 'setFilter': {
         // Filters are personal: saved in the user settings. Each write updates settings.json and
         // re-renders the view, so only the keys that changed are written
@@ -376,23 +367,6 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         }
         return;
       }
-      case 'addTask':
-      case 'changeState':
-      case 'checkout':
-      case 'clearIntegrationBuild':
-      case 'createBranch':
-      case 'createPullRequest':
-      case 'deleteBranch':
-      case 'fillIntegrationBuild':
-      case 'linkBranchToTask':
-      case 'linkTaskBranch':
-      case 'linkTaskPullRequest':
-      case 'openDependencyMap':
-      case 'openDetails':
-      case 'openPullRequest':
-      case 'openRun':
-      case 'openWorkItem':
-        await runWorkItemAction(this.store, message);
     }
   }
 

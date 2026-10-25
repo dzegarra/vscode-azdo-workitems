@@ -2,6 +2,7 @@
 !dist/extension.js
 !dist/webview.js
 !dist/dependencies.js
+!dist/board.js
 !media/**
 !package.json
 !README.md

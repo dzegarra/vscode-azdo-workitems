@@ -35,6 +35,7 @@ import { addTask, changeState } from './commands/workItemEdits';
 import { registerDiagnostics } from './diagnostics';
 import { withFeature } from './requestContext';
 import { DependencyMapPanel } from './dependencyMap';
+import { OPEN_TRACK_BOARD_COMMAND, TrackBoardPanel } from './trackBoard';
 import { CurrentWorkItemStatusBar } from './currentWorkItemStatusBar';
 import {
   ADD_BUILD_NOTES_SKIP_TAG_COMMAND,
@@ -145,6 +146,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const notifier = new PullRequestNotifier(context.globalState, store, funJournal, () => celebrate(true, 'merged'));
   const sprintRecap = new SprintRecapPanel(context.extensionUri, store, funJournal);
   details.setMyPullRequests(myPullRequests);
+  const trackBoard = new TrackBoardPanel(context.extensionUri, store, reviewRequests, myPullRequests);
   const worktreeTracker = new WorktreeTracker(context.globalState, { store, reviews: reviewRequests, myPullRequests });
   view.setWorktrees(worktreeTracker);
   const worktreesView = new WorktreesView(worktreeTracker);
@@ -270,8 +272,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       clearTimeout(debounce);
       debounce = setTimeout(() => {
         view.post();
+        trackBoard.post();
         // Worktrees created or removed outside VS Code show up with the next change of the repository
-        void store.refreshWorktrees().then((changed) => changed && view.post());
+        void store.refreshWorktrees().then((changed) => {
+          if (changed) {
+            view.post();
+            trackBoard.post();
+          }
+        });
       }, DEBOUNCE_MS);
     });
 
@@ -289,6 +297,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     notifier,
     pullRequestTaskStarter,
     dependencyMap,
+    trackBoard,
+    command(OPEN_TRACK_BOARD_COMMAND, () => trackBoard.open()),
     pipelineWatcher,
     pipelineStatusBar,
     baseBranchAlert,
@@ -300,13 +310,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     worktreeTracker.onDidChange(() => view.post()),
     worktreesView,
     worktreeStatusBar,
-    reviewRequests.onDidChange(() => view.post()),
+    reviewRequests.onDidChange(() => {
+      view.post();
+      trackBoard.post();
+    }),
     myPullRequests,
     myPullRequestsStatusBar,
-    myPullRequests.onDidChange(() => view.post()),
+    myPullRequests.onDidChange(() => {
+      view.post();
+      trackBoard.post();
+    }),
     alertsStatus,
     store.onDidChange(() => {
       view.post();
+      trackBoard.post();
       updateAlertsStatus();
     }),
     ...git.repositories.map(watchRepository),
@@ -322,6 +339,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!event.affectsConfiguration(SECTION)) {
         return;
       }
+      // The look, the review deadline and the days of the sprint show on the board
+      trackBoard.post();
       // Settings such as reviews.includeOptional change what the Summary counts
       summary.update();
       // Organization / project / repository set in the settings make the git remote unnecessary
