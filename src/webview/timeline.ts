@@ -89,7 +89,12 @@ function renderLabel(row: TimelineRow, isCollapsed: boolean): string {
   }
   const head = [
     label.tag ? tagHtml(label.tag) : '',
-    label.id ? `<span class="tl-id${row.bug ? ' bug' : ''}">${escapeHtml(label.id)}</span>` : '',
+    // The id takes the colour of its tag: red for a Bug, blue for a Backlog Item
+    label.id
+      ? `<span class="tl-id${label.tag && label.tag.tone !== 'task' ? ` id-${label.tag.tone}` : ''}">${escapeHtml(
+          label.id
+        )}</span>`
+      : '',
     label.pr ? pillHtml(label.pr) : '',
     label.state ? `<span class="tl-state">${escapeHtml(label.state)}</span>` : '',
     label.meta ? `<span class="tl-meta">${escapeHtml(label.meta)}</span>` : '',

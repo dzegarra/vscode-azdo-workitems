@@ -583,6 +583,11 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   line-height: 15px;
 }
 
+.tl-tag.tag-pbi {
+  background: color-mix(in srgb, var(--in-flight) 22%, transparent);
+  color: var(--vscode-textLink-foreground, var(--in-flight));
+}
+
 .tl-tag.tag-bug {
   background: color-mix(in srgb, var(--broken) 22%, transparent);
   color: var(--vscode-errorForeground, var(--broken));
@@ -696,8 +701,14 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   text-decoration: underline;
 }
 
-.tl-ltext .tl-id {
+.tl-id.id-pbi,
+.tl-ltext .tl-id.id-pbi {
   color: var(--vscode-textLink-foreground, var(--in-flight));
+}
+
+.tl-id.id-bug,
+.tl-ltext .tl-id.id-bug {
+  color: var(--vscode-errorForeground, var(--broken));
 }
 
 .tl-title.strong {
