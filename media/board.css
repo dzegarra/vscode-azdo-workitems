@@ -222,7 +222,6 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
 .bd-row-reviews {
   padding-top: 10px;
   border-top: 1px dashed var(--border);
-  text-transform: none;
 }
 
 .bd-col {
