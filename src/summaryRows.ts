@@ -10,7 +10,15 @@ export interface SummaryInput {
   /** Shown PRs waiting for the user's review */
   reviews: { isRequired: boolean; urgency: ReviewUrgency }[];
   /** The user's own PRs, as the My Pull Requests box shows them */
-  myPullRequests: { isCompleted: boolean; readyToMerge: boolean; warnings: { severity: string }[] }[];
+  myPullRequests: {
+    isCompleted: boolean;
+    readyToMerge: boolean;
+    warnings: { severity: string }[];
+    /** The PR needs the user (the "unblock" rule of the Now queue, NOW-2); missing: it has warnings */
+    needsYou?: boolean;
+    /** Some of what it needs is an error; missing: some warning is */
+    hasError?: boolean;
+  }[];
   /** Latest CI runs of the followed PRs that failed */
   failedRuns: number;
   /** The CI of the base branch is red (Rules BASE-CI-*): the pipelines broken on it */
@@ -62,39 +70,39 @@ function reviewsRow(reviews: SummaryInput['reviews']): SummaryRow | undefined {
   const count = reviews.length;
   return {
     id: 'reviews',
-    label: `${count} pull request${plural(count, '', 's')} waiting for your review`,
-    description: late || undefined,
+    label: 'To review',
+    description: [String(count), late].filter(Boolean).join(' · '),
     tooltip: `${count} pull request${plural(count, '', 's')} waiting for your review${late ? ` (${late})` : ''}`,
     icon: overdue ? 'error' : 'git-pull-request',
     color: lateColor(overdue, dueSoon),
   };
 }
 
-// Rules SUMMARY-3, SUMMARY-4
+// Rules SUMMARY-3, SUMMARY-4, SUMMARY-5
 function ownPullRequestRows(pullRequests: SummaryInput['myPullRequests']): SummaryRow[] {
   const open = pullRequests.filter((pr) => !pr.isCompleted);
-  const withWarnings = open.filter((pr) => pr.warnings.length);
-  const withErrors = withWarnings.filter((pr) => pr.warnings.some((warning) => warning.severity === 'error'));
+  const needing = open.filter((pr) => pr.needsYou ?? pr.warnings.length > 0);
+  const errors = needing.filter((pr) => pr.hasError ?? pr.warnings.some((warning) => warning.severity === 'error'));
   const ready = open.filter((pr) => pr.readyToMerge).length;
   const rows: SummaryRow[] = [];
-  if (withWarnings.length) {
-    const count = withWarnings.length;
-    const errors = withErrors.length;
+  if (needing.length) {
+    const count = needing.length;
     rows.push({
       id: 'pullRequestWarnings',
-      label: `${count} of your pull request${plural(count, '', 's')} ${plural(count, 'has', 'have')} warnings`,
-      description: errors ? `${errors} with errors` : undefined,
-      tooltip: `${count} of your pull requests have warnings to fix before they can be merged${
-        errors ? ` (${errors} with errors)` : ''
+      label: 'My PRs that need me',
+      description: [String(count), errors.length && `${errors.length} with errors`].filter(Boolean).join(' · '),
+      tooltip: `${count} of your pull request${plural(count, '', 's')} ${plural(count, 'needs', 'need')} you${
+        errors.length ? ` (${errors.length} with errors)` : ''
       }`,
       icon: 'warning',
-      color: errors ? 'errorForeground' : 'list.warningForeground',
+      color: errors.length ? 'errorForeground' : 'list.warningForeground',
     });
   }
   if (ready) {
     rows.push({
       id: 'readyToMerge',
-      label: `${ready} ready to merge`,
+      label: 'Ready to merge',
+      description: String(ready),
       tooltip: `${ready} of your pull request${plural(ready, '', 's')} ${plural(ready, 'is', 'are')} ready to merge`,
       icon: 'git-merge',
       color: 'testing.iconPassed',
@@ -131,13 +139,15 @@ function staleWorktreesRow(input: SummaryInput): SummaryRow[] {
   return [
     {
       id: 'staleWorktrees',
-      label: `${count} worktree${plural(count, '', 's')} to clean up`,
+      label: 'Worktrees to clean up',
+      description: String(count),
       tooltip: [
         `${count} worktree${plural(count, ' is', 's are')} no longer needed:`,
         ...stale.map(({ branch, reasons }) => `• ${branch}: ${reasons}`),
       ].join('\n'),
       icon: 'trash',
-      color: 'list.warningForeground',
+      // Housekeeping, never urgent: muted
+      color: 'disabledForeground',
     },
   ];
 }
@@ -166,19 +176,20 @@ function baseBranchRow(input: SummaryInput): SummaryRow[] {
 /** What needs the user's attention, one row each, only when the count is above 0 */
 function attentionRows(input: SummaryInput): SummaryRow[] {
   const rows: SummaryRow[] = baseBranchRow(input);
+  const reviews = reviewsRow(input.reviews);
+  if (reviews) {
+    rows.push(reviews);
+  }
   const alerts = input.workItemsWithAlerts;
   if (alerts) {
     rows.push({
       id: 'alerts',
-      label: `${alerts} work item${plural(alerts, '', 's')} ${plural(alerts, 'needs', 'need')} attention`,
+      label: 'Work items to fix',
+      description: String(alerts),
       tooltip: `${alerts} work item${plural(alerts, '', 's')} break${plural(alerts, 's', '')} a team rule`,
       icon: 'warning',
       color: 'errorForeground',
     });
-  }
-  const reviews = reviewsRow(input.reviews);
-  if (reviews) {
-    rows.push(reviews);
   }
   rows.push(...ownPullRequestRows(input.myPullRequests));
   if (input.failedRuns) {
@@ -207,7 +218,10 @@ function attentionRows(input: SummaryInput): SummaryRow[] {
       ];
 }
 
-/** The rows of the Summary view: what needs the user's attention, the worktrees to clean up, then the clean board */
+/**
+ * The rows of the Summary view, in the order of the design (Rule SUMMARY-11): develop broken, To review, Work items
+ * to fix, My PRs that need me, Ready to merge, (failed CI runs), then the muted worktrees to clean up, then the clean board
+ */
 export function summaryRows(input: SummaryInput): SummaryRow[] {
   return [...attentionRows(input), ...staleWorktreesRow(input), ...cleanBoardRow(input)];
 }

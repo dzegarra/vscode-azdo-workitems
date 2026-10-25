@@ -660,7 +660,8 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
   private async show(event: ReviewEvent): Promise<void> {
     const message = describeReviewEvent(event, new Date(), reviewSettings());
     const model = this.models().find((request) => request.id === event.request.id);
-    const actions = ['Open PR', ...(model?.canCheckout && !model.isCurrentBranch ? ['Checkout'] : [])];
+    // Rule REVIEW-NOTIF-9: Checkout first, as the one that starts the review
+    const actions = [...(model?.canCheckout && !model.isCurrentBranch ? ['Checkout'] : []), 'Open PR'];
     const picked =
       event.kind === 'requested'
         ? await vscode.window.showInformationMessage(message, ...actions)

@@ -9,6 +9,7 @@ import {
   startedTaskKey,
   startedTasksMessage,
   stateForNewBranchTask,
+  completedPullRequestButtons,
   completedPullRequestPrompt,
   publishedPullRequestMessage,
   pullRequestTaskTitle,
@@ -271,12 +272,34 @@ describe('chooseTaskBranch', () => {
   });
 });
 
+describe('buttons of a completed PR', () => {
+  it('offers both in one click when there are tasks and a branch', () => {
+    expect(completedPullRequestButtons(true, 'f/a').map((button) => button.label)).toEqual([
+      'Set Done + delete branch',
+      'Only set Done',
+      'Open task',
+    ]);
+  });
+
+  it('keeps the single-purpose buttons otherwise', () => {
+    expect(completedPullRequestButtons(true, undefined).map((button) => button.action)).toEqual([
+      'setDone',
+      'openTask',
+    ]);
+    expect(completedPullRequestButtons(false, 'f/a').map((button) => button.action)).toEqual(['deleteBranch']);
+    expect(completedPullRequestButtons(false, undefined)).toEqual([]);
+  });
+});
+
 describe('messages', () => {
   it('names the task or tasks', () => {
     expect(completedPullRequestPrompt(13770, [{ id: 60985 }])).toBe('PR 13770 completed. Set its task 60985 to Done?');
     expect(completedPullRequestPrompt(1, [{ id: 2 }, { id: 3 }])).toBe('PR 1 completed. Set its tasks 2, 3 to Done?');
     expect(completedPullRequestPrompt(1, [{ id: 2 }], 'f/a')).toBe(
-      'PR 1 completed. Set its task 2 to Done? The branch f/a can be deleted.'
+      'PR 1 merged. Task 2 is not Done yet and the branch f/a still exists.'
+    );
+    expect(completedPullRequestPrompt(1, [{ id: 2 }, { id: 3 }], 'f/a')).toBe(
+      'PR 1 merged. Tasks 2, 3 are not Done yet and the branch f/a still exists.'
     );
     expect(completedPullRequestPrompt(1, [], 'f/a')).toBe('PR 1 completed. Delete the branch f/a?');
     expect(publishedPullRequestMessage(5, [{ id: 9 }])).toBe('PR 5 published: its task 9 moved to In Progress.');

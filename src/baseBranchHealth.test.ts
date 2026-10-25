@@ -4,6 +4,7 @@ import {
   baseBranchHealth,
   baseBranchModal,
   baseBranchStatusText,
+  baseBranchTarget,
   breakingBuildText,
   brokenSince,
   finishedStates,
@@ -155,25 +156,124 @@ describe('alarm texts', () => {
   it('is blunt in the modal when the merge was the user own', () => {
     const { broken } = health([build(1), merged(2, 100, { result: 'failed' })]);
     expect(baseBranchModal('develop', broken, (id) => id === 100, NOW)).toEqual({
-      message: '🔥 Your merge broke develop. Please fix it now.',
-      detail: '❌ User-Interface-CI: Failed\nBroken by PR 100: Change 100 (completed by Ana)',
+      message: '🔥 Your merge broke develop',
+      detail: 'User-Interface-CI failed after PR 100: Change 100 (completed by Ana): Failed.',
       pullRequestId: 100,
+      mine: true,
     });
-    expect(baseBranchModal('develop', broken, () => false, NOW).message).toBe(
-      '🔥 develop is broken. It must be fixed as soon as possible.'
-    );
+    expect(baseBranchModal('develop', broken, () => false, NOW)).toMatchObject({
+      message: '🔥 develop is broken. It must be fixed as soon as possible.',
+      detail: '❌ User-Interface-CI: Failed\nBroken by PR 100: Change 100 (completed by Ana)',
+      mine: false,
+    });
   });
 });
 
 describe('baseBranchBanner', () => {
+  const none = new Set<string>();
+  const context = (mine: number[] = [], acknowledged = none) => ({
+    isMine: (id: number) => mine.includes(id),
+    acknowledged,
+  });
+  const failedTests = {
+    tests: { total: 95, failed: 3, failedTests: [{ title: 'restarts', file: 'network-restart.spec.ts', error: '' }] },
+  };
+
   it('has a line per broken pipeline, and nothing while the branch is green', () => {
-    expect(baseBranchBanner(health([build(1), merged(2, 100, { result: 'failed' })]), NOW)).toEqual({
+    const banner = baseBranchBanner(health([build(1), merged(2, 100, { result: 'failed' })]), NOW);
+    expect(banner).toMatchObject({
+      variant: 'other',
       title: 'develop is broken',
       since: '2026-10-22T10:32:00Z',
-      lines: [{ failure: 'User-Interface-CI: Failed', brokenBy: 'Broken by PR 100: Change 100 (completed by Ana)' }],
+      note: 'Avoid merging into develop until it is green.',
+      acknowledged: false,
+      lines: [
+        {
+          failure: 'User-Interface-CI · Failed',
+          brokenBy: 'Broken by PR 100 Change 100',
+          by: 'Ana',
+          mine: false,
+          newRun: false,
+        },
+      ],
     });
     expect(baseBranchBanner(health([build(1)]), NOW)).toBeUndefined();
     expect(baseBranchBanner(undefined, NOW)).toBeUndefined();
+  });
+
+  it('says "Your merge broke" and shows the user as "you" when the PR is theirs (variant a)', () => {
+    const banner = baseBranchBanner(health([build(1), merged(2, 100, { result: 'failed' })]), NOW, context([100]));
+    expect(banner).toMatchObject({
+      variant: 'mine',
+      title: 'Your merge broke develop',
+      note: undefined,
+      lines: [{ mine: true, by: undefined, brokenBy: 'Broken by PR 100 Change 100' }],
+    });
+    expect(banner?.buttons.map(({ label }) => label)).toEqual(["I'm on it", 'Open run']);
+  });
+
+  it('offers the PR, the failed tests and "I\'m on it" when somebody else broke it (variant b)', () => {
+    const broken = health([build(1), merged(2, 100, { result: 'failed' })]);
+    expect(baseBranchBanner(broken, NOW)?.buttons.map(({ label }) => label)).toEqual(['Open PR', "I'm on it"]);
+    const withTests = baseBranchHealth([build(1), merged(2, 100, { result: 'failed' })], 'develop', [], NOW);
+    withTests.broken[0].run = { ...withTests.broken[0].run, ...failedTests };
+    expect(baseBranchBanner(withTests, NOW)?.buttons.map(({ label }) => label)).toEqual([
+      'Open PR',
+      'Failed tests',
+      "I'm on it",
+    ]);
+  });
+
+  it('has a block per pipeline when the culprits differ (variant c)', () => {
+    const other = (id: number, pr: number, overrides: Partial<BuildRun> = {}) =>
+      merged(id, pr, { definition: { id: 2, name: 'UI-E2E' }, ...overrides });
+    const banner = baseBranchBanner(
+      health([build(1), merged(2, 100, { result: 'failed' }), other(3, 101, { result: 'failed' })]),
+      NOW,
+      context([101])
+    );
+    expect(banner?.variant).toBe('several');
+    expect(banner?.lines.map(({ failure, brokenBy, mine }) => [failure, brokenBy, mine])).toEqual([
+      ['UI-E2E · Failed', 'Broken by PR 101', true],
+      ['User-Interface-CI · Failed', 'Broken by PR 100', false],
+    ]);
+    expect(banner?.buttons.map(({ action }) => action)).toEqual(['showWhatBrokeIt', 'acknowledge']);
+  });
+
+  it('describes a run without a PR by what started it (variant d)', () => {
+    const banner = baseBranchBanner(
+      health([
+        build(1),
+        build(2, {
+          result: 'failed',
+          reason: 'schedule',
+          triggerInfo: { 'ci.message': 'Bump eslint' },
+          requestedFor: { displayName: 'Jonas' },
+        }),
+      ]),
+      NOW
+    );
+    expect(banner).toMatchObject({
+      variant: 'noPr',
+      lines: [{ brokenBy: 'First failed run: scheduled, commit "Bump eslint"', by: 'Jonas' }],
+    });
+    expect(banner?.buttons.map(({ action }) => action)).toEqual(['openRun', 'acknowledge']);
+  });
+
+  it('is acknowledged once every incident was answered with "I\'m on it"', () => {
+    const broken = health([build(1), merged(2, 100, { result: 'failed' })]);
+    const keys = new Set(broken.broken.map(incidentKey));
+    expect(baseBranchBanner(broken, NOW, context([], keys))?.acknowledged).toBe(true);
+    expect(baseBranchBanner(broken, NOW, context([], new Set(['9:9'])))?.acknowledged).toBe(false);
+  });
+
+  it('finds what each button opens', () => {
+    const broken = health([build(1), merged(2, 100, { result: 'failed' })]);
+    expect(baseBranchTarget(broken, 'openRun', 1)).toEqual({ url: 'https://build/2' });
+    expect(baseBranchTarget(broken, 'showTests', undefined)).toEqual({ url: 'https://build/2' });
+    expect(baseBranchTarget(broken, 'openPullRequest', 1)).toEqual({ pullRequestId: 100 });
+    expect(baseBranchTarget(broken, 'acknowledge', 1)).toBeUndefined();
+    expect(baseBranchTarget(undefined, 'openRun', 1)).toBeUndefined();
   });
 });
 

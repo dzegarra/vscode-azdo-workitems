@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { STATUS_BAR_PRIORITY } from './statusBarOrder';
 import {
   BRANCH_SECTION,
   ciRunGroups,
@@ -60,7 +61,11 @@ function pickItems(groups: CiRunGroup[], now: Date): RunPick[] {
  * sidebar is closed. Updated with the store (every few seconds while a run is queued or running) and on checkout
  */
 export class PipelineStatusBar implements vscode.Disposable {
-  private readonly item = vscode.window.createStatusBarItem('totalflowx.pipelines', vscode.StatusBarAlignment.Left);
+  private readonly item = vscode.window.createStatusBarItem(
+    'totalflowx.pipelines',
+    vscode.StatusBarAlignment.Left,
+    STATUS_BAR_PRIORITY.ci
+  );
   private readonly subscriptions: vscode.Disposable[];
   private lastBranch?: string;
 

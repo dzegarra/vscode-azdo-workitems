@@ -38,12 +38,12 @@ describe('summaryRows', () => {
       myPullRequests: [pr({ warnings: [{ severity: 'warning' }] }), pr({ readyToMerge: true })],
       failedRuns: 1,
     });
-    expect(rows.map((row) => row.label)).toEqual([
-      '2 work items need attention',
-      '1 pull request waiting for your review',
-      '1 of your pull request has warnings',
-      '1 ready to merge',
-      '1 failed CI run',
+    expect(rows.map((row) => [row.label, row.description])).toEqual([
+      ['To review', '1'],
+      ['Work items to fix', '2'],
+      ['My PRs that need me', '1'],
+      ['Ready to merge', '1'],
+      ['1 failed CI run', undefined],
     ]);
   });
 
@@ -54,6 +54,7 @@ describe('summaryRows', () => {
       baseBranch: { branch: 'develop', brokenPipelines: ['Lint', 'User-Interface-CI'] },
     });
     expect(rows.map((row) => row.id)).toEqual(['baseBranch', 'alerts']);
+    expect(rows[1].label).toBe('Work items to fix');
     expect(rows[0]).toEqual(
       expect.objectContaining({
         label: 'develop is broken',
@@ -75,12 +76,12 @@ describe('summaryRows', () => {
         { isRequired: false, urgency: 'overdue' },
       ],
     });
-    expect(row.label).toBe('4 pull requests waiting for your review');
-    expect(row.description).toBe('2 overdue · 1 due soon');
+    expect(row.label).toBe('To review');
+    expect(row.description).toBe('4 · 2 overdue · 1 due soon');
   });
 
   it('has no description when no review is late', () => {
-    expect(summaryRows({ ...empty, reviews: [{ isRequired: true, urgency: 'fresh' }] })[0].description).toBeUndefined();
+    expect(summaryRows({ ...empty, reviews: [{ isRequired: true, urgency: 'fresh' }] })[0].description).toBe('1');
   });
 
   it('counts errors apart and ignores the completed PRs', () => {
@@ -93,8 +94,51 @@ describe('summaryRows', () => {
       ],
     });
     expect(rows).toHaveLength(1);
-    expect(rows[0].label).toBe('2 of your pull requests have warnings');
-    expect(rows[0].description).toBe('1 with errors');
+    expect(rows[0].label).toBe('My PRs that need me');
+    expect(rows[0].description).toBe('2 · 1 with errors');
+  });
+
+  it('counts the PRs that need the user (NOW-2) rather than only the warnings', () => {
+    const rows = summaryRows({
+      ...empty,
+      myPullRequests: [
+        pr({ needsYou: true, hasError: true }),
+        pr({ needsYou: false, warnings: [{ severity: 'warning' }] }),
+      ],
+    });
+    expect(rows[0].description).toBe('1 · 1 with errors');
+  });
+
+  it('keeps the order of the design: develop, reviews, to fix, my PRs, ready, then the muted worktrees', () => {
+    const rows = summaryRows({
+      workItemsWithAlerts: 2,
+      reviews: [{ isRequired: true, urgency: 'overdue' }],
+      myPullRequests: [pr({ needsYou: true }), pr({ readyToMerge: true })],
+      failedRuns: 0,
+      baseBranch: { branch: 'develop', brokenPipelines: ['CI'] },
+      staleWorktrees: [{ branch: 'a', reasons: 'x' }],
+    });
+    expect(rows.map((row) => row.id)).toEqual([
+      'baseBranch',
+      'reviews',
+      'alerts',
+      'pullRequestWarnings',
+      'readyToMerge',
+      'staleWorktrees',
+    ]);
+    expect(rows.at(-1)).toMatchObject({
+      label: 'Worktrees to clean up',
+      description: '1',
+      color: 'disabledForeground',
+    });
+    // The badge counts develop + reviews + to fix: needs-you PRs, ready PRs and cleanup never count
+    expect(
+      summaryBadge({
+        workItemsWithAlerts: 2,
+        reviews: [{ isRequired: true, urgency: 'overdue' }],
+        baseBranch: { branch: 'develop', brokenPipelines: ['CI'] },
+      })?.value
+    ).toBe(4);
   });
 });
 
@@ -136,7 +180,7 @@ describe('stale worktrees row (Rule SUMMARY-10)', () => {
     ];
     const rows = summaryRows({ ...empty, staleWorktrees, celebrateCleanBoard: true });
     expect(rows.map((row) => row.id)).toEqual(['nothing', 'staleWorktrees', 'cleanBoard']);
-    expect(rows[1].label).toBe('2 worktrees to clean up');
+    expect(rows[1]).toMatchObject({ label: 'Worktrees to clean up', description: '2' });
     expect(rows[1].tooltip).toContain('feature/a: PR 5 merged');
     expect(summaryRows({ ...empty, staleWorktrees: [] }).map((row) => row.id)).toEqual(['nothing']);
   });

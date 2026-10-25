@@ -1,5 +1,6 @@
 import { homedir } from 'node:os';
 import * as vscode from 'vscode';
+import { STATUS_BAR_PRIORITY } from './statusBarOrder';
 import { SECTION } from './config';
 import { GitAPI } from './git';
 import { listWorktrees } from './worktreeGit';
@@ -14,7 +15,11 @@ import { WorkItemsStore } from './workItemsStore';
  * keeps up to date
  */
 export class WorktreeStatusBar implements vscode.Disposable {
-  private readonly item = vscode.window.createStatusBarItem('totalflowx.worktreeKind', vscode.StatusBarAlignment.Left);
+  private readonly item = vscode.window.createStatusBarItem(
+    'totalflowx.worktreeKind',
+    vscode.StatusBarAlignment.Left,
+    STATUS_BAR_PRIORITY.place
+  );
   private readonly subscriptions: vscode.Disposable[];
   private worktrees: Worktree[] = [];
 

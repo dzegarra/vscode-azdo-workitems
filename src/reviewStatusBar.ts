@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { STATUS_BAR_PRIORITY } from './statusBarOrder';
 import { SECTION } from './config';
 import { describeReviews, describeReviewStatusBar, ReviewUrgency } from './reviewRequests';
 import { reviewSettings, ReviewRequestsWatcher } from './reviewRequestsWatcher';
@@ -14,7 +15,11 @@ const URGENCY_ICONS: Record<ReviewUrgency, string> = {
  * time left of the most urgent one and turns yellow when one is due soon, red when one is overdue
  */
 export class ReviewStatusBar implements vscode.Disposable {
-  private readonly item = vscode.window.createStatusBarItem('totalflowx.reviews', vscode.StatusBarAlignment.Left);
+  private readonly item = vscode.window.createStatusBarItem(
+    'totalflowx.reviews',
+    vscode.StatusBarAlignment.Left,
+    STATUS_BAR_PRIORITY.reviews
+  );
   private readonly subscriptions: vscode.Disposable[];
 
   constructor(private readonly watcher: ReviewRequestsWatcher) {

@@ -403,7 +403,8 @@ export function describeReviewEvent(
       return `You are ${role} of ${pr}: ${request.title}`;
     }
     case 'dueSoon':
-      return `${describeTimeLeft(request, now, rules)} to review ${pr}: ${request.title}`;
+      // Rule REVIEW-NOTIF-9
+      return `${pr} is due in ${formatWait(Math.max(0, timeLeftMs(request, now, rules)))}: ${request.title}`;
     case 'overdue':
       return `${pr} is ${describeTimeLeft(request, now, rules)} (waiting for your review for ${formatWait(
         waitingMs(request, now, rules.workingDays)

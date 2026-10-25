@@ -1,5 +1,6 @@
 import { withFeature } from './requestContext';
 import * as vscode from 'vscode';
+import { STATUS_BAR_PRIORITY } from './statusBarOrder';
 import { AzdoClient } from './azdoClient';
 import { resolveContext, SECTION } from './config';
 import {
@@ -41,7 +42,8 @@ function toPerson(value: unknown): Person | undefined {
 export class CurrentWorkItemStatusBar implements vscode.Disposable {
   private readonly item = vscode.window.createStatusBarItem(
     'totalflowx.currentWorkItem',
-    vscode.StatusBarAlignment.Left
+    vscode.StatusBarAlignment.Left,
+    STATUS_BAR_PRIORITY.workItem
   );
   private readonly subscriptions: vscode.Disposable[] = [];
   private debounce?: NodeJS.Timeout;

@@ -24,7 +24,7 @@ import type { HoverStyle } from './hoverStyle';
 import type { Look } from './look';
 import type { TaskCountStyle } from './taskCountStyle';
 import type { SoundId } from './sounds';
-import type { BaseBranchBanner } from './baseBranchHealth';
+import type { BannerAction, BaseBranchBanner } from './baseBranchHealth';
 import type { SprintCountdown, SprintProgress } from './sprintCountdown';
 import type { WorkingOnAnimation, WorkingOnLevel } from './workingOn';
 import type { SidebarTab } from './sidebarTabs';
@@ -343,8 +343,8 @@ export type WebviewMessage =
   | { type: 'refresh' }
   /** The banner of a broken base branch: the picker of what broke it */
   | { type: 'showBaseBranchAlert' }
-  | { type: 'setFilter'; filter: FilterModel }
-
+  | { type: 'baseBranchAction'; action: BannerAction; definitionId?: number }
+  | { type: 'setFilter'; filter: FilterModel };
 
 /** Buttons of a work item: run by id */
 export type WorkItemActionMessage = Exclude<

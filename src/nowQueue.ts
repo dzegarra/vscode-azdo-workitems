@@ -58,17 +58,29 @@ function reviewItems(reviews: NowInput['reviews']): NowItem[] {
   }));
 }
 
+/** Why a PR of the user waits on them: the status bar reasons, then the team-rule warnings, with their severity */
+function unblockReasons(pr: MyPullRequestModel): { text: string; severity: string }[] {
+  if (pr.isCompleted || pr.isDraft) {
+    return [];
+  }
+  return [
+    ...attentionOf(pr).reasons,
+    // A reviewer's feedback is already one of the reasons (Waiting for author, Rejected)
+    ...pr.warnings.filter((warning) => warning.concern !== 'feedback'),
+  ];
+}
+
+/** The PR waits on the user (Rule NOW-2): the "My PRs that need me" row of the Summary counts these (SUMMARY-3) */
+export function needsYou(pr: MyPullRequestModel): { needsYou: boolean; hasError: boolean } {
+  const reasons = unblockReasons(pr);
+  return { needsYou: reasons.length > 0, hasError: reasons.some((reason) => reason.severity === 'error') };
+}
+
 // Rule NOW-2
 /** The user's PRs that need them: the status bar reasons and the team-rule warnings (MYPR-PULSE) */
 function unblockItems(pullRequests: MyPullRequestModel[]): NowItem[] {
   return pullRequests.flatMap((pr) => {
-    if (pr.isCompleted || pr.isDraft) {
-      return [];
-    }
-    const reasons = attentionOf(pr).reasons.map((reason) => reason.text);
-    // A reviewer's feedback is already one of the reasons (Waiting for author, Rejected)
-    const warnings = pr.warnings.filter((warning) => warning.concern !== 'feedback').map((warning) => warning.text);
-    const details = [...reasons, ...warnings];
+    const details = unblockReasons(pr).map((reason) => reason.text);
     return details.length
       ? [{ verb: 'unblock' as const, id: pr.id, title: pr.title, detail: details.join(' · ') }]
       : [];

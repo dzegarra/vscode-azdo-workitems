@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { needsYou } from './nowQueue';
 import { tabForSummaryRow } from './sidebarTabs';
 import type { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import type { ReviewRequestsWatcher } from './reviewRequestsWatcher';
@@ -43,7 +44,12 @@ export function summaryInput({
     celebrateCleanBoard: !!celebrateCleanBoard?.() && store.entries.length > 0,
     workItemsWithAlerts: store.withAlerts.length,
     reviews: reviews.models(),
-    myPullRequests: myPullRequests.models().items,
+    myPullRequests: myPullRequests.models().items.map((pr) => ({
+      isCompleted: pr.isCompleted,
+      readyToMerge: pr.readyToMerge,
+      warnings: pr.warnings,
+      ...needsYou(pr),
+    })),
     failedRuns: store.pullRequestRuns.filter(({ run }) => run.state === 'failed').length,
     staleWorktrees:
       worktrees && showStaleWorktrees?.()

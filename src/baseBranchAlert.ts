@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import {
+  BannerAction,
   baseBranchModal,
+  baseBranchTarget,
   baseBranchStatusText,
   BrokenPipeline,
   breakingBuildText,
@@ -11,11 +13,16 @@ import {
 import { recordsScope, resolveContext, SECTION } from './config';
 import type { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import { hasFailedTests, testsUrl } from './runDetails';
+import { STATUS_BAR_PRIORITY } from './statusBarOrder';
 import type { WorkItemsStore } from './workItemsStore';
 
 export const SHOW_BASE_BRANCH_COMMAND = 'totalflowx.showBaseBranchAlert';
+/** The buttons of the sidebar banner: open the run / the tests / the PR, or "I'm on it" (args: action, definitionId) */
+export const BASE_BRANCH_ACTION_COMMAND = 'totalflowx.baseBranchAction';
 /** Incidents already shown in the modal, per organization / project: shared by the windows, kept across reloads */
 const NOTIFIED_KEY = 'totalflowx.baseBranchAlert.notified';
+/** Incidents the user answered with "I'm on it" (Rule BASE-CI-11): local, nothing is written to Azure DevOps */
+const ACKNOWLEDGED_KEY = 'totalflowx.baseBranchAlert.acknowledged';
 const MS_PER_MINUTE = 60 * 1000;
 
 interface UrlPick extends vscode.QuickPickItem {
@@ -28,12 +35,15 @@ interface UrlPick extends vscode.QuickPickItem {
  * sidebar read the same state of the store
  */
 export class BaseBranchAlert implements vscode.Disposable {
-  // Priority: the leftmost of the extension's items
+  // Rule BASE-CI-5: always the first item of the extension
   private readonly item = vscode.window.createStatusBarItem(
     'totalflowx.baseBranch',
     vscode.StatusBarAlignment.Left,
-    1000
+    STATUS_BAR_PRIORITY.baseBranch
   );
+  private readonly changed = new vscode.EventEmitter<void>();
+  /** The acknowledged incidents changed: the sidebar banner must be drawn again */
+  readonly onDidAcknowledge = this.changed.event;
   private readonly subscriptions: vscode.Disposable[];
   private readonly timer: NodeJS.Timeout;
 
@@ -50,6 +60,10 @@ export class BaseBranchAlert implements vscode.Disposable {
     this.subscriptions = [
       store.onDidChange(() => this.update()),
       vscode.commands.registerCommand(SHOW_BASE_BRANCH_COMMAND, () => this.pick()),
+      vscode.commands.registerCommand(BASE_BRANCH_ACTION_COMMAND, (action: BannerAction, definitionId?: number) =>
+        this.run(action, definitionId)
+      ),
+      this.changed,
     ];
     // The elapsed time of the text
     this.timer = setInterval(() => this.updateItem(), MS_PER_MINUTE);
@@ -61,6 +75,46 @@ export class BaseBranchAlert implements vscode.Disposable {
     this.item.dispose();
     for (const subscription of this.subscriptions) {
       subscription.dispose();
+    }
+  }
+
+  /** The incident keys the user answered with "I'm on it", for the banner */
+  acknowledged(): Set<string> {
+    const scope = recordsScope(this.store.repository());
+    const all = this.globalState.get<Record<string, string[] | undefined>>(ACKNOWLEDGED_KEY, {});
+    return new Set(scope ? all[scope] : []);
+  }
+
+  // Rule BASE-CI-11
+  /** "I'm on it": remembers the broken pipelines (the incidents of now) as answered; the banner shrinks */
+  private async acknowledge(): Promise<void> {
+    const health = this.store.baseBranch;
+    const scope = recordsScope(this.store.repository());
+    if (!health?.broken.length || !scope) {
+      return;
+    }
+    const all = this.globalState.get<Record<string, string[] | undefined>>(ACKNOWLEDGED_KEY, {});
+    await this.globalState.update(ACKNOWLEDGED_KEY, {
+      ...all,
+      [scope]: rememberIncidents(all[scope] ?? [], health.broken),
+    });
+    this.changed.fire();
+  }
+
+  /** A button of the sidebar banner */
+  private async run(action: BannerAction, definitionId?: number): Promise<void> {
+    if (action === 'acknowledge') {
+      await this.acknowledge();
+      return;
+    }
+    if (action === 'showWhatBrokeIt') {
+      await this.pick();
+      return;
+    }
+    const target = baseBranchTarget(this.store.baseBranch, action, definitionId);
+    const url = target?.pullRequestId === undefined ? target?.url : this.pullRequestUrl(target.pullRequestId);
+    if (url) {
+      await vscode.env.openExternal(vscode.Uri.parse(url));
     }
   }
 
@@ -124,7 +178,7 @@ export class BaseBranchAlert implements vscode.Disposable {
 
   // Rule BASE-CI-7
   private async showModal(branch: string, incidents: BrokenPipeline[]): Promise<void> {
-    const { message, detail, pullRequestId } = baseBranchModal(
+    const { message, detail, pullRequestId, mine } = baseBranchModal(
       branch,
       incidents,
       (id) => this.myPullRequests.isMine(id),
@@ -132,15 +186,20 @@ export class BaseBranchAlert implements vscode.Disposable {
     );
     const first = incidents[0];
     const prUrl = pullRequestId === undefined ? undefined : this.pullRequestUrl(pullRequestId);
+    const onIt = { title: "I'm on it", isCloseAffordance: true };
+    // Rule BASE-CI-7: the order of the design
     const actions: (vscode.MessageItem & { url?: string })[] = [
-      { title: 'Open Run', url: first.run.url },
-      ...(hasFailedTests(first.run) ? [{ title: 'Show Tests', url: testsUrl(first.run.url) }] : []),
+      ...(mine ? [onIt] : []),
+      ...(hasFailedTests(first.run) ? [{ title: 'Show tests', url: testsUrl(first.run.url) }] : []),
+      { title: 'Open run', url: first.run.url },
       ...(prUrl && pullRequestId !== undefined ? [{ title: `Open PR ${pullRequestId}`, url: prUrl }] : []),
-      { title: "I'm on it", isCloseAffordance: true },
+      ...(mine ? [] : [onIt]),
     ];
     const picked = await vscode.window.showErrorMessage(message, { modal: true, detail }, ...actions);
     if (picked?.url) {
       await vscode.env.openExternal(vscode.Uri.parse(picked.url));
+    } else if (picked?.title === onIt.title) {
+      await this.acknowledge();
     }
   }
 

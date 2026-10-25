@@ -3916,13 +3916,14 @@ button.task-pill.empty:focus-visible {
 }
 
 /*
- * Rule BASE-CI-8: the base branch is broken. A solid red banner above everything (the status bar's error colours, so
- * it matches the red item there), pulsing a halo while motion is allowed: it must not be missed
+ * Rules BASE-CI-8, BASE-CI-10, BASE-CI-11: the base branch is broken. A solid red banner above everything (the status
+ * bar's error colours, so it matches the red item there), pulsing a halo while motion is allowed: it must not be
+ * missed. Four variants: your merge broke it (stronger ring), somebody else's, several culprits, no PR
  */
 .base-branch-alarm {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   width: 100%;
   box-sizing: border-box;
   margin: 0 0 var(--gap);
@@ -3932,38 +3933,80 @@ button.task-pill.empty:focus-visible {
   background: var(--vscode-statusBarItem-errorBackground, #c72e0f);
   color: var(--vscode-statusBarItem-errorForeground, #ffffff);
   text-align: left;
+}
+
+.base-branch-alarm.alarm-mine {
+  outline: 2px solid var(--vscode-statusBarItem-errorForeground, #ffffff);
+  outline-offset: 1px;
+}
+
+.base-branch-alarm button {
+  font: inherit;
+  color: inherit;
   cursor: pointer;
 }
 
-.base-branch-alarm:focus-visible {
+.base-branch-alarm button:focus-visible {
   outline: 2px solid var(--vscode-focusBorder);
   outline-offset: 2px;
 }
 
 .base-branch-alarm .alarm-title {
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
   font-weight: 700;
   font-size: 1.1em;
 }
 
-.base-branch-alarm .alarm-line {
-  margin-top: 4px;
-  font-weight: 600;
+.base-branch-alarm .alarm-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.base-branch-alarm .alarm-line,
+.base-branch-alarm .alarm-by {
+  display: block;
   overflow-wrap: anywhere;
+}
+
+.base-branch-alarm .alarm-line {
+  font-weight: 600;
 }
 
 .base-branch-alarm .alarm-by,
-.base-branch-alarm .alarm-hint {
-  opacity: 0.9;
+.base-branch-alarm .alarm-note {
+  opacity: 0.92;
   overflow-wrap: anywhere;
 }
 
-.base-branch-alarm .alarm-hint {
+.base-branch-alarm .alarm-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin-top: 4px;
+}
+
+.base-branch-alarm .alarm-button {
+  padding: 2px 10px;
+  border: 1px solid color-mix(in srgb, currentcolor 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, currentcolor 14%, transparent);
+}
+
+.base-branch-alarm .alarm-button:hover {
+  background: color-mix(in srgb, currentcolor 28%, transparent);
+}
+
+.base-branch-alarm .alarm-ack {
   font-style: italic;
+  opacity: 0.92;
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .base-branch-alarm {
+  .base-branch-alarm:not(.alarm-acknowledged) {
     animation: base-branch-alarm 1.6s ease-in-out infinite;
   }
 

@@ -343,7 +343,7 @@ describe('review events', () => {
     ).toBe('You are a required reviewer of PR 1 by Ana: PR title 1');
     expect(
       describeReviewEvent({ kind: 'dueSoon', request: dueSoon }, now, { maxWaitHours: 24, workingDays: WEEK })
-    ).toBe('5 h left to review PR 2 by Ana: PR title 2');
+    ).toBe('PR 2 by Ana is due in 5 h: PR title 2');
     expect(
       describeReviewEvent({ kind: 'overdue', request: overdue }, now, { maxWaitHours: 24, workingDays: WEEK })
     ).toBe('PR 3 by Ana is overdue by 2 h (waiting for your review for 1 d 2 h): PR title 3');

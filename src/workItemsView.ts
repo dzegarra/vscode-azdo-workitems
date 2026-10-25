@@ -35,7 +35,7 @@ import {
 } from './viewModel';
 import type { SoundId } from './sounds';
 import { baseBranchBanner } from './baseBranchHealth';
-import { SHOW_BASE_BRANCH_COMMAND } from './baseBranchAlert';
+import { BASE_BRANCH_ACTION_COMMAND, type BaseBranchAlert, SHOW_BASE_BRANCH_COMMAND } from './baseBranchAlert';
 import { sprintCountdown, sprintProgress } from './sprintCountdown';
 import type { WorktreeTracker } from './worktreeTracker';
 import { runWorkItemAction } from './workItemActions';
@@ -77,6 +77,7 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
   private pendingTab?: SidebarTab;
   /** Worktrees that can be removed, for the clean row of the Now tab (the tracker is created after the view) */
   private worktrees?: Pick<WorktreeTracker, 'stale'>;
+  private baseBranchAlert?: Pick<BaseBranchAlert, 'acknowledged' | 'onDidAcknowledge'>;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -100,6 +101,12 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
         this.post();
       }
     });
+  }
+
+  /** Where the banner of a broken base branch reads the incidents answered with "I'm on it" (Rule BASE-CI-11) */
+  setBaseBranchAlert(alert: Pick<BaseBranchAlert, 'acknowledged' | 'onDidAcknowledge'>): void {
+    this.baseBranchAlert = alert;
+    alert.onDidAcknowledge(() => this.post());
   }
 
   /** The worktrees to clean up count in the Now tab once the tracker exists */
@@ -137,7 +144,10 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       tasksCountStyle: settings().tasksCountStyle,
       workingOn: workingOnSettings(),
       coverage: this.coverageModel(),
-      baseBranch: baseBranchBanner(this.store.baseBranch, now),
+      baseBranch: baseBranchBanner(this.store.baseBranch, now, {
+        isMine: (id) => this.myPullRequests.isMine(id),
+        acknowledged: this.baseBranchAlert?.acknowledged() ?? new Set(),
+      }),
       reviews: {
         status: this.reviews.status,
         error: this.reviews.error,
@@ -272,6 +282,9 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
       case 'showBaseBranchAlert':
         await vscode.commands.executeCommand(SHOW_BASE_BRANCH_COMMAND);
         return;
+      case 'baseBranchAction':
+        await vscode.commands.executeCommand(BASE_BRANCH_ACTION_COMMAND, message.action, message.definitionId);
+        return;
       case 'cleanUp':
         // Rule NOW-5: the existing flows, which ask before removing anything
         await vscode.commands.executeCommand(
@@ -390,9 +403,9 @@ export class WorkItemsViewProvider implements vscode.WebviewViewProvider {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${
-    webview.cspSource
-  }; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${
+      webview.cspSource
+    }; script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="${asset('media', 'fonts.css').toString()}">
   <link rel="stylesheet" href="${asset('media', 'webview.css').toString()}">

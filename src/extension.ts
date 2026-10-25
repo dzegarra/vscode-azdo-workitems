@@ -55,6 +55,7 @@ import { ReviewStatusBar } from './reviewStatusBar';
 import { SummaryView } from './summaryView';
 import { CLEAN_UP_WORKTREES_COMMAND, REMOVE_WORKTREE_AT_COMMAND, WorktreeTracker } from './worktreeTracker';
 import { rowOf, WorktreesView } from './worktreesView';
+import { STATUS_BAR_PRIORITY, toFixText, toFixTooltipLines } from './statusBarOrder';
 import { WorktreeStatusBar } from './worktreeStatusBar';
 import { FunJournalStore } from './funJournalStore';
 import { SHOW_SPRINT_RECAP_COMMAND, SprintRecapPanel } from './sprintRecapPanel';
@@ -63,12 +64,7 @@ import { PullRequestExtrasLoader } from './pullRequestExtras';
 import { CHECKOUT_REVIEW_COMMAND, ReviewRequestsWatcher } from './reviewRequestsWatcher';
 import { WorkItemDetailsPanels } from './workItemDetails';
 import { WorkItemEntry, WorkItemsStore } from './workItemsStore';
-import {
-  REVEAL_WORK_ITEM_COMMAND,
-  SHOW_SIDEBAR_TAB_COMMAND,
-  VIEW_ID,
-  WorkItemsViewProvider,
-} from './workItemsView';
+import { REVEAL_WORK_ITEM_COMMAND, SHOW_SIDEBAR_TAB_COMMAND, VIEW_ID, WorkItemsViewProvider } from './workItemsView';
 import type { SidebarTab } from './sidebarTabs';
 
 /** Opens the sprint board of a team. When there are several, the user picks one */
@@ -145,6 +141,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const baseBranchAlert = new BaseBranchAlert(context.globalState, store, myPullRequests, () =>
     view.celebrate(false, baseBranchAlarmSoundEnabled() ? 'alarm' : undefined)
   );
+  view.setBaseBranchAlert(baseBranchAlert);
   const notifier = new PullRequestNotifier(context.globalState, store, funJournal, () => celebrate(true, 'merged'));
   const sprintRecap = new SprintRecapPanel(context.extensionUri, store, funJournal);
   details.setMyPullRequests(myPullRequests);
@@ -227,22 +224,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Rule ALERT-SHOW-5
   // Visible even when the sidebar is closed
-  const alertsStatus = vscode.window.createStatusBarItem('totalflowx.alerts', vscode.StatusBarAlignment.Left);
-  alertsStatus.name = 'Work items needing attention';
-  alertsStatus.command = `${VIEW_ID}.focus`;
-  alertsStatus.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+  const alertsStatus = vscode.window.createStatusBarItem(
+    'totalflowx.alerts',
+    vscode.StatusBarAlignment.Left,
+    STATUS_BAR_PRIORITY.toFix
+  );
+  alertsStatus.name = 'Work items to fix';
+  // Rule STATUSBAR-FIX-1: opens the sidebar on the Work tab, where the work items with alerts are listed
+  alertsStatus.command = {
+    command: SHOW_SIDEBAR_TAB_COMMAND,
+    title: 'Show the work items to fix',
+    arguments: ['work'],
+  };
+  alertsStatus.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
   const updateAlertsStatus = () => {
     const entries = store.withAlerts;
-    if (!entries.length) {
+    const text = toFixText(entries.length);
+    if (!text) {
       alertsStatus.hide();
       return;
     }
-    alertsStatus.text = `$(warning) ${entries.length} work item${entries.length === 1 ? '' : 's'}`;
+    alertsStatus.text = text;
+    const [title, ...lines] = toFixTooltipLines(entries);
     alertsStatus.tooltip = new vscode.MarkdownString(
-      [
-        '**Work items needing attention**',
-        ...entries.map((e) => `- ${e.workItem.id} ${e.workItem.title}: ${e.alerts.map((a) => a.message).join('; ')}`),
-      ].join('\n')
+      [`**${title}**`, ...lines.map((line) => `- ${line.replace(/([\\`*_{}[\]<>#])/g, '\\$1')}`)].join('\n')
     );
     alertsStatus.show();
   };

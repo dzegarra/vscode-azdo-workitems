@@ -146,6 +146,7 @@ Every **Checkout** (work items, PRs to review, My Pull Requests, details) can op
 - **Remove Worktrees…** (view menus or command palette) lists all the worktrees of the repository, the [removable ones](#leftover-worktrees) first, to remove several at once. Removing a worktree keeps its branch; a worktree with uncommitted changes is only removed after confirming that they will be lost, and locked ones are skipped. Close the VS Code window of a worktree before removing it.
 - **Delete branch** also removes the worktree of the branch (asking first when it has uncommitted changes).
 
+- **Status bar order**, left to right: the develop alarm (only while broken), main / worktree, the current work item, CI, reviews, my PRs that need me, and `$(warning) 2 to fix` (work items that break a team rule; click it to open the Work tab; hidden at 0). Calm items have plain colours; the reviews item turns yellow when one is due soon and red when one is overdue, CI turns red when a run failed.
 - **Main folder or worktree** in the status bar: `$(repo) main` in the original folder (the one with the `.git` directory; click it to show the Worktrees view), `$(list-tree) worktree` with a highlighted background in a worktree (hover it for a tree of the folders from the main one down to the worktree, `~` for your home folder; click it to open the main folder in a new window). It reads local git only (`totalflowx.worktrees.showInStatusBar`, on by default).
 
 `totalflowx.checkout.mode` sets what **Checkout** does: `ask` (default), `branch` (always in place) or `worktree` (always in a worktree).
@@ -190,7 +191,7 @@ It can be turned off with `totalflowx.workingOn.showInStatusBar`.
 
 ## Summary view
 
-Below **Assigned to Me** (collapsed by default) the **Summary** view lists what needs your attention, one row per kind and only when there is something: [develop is broken](#when-develop-is-broken) (first; click it for what broke it), work items that need attention, pull requests waiting for your review (with how many are overdue / due soon), your pull requests with warnings, your pull requests ready to merge, and failed CI runs. Click a row to show the tab that lists it (work items in Work, pull requests in PRs). When nothing needs attention it says so. Below them, [worktrees to clean up](#leftover-worktrees) (click it to clean up).
+Below **Assigned to Me** (collapsed by default) the **Summary** view lists what needs your attention, one row per kind and only when there is something, with the count on the right: [develop is broken](#when-develop-is-broken) (first; click it for what broke it), **To review** (with how many are overdue / due soon), **Work items to fix**, **My PRs that need me**, **Ready to merge**, and failed CI runs. Click a row to show the tab that lists it (work items in Work, pull requests in PRs). When nothing needs attention it says so. Below them, in a muted colour, [Worktrees to clean up](#leftover-worktrees) (click it to clean up).
 
 The Summary view also carries the **badge of the Totalflow X icon** in the activity bar (work items that need attention + pull requests waiting for your review + 1 while develop is broken), so the number shows from the moment VS Code starts, without opening the sidebar.
 
@@ -275,9 +276,9 @@ They have their own sections at the end of the tooltip and count in the item, an
 
 The base branch (`totalflowx.branches.baseBranch`, `develop`) must always be green. When the last run of one of its pipelines failed or partially succeeded, whoever's merge broke it, you can't miss it:
 
-- a **red status bar item** on the far left, `🔥 develop broken · PR 13901 · 37m`, which stays until a new run of that pipeline succeeds (a spinner is added while a new run is going; a running, re-run or canceled run does not clear it). Hover it for each broken pipeline and what broke it; click it to open the failing run (or its failed tests), the pull request that broke it or the first run that failed (also **Totalflow X: Show What Broke the Base Branch**);
-- a **modal dialog** once per break: "🔥 develop is broken", or "🔥 Your merge broke develop" when the merge was one of your pull requests, with **Open Run**, **Show Tests**, **Open PR** and **I'm on it**. It is shown once per break, not again after a reload or in a window opened later; the next failures of the same red streak do not show it again, a new break after a green run does;
-- a pulsing **red banner** at the top of the sidebar, with each broken pipeline and the PR that broke it (the first failure after the last green run, not the latest one);
+- a **red status bar item**, always the first one on the left, `🔥 develop broken · PR 13901 · 37m`, which stays until a new run of that pipeline succeeds (a spinner is added while a new run is going; a running, re-run or canceled run does not clear it). Hover it for each broken pipeline and what broke it; click it to open the failing run (or its failed tests), the pull request that broke it or the first run that failed (also **Totalflow X: Show What Broke the Base Branch**);
+- a **modal dialog** once per break: "🔥 develop is broken", or "🔥 Your merge broke develop" when the merge was one of your pull requests (then it says "UI-CI failed after PR 13901 …: 3 tests failed in network-restart.spec.ts"), with **I'm on it**, **Show tests**, **Open run** and **Open PR**. It is shown once per break, not again after a reload or in a window opened later; the next failures of the same red streak do not show it again, a new break after a green run does;
+- a pulsing **red banner** at the top of the sidebar, with each broken pipeline and what broke it (the first failure after the last green run, not the latest one). It has four shapes: **Your merge broke develop** (buttons I'm on it, Failed tests, Open run), **develop is broken** by somebody else's merge (Open PR, Failed tests, I'm on it, with "Avoid merging into develop until it is green."), several pipelines with different culprits (a block per pipeline, "you" in bold where it is your PR, "new run going" while a re-run is going; Show what broke it, I'm on it), and a run without a PR, scheduled or manual (`First failed run: scheduled, commit "…" · name`; Open run, I'm on it). **I'm on it** only tells _you_ and your other windows: nothing is written to Azure DevOps, so your colleagues do not see it. The banner then shrinks to its title and "You're on it" until the next break;
 - the first **row of the Summary view** and **+1 on the activity bar badge**;
 - a **siren** in the sidebar when it breaks, only while the sidebar is open (`totalflowx.pipelines.baseBranchAlarmSound`, on; independent from the fun sounds).
 
@@ -307,7 +308,7 @@ The extension checks the pull requests you created (every 2 minutes by default) 
 - a comment is **reopened** (it was resolved, won't fix, closed or by design, and is active again);
 - a person **joins or leaves the required reviewers** (added, removed, declined, made required or optional), saying who did it, e.g. "Szymon Kwasek EXT added themselves as a required reviewer of PR 13571";
 - a reviewer **votes** (approved, approved with suggestions, waiting for the author, rejected);
-- it is **merged**: a second notification offers to set its open PR tasks to **Done** (**Set Done** / **Open task**; `taskDone` in the events setting). Not automatic: you may have more to do in the task.
+- it is **merged**: a second notification offers to set its open PR tasks to **Done** (**Set Done** / **Open task**; when its branch still exists too, **Set Done + delete branch** / **Only set Done** / **Open task**; `taskDone` in the events setting). Not automatic: you may have more to do in the task.
 
 Notifications about comments have **Open Comment**, which opens the PR at that thread. Choose the events with `totalflowx.myPullRequests.notifications` (`comments`, `reopened`, `reviewers`, `vote`, `merged`, `taskDone`).
 
@@ -340,7 +341,7 @@ The section takes the colour of the most urgent PR and counts the overdue and du
 **Notifications** (`totalflowx.reviews.notifications`):
 
 - when you are added as reviewer of a PR (or a draft you review is published),
-- when a PR is due soon,
+- when a PR is due soon ("PR 13958 by Jonas is due in 5 h: …", with **Checkout** and **Open PR**),
 - when a PR is overdue, and again every 4 hours while it stays overdue (`totalflowx.reviews.remindOverdueEveryHours`, 0: only once),
 - when someone **replies** to a comment you started on a PR you review, or **resolves** it (Resolved, Won't fix, Closed, By design). **Open Comment** opens the thread in the PR. PRs completed or abandoned with comments of yours still open are checked one last time, since authors often resolve the comments right before completing the PR,
 - a daily digest the first time VS Code checks each day ("3 pull requests are waiting for your review: 1 overdue, 1 due soon"), instead of the other notifications of that check.

@@ -240,13 +240,44 @@ function listTasks(tasks: { id: number }[]): string {
   return tasks.length === 1 ? `task ${tasks[0].id}` : `tasks ${tasks.map((task) => task.id).join(', ')}`;
 }
 
+/** What a button of the notification of a completed PR does */
+export type CompletedPullRequestAction = 'deleteBranch' | 'openTask' | 'setDone' | 'setDoneAndDelete';
+
+// Rule MYPR-OFFER-4
+/**
+ * The buttons of the notification of a completed PR: with tasks and a branch to offer, "Set Done + delete branch" is
+ * first and "Set Done" becomes "Only set Done"
+ */
+export function completedPullRequestButtons(
+  hasTasks: boolean,
+  branch: string | undefined
+): { label: string; action: CompletedPullRequestAction }[] {
+  if (hasTasks && branch) {
+    return [
+      { label: 'Set Done + delete branch', action: 'setDoneAndDelete' },
+      { label: 'Only set Done', action: 'setDone' },
+      { label: 'Open task', action: 'openTask' },
+    ];
+  }
+  return [
+    ...(hasTasks ? [{ label: 'Set Done', action: 'setDone' as const }] : []),
+    ...(branch ? [{ label: 'Delete branch', action: 'deleteBranch' as const }] : []),
+    ...(hasTasks ? [{ label: 'Open task', action: 'openTask' as const }] : []),
+  ];
+}
+
 /** Question once a PR is completed */
 export function completedPullRequestPrompt(pullRequestId: number, tasks: { id: number }[], branch?: string): string {
   if (!tasks.length) {
     return branch ? deleteBranchOffer(pullRequestId, branch) : `PR ${pullRequestId} completed.`;
   }
-  const question = `PR ${pullRequestId} completed. Set its ${listTasks(tasks)} to ${TASK_DONE}?`;
-  return branch ? `${question} The branch ${branch} can be deleted.` : question;
+  if (branch) {
+    // Rule MYPR-OFFER-4
+    const subject =
+      tasks.length === 1 ? `Task ${tasks[0].id} is` : `Tasks ${tasks.map((task) => task.id).join(', ')} are`;
+    return `PR ${pullRequestId} merged. ${subject} not ${TASK_DONE} yet and the branch ${branch} still exists.`;
+  }
+  return `PR ${pullRequestId} completed. Set its ${listTasks(tasks)} to ${TASK_DONE}?`;
 }
 
 /** Info message once the tasks of PRs published elsewhere were moved */

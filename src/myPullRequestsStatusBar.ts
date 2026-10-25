@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { STATUS_BAR_PRIORITY } from './statusBarOrder';
 import { SECTION } from './config';
 import { attentionIcon, attentionLine, myPullRequestsItem } from './myPullRequestsAttention';
 import { MyPullRequestsWatcher, myPullRequestSettings } from './myPullRequestsWatcher';
@@ -13,7 +14,8 @@ const BACKGROUNDS = { error: 'statusBarItem.errorBackground', warning: 'statusBa
 export class MyPullRequestsStatusBar implements vscode.Disposable {
   private readonly item = vscode.window.createStatusBarItem(
     'totalflowx.myPullRequests',
-    vscode.StatusBarAlignment.Left
+    vscode.StatusBarAlignment.Left,
+    STATUS_BAR_PRIORITY.myPullRequests
   );
   private readonly subscriptions: vscode.Disposable[];
 

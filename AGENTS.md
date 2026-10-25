@@ -64,10 +64,11 @@ src/worktreeStatusBar.ts   status bar "main" / "worktree" of this window (pure: 
 src/workItemsStore.ts     work items of the current sprints + branches, PRs, CI runs, alerts, dependencies, worktrees
 src/*Watcher.ts           pollers: reviewRequestsWatcher (PRs to review), myPullRequestsWatcher (my PRs),
                           pipelineWatcher (CI runs, via src/runsPolling.ts), pullRequestNotifier (events on my PRs)
-src/baseBranchAlert.ts    alarm of a broken base branch (status bar, modal, sound); pure rules and texts: src/baseBranchHealth.ts
+src/baseBranchAlert.ts    alarm of a broken base branch (status bar, modal, sound, banner buttons, "I am on it" acknowledgements); pure rules and texts: src/baseBranchHealth.ts
 src/pullRequestTaskStarter.ts  after each load, moves the tasks of my published PRs to In Progress (rule in src/pullRequestTasks.ts)
 src/pullRequestCompletion.ts   pure: what Complete… of My Pull Requests does to the work items (Bugs never Done); flow in src/commands/completePullRequest.ts
 src/workItemReminders.ts       pure: reminders of the completion caution (not updated daily, sprint ending)
+src/statusBarOrder.ts     pure: priorities that fix the order of the status bar items, text of the "N to fix" item, Rules STATUSBAR-ORDER-1, STATUSBAR-FIX-1
 src/summaryView.ts        native "Summary" tree view; owns the activity bar badge (rows/badge logic, pure: src/summaryRows.ts)
 src/funJournalStore.ts    fun journal in the global state (pure recorders: src/funJournal.ts); fun texts: src/celebrations.ts,
                           src/greenStreak.ts, src/sprintCountdown.ts; sprint wrap-up: src/sprintRecap.ts (pure) + src/sprintRecapPanel.ts

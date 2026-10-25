@@ -1,3 +1,4 @@
+import type { BannerAction, BannerLine } from '../baseBranchHealth';
 import { compactSignals, CompactSignal } from '../compactSignals';
 import { placePopover } from '../popoverPlacement';
 import { renderBranchList } from '../branchRows';
@@ -2333,29 +2334,52 @@ function onTaskCardPointer(target: EventTarget | null): void {
   }
 }
 
-// Rule BASE-CI-8
-/** The red banner of a broken base branch, above everything; clicking it lists what broke it */
+/** "Fri 14:52": a clock time, since an elapsed time would go stale between two posts of the state */
+function clockTime(iso: string): string {
+  return new Date(iso).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function renderAlarmLine(line: BannerLine): string {
+  const failure = [line.failure, line.since && `since ${clockTime(line.since)}`, line.newRun && 'new run going']
+    .filter(Boolean)
+    .map((part) => escapeHtml(String(part)))
+    .join(' · ');
+  const who = line.mine ? '<strong>you</strong>' : escapeHtml(line.by ?? '');
+  return `<span class="alarm-line">${failure}</span><span class="alarm-by">${escapeHtml(line.brokenBy)}${
+    who ? ` · ${who}` : ''
+  }</span>`;
+}
+
+// Rules BASE-CI-8, BASE-CI-10, BASE-CI-11
+/**
+ * The red banner of a broken base branch, above everything, in the four variants of the design: your merge broke it,
+ * somebody else's, several pipelines with different culprits, a run without a PR. The title opens the picker of what
+ * broke it; the buttons open the run, the tests or the PR, or say "I'm on it" (kept locally, nothing is written to
+ * Azure DevOps): then the banner shrinks to its title and "You're on it"
+ */
 function renderBaseBranchAlarm(current: ViewModel): string {
   const banner = current.baseBranch;
   if (!banner) {
     return '';
   }
-  // A clock time: an elapsed time would go stale between two posts of the state
-  const since = banner.since
-    ? ` since ${new Date(banner.since).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`
-    : '';
-  const lines = banner.lines
+  const classes = `base-branch-alarm alarm-${banner.variant}${banner.acknowledged ? ' alarm-acknowledged' : ''}`;
+  const title = `<button class="alarm-title" data-action="showBaseBranchAlert"
+    title="Show the failing runs and the pull request that broke it">🔥 ${escapeHtml(banner.title)}</button>`;
+  if (banner.acknowledged) {
+    return `<div class="${classes}" role="alert">${title}<span class="alarm-ack">You're on it</span></div>`;
+  }
+  const buttons = banner.buttons
     .map(
-      (line) =>
-        `<span class="alarm-line">${escapeHtml(line.failure)}</span><span class="alarm-by">${escapeHtml(
-          line.brokenBy
-        )}</span>`
+      (button) =>
+        `<button class="alarm-button" data-action="baseBranchAction" data-banner-action="${button.action}"${
+          button.definitionId === undefined ? '' : ` data-def="${button.definitionId}"`
+        }>${escapeHtml(button.label)}</button>`
     )
     .join('');
-  return `<button class="base-branch-alarm" data-action="showBaseBranchAlert" role="alert"
-    title="Show the failing runs and the pull request that broke it">
-    <span class="alarm-title">🔥 ${escapeHtml(banner.title)}${escapeHtml(since)}</span>${lines}
-    <span class="alarm-hint">Fix it before anything else</span></button>`;
+  return `<div class="${classes}" role="alert">${title}
+    <div class="alarm-lines">${banner.lines.map(renderAlarmLine).join('')}</div>${
+    banner.note ? `<span class="alarm-note">${escapeHtml(banner.note)}</span>` : ''
+  }<div class="alarm-buttons">${buttons}</div></div>`;
 }
 
 /* ---------- Tabs, sprint strip and the "Needs you" queue (redesign) ---------- */
@@ -3015,6 +3039,12 @@ document.addEventListener('click', (event) => {
     post({ type: 'cleanUp', what: kind });
   } else if (action === 'showBaseBranchAlert') {
     post({ type: 'showBaseBranchAlert' });
+  } else if (action === 'baseBranchAction' && target.dataset.bannerAction) {
+    post({
+      type: 'baseBranchAction',
+      action: target.dataset.bannerAction as BannerAction,
+      definitionId: target.dataset.def === undefined ? undefined : Number(target.dataset.def),
+    });
   } else if (action === 'toggleIteration' && path !== undefined) {
     if (!collapsedIterations.delete(path)) {
       collapsedIterations.add(path);

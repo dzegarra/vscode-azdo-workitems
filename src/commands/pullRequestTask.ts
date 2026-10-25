@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { AzdoClient, PullRequestDetails, WorkItem } from '../azdoClient';
 import {
+  completedPullRequestButtons,
   completedPullRequestPrompt,
   publishedPullRequestMessage,
   PullRequestTaskRef,
@@ -173,20 +174,18 @@ export async function offerCompletedPullRequest(
   if (!tasks.length && !branch) {
     return false;
   }
-  const buttons = [
-    ...(tasks.length ? ['Set Done'] : []),
-    ...(branch ? ['Delete branch'] : []),
-    ...(tasks.length ? ['Open task'] : []),
-  ];
+  const buttons = completedPullRequestButtons(tasks.length > 0, branch);
   const picked = await vscode.window.showInformationMessage(
     completedPullRequestPrompt(pr.pullRequestId, tasks, branch),
-    ...buttons
+    ...buttons.map((button) => button.label)
   );
-  if (picked === 'Set Done') {
+  const action = buttons.find((button) => button.label === picked)?.action;
+  if (action === 'setDone' || action === 'setDoneAndDelete') {
     await moveTasks(client, tasks, TASK_DONE);
-  } else if (picked === 'Delete branch' && branch) {
+  }
+  if ((action === 'deleteBranch' || action === 'setDoneAndDelete') && branch) {
     await deleteBranch(branch);
-  } else if (picked === 'Open task') {
+  } else if (action === 'openTask') {
     await open(client.workItemWebUrl(tasks[0].id));
   }
   return true;

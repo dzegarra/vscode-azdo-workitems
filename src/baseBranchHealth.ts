@@ -12,7 +12,7 @@ import {
   RunState,
   toRunModel,
 } from './pipelines';
-import { runLabel } from './runDetails';
+import { hasFailedTests, runLabel, testsUrl } from './runDetails';
 
 /** A pipeline whose last run on the base branch has no run for this long no longer runs there: it is ignored */
 export const STALE_PIPELINE_DAYS = 14;
@@ -29,6 +29,8 @@ export interface BreakingBuild {
   message?: string;
   /** Whoever completed the PR (or queued the run), not necessarily the author */
   requestedFor?: string;
+  /** What queued the run: "schedule", "manual", "individualCI"… */
+  reason?: string;
 }
 
 export interface BrokenPipeline {
@@ -59,6 +61,7 @@ function breakingBuild(build: BuildRun): BreakingBuild {
     pullRequestId: mergedPullRequestId(build),
     message: message || undefined,
     requestedFor: build.requestedFor?.displayName,
+    reason: build.reason,
   };
 }
 
@@ -226,6 +229,15 @@ export interface BaseBranchModal {
   detail: string;
   /** The breaking PR, when one merge broke every new incident */
   pullRequestId?: number;
+  /** The user's own merge broke it: the modal is blunt (Rule BASE-CI-7) */
+  mine: boolean;
+}
+
+/** "3 tests failed in network-restart.spec.ts" / "Failed at Build": what failed, with the test files when known */
+function failureWithFiles(pipeline: BrokenPipeline, now: Date): string {
+  const label = runLabel(pipeline.run, now).text;
+  const files = [...new Set((pipeline.run.tests?.failedTests ?? []).map((test) => test.file).filter(Boolean))];
+  return hasFailedTests(pipeline.run) && files.length ? `${label} in ${files.slice(0, 2).join(', ')}` : label;
 }
 
 // Rule BASE-CI-7
@@ -239,36 +251,198 @@ export function baseBranchModal(
   const culprit = singleCulprit({ branch, broken: incidents });
   const mine = culprit !== undefined && isMine(culprit);
   const message = mine
-    ? `🔥 Your merge broke ${branch}. Please fix it now.`
+    ? `🔥 Your merge broke ${branch}`
     : `🔥 ${branch} is broken. It must be fixed as soon as possible.`;
   const detail = incidents
-    .map((pipeline) => `❌ ${brokenPipelineText(pipeline, now)}\nBroken by ${breakingBuildText(pipeline.brokenBy)}`)
+    .map((pipeline) =>
+      mine
+        ? `${pipeline.pipeline} failed after ${breakingBuildText(pipeline.brokenBy)}: ${failureWithFiles(
+            pipeline,
+            now
+          )}.`
+        : `❌ ${brokenPipelineText(pipeline, now)}\nBroken by ${breakingBuildText(pipeline.brokenBy)}`
+    )
     .join('\n\n');
-  return { message, detail, pullRequestId: culprit };
+  return { message, detail, pullRequestId: culprit, mine };
+}
+
+/** The buttons of the banner and of the modal; what each does is decided by baseBranchTarget */
+export type BannerAction = 'acknowledge' | 'openPullRequest' | 'openRun' | 'showTests' | 'showWhatBrokeIt';
+
+export interface BannerButton {
+  action: BannerAction;
+  label: string;
+  /** The pipeline the button is about (open its run, show its tests) */
+  definitionId?: number;
+}
+
+/** Which of the four banners of the design */
+export type BannerVariant = 'mine' | 'noPr' | 'other' | 'several';
+
+export interface BannerLine {
+  definitionId: number;
+  /** "UI-CI · 3 tests failed" */
+  failure: string;
+  /** When this pipeline broke (ISO), for "since Fri 14:52" */
+  since?: string;
+  /** A newer run is going: maybe the fix */
+  newRun: boolean;
+  /** "Broken by PR 13901 Network restart button" / `First failed run: scheduled, commit "Bump eslint"` */
+  brokenBy: string;
+  /** Whoever completed the PR or queued the run */
+  by?: string;
+  /** The user's own PR broke this pipeline: shown as "you" */
+  mine: boolean;
 }
 
 /** The red banner at the top of the sidebar */
 export interface BaseBranchBanner {
-  /** "develop is broken" */
+  variant: BannerVariant;
+  /** "Your merge broke develop" / "develop is broken" */
   title: string;
   /** When it broke (ISO), for the elapsed time */
   since?: string;
   /** One per broken pipeline: what failed, then what broke it */
-  lines: { failure: string; brokenBy: string }[];
+  lines: BannerLine[];
+  /** A line under the lines ("Avoid merging into develop until it is green.") */
+  note?: string;
+  buttons: BannerButton[];
+  /** The user said "I'm on it" for every broken pipeline (kept locally): the banner shrinks */
+  acknowledged: boolean;
 }
 
-// Rule BASE-CI-8
+/** "scheduled", "manual", "push"… for "First failed run: scheduled" */
+function reasonWord(reason: string | undefined): string {
+  const words: Record<string, string> = {
+    schedule: 'scheduled',
+    manual: 'manual',
+    individualCI: 'push',
+    batchedCI: 'push',
+  };
+  return (reason && words[reason]) || 'run';
+}
+
+/** Who/what broke the pipeline, split in the text and the person (the webview writes "you" for the user) */
+function bannerBrokenBy(
+  pipeline: BrokenPipeline,
+  mine: boolean,
+  withTitle: boolean
+): Pick<BannerLine, 'brokenBy' | 'by'> {
+  const { brokenBy } = pipeline;
+  const by = brokenBy.requestedFor;
+  if (brokenBy.pullRequestId === undefined) {
+    const commit = brokenBy.message ? `, commit "${brokenBy.message}"` : '';
+    return { brokenBy: `First failed run: ${reasonWord(brokenBy.reason)}${commit}`, by };
+  }
+  const title = withTitle && brokenBy.message ? ` ${brokenBy.message}` : '';
+  return { brokenBy: `Broken by PR ${brokenBy.pullRequestId}${title}`, by: mine ? undefined : by };
+}
+
+/** One culprit for every pipeline: the PR, or the build when there is no PR */
+function sharedCulprit(health: BaseBranchHealth): boolean {
+  return new Set(health.broken.map(({ brokenBy }) => brokenBy.pullRequestId ?? `build ${brokenBy.buildId}`)).size === 1;
+}
+
+// Rule BASE-CI-10
+/** The buttons of each variant, in the order of the design */
+function bannerButtons(variant: BannerVariant, health: BaseBranchHealth): BannerButton[] {
+  const [first] = health.broken;
+  const withTests = health.broken.find((pipeline) => hasFailedTests(pipeline.run));
+  const tests: BannerButton[] = withTests
+    ? [{ action: 'showTests', label: 'Failed tests', definitionId: withTests.definitionId }]
+    : [];
+  const run: BannerButton = { action: 'openRun', label: 'Open run', definitionId: first.definitionId };
+  const onIt: BannerButton = { action: 'acknowledge', label: "I'm on it" };
+  switch (variant) {
+    case 'mine':
+      return [onIt, ...tests, run];
+    case 'other':
+      return [{ action: 'openPullRequest', label: 'Open PR', definitionId: first.definitionId }, ...tests, onIt];
+    case 'several':
+      return [{ action: 'showWhatBrokeIt', label: 'Show what broke it' }, onIt];
+    case 'noPr':
+      return [run, onIt];
+  }
+}
+
+export interface BannerContext {
+  /** Whether a PR is one of the user's own (the watcher of My Pull Requests) */
+  isMine: (pullRequestId: number) => boolean;
+  /** Incident keys the user answered with "I'm on it" */
+  acknowledged: ReadonlySet<string>;
+}
+
+// Rules BASE-CI-8, BASE-CI-10, BASE-CI-11
 /** The banner of the sidebar; undefined while the branch is green */
-export function baseBranchBanner(health: BaseBranchHealth | undefined, now: Date): BaseBranchBanner | undefined {
+export function baseBranchBanner(
+  health: BaseBranchHealth | undefined,
+  now: Date,
+  context: BannerContext = { isMine: () => false, acknowledged: new Set() }
+): BaseBranchBanner | undefined {
   if (!health?.broken.length) {
     return undefined;
   }
+  const shared = sharedCulprit(health);
+  const [first] = health.broken;
+  const mineOf = (pipeline: BrokenPipeline) =>
+    pipeline.brokenBy.pullRequestId !== undefined && context.isMine(pipeline.brokenBy.pullRequestId);
+  let variant: BannerVariant = 'several';
+  if (shared) {
+    if (first.brokenBy.pullRequestId === undefined) {
+      variant = 'noPr';
+    } else {
+      variant = mineOf(first) ? 'mine' : 'other';
+    }
+  }
   return {
-    title: `${health.branch} is broken`,
+    variant,
+    title: variant === 'mine' ? `Your merge broke ${health.branch}` : `${health.branch} is broken`,
     since: brokenSince(health),
-    lines: health.broken.map((pipeline) => ({
-      failure: brokenPipelineText(pipeline, now),
-      brokenBy: `Broken by ${breakingBuildText(pipeline.brokenBy)}`,
-    })),
+    lines: health.broken.map((pipeline) => {
+      const mine = mineOf(pipeline);
+      return {
+        definitionId: pipeline.definitionId,
+        failure: `${pipeline.pipeline} · ${runLabel(pipeline.run, now).text}`,
+        since: pipeline.brokenBy.finishTime,
+        newRun: pipeline.fixRunning,
+        mine,
+        ...bannerBrokenBy(pipeline, mine, variant !== 'several'),
+      };
+    }),
+    note: variant === 'other' ? `Avoid merging into ${health.branch} until it is green.` : undefined,
+    buttons: bannerButtons(variant, health),
+    acknowledged: health.broken.every((pipeline) => context.acknowledged.has(incidentKey(pipeline))),
   };
+}
+
+export interface BaseBranchTarget {
+  /** Opens this URL in the browser */
+  url?: string;
+  /** Opens this PR of the repository (its URL depends on the repository) */
+  pullRequestId?: number;
+}
+
+/** What a button of the banner opens; undefined when there is nothing to open (the caller does something else) */
+export function baseBranchTarget(
+  health: BaseBranchHealth | undefined,
+  action: BannerAction,
+  definitionId: number | undefined
+): BaseBranchTarget | undefined {
+  const pipeline = health?.broken.find((item) => item.definitionId === definitionId) ?? health?.broken.at(0);
+  if (!pipeline) {
+    return undefined;
+  }
+  switch (action) {
+    case 'openRun':
+      return { url: pipeline.run.url };
+    case 'showTests':
+      return { url: hasFailedTests(pipeline.run) ? testsUrl(pipeline.run.url) : pipeline.run.url };
+    case 'openPullRequest':
+      return pipeline.brokenBy.pullRequestId === undefined
+        ? { url: pipeline.brokenBy.url }
+        : { pullRequestId: pipeline.brokenBy.pullRequestId };
+    case 'acknowledge':
+    case 'showWhatBrokeIt':
+      return undefined;
+  }
 }
