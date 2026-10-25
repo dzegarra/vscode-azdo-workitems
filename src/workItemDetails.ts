@@ -226,7 +226,14 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
         figmaInVsCode: isFigmaExtensionInstalled(),
         ownPullRequest,
         // Rules TRACK-*: only for the Backlog Items and Bugs of the list (their branches and PRs are known)
-        track: card && canHaveTasks(card.type) ? workItemTrack(card, ownPullRequest) : undefined,
+        track:
+          card && canHaveTasks(card.type)
+            ? workItemTrack(
+                card,
+                ownPullRequest,
+                data.children.filter((child) => child.type === 'Task')
+              )
+            : undefined,
       });
     }
     panel.webview.html = this.page(panel.webview, body);

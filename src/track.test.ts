@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { RunModel } from './pipelines';
-import { currentStation, trackPullRequest, workItemTrack, type TrackItem, type TrackPullRequest } from './track';
+import {
+  currentStation,
+  tasksOf,
+  trackPullRequest,
+  workItemTrack,
+  type TrackItem,
+  type TrackPullRequest,
+} from './track';
 import type { BranchModel, PullRequestModel } from './viewModel';
 import type { WorkItemAlert } from './alerts';
 
@@ -172,5 +179,43 @@ describe('currentStation', () => {
     const track = workItemTrack(item({ pullRequests: [pr({ runs: [run('running')], tone: 'waiting' })] }));
     expect(currentStation(track)?.id).toBe('review');
     expect(currentStation(workItemTrack(item()))?.id).toBe('pullRequest');
+  });
+});
+
+describe('merged PR with work left', () => {
+  const merged = pr({ tone: 'completed', isActive: false });
+  const last = (track: ReturnType<typeof workItemTrack>) => track.at(-1);
+
+  it('keeps Done pending while a task is open', () => {
+    // Rule TRACK-7
+    const track = workItemTrack(item({ pullRequests: [merged] }), undefined, [{ state: 'To Do' }, { state: 'Done' }]);
+    expect(last(track)).toMatchObject({ state: 'pending', detail: 'PR merged · 1 task open' });
+    const two = workItemTrack(item({ pullRequests: [merged] }), undefined, [
+      { state: 'To Do' },
+      { state: 'In Progress' },
+    ]);
+    expect(last(two)?.detail).toBe('PR merged · 2 tasks open');
+  });
+
+  it('keeps Done pending while the state is not started', () => {
+    // Rule TRACK-7
+    const track = workItemTrack(item({ state: 'Approved', pullRequests: [merged] }));
+    expect(last(track)).toMatchObject({ state: 'pending', detail: 'PR merged · Approved' });
+  });
+
+  it('is the move of the user when the work is started and the tasks are done or removed', () => {
+    // Rule TRACK-7
+    const track = workItemTrack(item({ pullRequests: [merged] }), undefined, [{ state: 'Done' }, { state: 'Removed' }]);
+    expect(last(track)).toMatchObject({ state: 'needsYou', detail: 'PR merged, move it to Done' });
+  });
+
+  it('collects the tasks of the list and the other tasks', () => {
+    // Rule TRACK-7
+    const tasks = tasksOf({ id: 1, otherTasks: [{ state: 'To Do' } as never] }, [
+      { parentId: 1, state: 'Done', type: 'Task' },
+      { parentId: 2, state: 'Done', type: 'Task' },
+      { parentId: 1, state: 'Done', type: 'Bug' },
+    ]);
+    expect(tasks).toHaveLength(2);
   });
 });

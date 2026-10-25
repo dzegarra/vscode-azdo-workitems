@@ -187,6 +187,50 @@ describe('columnOf (BOARD-2..5)', () => {
   });
 });
 
+describe('a merged PR with work left (BOARD-3, BOARD-5)', () => {
+  const merged = pr({ tone: 'completed', isActive: false });
+
+  it('goes back to To start / Branch · Draft with the Done detail as status', () => {
+    // Rule BOARD-3
+    const board = buildBoard(
+      input({
+        workItems: [
+          workItem({ id: 1, state: 'Approved', displayState: 'Approved', pullRequests: [merged] }),
+          workItem({ id: 2, pullRequests: [merged] }),
+          workItem({ id: 3, type: 'Task', parentId: 2, state: 'To Do' }),
+        ],
+      })
+    );
+    const cards = Object.fromEntries(board.work.map((card) => [card.id, card]));
+    expect(cards[1]).toMatchObject({ column: 'toStart', status: { text: 'PR merged · Approved' } });
+    expect(cards[2]).toMatchObject({ column: 'branch', status: { text: 'PR merged · 1 task open' } });
+  });
+
+  it('keeps a merged PR with the work done in Done', () => {
+    // Rule BOARD-5
+    expect(columnFor(workItem({ pullRequests: [merged] }))).toBe('done');
+  });
+
+  it('says Blocked once', () => {
+    // Rule BOARD-8
+    const board = buildBoard(
+      input({
+        workItems: [
+          workItem({
+            id: 1,
+            type: 'Bug',
+            state: 'Approved',
+            branches: [],
+            branch: undefined,
+            blockingTags: ['blocked'],
+          }),
+        ],
+      })
+    );
+    expect(board.work.at(0)?.status?.text).toBe('Blocked');
+  });
+});
+
 describe('buildBoard', () => {
   it('collapses finished work items without broken rules into one card and keeps the broken ones', () => {
     // Rule BOARD-5

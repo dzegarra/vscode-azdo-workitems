@@ -5,7 +5,7 @@
  */
 import type { MyPullRequestModel, WarningConcern } from './myPullRequests';
 import { worstRunState } from './compactSignals';
-import { isFinishedState, normalizeState, stateCategory } from './states';
+import { isFinishedState, isNotStartedState, normalizeState, stateCategory } from './states';
 import type { PullRequestModel, WorkItemModel } from './viewModel';
 
 export type StationId = 'branch' | 'ci' | 'done' | 'pullRequest' | 'ready' | 'review';
@@ -152,29 +152,61 @@ function readyStation(pr: PullRequestModel | undefined, mine: TrackPullRequest |
     : { ...station, state: 'needsYou', detail: 'complete it' };
 }
 
+/** A task of a work item, as far as the track cares: its state */
+export interface TrackTask {
+  state: string;
+}
+
+/** The tasks of a work item: the Task children in the list plus the ones outside it (other developers, iterations) */
+export function tasksOf(
+  item: Pick<WorkItemModel, 'id' | 'otherTasks'>,
+  workItems: Pick<WorkItemModel, 'parentId' | 'state' | 'type'>[]
+): TrackTask[] {
+  return [
+    ...workItems.filter((child) => child.parentId === item.id && child.type === 'Task'),
+    ...(item.otherTasks ?? []),
+  ];
+}
+
 // Rule TRACK-7
 /**
  * Developers finish a Bug at Ready to Test (only testers move it to Done), a Backlog Item at Done. A finished work
- * item that still breaks a team rule is broken; a merged PR whose work item is not finished is the user's move
+ * item that still breaks a team rule is broken. A merged PR is the user's move to Done only when no work is left:
+ * a not started state or an open task sends the work back to coding (pending)
  */
-function doneStation(item: TrackItem, pr: PullRequestModel | undefined): Station {
+function doneStation(item: TrackItem, pr: PullRequestModel | undefined, tasks: TrackTask[]): Station {
   const station = { id: 'done' as const, label: isBug(item.type) ? 'Ready to Test' : 'Done' };
   if (isFinishedState(item.state)) {
     return item.alerts.length
       ? { ...station, state: 'broken', detail: `${String(item.alerts.length)} team rule(s) broken` }
       : { ...station, state: 'done' };
   }
-  return pr?.tone === 'completed'
-    ? { ...station, state: 'needsYou', detail: `PR merged, move it to ${station.label}` }
-    : { ...station, state: 'pending' };
+  if (pr?.tone !== 'completed') {
+    return { ...station, state: 'pending' };
+  }
+  const open = tasks.filter((task) => {
+    const category = stateCategory(task.state);
+    return category !== 'done' && category !== 'removed';
+  }).length;
+  if (open) {
+    return {
+      ...station,
+      state: 'pending',
+      detail: `PR merged · ${String(open)} ${open === 1 ? 'task' : 'tasks'} open`,
+    };
+  }
+  if (isNotStartedState(item.state)) {
+    return { ...station, state: 'pending', detail: `PR merged · ${item.state}` };
+  }
+  return { ...station, state: 'needsYou', detail: `PR merged, move it to ${station.label}` };
 }
 
 /**
  * The six stations of a work item, in order: Branch, Pull request, CI, Review, Ready to be merged, Done (Ready to
  * Test for Bugs). `mine`: the user's own PR when the track PR is one of theirs, for what only My Pull Requests
- * knows (ready to merge, auto-complete, warnings)
+ * knows (ready to merge, auto-complete, warnings). `tasks`: its tasks (TRACK-7); none when unknown
  */
-export function workItemTrack(item: TrackItem, mine?: TrackPullRequest): Station[] {
+export function workItemTrack(item: TrackItem, mine?: TrackPullRequest, tasks: TrackTask[] = []): Station[] {
   const pr = trackPullRequest(item);
   const own = mine && pr && mine.id === pr.id ? mine : undefined;
   if (stateCategory(item.state) === 'removed') {
@@ -194,7 +226,7 @@ export function workItemTrack(item: TrackItem, mine?: TrackPullRequest): Station
     ciStation(pr),
     reviewStation(pr, own),
     readyStation(pr, own),
-    doneStation(item, pr),
+    doneStation(item, pr, tasks),
   ];
 }
 

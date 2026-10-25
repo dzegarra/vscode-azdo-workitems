@@ -61,7 +61,7 @@ import { splitWorkingOn, WorkingOnLevel, workingOnAnimationClasses, workingOnBad
 import { nowQueue, type NowItem, type Verb } from '../nowQueue';
 import { lookClass } from '../look';
 import { isSidebarTab, SIDEBAR_TABS, TAB_LABELS, tabCounts, type SidebarTab } from '../sidebarTabs';
-import { trackPullRequest, workItemTrack, type Station } from '../track';
+import { tasksOf, trackPullRequest, workItemTrack, type Station } from '../track';
 import { renderMiniTrackHtml, renderTrackHtml } from '../trackHtml';
 import type { CompletedPeriod } from '../myPullRequests';
 import type {
@@ -1021,7 +1021,7 @@ function renderWorkingOn(item: WorkItemModel): string {
 function trackOf(item: WorkItemModel): Station[] {
   const followed = trackPullRequest(item);
   const mine = followed ? model?.pullRequests.items.find((pr) => pr.id === followed.id) : undefined;
-  return workItemTrack(item, mine);
+  return workItemTrack(item, mine, tasksOf(item, model?.workItems ?? []));
 }
 
 /** The six stations under the title of a large card */

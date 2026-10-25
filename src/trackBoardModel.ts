@@ -13,7 +13,7 @@ import type { ReviewRequestModel } from './reviewRequests';
 import type { SprintProgress } from './sprintCountdown';
 import { isFinishedState, isNotStartedState, stateCategory } from './states';
 import { taskProgress } from './taskProgress';
-import { currentStation, trackPullRequest, workItemTrack, type Station, type StationState } from './track';
+import { currentStation, tasksOf, trackPullRequest, workItemTrack, type Station, type StationState } from './track';
 import { branchActions, type PullRequestModel, type WebviewMessage, type WorkItemModel } from './viewModel';
 
 export type BoardColumnId = 'branch' | 'ci' | 'done' | 'ready' | 'review' | 'toStart';
@@ -228,6 +228,10 @@ export function columnOf(item: WorkItemModel, track: Station[], pr: PullRequestM
   if (!current) {
     return 'done';
   }
+  // Rule BOARD-3 / BOARD-5: a merged PR with work left (Done station pending) goes back to coding
+  if (current.id === 'done' && current.state === 'pending') {
+    return isNotStartedState(item.state) ? 'toStart' : 'branch';
+  }
   switch (current.id) {
     case 'branch':
       // Rule BOARD-3: nothing yet. Not started: To start; started without a branch (created elsewhere): coding
@@ -391,6 +395,9 @@ function statusLine(
   if (current?.state === 'broken' && current.detail) {
     return { text: current.detail, tone: 'broken' };
   }
+  if (current?.id === 'done' && current.state === 'pending' && current.detail) {
+    return { text: current.detail, tone: 'needsYou' };
+  }
   const blocked = item.blockingTags?.at(0);
   const waitsOn = item.openPredecessors?.at(0);
   switch (column) {
@@ -441,7 +448,7 @@ function statusLine(
     return { text: `Waits on #${String(waitsOn.id)}`, tone: 'needsYou' };
   }
   if (blocked) {
-    return { text: `Blocked · ${blocked}`, tone: 'needsYou' };
+    return { text: 'Blocked', tone: 'needsYou' };
   }
   return current?.state === 'needsYou' && current.detail ? { text: current.detail, tone: 'needsYou' } : undefined;
 }
@@ -576,7 +583,7 @@ function workCard(
 ): BoardWorkCard {
   const followed = trackPullRequest(item);
   const mine = followed ? myPullRequests.find((candidate) => candidate.id === followed.id) : undefined;
-  const track = workItemTrack(item, mine);
+  const track = workItemTrack(item, mine, tasksOf(item, workItems));
   const current = isFinishedState(item.state) ? undefined : currentStation(track);
   const column = columnOf(item, track, followed);
   const verb = queueVerbOf(item, queue);

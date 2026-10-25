@@ -176,6 +176,10 @@ The UI is being rebuilt from a design made with all the rules known in advance (
 - **Left out and why**: "Blocked · #63290 waits on it" (successors that wait on the work item are not in the work item model; it shows the open predecessors and the blocking tags it has), hovering the time of a review for the PR history (the review model carries the timeline but showing it is a separate piece of work; not done), and the arrow keys between cards (Tab moves, Enter opens).
 - **The hover summary and the drawer share the card data** (`hover` / `facts` of the model), the strict CSP applies (sizes by CSSOM after the render, the popover is placed with `style.left/top`), and the delay is the common `popovers.hoverDelay` setting.
 
+### A merged PR is not Done while work is left
+
+Work items 37691 (state Approved) and 60840 (one Task not started) showed in Done on the Track board because their PR was merged. The Done station (TRACK-7) now asks for the state and the tasks too: with a not started state or an open task it stays pending ("PR merged · 1 task open") and the card goes back to coding (BOARD-3: To start when not started, else Branch · Draft). Only a started work item with every task done or removed is the user's move to Done. Why: a PR is one slice of the work, not the work item.
+
 ## Fun features (`totalflowx.fun.enabled`)
 
 - **Opt-in, private, never comparative.** Off by default: some people dislike confetti at work, and the sidebar is always visible. Nothing is a leaderboard or compares people: comparisons turn fun into pressure and invite gaming the numbers. The "karma" of the recap only compares the user's own reviews with their own PRs.
