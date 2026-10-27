@@ -129,7 +129,7 @@ These files are the project's memory: conversations with AI agents are not share
 - [README.md](README.md): every user-visible change (features, settings, commands, texts).
 - [docs/DECISIONS.md](docs/DECISIONS.md): every decision with a "why" (a team rule, a trade-off, something that looks like a bug but is intended). Correct or remove entries that the change makes wrong.
 - [docs/AZURE_DEVOPS.md](docs/AZURE_DEVOPS.md): every new or corrected fact about the API (endpoints, versions, quirks), only once verified.
-- [docs/RULES.md](docs/RULES.md): every change to a decision rule (states shown, actions unlocked, thresholds): update its row, its `// Rule <ID>` comment and a test in the same change. `src/rulesDoc.test.ts` enforces that the IDs in the code and in the document match.
+- [docs/RULES.md](docs/RULES.md): every change to a decision rule (states shown, actions unlocked, thresholds): update its row, its `// Rule <ID>` comment and a test in the same change. `src/rulesDoc.test.ts` enforces that the IDs in the code and in the document match. What is designed but not built yet goes, without IDs, into the "<block>: designed, not implemented yet" list at the end of its block; it becomes table rows (with IDs and code comments) when it is built.
 - This file (AGENTS.md): when the architecture, commands, conventions, verification steps or safety rules change, or when a convention turns out to be missing.
 
 Before finishing a task, check that these files still describe the code; say in the summary of the change which ones were updated.

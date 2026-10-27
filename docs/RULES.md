@@ -32,6 +32,7 @@ The exact rules that decide **which states are shown** and **which options and a
   - [Work tab: cards, branches, signals, filters](#work-tab-cards-branches-signals-filters)
   - [Tasks of a card](#tasks-of-a-card)
   - [PRs tab: the Reviews box and My Pull Requests](#prs-tab-the-reviews-box-and-my-pull-requests)
+  - [Sidebar: designed, not implemented yet](#sidebar-designed-not-implemented-yet)
 - [3. Work Item Details panel](#3-work-item-details-panel)
   - [State bar and checklist](#state-bar-and-checklist)
 - [4. Track board](#4-track-board)
@@ -40,6 +41,7 @@ The exact rules that decide **which states are shown** and **which options and a
 - [5. Sprint timeline](#5-sprint-timeline)
   - [Sprint timeline: Mine + my reviews](#sprint-timeline-mine--my-reviews)
   - [Sprint timeline: Whole team](#sprint-timeline-whole-team)
+  - [Sprint timeline: designed, not implemented yet](#sprint-timeline-designed-not-implemented-yet)
 - [6. Dependency map](#6-dependency-map)
 - [7. Status bar & notifications](#7-status-bar--notifications)
   - [Status bar, badge and Summary view](#status-bar-badge-and-summary-view)
@@ -1017,6 +1019,12 @@ Source: the models the boxes already show (no extra request). Pure: `panelTone.t
 | PANEL-TONE-1 | Reviews box: a shown required request is overdue (REVIEW-URG-4) / any other request is waiting / none                                | `alert` (red) / `attention` (orange) / `none` (neutral). Optional overdue alone is `attention`; the Reviewed list is never read       | panelTone.ts:reviewsPanelTone        | panelTone.test.ts › is alert when a required review is overdue |
 | PANEL-TONE-2 | My Pull Requests box, completed PRs skipped: an active PR needs attention (MYPR-PULSE-1..3) / any active PR (drafts included) / none | `attention` (orange) / `info` (blue) / `none` (neutral). Only completed PRs, or a completed PR that would need attention, give `none` | panelTone.ts:myPullRequestsPanelTone | panelTone.test.ts › ignores completed PRs next to active ones  |
 
+### Sidebar: designed, not implemented yet
+
+Not rules yet (no code, no IDs): the design canvas has them; each becomes rows of a table above when it is built.
+
+- **Show all** in the filter panel of the Work tab: one button that clears every filter (types, states, PR states, priorities, predecessors, duplicates) and the search. Shown only while something is filtered, next to "N values hidden". There is no "Reset to default" button.
+
 ---
 
 ## 3. Work Item Details panel
@@ -1147,6 +1155,15 @@ The data come from TEAM-* (General rules).
 | TIMELINE-24 | Implementation start of other people | Never the first commit (it costs one request per PR): the activation of the Task linked to the PR, else of the work item (approximate); the setting `appearance.timelineCodingStart` only decides between them for the user's PRs. "This + next sprint": only the user's planned rows (their query); the others' rows only get the longer axis and the spill | timelineRows.ts:implementationOf | teamTimelineModel.test.ts › starts the coding of a PR of another person… |
 | TIMELINE-25 | Summary of a section and footer | Header lane: the user "2 need you · 1 asleep" (as the board's lane); others, at most three of: "your #N waits on <name>", "N reviews for you", "<name>'s PR waits on overdue reviews" (a required reviewer late) or "waiting on reviewers", "N asleep". Footer: **ASLEEP** the asleep work items with their owner ("#62907 (you) · #64512 (Piotr)") and "Rows of other people are read-only · hover a bar for its details". Legend: "needs its owner" and "review overdue" | teamTimelineModel.ts:sectionSummary; webview/timeline.ts:renderFooter | teamTimelineModel.test.ts › sectionSummary, › lists the asleep items… |
 | TIMELINE-26 | When the team data loads | The timeline asks `TeamWorkStore.request()` on each draw while it is visible and in Whole team (same attempt key as TEAM-8, so two tabs never load twice). Requests per refresh: the ones of TEAM-2..7, none of its own for the others | sprintTimeline.ts:post | (TEAM-8) |
+
+### Sprint timeline: designed, not implemented yet
+
+Not rules yet (no code, no IDs): the design canvas ("Sprint timeline · work items by station, PR lifecycles") has them; they will change TIMELINE-17, TIMELINE-20, TIMELINE-24 and TIMELINE-27 when they are built.
+
+- **One PR row, three sources**: the PR's states and events, the commits of its branch and the states of its linked Task **before the PR was created**. The bar starts with the Task: "task to do" (hatched) from its creation, then "task in progress" (the implementation) from its activation, until the PR is created. Task states after the creation of the PR are not drawn. A PR without a linked Task starts at its first commit, and says so. Commits made before the PR sit inside the Task segment.
+- **At rest** the bar shows only its coloured phases; CI runs, auto-complete and conflicts stay visible.
+- **On hover** the details appear over the bar: commits as white vertical lines, **every comment as its own dot** (not grouped by day), reviewer events as initials: green approved, red rejected, yellow waits for the author, grey with a dashed border when the reviewer was only added (each one, not grouped). Hovering a mark tells who, when and what.
+- **Requests on demand**: the commits of the PR and the history of its Task are read on the first hover of its bar (one request each), kept by immutable keys (a merged PR never changes). Until they arrive the bar shimmers and a "Loading commits, comments, reviewers…" pill sits at its end, so the user knows to keep the cursor there.
 
 ---
 
