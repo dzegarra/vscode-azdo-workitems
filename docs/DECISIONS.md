@@ -206,7 +206,7 @@ Work items 37691 (state Approved) and 60840 (one Task not started) showed in Don
 - **The Checkout / Open worktree button has a … (ellipsis), not a ▾**: a chevron says "opens below me", and the picker opens at the top of the window. The button is a plain button, not a popup of itself, so it has no `aria-haspopup` / `aria-expanded` and no rotating chevron (titles stay "More checkout options" / "More worktree options"). (A single … button replacing the whole split button was rejected earlier: users prefer the visible Checkout / Open worktree icon next to it.) The icon is drawn with filled dots (`icons.ts` `ellipsis`, `.button.caret .icon circle`).
 
 - **The Now tab has no "This sprint" list** (a design had one, with a "Not finished | All" switch; it was never built and was removed from the design): the Work tab already lists the work of the sprint, and Now is only about what needs the user.
-- **The filter panel gets "Show all", not "Reset to default"** (designed, not built yet): clearing every filter in one click is what the user needs; a second button for the defaults was judged unnecessary.
+- **The filter panel gets "Show all" and "Reset to default"** (designed, not built yet): the defaults are not "no filter" (they hide Done, Removed and Closed, and show only Backlog Items and Bugs), so clearing everything and going back to the defaults are two different clicks.
 
 ### PRs tab: the Reviews box and My Pull Requests
 
@@ -268,7 +268,7 @@ Work item 67145 has five PRs in flight at once (one failing CI, one ready to com
 - **"Spills over" is a projection**: open work items that are not ready to be merged get a dashed one and a half day bar from the end of the sprint; it says "this will not be done by then", not when it will be. Items ready to be merged or Done get none.
 - **Left out and why**: "⛓ blocks #63290 (Ana, next sprint)" (successors are not in the work item model; only the open predecessors and the blocking tags are shown); the review rows start at the publication, not at "when you were added" (the review request carries no such date); the develop strip shows the latest 50 runs only.
 
-- **The details of a PR bar are read on hover, with a loading indicator** (designed, not built yet): the commits of the PR and the history of its Task cost one request each per PR, too many to read for every row, but cheap when only the bar the user points at asks, once, cached by immutable keys. The user must see that something is coming, so the bar shimmers and a "Loading…" pill shows until the data arrive.
+- **The details of a PR bar are read on hover, with a loading indicator** (designed, not built yet): the commits of the PR and the history of its Task cost one request each per PR, too many to read for every row, but cheap when only the bar the user points at asks, once, cached by immutable keys. The user must see that something is coming, so a soft light sweeps along the row until the data arrive. No text: a message at the end of the bar falls off the right edge near the end of the sprint, where the NOW line is.
 - **The implementation phase of a PR row comes from its linked Task before the PR** (designed, not built yet): PRs are created once there is code to push and the Task usually exists before, so its "to do" and "in progress" states show when the developer started, even before the first commit. What happens to the Task after the PR is created says nothing about the work and is not drawn.
 
 ### Whole team (phase 7b)

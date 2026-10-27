@@ -1023,7 +1023,7 @@ Source: the models the boxes already show (no extra request). Pure: `panelTone.t
 
 Not rules yet (no code, no IDs): the design canvas has them; each becomes rows of a table above when it is built.
 
-- **Show all** in the filter panel of the Work tab: one button that clears every filter (types, states, PR states, priorities, predecessors, duplicates) and the search. Shown only while something is filtered, next to "N values hidden". There is no "Reset to default" button.
+- **Show all** in the filter panel of the Work tab: one button that clears every filter (types, states, PR states, priorities, predecessors, duplicates) and the search. Shown only while something is filtered, next to "N values hidden". Next to it, **Reset to default** puts the filters back to their defaults (Backlog Items and Bugs; Done, Removed and Closed hidden): the defaults hide things, so the two buttons do different things.
 
 ---
 
@@ -1163,7 +1163,7 @@ Not rules yet (no code, no IDs): the design canvas ("Sprint timeline · work ite
 - **One PR row, three sources**: the PR's states and events, the commits of its branch and the states of its linked Task **before the PR was created**. The bar starts with the Task: "task to do" (hatched) from its creation, then "task in progress" (the implementation) from its activation, until the PR is created. Task states after the creation of the PR are not drawn. A PR without a linked Task starts at its first commit, and says so. Commits made before the PR sit inside the Task segment.
 - **At rest** the bar shows only its coloured phases; CI runs, auto-complete and conflicts stay visible.
 - **On hover** the details appear over the bar: commits as white vertical lines, **every comment as its own dot** (not grouped by day), reviewer events as initials: green approved, red rejected, yellow waits for the author, grey with a dashed border when the reviewer was only added (each one, not grouped). Hovering a mark tells who, when and what.
-- **Requests on demand**: the commits of the PR and the history of its Task are read on the first hover of its bar (one request each), kept by immutable keys (a merged PR never changes). Until they arrive the bar shimmers and a "Loading commits, comments, reviewers…" pill sits at its end, so the user knows to keep the cursor there.
+- **Requests on demand**: the commits of the PR and the history of its Task are read on the first hover of its bar (one request each), kept by immutable keys (a merged PR never changes). Until they arrive a soft light sweeps along the background of the row and over the bar, so the user knows to keep the cursor there; no message (near the end of the sprint it would fall off the right edge). With reduced motion the row is only tinted.
 
 ---
 
