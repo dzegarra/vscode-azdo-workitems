@@ -277,6 +277,9 @@ Work item 67145 has five PRs in flight at once (one failing CI, one ready to com
 
 - **The legend of the timeline is closed by default** (designed, not built yet): once learned it is not read again, and two always-visible rows of it took the height of two work item rows.
 
+- **The timeline keeps the PRs the user already reviewed** (designed, not built yet): the timeline is also the history of the sprint, and the reviews done are part of the user's work, so they stay as faded rows like the finished work items. This is one more reader of the reviewed PRs, still display-only: the rule "Reviewed is display-only and kept apart" (PRs tab) is about counting and notifying, which the timeline never does.
+- **The develop strip marks every merge** (designed, not built yet): its point is to see when the CI broke and which merge came just before; the merges come from the runs it already reads.
+
 ### Whole team (phase 7b)
 
 - **Others' implementation starts at the task activation, never the first commit**: the first commit is one request per PR; for everybody that is too many. The linked task is already in the batch of children. The publication date is the creation unless TEAM-6 read the threads, and their PRs are drawn without threads until the user expands the row (approximate phases, no green span); then their threads and CI history are read like the user's (TEAM-8). Rules TIMELINE-22, TIMELINE-24.
