@@ -282,12 +282,14 @@ Work item 67145 has five PRs in flight at once (one failing CI, one ready to com
 
 - **The timeline always shows the finished work and the merged PRs** (designed, not built yet; the Completed chip leaves the timeline, it stays on the Track board): a timeline is the history of the sprint, so hiding what was done only removes part of the story; on the board, a work surface, hiding the finished cards still makes sense.
 
+- **The timeline shows only the current sprint** (designed, not built yet; "This + next sprint" goes away): the work is planned and reviewed sprint by sprint, and the next sprint added a query, planned rows and a projection for little use; focus on the sprint in progress first.
+
 ### Whole team (phase 7b)
 
 - **Others' implementation starts at the task activation, never the first commit**: the first commit is one request per PR; for everybody that is too many. The linked task is already in the batch of children. The publication date is the creation unless TEAM-6 read the threads, and their PRs are drawn without threads until the user expands the row (approximate phases, no green span); then their threads and CI history are read like the user's (TEAM-8). Rules TIMELINE-22, TIMELINE-24.
 - **The user's reviews stay in the user's section**: the PR of someone else you owe a review on is also marked on that row ("your review 5 h"). Rule TIMELINE-23.
 - **"This + next sprint" plans only the user's rows**: the planned query is per user; asking for everybody would be one more request per person. Rule TIMELINE-24.
-- **No "At risk" footer** (an early design had "4 items cannot reach Done before Tu 27 at the current pace"): it needs a prediction of the pace, and the data for it (effort, daily updates) are not reliable enough; a precise-looking number that turns out wrong costs trust. The ASLEEP footer and the "spills over" projection of "This + next sprint" cover most of the need with facts.
+- **No "At risk" footer** (an early design had "4 items cannot reach Done before Tu 27 at the current pace"): it needs a prediction of the pace, and the data for it (effort, daily updates) are not reliable enough; a precise-looking number that turns out wrong costs trust. The ASLEEP footer covers most of the need with facts.
 
 ## 6. Dependency map
 
