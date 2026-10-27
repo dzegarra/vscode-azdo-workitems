@@ -26,6 +26,7 @@ The exact rules that decide **which states are shown** and **which options and a
   - [Base branch health](#base-branch-health)
   - [Whole team: shared data of the Track board and the Sprint timeline](#whole-team-shared-data-of-the-track-board-and-the-sprint-timeline)
   - [Look, fun features and settings](#look-fun-features-and-settings)
+  - [General rules: designed, not implemented yet](#general-rules-designed-not-implemented-yet)
 - [2. Sidebar](#2-sidebar)
   - [Tabs and sprint strip](#tabs-and-sprint-strip)
   - [Banner of a broken base branch](#banner-of-a-broken-base-branch)
@@ -773,6 +774,12 @@ flowchart TD
   DL2 -- no --> END([Plus Add task for non-Task types])
   BD --> END
 ```
+
+### General rules: designed, not implemented yet
+
+Not rules yet (no code, no IDs): the design canvas has them; each becomes rows of a table above when it is built.
+
+- **The sprint title of the Track board and the Sprint timeline says what the teams share** (replaces the name of the iteration that ends first, BOARD-6, TIMELINE-2): each iteration name loses its team name and keeps its trailing `Sprint <n>`. The same for every team: the title is "Sprint 123"; different numbers: the title is the dates, "Oct 14 – Oct 27". Then the dates, the days left (SPRINT-2/3) and a **"N teams"** chip whose hover or focus lists each team with its full iteration name. A team on other dates: the axis keeps the sprint that ends first and the chip says "4 teams · 1 with other dates", the list says which.
 
 ---
 
