@@ -273,6 +273,8 @@ Work item 67145 has five PRs in flight at once (one failing CI, one ready to com
 
 - **The work item row shows its states, not stations computed from its PRs** (designed, not built yet; replaces "Work items by station" above): the station of a work item with several PRs, each at a different point, had to be computed now and again for every past moment (least advanced PR, needs you wins, merged PRs leaving tasks open), and that was the hardest and most fragile part of the timeline. Merging the PR, CI and Review stations was considered and rejected: the aggregation stays the same with any number of stations, and the board would lose its Review bottleneck and the timeline the time spent waiting for reviewers. The states have a history of their own (one request per work item, cached by revision); the detail of the PRs is in the PR rows. In review is derived (STATE-10), so its past is approximated by the publication of the first PR.
 
+- **The legend of the timeline is closed by default** (designed, not built yet): once learned it is not read again, and two always-visible rows of it took the height of two work item rows.
+
 ### Whole team (phase 7b)
 
 - **Others' implementation starts at the task activation, never the first commit**: the first commit is one request per PR; for everybody that is too many. The linked task is already in the batch of children. The publication date is the creation unless TEAM-6 read the threads, and their PRs are drawn without threads until the user expands the row (approximate phases, no green span); then their threads and CI history are read like the user's (TEAM-8). Rules TIMELINE-22, TIMELINE-24.
