@@ -286,7 +286,7 @@ Work item 67145 has five PRs in flight at once (one failing CI, one ready to com
 
 - **The timeline can show the 4 sprints before the current one** (designed, not built yet): looking back a few sprints (what was carried over, how long reviews took, when develop broke) is enough for a retrospective; more would cost requests for little use. Past sprints are read only when opened, and once.
 
-- **Each view of the timeline has its own row style, Normal or Compact** (designed, not built yet): the user's own work is read in detail (Normal by default), the whole team is scanned (Compact by default, many people on one screen); the user can change either. Compact hides the marks at rest because, with many rows, they become noise; hovering a row shows everything, as in Normal.
+- **Each view of the timeline has its own row style, Normal or Compact** (designed, not built yet): the user's own work is read in detail (Normal by default), the whole team is scanned (Compact by default, many people on one screen); the user can change either. The row style only changes the size: in both, the PR bar shows at rest its phases and the problems the user must act on (the latest CI run failed, conflicts now), and everything else on hover. A problem must not depend on the user pointing at the right bar; the history (earlier runs, auto-complete, commits, comments, votes) would be noise at rest.
 
 ### Whole team (phase 7b)
 
