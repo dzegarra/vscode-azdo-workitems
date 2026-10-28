@@ -17,6 +17,8 @@ import type { PickedPerson } from './teamPeople';
 import type { TeamTimelineInput } from './teamTimelineModel';
 import type { BoardAction, BoardModel } from './trackBoardModel';
 import type { WebviewMessage, WorkItemModel } from './viewModel';
+import type { StateChange } from './workItemStateHistory';
+import type { ReviewedInput } from './reviewedTimeline';
 
 /** Messages of the Sprint timeline: the buttons post the messages of the sidebar, so the same code runs them */
 export type TimelineMessage =
@@ -35,6 +37,7 @@ export type TimelineMessage =
  * of a PR row (implementation, draft, review, ready) and the reviews owed
  */
 export type SegmentKind =
+  | 'afterVote'
   | 'asleep'
   | 'branch'
   | 'ci'
@@ -46,6 +49,12 @@ export type SegmentKind =
   | 'pullRequest'
   | 'ready'
   | 'review'
+  | 'stateApproved'
+  | 'stateCommitted'
+  | 'stateDone'
+  | 'stateInReview'
+  | 'stateNew'
+  | 'stateReopened'
   | 'wait';
 
 export interface TimelineSegment {
@@ -191,8 +200,12 @@ export interface TimelineRow {
   /** The inline button after the last segment */
   action?: BoardAction & { primary: boolean };
   /** The text after the bar of a review: "overdue 3 h" */
-  note?: { text: string; tone: 'dueSoon' | 'fresh' | 'overdue' };
+  note?: { text: string; tone: 'dueSoon' | 'fresh' | 'needsYou' | 'overdue' };
   popover?: TimelinePopover;
+  /** Rule TIMELINE-37: the user's vote on a PR they reviewed: its mark */
+  vote?: { at: number; kind: 'approve' | 'reject' | 'wait'; text: string; tip: { title: string; lines: string[] } };
+  /** Rule TIMELINE-37: what the row needs is being read (the threads of a reviewed PR) */
+  loading?: boolean;
   /** A click on the label */
   open: TimelineMessage;
   /** The card of the Track board */
@@ -274,9 +287,23 @@ export interface TimelineModel {
   finished: TimelineRow[];
   reviews: TimelineRow[];
   reviewsTitle: string;
+  /** Rule TIMELINE-37: the PRs the user reviewed within the axis, faded, under the reviews owed */
+  reviewed: TimelineRow[];
+  /** Rule TIMELINE-37: the threads the reviewed rows need (the panel reads what it lacks) */
+  reviewedWanted: { id: number; key: string }[];
   /** Rule TIMELINE-20: the PRs drawn whose first commit is not known yet (empty when the setting does not read commits) */
   firstCommitsWanted: number[];
-  develop: { branch: string; spans: DevelopSpan[]; label?: { text: string; at: number }; note?: string };
+  /** Rule TIMELINE-35: the work items drawn and the key of their state history (the panel reads what it lacks) */
+  statesWanted: { id: number; key: string }[];
+  develop: {
+    branch: string;
+    spans: DevelopSpan[];
+    /** Rule TIMELINE-38: a tick per merged PR (from the merge messages of the runs) and the PR before each red span */
+    merges: { at: number; pr: number; tip: string }[];
+    culprits: { at: number; text: string }[];
+    label?: { text: string; at: number };
+    note?: string;
+  };
   notes: string[];
   look: BoardModel['look'];
 }
@@ -300,6 +327,10 @@ export interface TimelineInput {
   codingStart?: CodingStartSetting;
   /** Rule TIMELINE-20: author date (ISO) of the oldest commit of each PR, by PR id, of those already read */
   firstCommits?: ReadonlyMap<number, string>;
+  /** Rule TIMELINE-37: the PRs of others the user voted on, and their threads read so far */
+  reviewed?: Omit<ReviewedInput, 'days' | 'now'>;
+  /** Rule TIMELINE-35: the changes of state read so far, by work item id (until then the states are guessed) */
+  stateHistory?: ReadonlyMap<number, readonly StateChange[]>;
   /** Rule TIMELINE-29: the history read so far of the PRs (threads and CI runs), by PR id */
   history?: ReadonlyMap<number, HistoryView>;
   /** Rule TIMELINE-21: the scope of the tab; "team" adds the sections of the people chosen (src/teamTimelineModel.ts) */

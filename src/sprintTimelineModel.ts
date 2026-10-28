@@ -11,6 +11,7 @@ import type { HistoryRef } from './prHistoryCache';
 import type { ReviewRequestModel } from './reviewRequests';
 import { iterationDates } from './sprintTitle';
 import { AFTER_SPRINT_DAYS, axisPosition, buildAxis, type TimelineDay } from './timelineAxis';
+import { reviewedRows, reviewedThreadsWanted } from './reviewedTimeline';
 import { rowsOfCards, type RowContext } from './timelineRows';
 import { dayText, toSegment } from './timelineSpans';
 import type { SegmentKind, TimelineInput, TimelineModel, TimelineRow, TimelineSegment } from './timelineTypes';
@@ -119,12 +120,52 @@ export function developSpans(
   return spans;
 }
 
+// Rule TIMELINE-38
+/**
+ * A tick per PR merged into the base branch (the merge message of the run it triggered: only merges that ran a
+ * pipeline, within the latest runs read; several pipelines of one merge are one tick, at the first run to finish), and
+ * above each red span the PR merged before it ("PR 13874 → red")
+ */
+export function developMerges(
+  runs: readonly BaseBranchRun[],
+  days: readonly TimelineDay[]
+): { merges: TimelineModel['develop']['merges']; culprits: TimelineModel['develop']['culprits'] } {
+  const first = new Map<number, number>();
+  runs.forEach((run) => {
+    const at = Date.parse(run.finishTime);
+    if (run.pullRequestId !== undefined && !Number.isNaN(at)) {
+      first.set(run.pullRequestId, Math.min(first.get(run.pullRequestId) ?? at, at));
+    }
+  });
+  const inAxis = (ms: number): boolean => days.length > 0 && ms >= days[0].startMs && ms < days[days.length - 1].endMs;
+  const merges = [...first]
+    .filter(([, at]) => inAxis(at))
+    .sort((a, b) => a[1] - b[1])
+    .map(([pr, at]) => ({
+      at: axisPosition(at, days),
+      pr,
+      tip: `PR ${String(pr)} merged · its run finished ${dayText(at)}`,
+    }));
+  const culprits = developSpans(runs, Number.POSITIVE_INFINITY)
+    .filter((span) => span.red && inAxis(span.start))
+    .flatMap((span) => {
+      const before = [...first]
+        .filter(([, at]) => at <= span.start)
+        .sort((a, b) => b[1] - a[1])
+        .at(0);
+      return before ? [{ at: axisPosition(span.start, days), text: `PR ${String(before[0])} → red` }] : [];
+    });
+  return { merges, culprits };
+}
+
 function developOf(input: TimelineInput, days: TimelineDay[], now: number): TimelineModel['develop'] {
   const { base } = input;
   if (!base.enabled) {
     return {
       branch: base.branch,
       spans: [],
+      merges: [],
+      culprits: [],
       note: 'The alarm of the base branch is off (pipelines.baseBranchAlert): its runs are not read',
     };
   }
@@ -143,8 +184,9 @@ function developOf(input: TimelineInput, days: TimelineDay[], now: number): Time
       : [];
   });
   if (!spans.length) {
-    return { branch: base.branch, spans, note: 'No finished run of the base branch yet' };
+    return { branch: base.branch, spans, merges: [], culprits: [], note: 'No finished run of the base branch yet' };
   }
+  const { merges, culprits } = developMerges(base.runs, days);
   const since = base.health && brokenSince(base.health);
   const culprit = base.health?.broken.at(0)?.brokenBy.pullRequestId;
   const label =
@@ -156,7 +198,7 @@ function developOf(input: TimelineInput, days: TimelineDay[], now: number): Time
           at: spans.at(-1)?.end ?? 0,
         }
       : undefined;
-  return { branch: base.branch, spans, label };
+  return { branch: base.branch, spans, merges, culprits, label };
 }
 
 /* ---------- The whole timeline ---------- */
@@ -245,13 +287,23 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
       work: [],
       finished: [],
       reviews: [],
+      reviewed: [],
+      reviewedWanted: [],
       firstCommitsWanted: [],
-      develop: { branch: input.base.branch, spans: [] },
+      statesWanted: [],
+      develop: { branch: input.base.branch, spans: [], merges: [], culprits: [] },
       notes: ['The dates of the sprint are not known, so there is no axis to draw'],
     };
   }
   const axisStart = days[0].startMs;
-  const context: RowContext = { input, days, axisStart, now, firstCommitsWanted: new Set() };
+  const context: RowContext = {
+    input,
+    days,
+    axisStart,
+    now,
+    firstCommitsWanted: new Set(),
+    statesWanted: new Map(),
+  };
   // The faded cards of the merged PRs are the board's: the timeline draws the merged PRs it has dates for (TIMELINE-17)
   const cards = board.work.filter((card) => card.merged === undefined);
   const { work, finished } = rowsOfCards(cards, context);
@@ -274,7 +326,11 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
     work: work.map(after),
     finished: finished.map(after),
     reviews: input.reviews.map((review) => after(reviewRow(review, { input, days, now }))),
+    // Rule TIMELINE-37
+    reviewed: input.reviewed ? reviewedRows({ ...input.reviewed, days, now }).map(after) : [],
+    reviewedWanted: input.reviewed ? reviewedThreadsWanted(input.reviewed.pullRequests, axisStart) : [],
     firstCommitsWanted: [...context.firstCommitsWanted],
+    statesWanted: [...(context.statesWanted ?? [])].map(([id, key]) => ({ id, key })),
     develop: developOf(input, days, now),
     notes: board.notes,
   };

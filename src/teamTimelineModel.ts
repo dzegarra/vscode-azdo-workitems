@@ -136,9 +136,16 @@ interface PersonRows {
 /** The rows of one person: their cards as the Track board builds them, drawn with the timeline's row builders */
 function personRows(
   person: TeamPerson,
-  base: { input: TimelineInput; team: TeamTimelineInput; days: RowContext['days']; sprintEnd: number; now: number }
+  base: {
+    input: TimelineInput;
+    team: TeamTimelineInput;
+    days: RowContext['days'];
+    sprintEnd: number;
+    now: number;
+    statesWanted: Map<number, string>;
+  }
 ): PersonRows {
-  const { input, team, days, sprintEnd, now } = base;
+  const { input, team, days, sprintEnd, now, statesWanted } = base;
   const models = person.items.map((item) => item.model);
   const items = boardItems(models, team.kinds);
   const axisStart = days[0].startMs;
@@ -170,6 +177,7 @@ function personRows(
     axisStart,
     now,
     firstCommitsWanted: new Set(),
+    statesWanted,
   };
   const rows = rowsOfCards(cards, context);
   const noteOf = (row: TimelineRow): TimelineRow['note'] => {
@@ -203,9 +211,10 @@ export function buildWholeTeamTimeline(input: TimelineInput): TimelineModel {
   const you = team.people.find((person) => person.you);
   const others = team.people.filter((person) => !person.you);
   const now = input.now.getTime();
+  const statesWanted = new Map<number, string>();
   const build = (person: TeamPerson): PersonRows & { person: TeamPerson } =>
     days.length
-      ? { ...personRows(person, { input, team, days, sprintEnd, now }), person }
+      ? { ...personRows(person, { input, team, days, sprintEnd, now, statesWanted }), person }
       : { work: [], finished: [], cards: [], teamCards: [], person };
   const asleep: TimelineTeam['asleep'] = [];
 
@@ -292,6 +301,12 @@ export function buildWholeTeamTimeline(input: TimelineInput): TimelineModel {
   });
   return {
     ...model,
+    statesWanted: [
+      ...model.statesWanted,
+      ...[...statesWanted]
+        .filter(([id]) => !model.statesWanted.some((entry) => entry.id === id))
+        .map(([id, key]) => ({ id, key })),
+    ],
     team: {
       status: team.status,
       error: team.error,

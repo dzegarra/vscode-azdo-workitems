@@ -1,6 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
-import { setTimelineDensity, settings, workingDaysSetting } from './config';
+import { resolveContext, setTimelineDensity, settings, workingDaysSetting } from './config';
+import { KeyedReads } from './keyedReads';
+import { stateChanges, type StateChange } from './workItemStateHistory';
 import type { WorkItemModel } from './viewModel';
 import type { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import { PullRequestHistory } from './pullRequestHistory';
@@ -12,8 +14,10 @@ import {
   historyRefsOf,
   OPEN_SPRINT_TIMELINE_COMMAND,
   type TimelineMessage,
+  type TimelineInput,
   type TimelineModel,
 } from './sprintTimelineModel';
+import type { ThreadResponse } from './reviewThreads';
 import { groupByPerson, shapeTeamItems, teamCompletedPullRequests, teamOfIteration, waitedOnBy } from './teamData';
 import { parsePeople } from './teamPeople';
 import { buildWholeTeamTimeline, type TeamTimelineInput } from './teamTimelineModel';
@@ -32,7 +36,8 @@ export type TimelineUpdate = { type: 'timeline'; model: TimelineModel };
 /**
  * The Sprint timeline: an editor tab with the work of the sprint on a working-days axis. It draws what the store, My
  * Pull Requests, the review requests and the base branch runs already have. Its own requests are the first commit of the
- * PRs it draws when the setting needs it (Rule TIMELINE-14), and the history of the PRs of the rows the user expanded: their threads (not asked for my own PRs, My Pull Requests has
+ * PRs it draws when the setting needs it (Rule TIMELINE-14), the state history of the work items it draws (one request
+ * per work item and revision, Rule TIMELINE-35), and the history of the PRs of the rows the user expanded: their threads (not asked for my own PRs, My Pull Requests has
  * them) and the whole history of their CI runs, only while the tab is visible (Rule TIMELINE-29)
  */
 export class SprintTimelinePanel implements vscode.Disposable {
@@ -42,6 +47,11 @@ export class SprintTimelinePanel implements vscode.Disposable {
   private expanded = new Set<number>();
   /** Rule TIMELINE-29: the history of the PRs of the expanded rows */
   private readonly history: PullRequestHistory;
+  /** Rule TIMELINE-35: the changes of state of the work items drawn, kept by revision */
+  private readonly states: KeyedReads<StateChange[]>;
+  /** Rule TIMELINE-37: the threads of the reviewed PRs the review poll does not have (the closed ones) */
+  private readonly reviewedThreads: KeyedReads<ThreadResponse[]>;
+  private readonly reviewedRepositories = new Map<number, string>();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -55,6 +65,42 @@ export class SprintTimelinePanel implements vscode.Disposable {
       () => myPullRequests.knownThreads(),
       () => this.post()
     );
+    this.states = new KeyedReads(
+      (id) =>
+        withFeature('sprintTimeline', async () => {
+          await this.store.whenRepositoryReady();
+          const { client } = resolveContext(this.store.repository());
+          return stateChanges(await client.getWorkItemUpdates(id));
+        }),
+      () => this.post()
+    );
+    this.reviewedThreads = new KeyedReads(
+      (id) =>
+        withFeature('sprintTimeline', async () => {
+          await this.store.whenRepositoryReady();
+          const { client } = resolveContext(this.store.repository());
+          return client.getPullRequestThreads(this.reviewedRepositories.get(id) ?? '', id);
+        }),
+      () => this.post()
+    );
+  }
+
+  // Rule TIMELINE-37
+  /** The PRs the user reviewed, with the threads known (the poll's) and read (the others') */
+  private reviewedInput(): TimelineInput['reviewed'] {
+    const reviewed = this.reviews.timelineReviewed();
+    if (!reviewed.myId) {
+      return undefined;
+    }
+    reviewed.pullRequests.forEach((pr) => this.reviewedRepositories.set(pr.id, pr.repositoryId));
+    const threads = new Map([...this.reviewedThreads.snapshot(), ...reviewed.knownThreads]);
+    return {
+      pullRequests: reviewed.pullRequests,
+      threads,
+      loading: new Set(reviewed.pullRequests.map((pr) => pr.id).filter((id) => this.reviewedThreads.loading(id))),
+      myId: reviewed.myId,
+      myName: reviewed.myName ?? 'You',
+    };
   }
 
   dispose(): void {
@@ -191,6 +237,8 @@ export class SprintTimelinePanel implements vscode.Disposable {
       codingStart: settings().timelineCodingStart,
       firstCommits: this.myPullRequests.firstCommitDates(),
       history: this.history.snapshot(),
+      stateHistory: this.states.snapshot(),
+      reviewed: this.reviewedInput(),
       base: {
         branch: settings().baseBranch,
         enabled: settings().baseBranchAlert.enabled,
@@ -207,11 +255,24 @@ export class SprintTimelinePanel implements vscode.Disposable {
     }
     const sprint = this.sprint();
     let model = this.buildModel(sprint);
-    // Rule TIMELINE-29: the history of the PRs of the expanded rows, only while the tab is visible; the rows say they
-    // are loading in this very draw
-    if (this.history.request(historyRefsOf(model, this.expanded))) {
+    // Only while the tab is visible, each once per immutable key; the rows say they are loading in this very draw:
+    // Rule TIMELINE-29, the history of the PRs of the expanded rows; Rule TIMELINE-35, the state history of the work
+    // items drawn; Rule TIMELINE-37, the threads of the reviewed PRs the review poll did not read (the closed ones)
+    const known = this.reviews.timelineReviewed().knownThreads;
+    const started = [
+      this.history.request(historyRefsOf(model, this.expanded)),
+      this.states.request(model.statesWanted),
+      this.reviewedThreads.request(model.reviewedWanted.filter((wanted) => !known.has(wanted.id))),
+    ];
+    if (started.some(Boolean)) {
       model = this.buildModel(sprint);
     }
+    // Rule TIMELINE-37: the closed reviewed PRs, one listing at most every 10 minutes
+    void this.reviews.loadReviewedForTimeline().then((changed) => {
+      if (changed) {
+        this.post();
+      }
+    });
     const update: TimelineUpdate = { type: 'timeline', model };
     void this.panel.webview.postMessage(update);
     // Rule TIMELINE-26: the team data is only asked for by a visible tab in "Whole team"

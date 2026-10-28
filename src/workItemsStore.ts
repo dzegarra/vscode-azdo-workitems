@@ -107,7 +107,14 @@ function workItemDates(workItem: WorkItem, lastChanged: string | undefined): Non
     activated: stringField(workItem, 'Microsoft.VSTS.Common.ActivatedDate'),
     stateChanged: stringField(workItem, 'Microsoft.VSTS.Common.StateChangeDate'),
     changed: lastChanged,
+    created: stringField(workItem, 'System.CreatedDate'),
   };
+}
+
+/** `System.Rev` of a work item: it changes with every change of the work item (Rule TIMELINE-35) */
+export function workItemRev(workItem: WorkItem): number | undefined {
+  const value = workItem.fields['System.Rev'];
+  return typeof value === 'number' ? value : undefined;
 }
 
 /** A worktree the extension has just created, and the card or PR it was created from (unknown for a new branch's offer) */
@@ -1321,6 +1328,7 @@ export class WorkItemsStore {
       // Rule REMIND-1: only with the alert rules
       notUpdated: completion && this.notUpdatedOf(workItem, lastChanged),
       dates: workItemDates(workItem, lastChanged),
+      rev: workItemRev(workItem),
       ...fixLinks(workItem, predecessors, successors),
       ...duplicateLinks(duplicateOf, duplicates, this.schedule),
       taskPullRequests: workItem.type === 'Task' ? this.taskPullRequests(pullRequests) : [],

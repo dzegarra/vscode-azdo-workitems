@@ -268,6 +268,12 @@ function renderRow(row: TimelineRow): string {
   if (row.faded) {
     classes.push('faded');
   }
+  if (row.vote) {
+    classes.push('tl-voted');
+  }
+  if (row.loading) {
+    classes.push('loading');
+  }
   const segments = row.segments
     .map((segment) => renderSegment(segment, segment.kind === 'asleep' ? popoverKey : undefined))
     .join('');
@@ -278,6 +284,10 @@ function renderRow(row: TimelineRow): string {
   const note = row.note ? `<span class="tl-note tone-${row.note.tone}">${escapeHtml(row.note.text)}</span>` : '';
   const merged = row.merged
     ? `<span class="tl-note tone-merged" data-from="${String(row.merged.at)}">${escapeHtml(row.merged.text)}</span>`
+    : '';
+  // Rule TIMELINE-37: the user's vote on a PR they reviewed
+  const vote = row.vote
+    ? markerHtml({ kind: row.vote.kind, at: row.vote.at, text: row.vote.text, tip: row.vote.tip, atRest: true }, true)
     : '';
   const action = row.action
     ? actionButton(row.action, row.segments.some((segment) => segment.kind === 'needsYou') ? 'needsYou' : 'plain')
@@ -292,7 +302,7 @@ function renderRow(row: TimelineRow): string {
     lane = `${chip}<div class="tl-fill">${outline}${action}</div>`;
   } else {
     const after = note || action ? `<span class="tl-after" data-from="${String(row.end)}">${note}${action}</span>` : '';
-    lane = `${chip}${segments}${merged}${after}`;
+    lane = `${chip}${segments}${vote}${merged}${after}`;
   }
   const children =
     expanded && row.children
@@ -318,9 +328,23 @@ function renderDevelop(develop: TimelineModel['develop']): string {
       )}</span>`
     : '';
   const note = develop.note ? `<span class="tl-empty">${escapeHtml(develop.note)}</span>` : '';
+  // Rule TIMELINE-38: a tick per merged PR, and the PR merged before each red span
+  const merges = develop.merges
+    .map(
+      (merge) =>
+        `<span class="tl-dev-tick" data-from="${String(merge.at)}" title="${escapeHtml(
+          merge.tip
+        )}" aria-label="${escapeHtml(merge.tip)}"></span>`
+    )
+    .join('');
+  const culprits = develop.culprits
+    .map(
+      (culprit) => `<span class="tl-dev-culprit" data-from="${String(culprit.at)}">${escapeHtml(culprit.text)}</span>`
+    )
+    .join('');
   return `<div class="tl-row tl-row-develop"><div class="tl-label plain"><span class="tl-title">Pipelines on ${escapeHtml(
     develop.branch
-  )}</span></div><div class="tl-lane">${spans}${label}${note}</div></div>`;
+  )}</span></div><div class="tl-lane">${spans}${merges}${culprits}${label}${note}</div></div>`;
 }
 
 function section(title: string, body: string, note?: string, sub = false): string {
@@ -353,11 +377,12 @@ function renderLegend(team: boolean): string {
     text: 'Task',
     tone: 'task',
   })}task title</span>`;
+  // Rule TIMELINE-35: the work item rows draw states
   const workItems = group('WORK ITEM ROWS', [
-    `${item('branch', 'Branch')}${item('pullRequest', 'Pull request (draft)')}${item('ci', 'CI')}${item(
-      'review',
-      'Review'
-    )}${item('ready', 'Ready to be merged')}${item('needsYou', team ? 'needs its owner' : 'needs you')}`,
+    `${item('stateNew', 'New')}${item('stateApproved', 'Approved')}${item('stateCommitted', 'Committed')}${item(
+      'stateInReview',
+      'In review (from the first PR published)'
+    )}${item('stateDone', 'Done · Ready to Test')}${item('stateReopened', 'ReOpened')}`,
     `${item('asleep', 'no update (zZ)')}<span class="tl-key">✓ Done</span><span class="tl-key dep">⛓ dependency</span>`,
     key,
   ]);
@@ -509,7 +534,11 @@ function renderBody(current: TimelineModel): string {
     current
   )}</div></div>`;
   const develop = section('DEVELOP', renderDevelop(current.develop), undefined, !!team);
-  const reviewsSection = section(current.reviewsTitle, reviews, undefined, !!team);
+  // Rule TIMELINE-37: the PRs already reviewed, faded, under the ones owed
+  const reviewed = current.reviewed.length
+    ? section('REVIEWED BY YOU · THIS SPRINT', current.reviewed.map(renderRow).join(''), undefined, true)
+    : '';
+  const reviewsSection = `${section(current.reviewsTitle, reviews, undefined, !!team)}${reviewed}`;
   const grid = `tl-grid density-${current.density}`;
   if (!team) {
     return `<div class="${grid}">${days}<div class="tl-body"><div class="tl-overlay" aria-hidden="true"></div>

@@ -400,6 +400,21 @@ describe('buildSprintTimeline', () => {
     expect(model.develop.label?.text).toBe('broken 37 min · after PR 13889');
   });
 
+  it('ticks every merged PR on the develop strip and names the one before a red span (TIMELINE-38)', () => {
+    const runs: BaseBranchRun[] = [
+      { buildId: 6, definitionId: 1, pipeline: 'CI', red: false, finishTime: iso(2, 10), pullRequestId: 13700 },
+      { buildId: 1, definitionId: 1, pipeline: 'CI', red: false, finishTime: iso(13, 9), pullRequestId: 13800 },
+      { buildId: 2, definitionId: 2, pipeline: 'E2E', red: false, finishTime: iso(13, 11), pullRequestId: 13800 },
+      { buildId: 3, definitionId: 1, pipeline: 'CI', red: false, finishTime: iso(16, 9), pullRequestId: 13874 },
+      { buildId: 4, definitionId: 1, pipeline: 'CI', red: true, finishTime: iso(19, 10) },
+      { buildId: 5, definitionId: 1, pipeline: 'CI', red: false, finishTime: iso(20, 10), pullRequestId: 13890 },
+    ];
+    const { develop } = timeline([], [], [], { base: { branch: 'develop', enabled: true, runs } });
+    expect(develop.merges.map((merge) => merge.pr)).toEqual([13800, 13874, 13890]);
+    expect(develop.merges[0].at).toBeCloseTo(1 + 9 / 24);
+    expect(develop.culprits).toEqual([{ at: expect.closeTo(5 + 10 / 24) as number, text: 'PR 13874 → red' }]);
+  });
+
   it('says so when the base branch alarm is off', () => {
     const model = timeline([], [], [], { base: { branch: 'develop', enabled: false, runs: [] } });
     expect(model.develop.note).toContain('off');
@@ -475,7 +490,7 @@ describe('the row of a work item (TIMELINE-15, TIMELINE-16)', () => {
     expect(row.label).toEqual({ pr: { text: 'PR 50' }, meta: 'Ana · required' });
   });
 
-  it('goes Branch, Pull request (draft) and Review for a PR with its dates; the last one says how the review is', () => {
+  it('draws the state of the work item, then In review from the publication of its first PR, dashed (TIMELINE-35, TIMELINE-36)', () => {
     const model = timeline(
       [
         workItem({
@@ -486,28 +501,27 @@ describe('the row of a work item (TIMELINE-15, TIMELINE-16)', () => {
       [mine({ reviewers: [{ name: 'Ana Ruiz', vote: 'none', isRequired: true, isContainer: false }] })]
     );
     const [row] = model.work;
-    expect(kinds(row)).toEqual(['branch', 'pullRequest', 'review']);
-    expect(row.segments[2].text).toContain('waiting for Ana');
-    expect(row.segments[0]).toMatchObject({ text: 'Branch', start: 2 + 9 / 24 });
-    // Without the history of the PR the review is drawn as a guess (CI before now is part of it)
-    expect(row.segments[2].approximate).toBe(true);
+    expect(kinds(row)).toEqual(['stateCommitted', 'stateInReview']);
+    // Without the history of its states the state since the activation is a guess
+    expect(row.segments[0]).toMatchObject({ text: 'Committed', start: 2 + 9 / 24, approximate: true });
+    expect(row.segments[1]).toMatchObject({ text: 'In review', dashed: true });
+    expect(row.segments[1].start).toBeCloseTo(4 + 15 / 24);
     expect(row.children?.map((child) => child.kind)).toEqual(['pr']);
   });
 
-  it('turns amber from the moment the station needed the user, with the reason (TIMELINE-16)', () => {
+  it('says after the bar what the work item needs from the user now (TIMELINE-35)', () => {
     const failed = { id: 1, pipeline: 'CI', state: 'failed' as const, url: '', finishTime: iso(20, 11) };
     const model = timeline(
       [workItem({ pullRequests: [pullRequest({ runs: [failed] })], dates: { activated: iso(14, 9) } })],
       [mine({ runs: [failed] })]
     );
     const [row] = model.work;
-    expect(row.segments.at(-1)).toMatchObject({ kind: 'needsYou' });
-    expect(row.segments.at(-1)?.text).toBe('needs you · CI failed');
-    expect(row.segments.at(-1)?.start).toBeCloseTo(6 + 11 / 24);
+    expect(row.note).toEqual({ text: 'needs you · CI failed', tone: 'needsYou' });
+    expect(row.segments.some((segment) => segment.kind === 'needsYou')).toBe(false);
     expect(row.defaultExpanded).toBe(true);
   });
 
-  it('turns green when the PR is ready to be merged, with the button of the board (TIMELINE-16)', () => {
+  it('keeps the button of the board when the PR is ready to be merged (TIMELINE-35)', () => {
     const model = timeline(
       [workItem({ pullRequests: [pullRequest({ id: 10 })], dates: { activated: iso(14, 9) } })],
       [
@@ -520,15 +534,32 @@ describe('the row of a work item (TIMELINE-15, TIMELINE-16)', () => {
       ]
     );
     const [row] = model.work;
-    expect(row.segments.at(-1)).toMatchObject({ kind: 'ready', text: 'ready to be merged' });
+    expect(row.segments.at(-1)).toMatchObject({ kind: 'stateInReview' });
     expect(row.action).toMatchObject({ label: 'Complete…', primary: true });
     expect(row.defaultExpanded).toBe(true);
   });
 
-  it('draws the Branch of a work item with no PR from the activation of the work item, approximate', () => {
+  it('draws the state of a work item with no PR from its activation, approximate', () => {
     const row = timeline([workItem({ dates: { activated: iso(15, 9) } })]).work[0];
     expect(row.segments).toHaveLength(1);
-    expect(row.segments[0]).toMatchObject({ kind: 'branch', approximate: true });
+    expect(row.segments[0]).toMatchObject({ kind: 'stateCommitted', approximate: true });
+  });
+
+  it('draws the states read from the history of the work item, exact (TIMELINE-35)', () => {
+    const row = timeline([workItem({ id: 4, dates: { activated: iso(15, 9) } })], [], [], {
+      stateHistory: new Map([
+        [
+          4,
+          [
+            { at: at(12, 9), state: 'New' },
+            { at: at(13, 9), state: 'Approved' },
+            { at: at(15, 9), state: 'Committed' },
+          ],
+        ],
+      ]),
+    }).work[0];
+    expect(kinds(row)).toEqual(['stateNew', 'stateApproved', 'stateCommitted']);
+    expect(row.segments.some((segment) => segment.approximate)).toBe(false);
   });
 
   it('draws a finished work item faded, ending at its merge, with its mark', () => {
@@ -549,8 +580,8 @@ describe('the row of a work item (TIMELINE-15, TIMELINE-16)', () => {
     expect(rows.work).toEqual([]);
     const [row] = rows.finished;
     expect(row).toMatchObject({ faded: true, merged: { text: '✓ done Fr 16' } });
-    // The two hours of draft are too short to see (TIMELINE-30): the bar before absorbs them
-    expect(kinds(row)).toEqual(['branch', 'review']);
+    expect(kinds(row)).toEqual(['stateCommitted', 'stateInReview']);
+    expect(row.segments.at(-1)?.end).toBeCloseTo(4 + 17 / 24);
     expect(row.defaultExpanded).toBe(false);
   });
 
@@ -573,16 +604,22 @@ describe('the row of a work item (TIMELINE-15, TIMELINE-16)', () => {
     expect(model.finished.map((row) => row.id)).toEqual([2]);
   });
 
-  it('goes back to Branch when a PR was merged and a task is still open (TRACK-7)', () => {
-    const model = timeline(
-      [workItem({ id: 9, dates: { activated: iso(13, 9) }, pullRequests: [COMPLETED(90)] }), task(91, 9, 'To Do')],
-      [],
-      [],
-      { completedPullRequests: [merged(90, 14, 16)] }
-    );
-    const [row] = model.work;
-    expect(kinds(row)).toEqual(['branch', 'review', 'branch']);
-    expect(row.segments.at(-1)?.end).toBeGreaterThan(row.segments[2].end - 0.001);
+  it('draws a reopened Bug again after its finish line (TIMELINE-35)', () => {
+    const bug = workItem({ id: 9, type: 'Bug', state: 'Committed', displayState: 'Committed' });
+    const row = timeline([bug], [], [], {
+      stateHistory: new Map([
+        [
+          9,
+          [
+            { at: at(12, 9), state: 'Committed' },
+            { at: at(14, 9), state: 'Ready to Test' },
+            { at: at(15, 9), state: 'ReOpened' },
+            { at: at(16, 9), state: 'Committed' },
+          ],
+        ],
+      ]),
+    }).work[0];
+    expect(kinds(row)).toEqual(['stateCommitted', 'stateDone', 'stateReopened', 'stateCommitted']);
   });
 });
 
@@ -628,7 +665,7 @@ describe('the work item with several PRs (TIMELINE-16, TIMELINE-17)', () => {
     const model = build();
     expect(model.work.map((row) => row.id)).toEqual([67145]);
     const [row] = model.work;
-    expect(row.segments.at(-1)).toMatchObject({ kind: 'needsYou', text: 'needs you · CI failed in PR 14021' });
+    expect(row.note).toEqual({ text: 'needs you · CI failed in PR 14021', tone: 'needsYou' });
     expect(row.action).toBeUndefined();
     expect(row.defaultExpanded).toBe(true);
   });
@@ -800,22 +837,21 @@ describe('the history of the PRs of a row (TIMELINE-28, TIMELINE-29)', () => {
     expect(child(withHistory({ state: 'error' }))?.history).toBe('error');
   });
 
-  it('refines the row once the history arrives: the CI and the votes are no longer a guess (TIMELINE-28)', () => {
-    const before = timeline(items, prs).work[0];
-    expect(before.segments.at(-1)?.approximate).toBe(true);
-    const after = withHistory({
-      state: 'ready',
-      threads: [published(iso(16, 15)), vote(iso(19, 10), 'Ana Ruiz', '10')],
-      runs: [
-        { id: 1, pipeline: 'CI', state: 'succeeded', url: '', startTime: iso(16, 15, 1), finishTime: iso(16, 16) },
-      ],
-    }).work[0];
-    // The hour of CI is too short to see (TIMELINE-30): the draft bar absorbs it, its time stays in the tooltip
-    expect(kinds(after)).toEqual(['branch', 'pullRequest', 'review', 'ready']);
-    expect(after.segments[1].tip).toContain('CI');
-    // What is left of a guess is the start of the work, which comes from the work item
-    expect(after.segments.filter((segment) => segment.approximate).map((segment) => segment.kind)).toEqual(['branch']);
-    const pr = after.children?.find((candidate) => candidate.kind === 'pr');
+  it('refines the PR row once the history arrives: the CI and the votes are no longer a guess (TIMELINE-28)', () => {
+    const prOf = (model: ReturnType<typeof timeline>) =>
+      model.work[0].children?.find((candidate) => candidate.kind === 'pr');
+    const before = prOf(timeline(items, prs));
+    expect(before?.kind === 'pr' && before.segments.some((segment) => segment.approximate)).toBe(true);
+    const pr = prOf(
+      withHistory({
+        state: 'ready',
+        threads: [published(iso(16, 15)), vote(iso(19, 10), 'Ana Ruiz', '10')],
+        runs: [
+          { id: 1, pipeline: 'CI', state: 'succeeded', url: '', startTime: iso(16, 15, 1), finishTime: iso(16, 16) },
+        ],
+      })
+    );
+    expect(pr?.kind === 'pr' && pr.segments.at(-1)?.kind).toBe('ready');
     expect(pr?.kind === 'pr' && pr.markers.map((marker) => marker.kind)).toEqual(['ci', 'approve']);
   });
 
@@ -890,10 +926,5 @@ describe('when the implementation starts, on the row of a PR (TIMELINE-20)', () 
   it('ignores a first commit after the creation of the PR', () => {
     const model = build('firstCommit', [[72, iso(21, 9)]]);
     expect(implementation(model, 72)?.tip).toContain('since the work item was activated, approximate');
-  });
-
-  it('starts the work item at the earliest implementation of its PRs', () => {
-    const model = build('earliest');
-    expect(model.work[0].segments[0]).toMatchObject({ kind: 'branch', start: 1 + 15 / 24 });
   });
 });

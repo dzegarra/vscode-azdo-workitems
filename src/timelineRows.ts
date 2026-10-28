@@ -35,6 +35,7 @@ import {
 } from './timelineSpans';
 import type {
   PullRequestChild,
+  SegmentKind,
   RowLabel,
   TaskChild,
   TasksChild,
@@ -49,6 +50,7 @@ import { trackPullRequest } from './track';
 import { pullRequestTitle, type BoardAction, type BoardWorkCard } from './trackBoardModel';
 import type { WorkItemModel } from './viewModel';
 import { workItemStations, type WorkItemStationSpan } from './workItemStations';
+import { finishedAt as finishedStateAt, stateSpans, type StateKind } from './workItemStateHistory';
 
 const MS_PER_HOUR = 3_600_000;
 
@@ -61,6 +63,8 @@ export interface RowContext {
   now: number;
   /** The PRs drawn whose first commit is not known yet (Rule TIMELINE-20) */
   firstCommitsWanted: Set<number>;
+  /** Rule TIMELINE-35: the work items drawn and the key of their state history (`id:rev`) */
+  statesWanted?: Map<number, string>;
 }
 
 const plural = (count: number, noun: string): string => `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
@@ -378,6 +382,16 @@ function workStart(
   return activated === undefined ? undefined : { at: activated, approximate: true };
 }
 
+// Rule TIMELINE-35
+const STATE_SEGMENT: Record<StateKind, SegmentKind> = {
+  new: 'stateNew',
+  approved: 'stateApproved',
+  committed: 'stateCommitted',
+  inReview: 'stateInReview',
+  done: 'stateDone',
+  reopened: 'stateReopened',
+};
+
 const STATION_TEXT: Record<WorkItemStationSpan['kind'], string> = {
   branch: 'Branch',
   pullRequest: 'PR',
@@ -385,15 +399,6 @@ const STATION_TEXT: Record<WorkItemStationSpan['kind'], string> = {
   review: 'Review',
   ready: 'ready to be merged',
   needsYou: 'needs you',
-};
-
-const STATION_DETAIL: Record<WorkItemStationSpan['kind'], string> = {
-  branch: 'Branch · implementation',
-  pullRequest: 'Pull request · draft, self-review',
-  ci: 'CI',
-  review: 'Review',
-  ready: 'Ready to be merged',
-  needsYou: 'Needs you',
 };
 
 /** The text inside the bar of the station the work item is at now: what the board says of it */
@@ -414,30 +419,6 @@ function currentText(span: WorkItemStationSpan, draws: readonly PrDraw[], openCo
     return 'Branch';
   }
   return STATION_TEXT[span.kind];
-}
-
-/** The station spans of the work item as the spans the axis draws; the one at the end says more */
-function stationSpans(
-  spans: readonly WorkItemStationSpan[],
-  draws: readonly PrDraw[],
-  openCount: number,
-  now: number,
-  axisStart: number,
-  finishedAt: number | undefined
-): Span[] {
-  return spans.map((span, index) => {
-    const last = index === spans.length - 1 && span.end >= (finishedAt ?? now);
-    return {
-      kind: span.kind,
-      start: span.start,
-      end: span.end,
-      text: last ? currentText(span, draws, openCount) : STATION_TEXT[span.kind],
-      detail: STATION_DETAIL[span.kind],
-      approximate: span.approximate,
-      fromBefore: index === 0 && span.start < axisStart,
-      approximateNote: 'Not exact: expand the row to read the history of its PRs',
-    };
-  });
 }
 
 // Rule TIMELINE-9
@@ -686,6 +667,7 @@ export function workItemRow(cards: readonly BoardWorkCard[], context: RowContext
   if (!item) {
     return row;
   }
+  context.statesWanted?.set(item.id, `${String(item.id)}:${item.rev === undefined ? '?' : String(item.rev)}`);
   const tasks = tasksOfItem(item, input);
   const draws = pullRequestsOf(item, cards, tasks, context);
   const openDraws = draws.filter((draw) => !draw.merged);
@@ -729,7 +711,11 @@ export function workItemRow(cards: readonly BoardWorkCard[], context: RowContext
     0,
     ...draws.flatMap((draw) => (draw.facts?.closed === undefined ? [] : [draw.facts.closed]))
   );
-  const finishedAt = finished ? instant(item.dates?.stateChanged) ?? (lastClosed || now) : undefined;
+  // Rule TIMELINE-35: the states of the work item, from its history once read
+  const changes = input.stateHistory?.get(item.id);
+  const finishedAt = finished
+    ? finishedStateAt({ changes, state: item.state, dates: item.dates }) ?? (lastClosed || now)
+    : undefined;
   const started =
     workStart(item, draws, tasks) ?? (card.column === 'toStart' ? undefined : { at: axisStart, approximate: true });
   const stations = workItemStations({
@@ -743,7 +729,40 @@ export function workItemRow(cards: readonly BoardWorkCard[], context: RowContext
     ),
     tasksOpen: tasks.some((task) => stateCategory(task.state) !== 'done'),
   });
-  let spans = stationSpans(stations, draws, openCount, now, axisStart, finishedAt);
+  // What the work item needs now is said after the bar (the stations stay on the PR rows, the board and the sidebar)
+  const current = stations.at(-1);
+  const needsNow =
+    !finished && current?.kind === 'needsYou' && current.end >= now
+      ? currentText(current, draws, openCount)
+      : undefined;
+  // Rule TIMELINE-36: In review, in the past, from the publication of the first PR while Committed
+  const published = draws.flatMap((draw) => {
+    const facts = draw.facts;
+    if (!facts) {
+      return [];
+    }
+    const when = facts.published ?? (facts.isDraft ? undefined : facts.created);
+    return when === undefined ? [] : [when];
+  });
+  let spans: Span[] = stateSpans({
+    changes,
+    state: item.state,
+    dates: item.dates,
+    firstPublished: published.length ? Math.min(...published) : undefined,
+    now,
+  }).map((span) => ({
+    kind: STATE_SEGMENT[span.kind],
+    start: span.start,
+    end: span.end,
+    text: span.text,
+    detail: span.derived
+      ? 'In review · not a state of Azure DevOps: from the publication of the first PR'
+      : `State ${span.text}`,
+    approximate: span.approximate,
+    fromBefore: span.start < axisStart,
+    dashed: span.derived,
+    approximateNote: 'Not exact: the history of its states is not read yet',
+  }));
   // Rule TIMELINE-8
   let popover: TimelinePopover | undefined;
   if (card.asleep) {
@@ -803,6 +822,7 @@ export function workItemRow(cards: readonly BoardWorkCard[], context: RowContext
     ...base,
     segments,
     chip: waitsOn ? `⛓ waits on #${String(waitsOn.id)}` : undefined,
+    ...(needsNow ? { note: { text: needsNow, tone: 'needsYou' as const } } : {}),
     action,
     popover,
     ...(done ? { faded: true, merged: done } : {}),

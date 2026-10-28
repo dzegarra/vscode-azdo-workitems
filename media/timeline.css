@@ -579,8 +579,53 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   font-weight: 400;
 }
 
-.tl-note.tone-dueSoon {
+.tl-note.tone-dueSoon,
+.tl-note.tone-needsYou {
   color: var(--needs-you);
+}
+
+/* ---------- The states of a work item row (Rules TIMELINE-35, TIMELINE-36) ---------- */
+
+.tl-seg.seg-stateNew,
+.tl-swatch.seg-stateNew {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--vscode-foreground) 14%, var(--vscode-editor-background)) 0 5px,
+    color-mix(in srgb, var(--vscode-foreground) 8%, var(--vscode-editor-background)) 5px 10px
+  );
+  color: var(--muted);
+}
+
+.tl-seg.seg-stateApproved,
+.tl-swatch.seg-stateApproved {
+  background: var(--tl-coding);
+  color: var(--vscode-foreground);
+}
+
+.tl-seg.seg-stateCommitted,
+.tl-swatch.seg-stateCommitted {
+  background: var(--tl-ci);
+  color: var(--vscode-foreground);
+}
+
+.tl-seg.seg-stateInReview,
+.tl-seg.seg-stateInReview.dashed,
+.tl-swatch.seg-stateInReview {
+  border: 1px dashed var(--in-flight);
+  background: color-mix(in srgb, var(--in-flight) 30%, var(--vscode-editor-background));
+  color: var(--vscode-foreground);
+}
+
+.tl-seg.seg-stateDone,
+.tl-swatch.seg-stateDone {
+  background: color-mix(in srgb, var(--passed) 55%, var(--vscode-editor-background));
+  color: var(--vscode-foreground);
+}
+
+.tl-seg.seg-stateReopened,
+.tl-swatch.seg-stateReopened {
+  background: color-mix(in srgb, var(--broken) 55%, var(--vscode-editor-background));
+  color: var(--vscode-foreground);
 }
 
 .tl-act {
@@ -606,16 +651,44 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   font-weight: 600;
 }
 
+/* Rule TIMELINE-38: a white tick per merged PR on the develop strip, and the PR before a red span above it */
 .tl-row-develop {
-  height: 32px;
+  height: 44px;
 }
 
 .tl-row-develop .tl-lane {
-  height: 32px;
+  height: 44px;
+}
+
+.tl-dev-tick {
+  position: absolute;
+  top: 20px;
+  width: 2px;
+  height: 12px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: color-mix(in srgb, #fff 85%, transparent);
+  z-index: 1;
+}
+
+body.vscode-light .tl-dev-tick {
+  background: color-mix(in srgb, var(--vscode-editor-background) 90%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-foreground) 30%, transparent);
+}
+
+.tl-dev-culprit {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  color: var(--vscode-errorForeground, var(--broken));
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 9.5px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .tl-dev {
-  top: 10px;
+  top: 20px;
   height: 12px;
   padding: 0;
   border-radius: 0;
@@ -1449,4 +1522,45 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
 
 .tl-fnote {
   margin-left: auto;
+}
+
+/* ---------- The PRs the user reviewed (Rule TIMELINE-37): wait, the vote, then a thin line ---------- */
+
+.tl-seg.seg-afterVote {
+  top: calc(var(--tl-row) / 2 - 1px);
+  height: 2px;
+  padding: 0;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--vscode-foreground) 35%, transparent);
+}
+
+.tl-row.tl-voted .tl-lane > .tl-mk {
+  top: calc((var(--tl-row) - 16px) / 2);
+  z-index: 1;
+}
+
+.tl-row.faded .tl-lane > .tl-mk {
+  opacity: 0.85;
+}
+
+/* ---------- Something of the row is being read: a soft light sweeps along it (Rule TIMELINE-37) ---------- */
+
+.tl-row.loading:not(.pr) .tl-lane::after {
+  content: '';
+  position: absolute;
+  inset: 4px 0;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--vscode-foreground) 9%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tl-row.loading:not(.pr) .tl-lane::after {
+    animation: tl-shimmer 1.3s linear infinite;
+  }
 }

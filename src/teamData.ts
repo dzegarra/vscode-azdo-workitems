@@ -209,7 +209,9 @@ export function shapeTeamItems(snapshot: TeamSnapshot, options: TeamShapeOptions
           activated: stringField(item, 'Microsoft.VSTS.Common.ActivatedDate'),
           stateChanged: stringField(item, 'Microsoft.VSTS.Common.StateChangeDate'),
           changed: lastChanged,
+          created: stringField(item, 'System.CreatedDate'),
         },
+        rev: typeof item.fields['System.Rev'] === 'number' ? item.fields['System.Rev'] : undefined,
       };
       const infoIds = new Set([
         ...item.links.pullRequests.map((link) => link.id),

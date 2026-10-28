@@ -20,6 +20,7 @@ import { ReviewerPullRequest } from './reviewRequests';
 import { ThreadResponse } from './reviewThreads';
 import { flattenIterations, IterationNode, ScheduledIteration } from './schedule';
 import { parseRelations, PullRequestState, WorkItemLinks, WorkItemRelation } from './workItemLinks';
+import type { WorkItemUpdate } from './workItemStateHistory';
 
 const API_VERSION = '7.1';
 /** Commits of a PR per request, and the pages read at most (Rule TIMELINE-20) */
@@ -342,6 +343,15 @@ export class AzdoClient {
     }
     // Keep the order returned by the query
     return ids.map((id) => items.find((wi) => wi.id === id)).filter((wi): wi is WorkItem => !!wi);
+  }
+
+  /**
+   * The updates of a work item, oldest first (Rule TIMELINE-35): each with the fields it changed (`System.State`,
+   * `System.ChangedDate`…). One request per work item; 200 updates are more than a work item of a sprint has
+   */
+  async getWorkItemUpdates(id: number): Promise<WorkItemUpdate[]> {
+    const result = await this.request<{ value: WorkItemUpdate[] }>(this.url(`wit/workItems/${id}/updates?$top=200`));
+    return result.value;
   }
 
   private toWorkItem(wi: WorkItemResponse): WorkItem {

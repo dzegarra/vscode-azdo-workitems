@@ -24,6 +24,8 @@ export interface Span {
   fromBefore?: boolean;
   /** Replaces the usual remark of an approximate start ("it begins with the sprint") */
   approximateNote?: string;
+  /** Derived, not a fact of Azure DevOps (In review, TIMELINE-36): drawn dashed */
+  dashed?: boolean;
 }
 
 /** "We 14": the weekday and the day of the month, as the axis */
@@ -73,6 +75,7 @@ export function toSegment(span: Span, days: readonly TimelineDay[]): TimelineSeg
     text: span.text,
     tip,
     approximate: approximate || span.fromBefore === true,
+    ...(span.dashed ? { dashed: true } : {}),
   };
 }
 

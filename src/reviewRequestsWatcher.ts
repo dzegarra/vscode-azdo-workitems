@@ -53,6 +53,7 @@ import {
 import type { Layout } from './viewModel';
 import { WorkItemsStore } from './workItemsStore';
 import type { ActiveReview, KnownPullRequest } from './worktreeHygiene';
+import type { ReviewedPullRequestInfo } from './reviewedTimeline';
 
 /** What is fetched about a PR to review besides the PR itself */
 interface ReviewCardData {
@@ -134,6 +135,10 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
   private activeReviewed: ReviewerPullRequest[] = [];
   private closedReviewed: ReviewerPullRequest[] = [];
   private closedReviewedAt = 0;
+  /** Rule TIMELINE-37: the last time the timeline asked for the closed reviewed PRs */
+  private timelineTriedAt = 0;
+  /** The threads of the active PRs to review, as the last poll read them (the Sprint timeline reuses them) */
+  private activeThreads = new Map<number, ThreadResponse[]>();
   status: 'error' | 'loading' | 'ready' = 'loading';
   error?: string;
   private timer?: NodeJS.Timeout;
@@ -198,6 +203,61 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
             : undefined,
       };
     });
+  }
+
+  // Rule TIMELINE-37
+  /**
+   * The PRs of others the user voted on, for the Sprint timeline: the active ones of the review poll and the closed ones
+   * of one listing (read for the timeline even when the Reviewed section does not list them, no more often than
+   * CLOSED_REVIEWS_MAX_AGE_MS), with the threads the poll already read. Display only, like the Reviewed section
+   */
+  timelineReviewed(): {
+    myId?: string;
+    myName?: string;
+    pullRequests: ReviewedPullRequestInfo[];
+    knownThreads: ReadonlyMap<number, ThreadResponse[]>;
+  } {
+    const myId = this.userId;
+    if (!myId) {
+      return { pullRequests: [], knownThreads: new Map() };
+    }
+    let myName: string | undefined;
+    const pullRequests = [...this.activeReviewed, ...this.closedReviewed].flatMap((pr): ReviewedPullRequestInfo[] => {
+      const me = pr.reviewers.find((reviewer) => reviewer.id === myId);
+      myName ??= me?.displayName;
+      if (!me || me.vote === 0 || pr.createdBy.id === myId || pr.status === 'notSet') {
+        return [];
+      }
+      return [
+        {
+          id: pr.pullRequestId,
+          title: pr.title,
+          url: pr.webUrl,
+          author: pr.createdBy.displayName.replace(/\s+EXT$/i, ''),
+          repositoryId: pr.repository.id,
+          createdAt: pr.creationDate,
+          closedAt: pr.closedDate,
+          status: pr.status,
+          myVote: me.vote,
+        },
+      ];
+    });
+    return { myId, myName, pullRequests, knownThreads: this.activeThreads };
+  }
+
+  /** Rule TIMELINE-37: the closed reviewed PRs for the Sprint timeline (one listing, at most every 10 minutes) */
+  async loadReviewedForTimeline(): Promise<boolean> {
+    // The attempt is throttled too: a listing that fails is not asked again on every draw
+    if (
+      !this.userId ||
+      Date.now() - Math.max(this.closedReviewedAt, this.timelineTriedAt) < CLOSED_REVIEWS_MAX_AGE_MS
+    ) {
+      return false;
+    }
+    this.timelineTriedAt = Date.now();
+    const before = this.closedReviewedAt;
+    await this.loadClosedReviewed(true, true);
+    return this.closedReviewedAt !== before;
   }
 
   /** The reviewed PRs of the period, without details */
@@ -427,8 +487,8 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
    * them and no more often than CLOSED_REVIEWS_MAX_AGE_MS. A failure keeps the previous list: the rest of the
    * box does not depend on it
    */
-  private async loadClosedReviewed(force: boolean): Promise<void> {
-    if (!this.userId || !listsClosedReviews(reviewSettings().reviewedPeriod)) {
+  private async loadClosedReviewed(force: boolean, forTimeline = false): Promise<void> {
+    if (!this.userId || (!forTimeline && !listsClosedReviews(reviewSettings().reviewedPeriod))) {
       return;
     }
     if (!force && Date.now() - this.closedReviewedAt < CLOSED_REVIEWS_MAX_AGE_MS) {
@@ -471,6 +531,7 @@ export class ReviewRequestsWatcher implements vscode.Disposable {
       const publishedDates = new Map(requests.map(({ id }) => [id, lastPublishedFromDraft(threads.get(id) ?? [])]));
       this.requests = withPublishedDates(requests, publishedDates);
       this.activeReviewed = pullRequests;
+      this.activeThreads = threads;
       // The PRs voted on go to the fun journal, which only the sprint recap reads (no request: same response)
       const seenAt = new Date().toISOString();
       await this.journal.update(scope, (journal) =>
