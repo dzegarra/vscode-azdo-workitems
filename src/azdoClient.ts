@@ -4,6 +4,7 @@ import { oldestCommitDate, type CommitRef } from './codingStart';
 import { CommitsDiff, hasSkipTag, PullRequestLabel } from './buildNotes';
 import {
   buildMyWorkItemsQuery,
+  buildEverWorkItemsQuery,
   buildTeamWorkItemsQuery,
   Iteration,
   mergeTeamIterations,
@@ -334,6 +335,19 @@ export class AzdoClient {
   }
 
   /** The work items with their relations; `asOf`: as they were at that moment (Rule TIMELINE-41) */
+  // Rule TIMELINE-43
+  /** The ids of the Backlog Items and Bugs ever in the iterations and ever assigned to the people (or `@Me`) */
+  async getEverWorkItemIds(iterationPaths: string[], people: readonly string[] | '@Me'): Promise<number[]> {
+    if (!iterationPaths.length || !people.length) {
+      return [];
+    }
+    const result = await this.request<{ workItems: { id: number }[] }>(this.url('wit/wiql'), {
+      method: 'POST',
+      body: JSON.stringify({ query: buildEverWorkItemsQuery(iterationPaths, people) }),
+    });
+    return result.workItems.map((wi) => wi.id);
+  }
+
   async getWorkItems(ids: number[], asOf?: string): Promise<WorkItem[]> {
     if (!ids.length) {
       return [];

@@ -780,9 +780,14 @@ export function workItemRow(cards: readonly BoardWorkCard[], context: RowContext
       needsTheUser(cards) &&
       children.some((child) => child.kind !== 'placeholder'),
   };
-  // Rule TIMELINE-9: not started, or only work still to do: a dashed outline with the reasons
+  // Rule TIMELINE-9: not started, or only work still to do: a dashed outline with the reasons. Rule TIMELINE-41: not in a
+  // past sprint, where the reasons say nothing more: its states are drawn instead
   const single = cards.length === 1 && card.part === undefined;
-  if (single && (card.column === 'toStart' || (!draws.length && card.column !== 'branch' && card.column !== 'done'))) {
+  if (
+    !input.past &&
+    single &&
+    (card.column === 'toStart' || (!draws.length && card.column !== 'branch' && card.column !== 'done'))
+  ) {
     const blocked = item.blockingTags?.length ? `tag ${item.blockingTags.join(', ')}` : '';
     const waits = item.openPredecessors?.at(0);
     const text = [

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { asOfMoment, axisIteration, endedText, historyRow, sprintChoices, type CurrentIteration } from './pastSprints';
-import { buildMyWorkItemsQuery, buildTeamWorkItemsQuery } from './iterations';
+import {
+  asOfMoment,
+  axisIteration,
+  endedText,
+  historyRow,
+  sprintChoices,
+  withMembership,
+  type CurrentIteration,
+} from './pastSprints';
+import { buildEverWorkItemsQuery, buildMyWorkItemsQuery, buildTeamWorkItemsQuery } from './iterations';
 import type { TimelineRow } from './timelineTypes';
 
 const iteration = (name: string, start: string, finish: string, team = 'Platform'): CurrentIteration => ({
@@ -116,5 +124,51 @@ describe('a past sprint (Rule TIMELINE-41)', () => {
     expect(history.defaultExpanded).toBe(false);
     expect(history.note).toBeUndefined();
     expect(history.children?.at(0)).toMatchObject({ action: undefined });
+  });
+
+  it('asks every work item ever in its iterations and ever assigned to the user or the people (TIMELINE-43)', () => {
+    expect(buildEverWorkItemsQuery(['P\\S 1'], '@Me')).toBe(
+      "SELECT [System.Id] FROM WorkItems WHERE [System.WorkItemType] IN ('Product Backlog Item', 'Bug') AND [System.IterationPath] EVER 'P\\S 1' AND [System.AssignedTo] EVER @Me ORDER BY [System.Id]"
+    );
+    expect(buildEverWorkItemsQuery(['P\\A 1', 'P\\B 1'], ['ana@abb.com', "o'neil@abb.com"])).toContain(
+      "AND ([System.IterationPath] EVER 'P\\A 1' OR [System.IterationPath] EVER 'P\\B 1') AND ([System.AssignedTo] EVER 'ana@abb.com' OR [System.AssignedTo] EVER 'o''neil@abb.com')"
+    );
+  });
+
+  it('cuts a row to the time its work item was in the sprint, and says where it went (TIMELINE-44)', () => {
+    const row = {
+      key: 'k',
+      section: 'work',
+      id: 1,
+      header: '',
+      title: '',
+      segments: [
+        { kind: 'stateApproved', start: 0, end: 3, tip: '' },
+        { kind: 'stateCommitted', start: 3, end: 8, tip: '' },
+      ],
+      merged: { at: 9, text: '✓ Done' },
+      open: { type: 'openDetails', id: 1 },
+      end: 8,
+    } satisfies TimelineRow;
+    const day = 24 * 3600_000;
+    const position = (ms: number): number => ms / day;
+    const moved = withMembership(
+      row,
+      { enteredAt: day, left: { at: 5 * day, to: { kind: 'person', name: 'Ana Pérez', sprint: false } } },
+      position
+    );
+    expect(moved.segments.map((segment) => [segment.start, segment.end])).toEqual([
+      [1, 3],
+      [3, 5],
+    ]);
+    expect(moved.end).toBe(5);
+    expect(moved.merged).toBeUndefined();
+    expect(moved.faded).toBe(true);
+    expect(moved.note).toMatchObject({ text: '→ Ana Pérez', tone: 'moved' });
+    expect(moved.note?.detail).toMatch(/^reassigned /);
+    const backlog = withMembership(row, { next: { kind: 'iteration', name: 'MVP R3', sprint: false } }, position);
+    expect(backlog.note).toEqual({ text: '→ MVP R3', tone: 'moved', detail: 'no sprint' });
+    expect(backlog.segments).toEqual(row.segments);
+    expect(withMembership(row, undefined, position)).toBe(row);
   });
 });

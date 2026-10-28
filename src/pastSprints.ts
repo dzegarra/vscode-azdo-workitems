@@ -6,6 +6,8 @@
 import type { ScheduledIteration } from './schedule';
 import type { SprintIteration } from './sprintTitle';
 import { sprintTitle } from './sprintTitle';
+import type { MembershipTarget, SprintMembership } from './sprintMembership';
+import { dayLabel } from './timelineSpans';
 import type { TimelineChild, TimelineRow } from './timelineTypes';
 
 /** How many sprints back the switch goes */
@@ -140,4 +142,54 @@ export function historyRow(row: TimelineRow): TimelineRow {
     defaultExpanded: false,
     children: row.children?.map(historyChild),
   };
+}
+
+/** "→ Sprint 124", "→ MVP R3", "→ Ana" */
+const targetText = (target: MembershipTarget): string => `→ ${target.name}`;
+
+// Rules TIMELINE-43, TIMELINE-44
+/**
+ * A row of a past sprint with what its history says: the bar starts when the work item joined the sprint (added while
+ * it ran) and ends when it left (moved out: faded, "→ Sprint 124 · moved Th 22"); a work item still in it at the end
+ * says where it went next ("→ Sprint 124"). `position` turns a moment into days on the axis
+ */
+export function withMembership(
+  row: TimelineRow,
+  membership: SprintMembership | undefined,
+  position: (ms: number) => number
+): TimelineRow {
+  if (!membership) {
+    return row;
+  }
+  const from = membership.enteredAt === undefined ? Number.NEGATIVE_INFINITY : position(membership.enteredAt);
+  const to = membership.left ? position(membership.left.at) : Number.POSITIVE_INFINITY;
+  const segments = row.segments
+    .filter((segment) => segment.end > from && segment.start < to)
+    .map((segment) => ({ ...segment, start: Math.max(segment.start, from), end: Math.min(segment.end, to) }));
+  const clipped: TimelineRow = {
+    ...row,
+    segments,
+    end: Math.min(row.end, to),
+    ...(row.merged && row.merged.at > to ? { merged: undefined } : {}),
+  };
+  const { left, next } = membership;
+  if (left) {
+    const verb = left.to.kind === 'person' ? 'reassigned' : 'moved';
+    const detail = [
+      `${verb} ${dayLabel(left.at)}`,
+      ...(left.to.kind === 'iteration' && !left.to.sprint ? ['no sprint'] : []),
+    ];
+    return {
+      ...clipped,
+      faded: true,
+      note: { text: targetText(left.to), tone: 'moved', detail: detail.join(' · ') },
+    };
+  }
+  if (next) {
+    return {
+      ...clipped,
+      note: { text: targetText(next), tone: 'moved', ...(next.sprint ? {} : { detail: 'no sprint' }) },
+    };
+  }
+  return clipped;
 }

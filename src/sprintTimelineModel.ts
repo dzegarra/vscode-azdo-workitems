@@ -11,7 +11,7 @@ import type { HistoryRef } from './prHistoryCache';
 import type { ReviewRequestModel } from './reviewRequests';
 import { iterationDates } from './sprintTitle';
 import { AFTER_SPRINT_DAYS, axisPosition, buildAxis, type TimelineDay } from './timelineAxis';
-import { historyRow } from './pastSprints';
+import { historyRow, withMembership } from './pastSprints';
 import { reviewedRows, reviewedThreadsWanted } from './reviewedTimeline';
 import { rowsOfCards, type RowContext } from './timelineRows';
 import { dayText, toSegment } from './timelineSpans';
@@ -289,6 +289,7 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
       over: false,
       work: [],
       finished: [],
+      movedOut: [],
       reviews: [],
       reviewed: [],
       reviewedWanted: [],
@@ -318,6 +319,11 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
   const after = (row: TimelineRow): TimelineRow =>
     input.past ? historyRow(withAfterSprint(row, sprintEnd)) : withAfterSprint(row, sprintEnd);
   const shownNow = input.past ? undefined : shown;
+  // Rules TIMELINE-43, TIMELINE-44: the history of each work item says when it joined and left the past sprint
+  const membership = input.past?.membership;
+  const movedOut = (row: TimelineRow): boolean => membership?.get(row.id)?.left !== undefined;
+  const pastRow = (row: TimelineRow): TimelineRow =>
+    withMembership(after(row), membership?.get(row.id), (ms) => axisPosition(ms, days));
   return {
     ...base,
     days: days.map(({ after: isAfter, date, label, last, today, weekStart }) => ({
@@ -331,8 +337,9 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
     sprintEnd,
     now: shownNow,
     over: shownNow !== undefined && shownNow > sprintEnd,
-    work: work.map(after),
-    finished: finished.map(after),
+    work: work.filter((row) => !movedOut(row)).map(pastRow),
+    finished: finished.filter((row) => !movedOut(row)).map(pastRow),
+    movedOut: [...work, ...finished].filter(movedOut).map(pastRow),
     reviews: input.reviews.map((review) => after(reviewRow(review, { input, days, now }))),
     // Rule TIMELINE-37
     reviewed: input.reviewed ? reviewedRows({ ...input.reviewed, days, now }).map(after) : [],

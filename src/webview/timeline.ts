@@ -273,7 +273,14 @@ function renderRow(row: TimelineRow): string {
     row.chip && row.segments.at(0) && row.segments[0].start > 1.3
       ? `<span class="tl-chip">${escapeHtml(row.chip)}</span>`
       : '';
-  const note = row.note ? `<span class="tl-note tone-${row.note.tone}">${escapeHtml(row.note.text)}</span>` : '';
+  // Rule TIMELINE-44: where a work item of a past sprint went is a pill ("→ Sprint 124"), its detail after it
+  let note = '';
+  if (row.note?.tone === 'moved') {
+    const detail = row.note.detail ? `<span class="tl-dest-detail">· ${escapeHtml(row.note.detail)}</span>` : '';
+    note = `<span class="tl-note tone-moved"><span class="tl-dest">${escapeHtml(row.note.text)}</span>${detail}</span>`;
+  } else if (row.note) {
+    note = `<span class="tl-note tone-${row.note.tone}">${escapeHtml(row.note.text)}</span>`;
+  }
   const merged = row.merged
     ? `<span class="tl-note tone-merged" data-from="${String(row.merged.at)}">${escapeHtml(row.merged.text)}</span>`
     : '';
@@ -339,8 +346,11 @@ function renderDevelop(develop: TimelineModel['develop']): string {
   )}</span></div><div class="tl-lane">${spans}${merges}${culprits}${label}${note}</div></div>`;
 }
 
-function section(title: string, body: string, note?: string, sub = false): string {
-  return `<h2 class="tl-section${sub ? ' sub' : ''}">${escapeHtml(title)}</h2>${
+const MOVED_OUT_HINT = 'in this sprint for a while, then moved to another iteration or to someone else before it ended';
+
+function section(title: string, body: string, note?: string, sub = false, hint?: string): string {
+  const hintHtml = hint ? `<span class="tl-section-hint">${escapeHtml(hint)}</span>` : '';
+  return `<h2 class="tl-section${sub ? ' sub' : ''}">${escapeHtml(title)}${hintHtml}</h2>${
     note ? `<p class="tl-empty-row">${escapeHtml(note)}</p>` : ''
   }${body}`;
 }
@@ -565,6 +575,11 @@ function renderBody(current: TimelineModel): string {
   const finished = current.finished.length
     ? section('DONE THIS SPRINT', current.finished.map(renderRow).join(''), undefined, !!team)
     : '';
+  // Rule TIMELINE-44: in a past sprint, the work items that left it before it ended
+  const movedOut = (rows: readonly TimelineRow[]): string =>
+    rows.length
+      ? section('MOVED OUT DURING THE SPRINT', rows.map(renderRow).join(''), undefined, true, MOVED_OUT_HINT)
+      : '';
   const reviews = current.reviews.length
     ? current.reviews.map(renderRow).join('')
     : '<p class="tl-empty-row">No review is waiting for you</p>';
@@ -584,7 +599,9 @@ function renderBody(current: TimelineModel): string {
   const grid = `tl-grid density-${current.density}`;
   if (!team) {
     return `<div class="${grid}">${days}<div class="tl-body"><div class="tl-overlay" aria-hidden="true"></div>
-    ${section('MY WORK ITEMS', work)}${finished}${notes}${reviewsSection}${develop}</div></div>`;
+    ${section('MY WORK ITEMS', work)}${finished}${movedOut(
+      current.movedOut
+    )}${notes}${reviewsSection}${develop}</div></div>`;
   }
   // Rule TIMELINE-21: one section per person, the user's first with the rows, buttons and popovers of the "mine" timeline
   const others = team.sections
@@ -596,14 +613,15 @@ function renderBody(current: TimelineModel): string {
       // Rule TIMELINE-23: the rows of a person are indented under their header, with a rail in their colour
       return `${renderPersonHeader(person)}<div class="tl-person-rows colour-${String(person.colour)}">${person.rows
         .map(renderRow)
-        .join('')}${done}</div>`;
+        .join('')}${done}${movedOut(person.movedOut)}</div>`;
     })
     .join('');
   const extra = youSection ? youSection.rows.map(renderRow).join('') : '';
   return `<div class="${grid}">${days}<div class="tl-body"><div class="tl-overlay" aria-hidden="true"></div>
-    ${teamStatusHtml(team)}${
-    youSection ? renderPersonHeader(youSection) : ''
-  }${work}${extra}${finished}${notes}${reviewsSection}${others}${develop}</div></div>`;
+    ${teamStatusHtml(team)}${youSection ? renderPersonHeader(youSection) : ''}${work}${extra}${finished}${movedOut([
+    ...current.movedOut,
+    ...(youSection?.movedOut ?? []),
+  ])}${notes}${reviewsSection}${others}${develop}</div></div>`;
 }
 
 /** Positions and sizes come from the model in days: they are set after the markup is in place (strict CSP) */

@@ -325,6 +325,50 @@ describe('buildSprintTimeline', () => {
     expect(row.end).toBe(10);
   });
 
+  it('splits a past sprint by the history of its work items (TIMELINE-43, TIMELINE-44)', () => {
+    const items = [
+      workItem({ id: 1, state: 'Committed', displayState: 'Committed', dates: { activated: iso(14, 9) } }),
+      workItem({ id: 2, state: 'Approved', displayState: 'Approved', dates: { activated: iso(14, 9) } }),
+      workItem({ id: 3, state: 'Committed', displayState: 'Committed', dates: { activated: iso(14, 9) } }),
+    ];
+    const membership = new Map([
+      [1, { next: { kind: 'iteration' as const, name: 'Sprint 124', sprint: true } }],
+      [2, { left: { at: at(22, 11), to: { kind: 'iteration' as const, name: 'Sprint 124', sprint: true } } }],
+      [3, { enteredAt: at(20, 12) }],
+    ]);
+    const model = timeline(items, [], [], {
+      now: new Date(2026, 9, 27, 23, 59),
+      past: { ended: 'ended Tue 27 Oct', membership },
+    });
+    expect(model.work.map((row) => row.id)).toEqual([1, 3]);
+    expect(model.work[0].note).toEqual({ text: '→ Sprint 124', tone: 'moved' });
+    // Added on Tu 20 at noon (day 6 of the axis): its bar starts there
+    expect(Math.min(...model.work[1].segments.map((segment) => segment.start))).toBeCloseTo(6.5);
+    const [moved] = model.movedOut;
+    expect(moved.id).toBe(2);
+    expect(moved.faded).toBe(true);
+    expect(moved.note).toEqual({ text: '→ Sprint 124', tone: 'moved', detail: 'moved Th 22' });
+    expect(Math.max(...moved.segments.map((segment) => segment.end))).toBeLessThanOrEqual(8 + 11 / 24 + 1e-9);
+    expect(moved.end).toBeLessThanOrEqual(8 + 11 / 24 + 1e-9);
+  });
+
+  it('draws the states of a work item not started in a past sprint, not the outline (TIMELINE-41)', () => {
+    const notStarted = workItem({
+      id: 9,
+      state: 'Approved',
+      displayState: 'Approved',
+      branches: [],
+      branch: undefined,
+    });
+    expect(timeline([notStarted]).work[0].outline).toBeDefined();
+    const past = timeline([notStarted], [], [], {
+      past: { ended: 'ended Fri 23 Oct' },
+      stateHistory: new Map([[9, [{ at: at(13, 9), state: 'Approved' }]]]),
+    }).work[0];
+    expect(past.outline).toBeUndefined();
+    expect(past.segments.map((segment) => segment.text)).toEqual(['Approved']);
+  });
+
   it('has no NOW line once the margin is over too (TIMELINE-13)', () => {
     expect(timeline([], [], [], { now: new Date(2026, 9, 29, 10) }).now).toBeUndefined();
   });

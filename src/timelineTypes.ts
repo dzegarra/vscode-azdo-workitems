@@ -10,6 +10,7 @@ import type { HistoryRef, HistoryView } from './prHistoryCache';
 import type { LifecycleEventKind } from './prLifecycle';
 import type { ReviewRequestModel } from './reviewRequests';
 import type { SprintTeams } from './sprintTitle';
+import type { SprintMembership } from './sprintMembership';
 import type { TimelineDay } from './timelineAxis';
 import type { TimelineDensity } from './timelineDensity';
 import type { PeoplePicker } from './teamBoardModel';
@@ -194,8 +195,11 @@ export interface TimelineRow {
   chip?: string;
   /** The inline button after the last segment */
   action?: BoardAction & { primary: boolean };
-  /** The text after the bar of a review: "overdue 3 h" */
-  note?: { text: string; tone: 'dueSoon' | 'fresh' | 'needsYou' | 'overdue' };
+  /**
+   * The text after the bar of a review: "overdue 3 h". Rule TIMELINE-44, tone `moved`: where a work item of a past
+   * sprint went ("→ Sprint 124"), drawn as a pill, and `detail` after it ("moved Th 22")
+   */
+  note?: { text: string; tone: 'dueSoon' | 'fresh' | 'moved' | 'needsYou' | 'overdue'; detail?: string };
   popover?: TimelinePopover;
   /** Rule TIMELINE-37: the user's vote on a PR they reviewed: its mark */
   vote?: { at: number; kind: 'approve' | 'reject' | 'wait'; text: string; tip: { title: string; lines: string[] } };
@@ -241,6 +245,8 @@ export interface TimelineSection {
   rows: TimelineRow[];
   /** Rule TIMELINE-19, per person: the finished work items, after the open ones */
   finished: TimelineRow[];
+  /** Rule TIMELINE-44, per person: in a past sprint, the work items that left it before it ended */
+  movedOut: TimelineRow[];
 }
 
 /** The Whole team part of the timeline (Rule TIMELINE-21) */
@@ -290,6 +296,8 @@ export interface TimelineModel {
   work: TimelineRow[];
   /** Rule TIMELINE-19: the finished work items, after the open ones, in "DONE THIS SPRINT" */
   finished: TimelineRow[];
+  /** Rule TIMELINE-44: in a past sprint, the work items that left it before it ended, in "MOVED OUT DURING THE SPRINT" */
+  movedOut: TimelineRow[];
   reviews: TimelineRow[];
   reviewsTitle: string;
   /** Rule TIMELINE-37: the PRs the user reviewed within the axis, faded, under the reviews owed */
@@ -330,8 +338,11 @@ export interface TimelineInput {
   /** Rule TIMELINE-40: the sprints of the switch and the one shown */
   sprints?: SprintSwitchEntry[];
   sprintOffset?: number;
-  /** Rule TIMELINE-41: a past sprint, drawn as history ("ended Mon 26 Oct" instead of the days left) */
-  past?: { ended?: string };
+  /**
+   * Rule TIMELINE-41: a past sprint, drawn as history ("ended Mon 26 Oct" instead of the days left). Rules TIMELINE-43,
+   * TIMELINE-44: what the history of each work item says of its time in the sprint (by id)
+   */
+  past?: { ended?: string; membership?: ReadonlyMap<number, SprintMembership> };
   /** The PRs of the user that were merged (My Pull Requests already has them): drawn when merged within the axis */
   completedPullRequests?: readonly CompletedPullRequestInfo[];
   base: { branch: string; enabled: boolean; runs: readonly BaseBranchRun[]; health?: BaseBranchHealth };

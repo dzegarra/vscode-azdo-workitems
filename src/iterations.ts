@@ -62,3 +62,21 @@ export function buildTeamWorkItemsQuery(iterationPaths: string[], people: readon
     ...(asOf ? [`ASOF ${wiqlString(asOf)}`] : []),
   ].join(' ');
 }
+
+// Rule TIMELINE-43
+/**
+ * WIQL query of the Backlog Items and Bugs that were ever in one of the iterations of a past sprint and ever assigned to
+ * the user (`@Me`) or to one of the people given (sign-in names). `EVER` matches any revision, each condition on its
+ * own: the history of each work item says whether both held at the same moment during the sprint
+ */
+export function buildEverWorkItemsQuery(iterationPaths: string[], people: readonly string[] | '@Me'): string {
+  const assignees = people === '@Me' ? ['@Me'] : people.map(wiqlString);
+  const anyOf = (conditions: string[]): string =>
+    conditions.length === 1 ? conditions[0] : `(${conditions.join(' OR ')})`;
+  return [
+    "SELECT [System.Id] FROM WorkItems WHERE [System.WorkItemType] IN ('Product Backlog Item', 'Bug')",
+    `AND ${anyOf(iterationPaths.map((path) => `[System.IterationPath] EVER ${wiqlString(path)}`))}`,
+    `AND ${anyOf(assignees.map((assignee) => `[System.AssignedTo] EVER ${assignee}`))}`,
+    'ORDER BY [System.Id]',
+  ].join(' ');
+}

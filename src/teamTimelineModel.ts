@@ -24,6 +24,9 @@ import { peopleLabel, pickerRows, type PickedPerson } from './teamPeople';
 import { avatarColour, initials, shortPersonName } from './teamView';
 import type { CompletedPullRequestInfo } from './completedPullRequests';
 import { boardCards, boardItems, type BoardKind, type BoardWorkCard } from './trackBoardModel';
+import { historyRow, withMembership } from './pastSprints';
+import { axisPosition } from './timelineAxis';
+import type { SprintMembership } from './sprintMembership';
 
 /** What the Whole team timeline needs besides the user's own timeline (Rule TIMELINE-21) */
 export interface TeamTimelineInput {
@@ -47,6 +50,8 @@ export interface TeamTimelineInput {
   ownBadges: ReadonlyMap<number, string>;
   /** Name of the user, for the initials of their section */
   youName?: string;
+  /** Rules TIMELINE-43, TIMELINE-44: in a past sprint, what the history of the people's work items says (by id) */
+  membership?: ReadonlyMap<number, SprintMembership>;
 }
 
 const plural = (count: number, noun: string): string => `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
@@ -128,6 +133,7 @@ const readOnlyRow = (row: TimelineRow, note: TimelineRow['note']): TimelineRow =
 interface PersonRows {
   work: TimelineRow[];
   finished: TimelineRow[];
+  movedOut: TimelineRow[];
   cards: BoardWorkCard[];
   teamCards: { card: TeamCard; overdue: boolean }[];
 }
@@ -186,9 +192,22 @@ function personRows(
     const found = teamCards.find(({ card }) => card.key === row.boardKey);
     return found && rowNote(found.card.markers);
   };
+  // Rules TIMELINE-41, TIMELINE-43, TIMELINE-44: in a past sprint, history, cut to the time each work item was in it
+  const membership = team.membership;
+  const movedOut = (row: TimelineRow): boolean => membership?.get(row.id)?.left !== undefined;
+  const shape = (row: TimelineRow): TimelineRow => {
+    const shaped = withAfterSprint(row, sprintEnd);
+    return input.past
+      ? readOnlyRow(
+          withMembership(historyRow(shaped), membership?.get(row.id), (ms) => axisPosition(ms, days)),
+          undefined
+        )
+      : readOnlyRow(shaped, noteOf(row));
+  };
   return {
-    work: rows.work.map((row) => readOnlyRow(withAfterSprint(row, sprintEnd), noteOf(row))),
-    finished: rows.finished.map((row) => readOnlyRow(withAfterSprint(row, sprintEnd), noteOf(row))),
+    work: rows.work.filter((row) => !movedOut(row)).map(shape),
+    finished: rows.finished.filter((row) => !movedOut(row)).map(shape),
+    movedOut: [...rows.work, ...rows.finished].filter(movedOut).map(shape),
     cards,
     teamCards,
   };
@@ -218,7 +237,7 @@ export function buildWholeTeamTimeline(input: TimelineInput): TimelineModel {
   const build = (person: TeamPerson): PersonRows & { person: TeamPerson } =>
     days.length
       ? { ...personRows(person, { input, team, days, sprintEnd, now, statesWanted, commitsWanted }), person }
-      : { work: [], finished: [], cards: [], teamCards: [], person };
+      : { work: [], finished: [], movedOut: [], cards: [], teamCards: [], person };
   const asleep: TimelineTeam['asleep'] = [];
 
   // The user's own work (the rows are the model's)
@@ -255,13 +274,14 @@ export function buildWholeTeamTimeline(input: TimelineInput): TimelineModel {
     }),
     rows: youRows?.work ?? [],
     finished: youRows?.finished ?? [],
+    movedOut: youRows?.movedOut ?? [],
   };
 
   // The others
   let openItems = ownIds.length + extraIds.length;
   const sections = others.flatMap((person): TimelineSection[] => {
     const built = build(person);
-    if (!built.work.length && !built.finished.length) {
+    if (!built.work.length && !built.finished.length && !built.movedOut.length) {
       return [];
     }
     const first = firstName(person.name);
@@ -299,6 +319,7 @@ export function buildWholeTeamTimeline(input: TimelineInput): TimelineModel {
         }),
         rows: built.work,
         finished: built.finished,
+        movedOut: built.movedOut,
       },
     ];
   });
