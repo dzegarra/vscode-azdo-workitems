@@ -260,13 +260,20 @@ export interface TimelineTeam {
   asleep: { id: number; owner: string }[];
 }
 
+/** Rule TIMELINE-40: a sprint of the menu on the title: "Sprint 121", its dates "30 Sep – 13 Oct" */
+export interface SprintSwitchEntry {
+  offset: number;
+  title: string;
+  dates?: string;
+}
+
 export interface TimelineModel {
   status: 'error' | 'loading' | 'ready';
   error?: string;
   /** Rule TIMELINE-32: the row style of the view shown */
   density: TimelineDensity;
   /** Rule TIMELINE-40: the sprints the switch offers (the current one first) and the one shown */
-  sprints: { offset: number; title: string }[];
+  sprints: SprintSwitchEntry[];
   sprintOffset: number;
   /** The scope chip: the user's work (default) or the whole team (the rows of the others are in `team`) */
   scope: 'mine' | 'team';
@@ -321,7 +328,7 @@ export interface TimelineInput {
   /** Rule TIMELINE-32: the row style of the view shown; default Normal */
   density?: TimelineDensity;
   /** Rule TIMELINE-40: the sprints of the switch and the one shown */
-  sprints?: { offset: number; title: string }[];
+  sprints?: SprintSwitchEntry[];
   sprintOffset?: number;
   /** Rule TIMELINE-41: a past sprint, drawn as history ("ended Mon 26 Oct" instead of the days left) */
   past?: { ended?: string };

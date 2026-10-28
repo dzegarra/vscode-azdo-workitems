@@ -51,12 +51,14 @@ export function buildMyWorkItemsQuery(iterationPaths: string[], asOf?: string): 
  * the teams. Without people there is no query (an empty `IN ()` is not valid): the caller does not ask. The tasks
  * come later, as the children of these work items
  */
-export function buildTeamWorkItemsQuery(iterationPaths: string[], people: readonly string[]): string {
+export function buildTeamWorkItemsQuery(iterationPaths: string[], people: readonly string[], asOf?: string): string {
   return [
     "SELECT [System.Id] FROM WorkItems WHERE [System.WorkItemType] IN ('Product Backlog Item', 'Bug')",
     "AND [System.State] <> 'Removed'",
     `AND [System.IterationPath] IN (${iterationPaths.map(wiqlString).join(', ')})`,
     `AND [System.AssignedTo] IN (${people.map(wiqlString).join(', ')})`,
     'ORDER BY [System.Id]',
+    // Rule TIMELINE-41: a past sprint of the people chosen, as it was when it ended
+    ...(asOf ? [`ASOF ${wiqlString(asOf)}`] : []),
   ].join(' ');
 }

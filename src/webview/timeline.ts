@@ -437,16 +437,16 @@ function renderSprintSwitch(current: TimelineModel, teams: string): string {
       enabled ? '' : ' disabled'
     }>${glyph}</button>`;
   const menu = sprintMenuOpen
-    ? `<div class="tl-sprint-list" role="listbox" aria-label="Sprints">${current.sprints
+    ? `<div class="tl-sprint-list" role="listbox" aria-label="Sprints"><span class="tl-sprint-head" aria-hidden="true">THIS SPRINT AND THE 4 BEFORE</span>${current.sprints
         .map(
           (sprint) =>
             `<button class="tl-sprint-option" role="option" data-sprint="${String(
               sprint.offset
-            )}" aria-selected="${String(sprint.offset === current.sprintOffset)}">${escapeHtml(
-              sprint.title
-            )}<span class="tl-sprint-when">${
-              sprint.offset === 0 ? 'current' : `${String(sprint.offset)} back`
-            }</span></button>`
+            )}" aria-selected="${String(sprint.offset === current.sprintOffset)}"><span class="tl-sprint-check">${
+              sprint.offset === current.sprintOffset ? '✓' : ''
+            }</span><span class="tl-sprint-name">${escapeHtml(sprint.title)}${
+              sprint.offset === 0 ? ' · current' : ''
+            }</span><span class="tl-sprint-when">${escapeHtml(sprint.dates ?? '')}</span></button>`
         )
         .join('')}</div>`
     : '';
@@ -457,7 +457,9 @@ function renderSprintSwitch(current: TimelineModel, teams: string): string {
     '‹'
   )}<h1 class="bd-sprint"><button class="tl-sprint-title" data-sprint-menu aria-haspopup="listbox" aria-expanded="${String(
     sprintMenuOpen
-  )}" title="Choose the sprint">${escapeHtml(current.header.sprint)}${teams}</button></h1>${step(
+  )}" title="Choose the sprint">${escapeHtml(
+    current.header.sprint
+  )}${teams}<span class="tl-sprint-caret" aria-hidden="true">▾</span></button></h1>${step(
     'newer',
     newer,
     'Next sprint',

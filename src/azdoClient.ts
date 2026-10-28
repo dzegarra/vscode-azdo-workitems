@@ -265,15 +265,18 @@ export class AzdoClient {
    * Backlog Items and Bugs of the given iterations assigned to the given people (sign-in names): one query, then
    * batches with relations. Without iterations or people nothing is asked
    */
-  async getTeamWorkItems(iterationPaths: string[], people: string[]): Promise<WorkItem[]> {
+  async getTeamWorkItems(iterationPaths: string[], people: string[], asOf?: string): Promise<WorkItem[]> {
     if (!iterationPaths.length || !people.length) {
       return [];
     }
     const result = await this.request<{ workItems: { id: number }[] }>(this.url('wit/wiql'), {
       method: 'POST',
-      body: JSON.stringify({ query: buildTeamWorkItemsQuery(iterationPaths, people) }),
+      body: JSON.stringify({ query: buildTeamWorkItemsQuery(iterationPaths, people, asOf) }),
     });
-    return this.getWorkItems(result.workItems.map((wi) => wi.id));
+    return this.getWorkItems(
+      result.workItems.map((wi) => wi.id),
+      asOf
+    );
   }
 
   // Rule TEAM-1

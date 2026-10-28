@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { asOfMoment, axisIteration, endedText, historyRow, sprintChoices, type CurrentIteration } from './pastSprints';
-import { buildMyWorkItemsQuery } from './iterations';
+import { buildMyWorkItemsQuery, buildTeamWorkItemsQuery } from './iterations';
 import type { TimelineRow } from './timelineTypes';
 
 const iteration = (name: string, start: string, finish: string, team = 'Platform'): CurrentIteration => ({
@@ -73,6 +73,13 @@ describe('a past sprint (Rule TIMELINE-41)', () => {
     expect(buildMyWorkItemsQuery(['P\\S 1'], '2026-10-28T23:59:59Z')).toBe(
       "SELECT [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me AND [System.IterationPath] IN ('P\\S 1') ORDER BY [System.WorkItemType], [System.Id] ASOF '2026-10-28T23:59:59Z'"
     );
+  });
+
+  it('asks the work of the people chosen as of that moment too (Whole team)', () => {
+    expect(buildTeamWorkItemsQuery(['P\\S 1'], ['ana@abb.com'], '2026-10-28T23:59:59Z')).toMatch(
+      /AND \[System\.AssignedTo\] IN \('ana@abb\.com'\) ORDER BY \[System\.Id\] ASOF '2026-10-28T23:59:59Z'$/
+    );
+    expect(buildTeamWorkItemsQuery(['P\\S 1'], ['ana@abb.com'])).not.toContain('ASOF');
   });
 
   it('draws its rows as history: no button, no popover, collapsed', () => {
