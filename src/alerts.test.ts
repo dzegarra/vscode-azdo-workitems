@@ -459,3 +459,41 @@ describe('stretched items (Rule ALERT-13)', () => {
     expect(messages({ tags: ['stretch-incomplete'] })).toEqual([]);
   });
 });
+
+describe('iteration not in the sprint plan (Rule ALERT-14)', () => {
+  const area = 'Flow Digital Architecture\\Platform Framework';
+  const teamPlans = [
+    {
+      name: 'Platform Team',
+      areas: [{ path: area, includeChildren: false }],
+      iterationPaths: ['Flow Digital Architecture\\MVP R3\\Platform Sprint 123'],
+    },
+  ];
+  const planned = (iterationPath: string, name: string) =>
+    pbi({
+      fields: { [EFFORT]: 5, [EFFORT_DAYS]: 2, 'System.AreaPath': area },
+      iteration: { path: iterationPath, name },
+      teamPlans,
+    });
+
+  it('alerts when no team owning the area planned the sprint', () => {
+    const alerts = findAlerts(
+      planned('Flow Digital Architecture\\MVP R3\\Interface Apps Sprint 123', 'Interface Apps Sprint 123'),
+      rules
+    );
+    expect(alerts).toEqual([
+      {
+        rule: 'iterationNotInSprintPlan',
+        message: `Iteration Interface Apps Sprint 123 is not in the sprint plan of Platform Team: the item will not show on their sprint board (area ${area}). Change the iteration or the area.`,
+      },
+    ]);
+  });
+
+  it('says nothing for a planned sprint or when the plans are unknown', () => {
+    expect(
+      findAlerts(planned('Flow Digital Architecture\\MVP R3\\Platform Sprint 123', 'Platform Sprint 123'), rules)
+    ).toEqual([]);
+    const unknown = planned('Flow Digital Architecture\\MVP R3\\Interface Apps Sprint 123', 'x');
+    expect(findAlerts({ ...unknown, teamPlans: undefined }, rules)).toEqual([]);
+  });
+});

@@ -1,9 +1,11 @@
 /** Problems in the work items that the team agreed to avoid. Pure, so no "vscode" import */
 import { normalizeState, stateCategory } from './states';
+import { teamsMissingIteration, type TeamPlan } from './teamPlans';
 
 export type AlertRule =
   | 'duplicateNotPlannedTogether'
   | 'duplicateStateNotInSync'
+  | 'iterationNotInSprintPlan'
   | 'missingField'
   | 'noPullRequestTask'
   | 'noTasks'
@@ -84,6 +86,8 @@ export interface AlertInput {
   iteration?: AlertIteration;
   /** Its originals and its duplicates that could be loaded (the unknown ones say nothing) */
   duplicates?: AlertDuplicate[];
+  /** Areas and sprints of the project's teams. Undefined: unknown, the sprint plan rule says nothing */
+  teamPlans?: TeamPlan[];
 }
 
 export interface RequiredFieldsRule {
@@ -319,6 +323,29 @@ function noTaskAlerts(input: AlertInput): WorkItemAlert[] {
   ];
 }
 
+// Rule ALERT-14
+/**
+ * The iteration is not in the sprint plan of any team owning the area: the item never shows on a sprint board.
+ * Unknown data says nothing (see teamsMissingIteration)
+ */
+function sprintPlanAlerts(input: AlertInput): WorkItemAlert[] {
+  const area = input.fields['System.AreaPath'];
+  const areaPath = typeof area === 'string' ? area : undefined;
+  const teams = teamsMissingIteration(input.teamPlans, areaPath, input.iteration?.path);
+  if (!teams.length || !input.iteration || !areaPath) {
+    return [];
+  }
+  const sprint = input.iteration.name ?? input.iteration.path.split('\\').pop() ?? input.iteration.path;
+  return [
+    {
+      rule: 'iterationNotInSprintPlan',
+      message: `Iteration ${sprint} is not in the sprint plan of ${teams.join(
+        ', '
+      )}: the item will not show on their sprint board (area ${areaPath}). Change the iteration or the area.`,
+    },
+  ];
+}
+
 const lower = (text: string) => text.trim().toLowerCase();
 
 // Rule ALERT-13
@@ -430,6 +457,7 @@ export function findAlerts(input: AlertInput, rules: AlertRules): WorkItemAlert[
     ...staleIntegrationBuildAlerts(input, rules.integrationBuild),
     ...duplicateAlerts(input),
     ...noTaskAlerts(input),
+    ...sprintPlanAlerts(input),
     ...stretchAlerts(input, rules.stretch),
   ];
 }

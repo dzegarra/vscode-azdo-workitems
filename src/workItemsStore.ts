@@ -14,7 +14,8 @@ import { branchesToCheckRemotely, deletableBranches, isProtectedBranch } from '.
 import { duplicateLinks, iterationLabel } from './duplicates';
 import { fixLinks } from './fixLinks';
 import { openPredecessors } from './predecessors';
-import { ScheduledIteration } from './schedule';
+import { iterationKind, ScheduledIteration } from './schedule';
+import type { TeamPlan } from './teamPlans';
 import { branchesToVerify, TaskBranchModel, toTaskBranchModels } from './taskBranches';
 import { sortTaskPullRequests, TaskPullRequestModel, toTaskPullRequestModel } from './taskPullRequests';
 import { CheckoutKind, FilterModel, ViewModel, WorkItemModel } from './viewModel';
@@ -393,7 +394,7 @@ function alertsOf(
   rules: AlertRules & { integrationBuildField?: string },
   repositoryId: string,
   abandonedPullRequestIds: number[],
-  planning: { iteration: AlertIteration; duplicates: AlertDuplicate[] }
+  planning: { iteration: AlertIteration; duplicates: AlertDuplicate[]; teamPlans?: TeamPlan[] }
 ): WorkItemAlert[] {
   const tasks = taskRefsOf(workItem, related, repositoryId);
   return withQuickFixes(
@@ -978,7 +979,7 @@ export class WorkItemsStore {
     ]);
     const listed = new Set(workItems.map((workItem) => workItem.id));
     const relatedRequest = fetchRelated(client, workItems);
-    const [pullRequests, related, rules, dependencies, schedule] = await Promise.all([
+    const [pullRequests, related, rules, dependencies, schedule, teamPlans] = await Promise.all([
       // The PRs of the tasks of other developers are fetched with the ones of the work items, once their tasks are known
       relatedRequest.then((relatedItems) =>
         fetchPullRequests(
@@ -994,6 +995,10 @@ export class WorkItemsStore {
       fetchDependencies(client, workItems),
       // Without the schedule the predecessors are listed without their risk
       client.getIterationSchedule().catch(() => undefined),
+      // Rule ALERT-14: only needed when some item is planned in a sprint; unknown plans say nothing
+      workItems.some((item) => iterationKind(item.iterationPath) === 'sprint')
+        ? client.getTeamPlans().catch(() => undefined)
+        : undefined,
     ]);
     this.schedule = schedule;
     this.repositoryId = azdoRepository.id;
@@ -1044,6 +1049,7 @@ export class WorkItemsStore {
           ? alertsOf(workItem, related, itemPullRequests, rules, azdoRepository.id, abandonedTaskPullRequestIds, {
               iteration: alertIteration(workItem, schedule),
               duplicates: alertDuplicates(workItem, dependencies, schedule),
+              teamPlans,
             })
           : [],
         inReview: isInReview(workItem.state, taskRefsOf(workItem, related, azdoRepository.id), pullRequestTaskPattern),

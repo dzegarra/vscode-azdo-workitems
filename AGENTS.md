@@ -98,6 +98,7 @@ src/timelineRows.ts       pure: the work item row (stations over time) and what 
 src/workItemStateHistory.ts pure: the states of a work item row (from `wit/workItems/{id}/updates`), In review approximated, Rules TIMELINE-35, TIMELINE-36
 src/reviewedTimeline.ts   pure: "REVIEWED BY YOU" rows (first vote of the user from the threads), Rule TIMELINE-37
 src/keyedReads.ts         one read per id kept by an immutable key (6 in flight, failures retried after 10 min): state histories, reviewed threads, commits of the PRs hovered (Rule TIMELINE-39)
+src/teamPlans.ts          pure: areas + selected sprints of the project teams, which teams lack the sprint of a work item, Rule ALERT-14 (read by AzdoClient.getTeamPlans, cached 1 h)
 src/prLifecycle.ts        pure: station of a PR moment by moment, its phases and its events from threads + CI runs (reuses src/pullRequestPhases.ts); src/workItemStations.ts: the station of a work item from its PRs
 src/completedPullRequests.ts pure: the merged PRs the timeline draws (from the list My Pull Requests reads)
 src/prHistoryCache.ts     pure: what to read for the PRs of the expanded rows and when again (immutable keys); src/timelineExpansion.ts: default / remembered expansion, Collapse all

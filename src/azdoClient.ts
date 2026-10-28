@@ -20,6 +20,8 @@ import { countChangedFiles } from './reviewCard';
 import { ReviewerPullRequest } from './reviewRequests';
 import { ThreadResponse } from './reviewThreads';
 import { flattenIterations, IterationNode, ScheduledIteration } from './schedule';
+import { mapLimit, MAX_IN_FLIGHT } from './concurrency';
+import type { TeamArea, TeamPlan } from './teamPlans';
 import { parseRelations, PullRequestState, WorkItemLinks, WorkItemRelation } from './workItemLinks';
 import type { WorkItemUpdate } from './workItemStateHistory';
 
@@ -65,6 +67,8 @@ export interface WorkItem {
   type: string;
   state: string;
   iterationPath: string;
+  /** System.AreaPath, when the work item has one */
+  areaPath?: string;
   assignedTo?: string;
   /** Identity id of the assignee (matches `getMyId`) */
   assigneeId?: string;
@@ -88,6 +92,8 @@ const typeStatesCache = new Map<string, Promise<WorkItemTypeState[]>>();
 const fieldsCache = new Map<string, Promise<{ name: string; referenceName: string }[]>>();
 
 const SCHEDULE_CACHE_MS = 5 * 60 * 1000;
+const TEAM_PLANS_CACHE_MS = 60 * 60 * 1000;
+const teamPlansCache = new Map<string, { time: number; plans: Promise<TeamPlan[]> }>();
 const scheduleCache = new Map<string, { time: number; schedule: Promise<ScheduledIteration[]> }>();
 
 /** Most recent PRs checked for notifications */
@@ -236,13 +242,52 @@ export class AzdoClient {
     return mergeTeamIterations(iterations);
   }
 
-  async getTeams(): Promise<Team[]> {
+  /** The teams the signed-in user belongs to, or (`mine` false) every team of the project */
+  async getTeams(mine = true): Promise<Team[]> {
     const result = await this.request<{ value: Team[] }>(
-      `${BASE_URL}/${encodeURIComponent(this.organization)}/_apis/projects/${encodeURIComponent(
-        this.project
-      )}/teams?$mine=true&$top=1000&api-version=${API_VERSION}`
+      `${BASE_URL}/${encodeURIComponent(this.organization)}/_apis/projects/${encodeURIComponent(this.project)}/teams?${
+        mine ? '$mine=true&' : ''
+      }$top=1000&api-version=${API_VERSION}`
     );
     return result.value;
+  }
+
+  /** Areas of a team (`teamsettings/teamfieldvalues`, the team field is the area path) */
+  async getTeamAreas(team: string): Promise<TeamArea[]> {
+    const result = await this.request<{ values?: { value: string; includeChildren: boolean }[] }>(
+      this.url('work/teamsettings/teamfieldvalues', team)
+    );
+    return (result.values ?? []).map(({ value, includeChildren }) => ({ path: value, includeChildren }));
+  }
+
+  /** Paths of every iteration in the settings of a team (no timeframe filter) */
+  async getTeamIterations(team: string): Promise<string[]> {
+    const result = await this.request<{ value: { path: string }[] }>(this.url('work/teamsettings/iterations', team));
+    return result.value.map((iteration) => iteration.path);
+  }
+
+  /** Areas and sprints of every team of the project. Cached for an hour: the settings of the teams rarely change */
+  async getTeamPlans(): Promise<TeamPlan[]> {
+    const key = `${this.organization}/${this.project}`;
+    const cached = teamPlansCache.get(key);
+    if (cached && Date.now() - cached.time < TEAM_PLANS_CACHE_MS) {
+      return cached.plans;
+    }
+    const plans = this.loadTeamPlans();
+    teamPlansCache.set(key, { time: Date.now(), plans });
+    plans.catch(() => teamPlansCache.delete(key));
+    return plans;
+  }
+
+  private async loadTeamPlans(): Promise<TeamPlan[]> {
+    const teams = await this.getTeams(false);
+    const results = await mapLimit(teams, MAX_IN_FLIGHT, async (team) => ({
+      name: team.name,
+      areas: await this.getTeamAreas(team.name),
+      iterationPaths: await this.getTeamIterations(team.name),
+    }));
+    // A team that could not be read says nothing; the others are still enough for the rule
+    return results.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
   }
 
   /** Work items assigned to the signed-in user in any of the given iterations */
@@ -386,6 +431,7 @@ export class AzdoClient {
       type: wi.fields['System.WorkItemType'],
       state: wi.fields['System.State'],
       iterationPath: wi.fields['System.IterationPath'],
+      areaPath: wi.fields['System.AreaPath'] as string | undefined,
       assignedTo: (wi.fields['System.AssignedTo'] as unknown as { displayName?: string } | undefined)?.displayName,
       assigneeId: (wi.fields['System.AssignedTo'] as unknown as { id?: string } | undefined)?.id,
       links: parseRelations(wi.relations),
