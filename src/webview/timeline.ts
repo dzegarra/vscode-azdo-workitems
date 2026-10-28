@@ -120,6 +120,10 @@ function markerHtml(marker: TimelineMarker, positioned: boolean): string {
   if (marker.tone) {
     classes.push(`mk-${marker.tone}`);
   }
+  if ((marker.count ?? 1) > 1 && ['comments', 'commit', 'push'].includes(marker.kind)) {
+    // Rule TIMELINE-42: a burst of commits, pushes or comments is one bigger mark
+    classes.push('many');
+  }
   if (marker.atRest) {
     // Rule TIMELINE-33: a problem is shown at rest; the other marks on the hover of the row
     classes.push('at-rest');
@@ -382,19 +386,22 @@ function renderLegend(team: boolean): string {
     `<span class="tl-legend-sub">on hover</span>${sample(
       { kind: 'commit', text: '', tone: undefined },
       'commit'
-    )}${sample({ kind: 'push', text: '', tone: undefined }, 'push')}${sample(
-      { kind: 'ci', text: '✓', tone: 'pass' },
-      'CI run'
-    )}${sample({ kind: 'ci', text: '', tone: 'running' }, 'running')}${sample(
-      { kind: 'reviewers', text: 'MN', tone: undefined },
-      'reviewer added'
-    )}${sample({ kind: 'approve', text: 'AR', tone: undefined }, 'approved')}${sample(
-      { kind: 'wait', text: 'JB', tone: undefined },
-      'waits for author'
-    )}${sample({ kind: 'reject', text: 'MN', tone: undefined }, 'rejected')}${sample(
-      { kind: 'autoComplete', text: 'A', tone: undefined },
-      'auto-complete'
-    )}${sample({ kind: 'comments', text: '', tone: undefined }, 'comment')}`,
+    )}<span class="tl-key"><span class="tl-mk static mk-commit many"></span><span class="tl-mk static mk-comments many"></span>several within minutes</span>${sample(
+      { kind: 'push', text: '', tone: undefined },
+      'push'
+    )}${sample({ kind: 'ci', text: '✓', tone: 'pass' }, 'CI run')}${sample(
+      { kind: 'ci', text: '', tone: 'running' },
+      'running'
+    )}${sample({ kind: 'reviewers', text: 'MN', tone: undefined }, 'reviewer added')}${sample(
+      { kind: 'approve', text: 'AR', tone: undefined },
+      'approved'
+    )}${sample({ kind: 'wait', text: 'JB', tone: undefined }, 'waits for author')}${sample(
+      { kind: 'reject', text: 'MN', tone: undefined },
+      'rejected'
+    )}${sample({ kind: 'autoComplete', text: 'A', tone: undefined }, 'auto-complete')}${sample(
+      { kind: 'comments', text: '', tone: undefined },
+      'comment'
+    )}`,
     `<span class="tl-legend-sub">always</span>${sample(
       { kind: 'ci', text: '✕', tone: 'fail' },
       'latest CI run failed'
@@ -637,6 +644,9 @@ function place(root: HTMLElement, current: TimelineModel): void {
     current.days.forEach((day, index) => {
       if (day.weekStart) {
         mark('tl-weeksep', index, 0);
+      } else if (index > 0) {
+        // Rule TIMELINE-42: the days are separated too, barely visible until the pointer is on the timeline
+        mark('tl-daysep', index, 0);
       }
       if (day.today) {
         mark('tl-todaycol', index, 1);

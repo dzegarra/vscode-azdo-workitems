@@ -235,6 +235,17 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   border-left: 1px solid var(--border);
 }
 
+/* Rule TIMELINE-42: a line between the days, barely visible; clearer while the pointer is on the timeline */
+.tl-daysep {
+  width: 0;
+  border-left: 1px solid color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+  transition: border-color 0.15s;
+}
+
+.tl-body:hover .tl-daysep {
+  border-left-color: color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
+}
+
 /* Rule TIMELINE-31: the margin after the sprint, hatched over the faded bars; the text after a bar is above it */
 .tl-overlay > .tl-aftersprint {
   border-left: 1px dashed var(--border);
@@ -1664,4 +1675,19 @@ body.vscode-light .tl-dev-tick {
   color: var(--muted);
   font-size: 11px;
   font-weight: 400;
+}
+
+/* Rule TIMELINE-42: a burst of commits or pushes is a line twice as thick, a burst of comments a bigger dot */
+.tl-mk.mk-commit.many,
+.tl-mk.mk-push.many {
+  width: 4px;
+  min-width: 4px;
+  border-radius: 1.5px;
+}
+
+.tl-mk.mk-comments.many {
+  width: 12px;
+  min-width: 12px;
+  height: 12px;
+  margin-top: 2px;
 }

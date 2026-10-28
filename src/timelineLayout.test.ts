@@ -92,7 +92,24 @@ describe('marks of a lane (TIMELINE-30)', () => {
     expect(one.text).toBe('2✓');
     expect(one.tip.lines).toHaveLength(2);
     expect(layoutMarkers([mark('ci', 3, '✓', 'pass'), mark('ci', 3.01, '✕', 'fail')])).toHaveLength(2);
-    expect(layoutMarkers([mark('push', 3), mark('push', 3.01)])).toHaveLength(2);
+    expect(layoutMarkers([mark('push', 3), mark('push', 3.5)])).toHaveLength(2);
+  });
+
+  it('groups commits, pushes and comments of a burst into one bigger mark, without text (TIMELINE-42)', () => {
+    const minutes = (n: number) => 3 + n / (24 * 60);
+    const laid = layoutMarkers([
+      mark('commit', minutes(0), ''),
+      mark('commit', minutes(4), ''),
+      mark('commit', minutes(9), ''),
+      mark('commit', minutes(30), ''),
+      mark('comments', minutes(1), ''),
+      mark('comments', minutes(2), ''),
+    ]);
+    expect(laid.map((entry) => [entry.kind, entry.count, entry.text])).toEqual([
+      ['commit', 3, ''],
+      ['comments', 2, ''],
+      ['commit', undefined, ''],
+    ]);
   });
 });
 

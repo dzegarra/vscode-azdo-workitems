@@ -9,6 +9,11 @@ import type { TimelineMarker, TimelineSegment } from './timelineTypes';
 export const MIN_SEGMENT_DAYS = 0.15;
 /** Marks of the same kind within this distance are one mark with a count */
 export const MARK_MERGE_DAYS = 0.03;
+/**
+ * Rule TIMELINE-42: commits, pushes and comments within this distance (days of the axis: ten minutes) are one bigger
+ * mark: a rebase followed by a forced push makes many commits and pushes at the same moment
+ */
+export const BURST_DAYS = 10 / (24 * 60);
 
 const sameBar = (a: TimelineSegment, b: TimelineSegment): boolean =>
   a.kind === b.kind && a.end >= b.start && a.dashed === b.dashed;
@@ -68,8 +73,10 @@ export function withAtRest(markers: readonly TimelineMarker[]): TimelineMarker[]
   );
 }
 
-/** Each of these is its own mark (Rule TIMELINE-39: every comment, commit and reviewer added) */
-const NEVER_MERGED = new Set<TimelineMarker['kind']>(['comments', 'commit', 'push', 'reviewers']);
+/** Each reviewer added is its own mark (Rule TIMELINE-39) */
+const NEVER_MERGED = new Set<TimelineMarker['kind']>(['reviewers']);
+/** Rule TIMELINE-42: marks drawn as a line or a dot, grouped only within a burst; the group is drawn bigger, no text */
+const BURSTS = new Set<TimelineMarker['kind']>(['comments', 'commit', 'push']);
 
 // Rule TIMELINE-30
 /**
@@ -83,13 +90,13 @@ export function layoutMarkers(markers: readonly TimelineMarker[]): TimelineMarke
       (candidate) =>
         candidate.kind === marker.kind &&
         candidate.tone === marker.tone &&
-        marker.at - candidate.at <= MARK_MERGE_DAYS &&
+        marker.at - candidate.at <= (BURSTS.has(marker.kind) ? BURST_DAYS : MARK_MERGE_DAYS) &&
         !NEVER_MERGED.has(marker.kind)
     );
     if (same) {
       const count = (same.count ?? 1) + 1;
       same.count = count;
-      same.text = `${String(count)}${marker.text}`;
+      same.text = BURSTS.has(marker.kind) ? same.text : `${String(count)}${marker.text}`;
       same.tip = { title: same.tip.title, lines: [...same.tip.lines, ...marker.tip.lines] };
       if (marker.atRest) {
         same.atRest = true;
