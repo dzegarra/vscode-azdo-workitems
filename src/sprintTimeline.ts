@@ -33,6 +33,7 @@ import {
 import type { ThreadResponse } from './reviewThreads';
 import {
   groupByPerson,
+  pullRequestInfo,
   shapeTeamItems,
   teamCompletedPullRequests,
   teamOfIteration,
@@ -376,6 +377,12 @@ export class SprintTimelinePanel implements vscode.Disposable {
       density: densityOf(this.team.scope, settings().timelineDensity),
       sprints,
       sprintOffset: 0,
+      // Rule TIMELINE-17: the dates of the PRs linked to the work items that My Pull Requests does not list
+      pullRequestInfo: new Map(
+        this.store.workItems
+          .flatMap((entry) => [...entry.pullRequests, ...entry.otherTasks.flatMap((task) => task.pullRequests)])
+          .map((pr) => [pr.pullRequestId, pullRequestInfo(pr, { publishedAt: new Map() })])
+      ),
       completedPullRequests: this.myPullRequests.completedPullRequests(),
       codingStart: settings().timelineCodingStart,
       firstCommits: this.myPullRequests.firstCommitDates(),
@@ -450,6 +457,10 @@ export class SprintTimelinePanel implements vscode.Disposable {
       past: { ended: endedText(axis?.finishDate) },
       scope: this.team.scope,
       completedPullRequests: data ? teamCompletedPullRequests(data) : [],
+      // Rule TIMELINE-17: the open (or abandoned) PRs of a past sprint have their dates too
+      pullRequestInfo: new Map(
+        (data?.pullRequests ?? []).map((pr) => [pr.pullRequestId, pullRequestInfo(pr, { publishedAt: new Map() })])
+      ),
       codingStart: 'taskActivated',
       history: this.history.snapshot(),
       stateHistory: this.states.snapshot(),

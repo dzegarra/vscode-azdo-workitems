@@ -774,6 +774,26 @@ describe('the work item with several PRs (TIMELINE-16, TIMELINE-17)', () => {
     ]);
   });
 
+  it('dates a PR that is not in My Pull Requests from its own details (TIMELINE-17)', () => {
+    const item = workItem({ id: 6, dates: { activated: iso(13, 9) }, pullRequests: [pullRequest({ id: 60 })] });
+    const undated = timeline([item]).work[0].children?.at(0);
+    expect(undated).toMatchObject({ kind: 'pr', undated: true });
+    const info = {
+      id: 60,
+      publishedAt: iso(15, 10),
+      createdAt: iso(15, 9),
+      status: 'active' as const,
+      reviewers: [],
+      isDraft: false,
+      conflicts: false,
+      url: 'https://pr/60',
+      repositoryId: 'r',
+    };
+    const dated = timeline([item], [], [], { pullRequestInfo: new Map([[60, info]]) }).work[0].children?.at(0);
+    expect(dated?.kind === 'pr' && dated.undated).toBeFalsy();
+    expect(dated?.kind === 'pr' && dated.historyRef?.repositoryId).toBe('r');
+  });
+
   it('draws a task done without a PR from its activation to when it was done (TIMELINE-18)', () => {
     const item = workItem({ id: 3, dates: { activated: iso(13, 9) } });
     const done = task(31, 3, 'Done', { dates: { activated: iso(14, 9), stateChanged: iso(16, 12), created: iso(12) } });

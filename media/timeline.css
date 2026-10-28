@@ -1005,30 +1005,6 @@ body.vscode-light .tl-dev-tick {
 }
 
 /* Marks that would touch go to the next row of the strip, and the row of the PR grows with them (Rule TIMELINE-30) */
-.tl-row.child.pr.rows-2 {
-  --tl-row: 70px;
-}
-
-.tl-row.child.pr.rows-3 {
-  --tl-row: 86px;
-}
-
-.tl-row.pr.rows-2 .tl-seg {
-  top: 44px;
-}
-
-.tl-row.pr.rows-3 .tl-seg {
-  top: 60px;
-}
-
-.tl-mk.mr-1 {
-  top: 20px;
-}
-
-.tl-mk.mr-2 {
-  top: 36px;
-}
-
 .tl-mk.static {
   top: auto;
 }
@@ -1199,27 +1175,17 @@ body.vscode-light .tl-dev-tick {
   margin-top: 0;
 }
 
-/* Rule TIMELINE-39: a commit is a white line over the bar */
+/* Rule TIMELINE-39 */
+/* A commit: a white line on the line of marks, above the bar */
 .tl-mk.mk-commit {
   width: 2px;
   min-width: 2px;
-  height: 20px;
+  height: 14px;
+  margin-top: 1px;
   padding: 0;
   border-radius: 1px;
   background: #fff;
   box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25);
-}
-
-.tl-row.pr .tl-mk.mk-commit {
-  top: 26px;
-}
-
-.tl-row.pr.rows-2 .tl-mk.mk-commit {
-  top: 42px;
-}
-
-.tl-row.pr.rows-3 .tl-mk.mk-commit {
-  top: 58px;
 }
 
 .tl-mk.static.mk-commit {
@@ -1228,8 +1194,7 @@ body.vscode-light .tl-dev-tick {
 }
 
 .tl-grid.density-compact .tl-row.pr .tl-mk.mk-commit {
-  top: 9px;
-  height: 16px;
+  height: 12px;
 }
 
 .tl-seg.seg-taskToDo,
@@ -1495,9 +1460,7 @@ body.vscode-light .tl-dev-tick {
   --tl-bar: 16px;
 }
 
-.tl-grid.density-compact .tl-row.child.pr,
-.tl-grid.density-compact .tl-row.child.pr.rows-2,
-.tl-grid.density-compact .tl-row.child.pr.rows-3 {
+.tl-grid.density-compact .tl-row.child.pr {
   --tl-row: 34px;
   --tl-bar: 8px;
 }
@@ -1537,14 +1500,13 @@ body.vscode-light .tl-dev-tick {
 }
 
 .tl-grid.density-compact .tl-row.pr .tl-seg {
-  top: calc((var(--tl-row) - var(--tl-bar)) / 2);
+  top: 23px;
   color: transparent;
 }
 
-.tl-grid.density-compact .tl-row.pr .tl-mk,
-.tl-grid.density-compact .tl-row.pr .tl-mk.mr-1,
-.tl-grid.density-compact .tl-row.pr .tl-mk.mr-2 {
-  top: 9px;
+/* Compact too: the marks on their line above the thin bar */
+.tl-grid.density-compact .tl-row.pr .tl-mk {
+  top: 3px;
 }
 
 .tl-grid.density-compact .tl-strip {

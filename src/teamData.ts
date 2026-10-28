@@ -104,7 +104,11 @@ const stringField = (workItem: WorkItem, name: string): string | undefined => {
   return typeof value === 'string' ? value : undefined;
 };
 
-function pullRequestInfo(pr: PullRequestDetails, snapshot: TeamSnapshot): TeamPullRequestInfo {
+/** What the timeline and the markers need of a PR, from its details (Rules TIMELINE-17, TIMELINE-22) */
+export function pullRequestInfo(
+  pr: PullRequestDetails,
+  snapshot: Pick<TeamSnapshot, 'myId' | 'publishedAt'>
+): TeamPullRequestInfo {
   return {
     id: pr.pullRequestId,
     author: pr.createdBy?.displayName && shortPersonName(pr.createdBy.displayName),

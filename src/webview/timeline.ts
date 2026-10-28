@@ -19,6 +19,7 @@ import type {
   TimelineTeam,
 } from '../sprintTimelineModel';
 import { EMPTY_PEOPLE_HINT } from '../teamPeople';
+import { packMarks } from '../timelineLayout';
 import {
   collapseAll,
   expandedIds,
@@ -115,7 +116,7 @@ const pillHtml = (pr: { text: string; merged?: boolean }): string =>
 
 /** What a marker looks like: the classes the CSS paints and the text inside */
 function markerHtml(marker: TimelineMarker, positioned: boolean): string {
-  const classes = ['tl-mk', `mk-${marker.kind}`, `mr-${String(marker.row ?? 0)}`];
+  const classes = ['tl-mk', `mk-${marker.kind}`];
   if (marker.tone) {
     classes.push(`mk-${marker.tone}`);
   }
@@ -193,9 +194,9 @@ function renderPullRequestChild(child: PullRequestChild, last: boolean): string 
   } else if (child.undated) {
     status = '<span class="tl-loading start">dates not known</span>';
   }
-  return `<div class="tl-row child pr rows-${String(child.markerRows)}${child.merged ? ' faded' : ''}${
-    loading ? ' loading' : ''
-  }" data-pr="${String(child.prId)}" aria-busy="${String(loading)}"><div class="tl-label child${
+  return `<div class="tl-row child pr${child.merged ? ' faded' : ''}${loading ? ' loading' : ''}" data-pr="${String(
+    child.prId
+  )}" aria-busy="${String(loading)}"><div class="tl-label child${
     last ? ' last' : ''
   }" tabindex="0" role="button" ${open}><span class="tl-l1">${pillHtml(child.pill)}<span class="tl-title">${escapeHtml(
     child.title
@@ -471,13 +472,13 @@ function renderHeader(current: TimelineModel): string {
   const anyExpanded = expandedIds(expandableRows(current), choices).length > 0;
   // Rule TIMELINE-32: the row style of the view shown
   const density = (id: TimelineModel['density'], text: string): string =>
-    `<button class="bd-chip" data-density="${id}" aria-pressed="${String(current.density === id)}">${text}</button>`;
+    `<button data-density="${id}" aria-pressed="${String(current.density === id)}">${text}</button>`;
   return `<header class="bd-header">${renderSprintSwitch(current, teams)}${
     current.header.dates ? `<span class="bd-left">${escapeHtml(current.header.dates)}</span>` : ''
   }${renderSprintTeams(current.header.teams)}${left}${stats}
     <div class="bd-tabs" role="group" aria-label="View"><button class="bd-chip" data-open-board aria-pressed="false">Track board</button><button class="bd-chip" aria-pressed="true">Sprint timeline</button></div>
     ${renderScope(current.scope)}${renderPeoplePicker(team?.picker)}
-    <div class="bd-chips" role="group" aria-label="Row style" title="Row style of this view">${density(
+    <div class="bd-segment" role="group" aria-label="Row style" title="Row style of this view">${density(
       'normal',
       'Normal'
     )}${density('compact', 'Compact')}</div>
@@ -607,6 +608,22 @@ function place(root: HTMLElement, current: TimelineModel): void {
     if (element.dataset.to !== undefined) {
       element.style.width = percent(Number(element.dataset.to) - from);
     }
+  });
+  // Rule TIMELINE-30: the marks of a PR sit on one line; the ones that would touch are spread sideways
+  root.querySelectorAll<HTMLElement>('.tl-strip').forEach((strip) => {
+    const width = strip.getBoundingClientRect().width;
+    const marks = Array.from(strip.querySelectorAll<HTMLElement>('.tl-mk[data-from]'))
+      .map((element) => ({ element, at: Number(element.dataset.from), size: element.offsetWidth }))
+      .sort((a, b) => a.at - b.at);
+    const lefts = packMarks(
+      marks.map((mark) => ({ left: (mark.at / total) * width - mark.size / 2, width: mark.size })),
+      2,
+      width
+    );
+    marks.forEach((mark, index) => {
+      // The marks are centred on their left (translateX(-50%))
+      mark.element.style.left = `${String(lefts[index] + mark.size / 2)}px`;
+    });
   });
   const overlay = root.querySelector<HTMLElement>('.tl-overlay');
   if (overlay) {

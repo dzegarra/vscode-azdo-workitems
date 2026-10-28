@@ -22,7 +22,7 @@ import type { PullRequestStamps } from './pullRequestTimeline';
 import { isFinishedState, stateCategory } from './states';
 import type { TeamPullRequestInfo } from './teamData';
 import { axisPosition, type TimelineDay } from './timelineAxis';
-import { layoutMarkers, markerRows, mergeSegments, withAtRest } from './timelineLayout';
+import { layoutMarkers, mergeSegments, withAtRest } from './timelineLayout';
 import {
   dateText,
   dayLabel,
@@ -308,7 +308,8 @@ function pullRequestsOf(
     }
     const merged = pr.tone === 'completed';
     const mine = input.myPullRequests.find((candidate) => candidate.id === pr.id);
-    const theirs = context.team?.pullRequests.get(pr.id);
+    // Rule TIMELINE-17: a PR that is not in My Pull Requests still has the dates of its own details
+    const theirs = context.team?.pullRequests.get(pr.id) ?? (mine ? undefined : input.pullRequestInfo?.get(pr.id));
     const completed = input.completedPullRequests?.find((candidate) => candidate.id === pr.id);
     const stamps =
       (merged && completed ? stampsOfCompleted(completed) : undefined) ??
@@ -517,7 +518,6 @@ function pullRequestChild(
     sub: linkedTasksText(draw.id, tasks),
     segments: [],
     markers: [],
-    markerRows: 1,
     history: history?.state ?? 'idle',
     historyRef: draw.ref,
     open: context.team
@@ -618,7 +618,6 @@ function pullRequestChild(
     ...base,
     segments: mergeSegments(drawn),
     markers,
-    markerRows: markerRows(markers),
     ...(detailsLoading ? { detailsLoading } : {}),
     ...(merged ? { merged } : {}),
     ...(action ? { action } : {}),

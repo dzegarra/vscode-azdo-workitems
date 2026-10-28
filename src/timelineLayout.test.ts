@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { layoutMarkers, markerRows, mergeSegments, withAtRest } from './timelineLayout';
+import { layoutMarkers, mergeSegments, packMarks, withAtRest } from './timelineLayout';
 import type { TimelineMarker, TimelineSegment } from './timelineTypes';
 
 const seg = (
@@ -60,18 +60,31 @@ describe('bars of a lane (TIMELINE-30)', () => {
 });
 
 describe('marks of a lane (TIMELINE-30)', () => {
-  it('puts marks that would touch on the next row, and the ones far apart on the first', () => {
-    const laid = layoutMarkers([mark('approve', 2, 'AR'), mark('wait', 2.1, 'JB'), mark('push', 4)]);
-    expect(laid.map((entry) => entry.row)).toEqual([0, 1, 0]);
-    expect(markerRows(laid)).toBe(2);
+  it('spreads marks that would touch sideways on one line, never on new rows', () => {
+    expect(
+      packMarks(
+        [
+          { left: 10, width: 16 },
+          { left: 14, width: 16 },
+          { left: 100, width: 2 },
+        ],
+        2,
+        500
+      )
+    ).toEqual([10, 28, 100]);
   });
 
-  it('never overlaps two marks of a row', () => {
-    const laid = layoutMarkers(Array.from({ length: 3 }, (_, index) => mark('approve', 2 + index * 0.05, 'AR')));
-    for (const row of [0, 1, 2]) {
-      const at = laid.filter((entry) => entry.row === row).map((entry) => entry.at);
-      at.slice(1).forEach((value, index) => expect(value - at[index]).toBeGreaterThanOrEqual(0.17 - 1e-9));
-    }
+  it('packs a crowded line back from the right edge', () => {
+    expect(
+      packMarks(
+        [
+          { left: 80, width: 16 },
+          { left: 90, width: 16 },
+        ],
+        2,
+        110
+      )
+    ).toEqual([76, 94]);
   });
 
   it('merges marks of the same kind at the same moment into a count, with all their tooltips', () => {
@@ -80,10 +93,6 @@ describe('marks of a lane (TIMELINE-30)', () => {
     expect(one.tip.lines).toHaveLength(2);
     expect(layoutMarkers([mark('ci', 3, '✓', 'pass'), mark('ci', 3.01, '✕', 'fail')])).toHaveLength(2);
     expect(layoutMarkers([mark('push', 3), mark('push', 3.01)])).toHaveLength(2);
-  });
-
-  it('has one row without marks', () => {
-    expect(markerRows([])).toBe(1);
   });
 });
 

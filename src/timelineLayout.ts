@@ -1,18 +1,14 @@
 /**
  * Layout of what is drawn on a lane of the Sprint timeline, in days of the axis (Rule TIMELINE-30): bars that are one
- * station are one bar, blips too short to see are absorbed by their neighbour, and marks never overlap. Pure, so no
+ * station are one bar, blips too short to see are absorbed by their neighbour, and marks never overlap (one line). Pure, so no
  * "vscode" import
  */
 import type { TimelineMarker, TimelineSegment } from './timelineTypes';
 
 /** A bar narrower than this (days of the axis, about four hours) is a blip: it is absorbed by the previous one */
 export const MIN_SEGMENT_DAYS = 0.15;
-/** Two marks closer than this (days) would touch: the second goes to the next row of the strip */
-export const MARK_GAP_DAYS = 0.17;
 /** Marks of the same kind within this distance are one mark with a count */
 export const MARK_MERGE_DAYS = 0.03;
-/** Rows of the strip at most: a mark that finds no room goes on the last one */
-export const MAX_MARK_ROWS = 3;
 
 const sameBar = (a: TimelineSegment, b: TimelineSegment): boolean =>
   a.kind === b.kind && a.end >= b.start && a.dashed === b.dashed;
@@ -77,8 +73,8 @@ const NEVER_MERGED = new Set<TimelineMarker['kind']>(['comments', 'commit', 'pus
 
 // Rule TIMELINE-30
 /**
- * Marks that never overlap: those of the same kind at the same moment are one ("2✓"); each mark goes to the first row of
- * the strip where the previous mark is far enough (`row` 0, 1, 2); on a full strip it stays on the last row
+ * Marks of the same kind at the same moment are one ("2✓"), except the ones that are each their own mark. They all sit
+ * on one line above the bar: the webview spreads the ones that would touch sideways (`packMarks`), never on new rows
  */
 export function layoutMarkers(markers: readonly TimelineMarker[]): TimelineMarker[] {
   const merged: TimelineMarker[] = [];
@@ -102,21 +98,23 @@ export function layoutMarkers(markers: readonly TimelineMarker[]): TimelineMarke
       merged.push({ ...marker, count: undefined });
     }
   }
-  const lastAt: number[] = [];
-  return merged.map((marker) => {
-    // Rule TIMELINE-39: a commit is a line over the bar, not a mark of the strip
-    if (marker.kind === 'commit') {
-      return { ...marker, row: 0 };
-    }
-    let row = lastAt.findIndex((at) => marker.at - at >= MARK_GAP_DAYS);
-    if (row === -1) {
-      row = Math.min(lastAt.length, MAX_MARK_ROWS - 1);
-    }
-    lastAt[row] = marker.at;
-    return { ...marker, row };
-  });
+  return merged;
 }
 
-/** How many rows of marks a lane has: the row of the PR grows with them */
-export const markerRows = (markers: readonly Pick<TimelineMarker, 'row'>[]): number =>
-  Math.max(1, ...markers.map((marker) => (marker.row ?? 0) + 1));
+// Rule TIMELINE-30
+/**
+ * Where the marks of a line go (pixels): each at its moment unless it would touch the previous one, then just after it
+ * (`gap` apart); a line that would run past `width` is packed back from the right edge. Marks sorted by moment
+ */
+export function packMarks(marks: readonly { left: number; width: number }[], gap: number, width: number): number[] {
+  const lefts: number[] = [];
+  marks.forEach((mark, index) => {
+    const previous = index > 0 ? lefts[index - 1] + marks[index - 1].width + gap : Number.NEGATIVE_INFINITY;
+    lefts.push(Math.max(mark.left, previous));
+  });
+  for (let index = marks.length - 1; index >= 0; index -= 1) {
+    const limit = index === marks.length - 1 ? width : lefts[index + 1] - gap;
+    lefts[index] = Math.min(lefts[index], limit - marks[index].width);
+  }
+  return lefts;
+}

@@ -14,6 +14,7 @@ import type { TimelineDay } from './timelineAxis';
 import type { TimelineDensity } from './timelineDensity';
 import type { PeoplePicker } from './teamBoardModel';
 import type { PickedPerson } from './teamPeople';
+import type { TeamPullRequestInfo } from './teamData';
 import type { TeamTimelineInput } from './teamTimelineModel';
 import type { BoardAction, BoardModel } from './trackBoardModel';
 import type { WebviewMessage, WorkItemModel } from './viewModel';
@@ -105,8 +106,6 @@ export interface TimelineMarker {
   /** Initials, "+2", "3"; empty for a push */
   text: string;
   tone?: 'fail' | 'pass' | 'running';
-  /** Rule TIMELINE-30: the row of the strip it is on (marks that would touch go to the next row) */
-  row?: number;
   /** Marks of the same kind at the same moment are one, with their number */
   count?: number;
   /** The tooltip: who, when, what */
@@ -131,8 +130,6 @@ export interface PullRequestChild {
   /** Implementation, draft, review, ready to merge */
   segments: TimelineSegment[];
   markers: TimelineMarker[];
-  /** Rows of the strip of marks (1 to 3): the row of the PR is taller with more */
-  markerRows: number;
   /** "✓ merged Fr 16" */
   merged?: { at: number; text: string };
   action?: BoardAction & { primary: boolean };
@@ -337,6 +334,12 @@ export interface TimelineInput {
   firstCommits?: ReadonlyMap<number, string>;
   /** Rule TIMELINE-37: the PRs of others the user voted on, and their threads read so far */
   reviewed?: Omit<ReviewedInput, 'days' | 'now'>;
+  /**
+   * Rule TIMELINE-17: what is known of the PRs linked to the work items from their own details (the store's, or a past
+   * sprint's): the dates of a PR that is not in My Pull Requests (another author, an older one, an open PR of a past
+   * sprint) come from here
+   */
+  pullRequestInfo?: ReadonlyMap<number, TeamPullRequestInfo>;
   /** Rule TIMELINE-39: the PRs whose row was hovered, the times of their commits read so far, and those being read */
   hovered?: ReadonlySet<number>;
   commits?: ReadonlyMap<number, readonly number[]>;
