@@ -9,7 +9,6 @@ import type { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import { withFeature } from './requestContext';
 import type { ReviewRequestsWatcher } from './reviewRequestsWatcher';
 import { reviewSettings } from './reviewRequestsWatcher';
-import { OPEN_SPRINT_TIMELINE_COMMAND } from './sprintTimelineModel';
 import { isSharedMessage, runSharedMessage } from './sharedMessages';
 import { sprintProgress } from './sprintCountdown';
 import {
@@ -217,10 +216,6 @@ export class TrackBoardPanel implements vscode.Disposable {
 
   private async onMessage(message: BoardMessage): Promise<void> {
     try {
-      if (message.type === 'openTimeline') {
-        await vscode.commands.executeCommand(OPEN_SPRINT_TIMELINE_COMMAND);
-        return;
-      }
       if (message.type === 'ready') {
         this.ready = true;
         this.post();

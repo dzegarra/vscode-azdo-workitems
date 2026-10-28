@@ -8,6 +8,13 @@ export const ICONS = {
   external:
     '<path d="M9.5 2.5h4v4M13.5 2.5 7.5 8.5M12 9.5v3.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-8a.5.5 0 0 1 .5-.5H7"/>',
   rows: '<path d="M2.5 4h11M2.5 8h11M2.5 12h11"/>',
+  rowsCompact: '<path d="M2.5 3h11M2.5 6.3h11M2.5 9.6h11M2.5 13h11"/>',
+  person: '<circle cx="8" cy="5.5" r="2.5"/><path d="M3 13.5c.6-2.6 2.6-4 5-4s4.4 1.4 5 4"/>',
+  people:
+    '<circle cx="6" cy="5.5" r="2.2"/><path d="M1.8 13.5c.5-2.3 2.2-3.6 4.2-3.6s3.7 1.3 4.2 3.6"/><circle cx="11.3" cy="6" r="1.8"/><path d="M11.2 9.9c1.7 0 2.9 1.1 3.3 3.1"/>',
+  info: '<circle cx="8" cy="8" r="6"/><path d="M8 7.5v3.5M8 5h.01"/>',
+  sliders:
+    '<path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6"/><circle cx="10" cy="4.5" r="1.5"/><circle cx="6" cy="11.5" r="1.5"/>',
   cards: '<rect x="2.5" y="2.5" width="11" height="4.5" rx="1"/><rect x="2.5" y="9" width="11" height="4.5" rx="1"/>',
   expandAll: '<path d="m4 3.5 4 3.5 4-3.5M4 9l4 3.5L12 9"/>',
   collapseAll: '<path d="m4 7 4-3.5L12 7M4 12.5 8 9l4 3.5"/>',

@@ -109,16 +109,23 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
   font-weight: 600;
 }
 
-.bd-tabs {
-  display: flex;
-  gap: 4px;
+.bd-header .bd-segment[aria-label='Whose work'] {
+  /* The controls of the header sit on the right */
   margin-left: auto;
 }
 
-.bd-tabs .bd-chip[aria-pressed='true'] {
-  border-color: var(--vscode-focusBorder);
-  background: color-mix(in srgb, var(--vscode-focusBorder) 16%, transparent);
-  color: var(--vscode-foreground);
+/* Rule TIMELINE-45: the buttons of a segment shown as icons, named on hover */
+.bd-segment button.icon-only {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  padding: 0;
+}
+
+.bd-segment button.icon-only svg {
+  width: 15px;
+  height: 15px;
 }
 
 .bd-scope {

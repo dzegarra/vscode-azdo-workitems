@@ -26,6 +26,7 @@ import type { CompletedPullRequestInfo } from './completedPullRequests';
 import { boardCards, boardItems, type BoardKind, type BoardWorkCard } from './trackBoardModel';
 import { historyRow, withMembership } from './pastSprints';
 import { axisPosition } from './timelineAxis';
+import { arrangeRows, DEFAULT_VIEW_OPTIONS, inItemOrder } from './timelineView';
 import type { SprintMembership } from './sprintMembership';
 
 /** What the Whole team timeline needs besides the user's own timeline (Rule TIMELINE-21) */
@@ -204,10 +205,22 @@ function personRows(
         )
       : readOnlyRow(shaped, noteOf(row));
   };
+  // Rule TIMELINE-45: the finished and the moved-out work items grouped at the end, or in their place
+  const view = input.view ?? DEFAULT_VIEW_OPTIONS;
+  const arranged = arrangeRows(
+    view.groupDone
+      ? rows.ordered
+      : inItemOrder(
+          rows.ordered,
+          models.map((model) => model.id)
+        ),
+    { finished: (row) => rows.finished.includes(row), movedOut },
+    view
+  );
   return {
-    work: rows.work.filter((row) => !movedOut(row)).map(shape),
-    finished: rows.finished.filter((row) => !movedOut(row)).map(shape),
-    movedOut: [...rows.work, ...rows.finished].filter(movedOut).map(shape),
+    work: arranged.work.map(shape),
+    finished: arranged.finished.map(shape),
+    movedOut: arranged.movedOut.map(shape),
     cards,
     teamCards,
   };

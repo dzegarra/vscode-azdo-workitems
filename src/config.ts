@@ -13,6 +13,7 @@ import { normalizePopoverDelay } from './popoverDelay';
 import { normalizeHoverStyle } from './hoverStyle';
 import { normalizeCodingStart } from './codingStart';
 import { normalizeTimelineDensity, type TimelineDensity } from './timelineDensity';
+import { normalizeViewOptions, VIEW_OPTION_SETTINGS, type TimelineViewSwitch } from './timelineView';
 import { normalizeLook } from './look';
 import { normalizeTaskCountStyle } from './taskCountStyle';
 import { normalizeWorkingOnAnimation } from './workingOn';
@@ -47,6 +48,13 @@ export async function setTimelineDensity(scope: 'mine' | 'team', density: Timeli
       density,
       vscode.ConfigurationTarget.Global
     );
+}
+
+/** Rule TIMELINE-45: a switch of the view options of the Sprint timeline (its panel writes it) */
+export async function setTimelineViewOption(option: TimelineViewSwitch, value: boolean): Promise<void> {
+  await vscode.workspace
+    .getConfiguration(SECTION)
+    .update(VIEW_OPTION_SETTINGS[option], value, vscode.ConfigurationTarget.Global);
 }
 
 /** Rule TEAM-1: the people of the Whole team view are saved in the user's settings (the picker writes them) */
@@ -109,6 +117,14 @@ export function settings() {
       mine: normalizeTimelineDensity(config.get<string>('appearance.timelineDensityMine'), 'normal'),
       team: normalizeTimelineDensity(config.get<string>('appearance.timelineDensityTeam'), 'compact'),
     },
+    /** Rules TIMELINE-45, TIMELINE-46: the view options of the Sprint timeline */
+    timelineView: normalizeViewOptions({
+      showReviewed: config.get<unknown>(VIEW_OPTION_SETTINGS.showReviewed),
+      groupDone: config.get<unknown>(VIEW_OPTION_SETTINGS.groupDone),
+      groupMovedOut: config.get<unknown>(VIEW_OPTION_SETTINGS.groupMovedOut),
+      showDevelop: config.get<unknown>(VIEW_OPTION_SETTINGS.showDevelop),
+      dimCompleted: config.get<unknown>(VIEW_OPTION_SETTINGS.dimCompleted),
+    }),
     popoverDelay: normalizePopoverDelay(config.get<unknown>('popovers.hoverDelay')),
     tasksCountStyle: normalizeTaskCountStyle(config.get<string>('tasks.countStyle', 'filled')),
     workingOn: {

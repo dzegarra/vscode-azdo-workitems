@@ -11,6 +11,7 @@ import type { LifecycleEventKind } from './prLifecycle';
 import type { ReviewRequestModel } from './reviewRequests';
 import type { SprintTeams } from './sprintTitle';
 import type { SprintMembership } from './sprintMembership';
+import type { TimelineViewOptions, TimelineViewSwitch } from './timelineView';
 import type { TimelineDay } from './timelineAxis';
 import type { TimelineDensity } from './timelineDensity';
 import type { PeoplePicker } from './teamBoardModel';
@@ -27,6 +28,10 @@ export type TimelineMessage =
   | WebviewMessage
   | { type: 'openBoard'; key?: string }
   | { type: 'setTimelineDensity'; density: TimelineDensity }
+  /** Rule TIMELINE-45: a switch of the view options */
+  | { type: 'setTimelineViewOption'; option: TimelineViewSwitch; value: boolean }
+  /** Rule TIMELINE-46: the link of the view options to the dimming setting */
+  | { type: 'openDimSetting' }
   | { type: 'setTeamScope'; scope: 'mine' | 'team' }
   | { type: 'setTeamPeople'; people: PickedPerson[] }
   /** Rule TIMELINE-29: the work items whose rows are expanded (the panel reads the history of their PRs) */
@@ -203,6 +208,8 @@ export interface TimelineRow {
   popover?: TimelinePopover;
   /** Rule TIMELINE-37: the user's vote on a PR they reviewed: its mark */
   vote?: { at: number; kind: 'approve' | 'reject' | 'wait'; text: string; tip: { title: string; lines: string[] } };
+  /** Rule TIMELINE-44: it left the past sprint before it ended (faded whatever the dimming setting, TIMELINE-46) */
+  movedOut?: boolean;
   /** Rule TIMELINE-37: what the row needs is being read (the threads of a reviewed PR) */
   loading?: boolean;
   /** A click on the label */
@@ -298,6 +305,8 @@ export interface TimelineModel {
   finished: TimelineRow[];
   /** Rule TIMELINE-44: in a past sprint, the work items that left it before it ended, in "MOVED OUT DURING THE SPRINT" */
   movedOut: TimelineRow[];
+  /** Rules TIMELINE-45, TIMELINE-46: the view options (the switches of the header, the dimming setting) */
+  options: TimelineViewOptions;
   reviews: TimelineRow[];
   reviewsTitle: string;
   /** Rule TIMELINE-37: the PRs the user reviewed within the axis, faded, under the reviews owed */
@@ -371,4 +380,6 @@ export interface TimelineInput {
   /** Rule TIMELINE-21: the scope of the tab; "team" adds the sections of the people chosen (src/teamTimelineModel.ts) */
   scope?: 'mine' | 'team';
   team?: TeamTimelineInput;
+  /** Rules TIMELINE-45, TIMELINE-46: the view options; default: everything shown, grouped and dimmed */
+  view?: TimelineViewOptions;
 }

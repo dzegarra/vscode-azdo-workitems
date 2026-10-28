@@ -348,7 +348,6 @@ function renderHeader(current: BoardModel): string {
       ? ` · ${String(current.team.teamCount)} teams`
       : ''
   }</h1>${renderSprintTeams(current.header.teams)}${left}${stats}
-    <div class="bd-tabs" role="group" aria-label="View"><button class="bd-chip" aria-pressed="true">Track board</button><button class="bd-chip" data-open-timeline aria-pressed="false">Sprint timeline</button></div>
     ${renderScope(current.scope)}${renderPeoplePicker(current.scope === 'team' ? current.team?.picker : undefined)}
     <div class="bd-chips" role="group" aria-label="Type">${chip('backlog', 'Backlog Items')}${chip('bug', 'Bugs')}</div>
     <div class="bd-chips" role="group" aria-label="Completed"><button class="bd-chip chip-completed" data-completed aria-pressed="${String(
@@ -772,10 +771,6 @@ document.addEventListener('click', (event) => {
   if (target?.closest('[data-completed]')) {
     // Rule BOARD-25: the setting is shared with the Sprint timeline; both tabs redraw from it
     post({ type: 'setShowCompleted', show: !(model?.showCompleted ?? true) });
-    return;
-  }
-  if (target?.closest('[data-open-timeline]')) {
-    post({ type: 'openTimeline' });
     return;
   }
   if (target?.closest('[data-refresh]')) {

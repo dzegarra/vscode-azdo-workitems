@@ -369,6 +369,27 @@ describe('buildSprintTimeline', () => {
     expect(past.segments.map((segment) => segment.text)).toEqual(['Approved']);
   });
 
+  it('leaves a finished work item in its place and hides REVIEWED BY YOU when the view options say so (TIMELINE-45)', () => {
+    const items = [
+      workItem({
+        id: 1,
+        state: 'Done',
+        displayState: 'Done',
+        dates: { activated: iso(14, 9), stateChanged: iso(16, 9) },
+      }),
+      workItem({ id: 2, pullRequests: [pullRequest()], dates: { activated: iso(14, 9) } }),
+    ];
+    const grouped = timeline(items, [mine()]);
+    expect(grouped.finished.map((row) => row.id)).toEqual([1]);
+    const view = { ...grouped.options, groupDone: false, showReviewed: false };
+    const mixed = timeline(items, [mine()], [], { view });
+    expect(mixed.finished).toEqual([]);
+    expect(mixed.work.map((row) => row.id)).toEqual([1, 2]);
+    expect(mixed.reviewed).toEqual([]);
+    expect(mixed.reviewedWanted).toEqual([]);
+    expect(mixed.options).toEqual(view);
+  });
+
   it('has no NOW line once the margin is over too (TIMELINE-13)', () => {
     expect(timeline([], [], [], { now: new Date(2026, 9, 29, 10) }).now).toBeUndefined();
   });

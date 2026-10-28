@@ -4,6 +4,7 @@
  * two tabs choose the people the same way. UI state only (open, filter text); the choice is the setting
  * `totalflowx.teamView.people`, written by the extension when it receives `setTeamPeople`
  */
+import { icon } from '../icons';
 import { escapeHtml } from '../html';
 import type { PeoplePicker } from '../teamBoardModel';
 import { pickerRows, shortSignIn, togglePerson, type PickedPerson } from '../teamPeople';
@@ -56,13 +57,18 @@ function rowsHtml(picker: PeoplePicker): string {
   return `${chosen}${chosen && others ? '<hr class="bd-people-sep">' : ''}${others}${empty}`;
 }
 
-/** "Mine + my reviews | Whole team" */
-export const renderScope = (scope: TeamScope): string =>
-  `<div class="bd-segment" role="group" aria-label="Whose work"><button data-scope="mine" aria-pressed="${String(
-    scope === 'mine'
-  )}">Mine + my reviews</button><button data-scope="team" aria-pressed="${String(
-    scope === 'team'
-  )}">Whole team</button></div>`;
+/** "Mine + my reviews | Whole team"; with `icons` (the Sprint timeline, Rule TIMELINE-45) a person and people, named on hover */
+export function renderScope(scope: TeamScope, icons = false): string {
+  const button = (id: TeamScope, text: string, name: 'people' | 'person'): string =>
+    `<button data-scope="${id}" aria-pressed="${String(scope === id)}"${
+      icons ? ` class="icon-only" aria-label="${text}" title="${text}">${icon(name)}` : `>${text}`
+    }</button>`;
+  return `<div class="bd-segment" role="group" aria-label="Whose work">${button(
+    'mine',
+    'Mine + my reviews',
+    'person'
+  )}${button('team', 'Whole team', 'people')}</div>`;
+}
 
 /** The button "People N ▾" and its dropdown; nothing without a picker (the scope is "Mine + my reviews") */
 export function renderPeoplePicker(picker: PeoplePicker | undefined): string {

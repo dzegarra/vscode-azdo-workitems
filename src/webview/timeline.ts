@@ -40,6 +40,7 @@ import {
   startPeoplePicker,
 } from './peoplePicker';
 import { renderSprintTeams } from './sprintTeams';
+import { isTimelineViewSwitch, type TimelineViewSwitch } from '../timelineView';
 
 interface VsCodeApi {
   postMessage(message: TimelineMessage): void;
@@ -62,6 +63,10 @@ let choices: ExpansionChoices = {};
 let postedIds: number[] = [];
 /** Rule TIMELINE-34: the legend panel is open (closed by default, UI-only) */
 let legendOpen = false;
+/** Rule TIMELINE-45: the panel of the view options is open */
+let optionsOpen = false;
+/** Rule TIMELINE-46: the setting of the model drawn */
+let dimCompleted = true;
 /** Rule TIMELINE-40: the menu of sprints on the title is open */
 let sprintMenuOpen = false;
 
@@ -198,9 +203,9 @@ function renderPullRequestChild(child: PullRequestChild, last: boolean): string 
   } else if (child.undated) {
     status = '<span class="tl-loading start">dates not known</span>';
   }
-  return `<div class="tl-row child pr${child.merged ? ' faded' : ''}${loading ? ' loading' : ''}" data-pr="${String(
-    child.prId
-  )}" aria-busy="${String(loading)}"><div class="tl-label child${
+  return `<div class="tl-row child pr${child.merged && dimCompleted ? ' faded' : ''}${
+    loading ? ' loading' : ''
+  }" data-pr="${String(child.prId)}" aria-busy="${String(loading)}"><div class="tl-label child${
     last ? ' last' : ''
   }" tabindex="0" role="button" ${open}><span class="tl-l1">${pillHtml(child.pill)}<span class="tl-title">${escapeHtml(
     child.title
@@ -213,7 +218,7 @@ function renderTaskChild(child: TaskChild, last: boolean): string {
   const open = `data-msg="${named(child.open)}" title="Open task ${String(child.taskId)}"`;
   const segments = child.segments.map((segment) => renderSegment(segment)).join('');
   const action = child.action ? actionButton(child.action, 'plain') : '';
-  return `<div class="tl-row child task${child.done ? ' faded' : ''}"><div class="tl-label child${
+  return `<div class="tl-row child task${child.done && dimCompleted ? ' faded' : ''}"><div class="tl-label child${
     last ? ' last' : ''
   }" tabindex="0" role="button" ${open}><span class="tl-l1">${tagHtml({
     text: 'Task',
@@ -257,7 +262,8 @@ function renderRow(row: TimelineRow): string {
     // Rule TIMELINE-23: the same row as the user's, without buttons
     classes.push('read-only');
   }
-  if (row.faded) {
+  // Rule TIMELINE-46: the completed rows are dimmed unless the setting says no; a work item moved out always is
+  if (row.faded && (dimCompleted || row.movedOut)) {
     classes.push('faded');
   }
   if (row.vote) {
@@ -477,6 +483,36 @@ function renderSprintSwitch(current: TimelineModel, teams: string): string {
   )}${menu}</div>`;
 }
 
+// Rule TIMELINE-45
+/** The panel of the view options: one switch per option (personal settings), and where the dimming is set */
+function renderViewOptions(current: TimelineModel): string {
+  const option = (id: TimelineViewSwitch, title: string, sub: string): string =>
+    `<button class="tl-switch" role="switch" data-view-option="${id}" aria-checked="${String(
+      current.options[id]
+    )}"><span class="tl-switch-text"><span class="tl-switch-title">${escapeHtml(
+      title
+    )}</span><span class="tl-switch-sub">${escapeHtml(
+      sub
+    )}</span></span><span class="tl-switch-track" aria-hidden="true"><span class="tl-switch-knob"></span></span></button>`;
+  return `<div class="tl-legend tl-options" id="tl-options" role="dialog" aria-label="View options"><h2>VIEW OPTIONS · MINE AND WHOLE TEAM</h2>${option(
+    'showReviewed',
+    'Show "REVIEWED BY YOU"',
+    'The PRs of others you already voted on, under the reviews you owe'
+  )}${option(
+    'groupDone',
+    'Group the completed work items at the end',
+    'In "DONE THIS SPRINT". Off: each in its place among the open ones'
+  )}${option(
+    'groupMovedOut',
+    'Group the work items moved out at the end',
+    'Past sprints: in "MOVED OUT DURING THE SPRINT". Off: each in its place among the others, still faded, with its → pill'
+  )}${option(
+    'showDevelop',
+    `Show the ${current.develop.branch} bar`,
+    'The runs of the protected branch under the work'
+  )}<p class="tl-options-foot">Completed rows dimmed or not: <button class="tl-link" data-open-dim-setting>Dim completed rows</button> in Settings</p></div>`;
+}
+
 function renderHeader(current: TimelineModel): string {
   const left = current.header.left
     ? `<span class="bd-left${current.header.hurry ? ' hurry' : ''}">${escapeHtml(current.header.left)}</span>`
@@ -489,27 +525,34 @@ function renderHeader(current: TimelineModel): string {
     : '';
   const teams = !current.header.teams && team && team.teamCount > 1 ? ` · ${String(team.teamCount)} teams` : '';
   const anyExpanded = expandedIds(expandableRows(current), choices).length > 0;
-  // Rule TIMELINE-32: the row style of the view shown
-  const density = (id: TimelineModel['density'], text: string): string =>
-    `<button data-density="${id}" aria-pressed="${String(current.density === id)}">${text}</button>`;
+  // Rule TIMELINE-32: the row style of the view shown. Rule TIMELINE-45: the buttons of the header are icons
+  const density = (id: TimelineModel['density'], text: string, name: 'rows' | 'rowsCompact'): string =>
+    `<button class="icon-only" data-density="${id}" aria-pressed="${String(
+      current.density === id
+    )}" aria-label="${text}" title="${text}">${icon(name)}</button>`;
   return `<header class="bd-header">${renderSprintSwitch(current, teams)}${
     current.header.dates ? `<span class="bd-left">${escapeHtml(current.header.dates)}</span>` : ''
   }${renderSprintTeams(current.header.teams)}${left}${stats}
-    <div class="bd-tabs" role="group" aria-label="View"><button class="bd-chip" data-open-board aria-pressed="false">Track board</button><button class="bd-chip" aria-pressed="true">Sprint timeline</button></div>
-    ${renderScope(current.scope)}${renderPeoplePicker(team?.picker)}
-    <div class="bd-segment" role="group" aria-label="Row style" title="Row style of this view">${density(
+    <div class="tl-tools">${renderScope(current.scope, true)}${renderPeoplePicker(team?.picker)}
+    <div class="bd-segment" role="group" aria-label="Row style of this view">${density(
       'normal',
-      'Normal'
-    )}${density('compact', 'Compact')}</div>
-    <div class="tl-legend-anchor"><button class="bd-chip" data-legend aria-expanded="${String(
+      'Normal rows',
+      'rows'
+    )}${density('compact', 'Compact rows', 'rowsCompact')}</div>
+    <div class="tl-legend-anchor"><button class="tl-tool" data-legend aria-expanded="${String(
       legendOpen
-    )}" aria-controls="tl-legend">Legend</button>${legendOpen ? renderLegend(team !== undefined) : ''}</div>
-    <button class="bd-chip chip-collapse${
-      team ? ' icon-only' : ''
-    }" data-collapse-all aria-label="Collapse all" title="Collapse every work item row"${
-    anyExpanded ? '' : ' disabled'
-  }>${icon('collapseAll')}${team ? '' : ' Collapse all'}</button>
-    <button class="bd-icon-button" data-refresh title="Refresh" aria-label="Refresh">${icon('sync')}</button></header>`;
+    )}" aria-controls="tl-legend" aria-label="Legend" title="Legend">${icon('info')}</button>${
+    legendOpen ? renderLegend(team !== undefined) : ''
+  }</div>
+    <button class="tl-tool" data-collapse-all aria-label="Collapse all" title="Collapse every work item row"${
+      anyExpanded ? '' : ' disabled'
+    }>${icon('collapseAll')}</button>
+    <button class="tl-tool" data-refresh title="Refresh" aria-label="Refresh">${icon('sync')}</button>
+    <div class="tl-legend-anchor"><button class="tl-tool" data-view-options aria-haspopup="dialog" aria-expanded="${String(
+      optionsOpen
+    )}" aria-controls="tl-options" aria-label="View options" title="View options: sections and the ${escapeHtml(
+    current.develop.branch
+  )} bar">${icon('sliders')}</button>${optionsOpen ? renderViewOptions(current) : ''}</div></div></header>`;
 }
 
 function renderDays(current: TimelineModel): string {
@@ -587,7 +630,10 @@ function renderBody(current: TimelineModel): string {
   const days = `<div class="tl-row tl-row-days"><div class="tl-label plain"></div><div class="tl-days">${renderDays(
     current
   )}</div></div>`;
-  const develop = section('DEVELOP', renderDevelop(current.develop), undefined, !!team);
+  // Rule TIMELINE-45: the bar of the protected branch can be hidden
+  const develop = current.options.showDevelop
+    ? section('DEVELOP', renderDevelop(current.develop), undefined, !!team)
+    : '';
   // Rule TIMELINE-37: the PRs already reviewed, faded, under the ones owed
   const reviewed = current.reviewed.length
     ? section('REVIEWED BY YOU · THIS SPRINT', current.reviewed.map(renderRow).join(''), undefined, true)
@@ -729,6 +775,7 @@ function render(): void {
     'look-totalflow',
     lookClass(model.look, Array.from(document.body.classList)) !== undefined
   );
+  dimCompleted = model.options.dimCompleted;
   const picker = rememberPicker();
   const scroll = app.querySelector('.tl-scroll');
   const scrollLeft = scroll?.scrollLeft ?? 0;
@@ -843,6 +890,26 @@ document.addEventListener('click', (event) => {
     post({ type: 'setTimelineDensity', density: density.dataset.density === 'compact' ? 'compact' : 'normal' });
     return;
   }
+  const viewOption = target?.closest<HTMLElement>('[data-view-option]');
+  if (viewOption && model) {
+    // Rule TIMELINE-45: the setting is written by the extension, whose change redraws the tab
+    const option = viewOption.dataset.viewOption;
+    if (isTimelineViewSwitch(option)) {
+      post({ type: 'setTimelineViewOption', option, value: !model.options[option] });
+    }
+    return;
+  }
+  if (target?.closest('[data-open-dim-setting]')) {
+    post({ type: 'openDimSetting' });
+    return;
+  }
+  if (target?.closest('[data-view-options]')) {
+    optionsOpen = !optionsOpen;
+    legendOpen = false;
+    render();
+    app?.querySelector<HTMLElement>(optionsOpen ? '[data-view-option]' : '[data-view-options]')?.focus();
+    return;
+  }
   if (target?.closest('[data-legend]')) {
     // Rule TIMELINE-34: a click opens the legend, a second one closes it
     legendOpen = !legendOpen;
@@ -877,6 +944,11 @@ document.addEventListener('click', (event) => {
     sprintMenuOpen = false;
     render();
   }
+  if (optionsOpen && !target?.closest('.tl-options')) {
+    // A click outside closes the view options
+    optionsOpen = false;
+    render();
+  }
   if (legendOpen && !target?.closest('.tl-legend')) {
     // A click outside closes the legend
     legendOpen = false;
@@ -887,10 +959,6 @@ document.addEventListener('click', (event) => {
     choices = collapseAll(expandableRows(model), choices);
     vscode.setState({ ...savedState(), expansion: choices });
     render();
-    return;
-  }
-  if (target?.closest('[data-open-board]')) {
-    post({ type: 'openBoard' });
     return;
   }
   if (target?.closest('[data-refresh]')) {
@@ -915,6 +983,13 @@ document.addEventListener('keydown', (event) => {
       sprintMenuOpen = false;
       render();
       app?.querySelector<HTMLElement>('[data-sprint-menu]')?.focus();
+      return;
+    }
+    if (optionsOpen) {
+      // Rule TIMELINE-45
+      optionsOpen = false;
+      render();
+      app?.querySelector<HTMLElement>('[data-view-options]')?.focus();
       return;
     }
     if (legendOpen) {

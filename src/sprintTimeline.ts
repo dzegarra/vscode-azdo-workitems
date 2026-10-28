@@ -1,6 +1,14 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
-import { resolveContext, setTimelineDensity, settings, workingDaysSetting } from './config';
+import {
+  resolveContext,
+  SECTION,
+  setTimelineDensity,
+  setTimelineViewOption,
+  settings,
+  workingDaysSetting,
+} from './config';
+import { isTimelineViewSwitch, VIEW_OPTION_SETTINGS } from './timelineView';
 import { KeyedReads } from './keyedReads';
 import { stateChanges, type StateChange, type WorkItemUpdate } from './workItemStateHistory';
 import { sprintMembership, type SprintMembership } from './sprintMembership';
@@ -514,6 +522,7 @@ export class SprintTimelinePanel implements vscode.Disposable {
       reviews: this.reviews.models(),
       sprint,
       density: densityOf(this.team.scope, settings().timelineDensity),
+      view: settings().timelineView,
       sprints,
       sprintOffset: 0,
       // Rule TIMELINE-17: the dates of the PRs linked to the work items that My Pull Requests does not list
@@ -606,6 +615,7 @@ export class SprintTimelinePanel implements vscode.Disposable {
       reviews: [],
       sprint: axis,
       density: densityOf(this.team.scope, settings().timelineDensity),
+      view: settings().timelineView,
       sprints,
       sprintOffset: choice.offset,
       past: { ended: endedText(axis?.finishDate), membership: read?.membership },
@@ -714,6 +724,20 @@ export class SprintTimelinePanel implements vscode.Disposable {
       if (message.type === 'setTimelineDensity') {
         // Rule TIMELINE-32: the style of the view shown; the change of the setting redraws the tab (extension.ts)
         await setTimelineDensity(this.team.scope, normalizeTimelineDensity(message.density, 'normal'));
+        return;
+      }
+      if (message.type === 'setTimelineViewOption') {
+        // Rule TIMELINE-45: a personal setting; its change redraws the tab (extension.ts)
+        if (isTimelineViewSwitch(message.option) && typeof message.value === 'boolean') {
+          await setTimelineViewOption(message.option, message.value);
+        }
+        return;
+      }
+      if (message.type === 'openDimSetting') {
+        await vscode.commands.executeCommand(
+          'workbench.action.openSettings',
+          `${SECTION}.${VIEW_OPTION_SETTINGS.dimCompleted}`
+        );
         return;
       }
       if (message.type === 'setExpanded') {

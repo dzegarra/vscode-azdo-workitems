@@ -12,6 +12,7 @@ import type { ReviewRequestModel } from './reviewRequests';
 import { iterationDates } from './sprintTitle';
 import { AFTER_SPRINT_DAYS, axisPosition, buildAxis, type TimelineDay } from './timelineAxis';
 import { historyRow, withMembership } from './pastSprints';
+import { arrangeRows, DEFAULT_VIEW_OPTIONS, inItemOrder } from './timelineView';
 import { reviewedRows, reviewedThreadsWanted } from './reviewedTimeline';
 import { rowsOfCards, type RowContext } from './timelineRows';
 import { dayText, toSegment } from './timelineSpans';
@@ -287,6 +288,7 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
       days: [],
       sprintEnd: 0,
       over: false,
+      options: input.view ?? DEFAULT_VIEW_OPTIONS,
       work: [],
       finished: [],
       movedOut: [],
@@ -312,13 +314,14 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
   };
   // The faded cards of the merged PRs are the board's: the timeline draws the merged PRs it has dates for (TIMELINE-17)
   const cards = board.work.filter((card) => card.merged === undefined);
-  const { work, finished } = rowsOfCards(cards, context);
+  const { finished, ordered } = rowsOfCards(cards, context);
   const position = axisPosition(now, days);
   const shown = now >= axisStart && position < days.length ? position : undefined;
   // Rule TIMELINE-41: a past sprint has no NOW line and its rows are history (no buttons)
   const after = (row: TimelineRow): TimelineRow =>
     input.past ? historyRow(withAfterSprint(row, sprintEnd)) : withAfterSprint(row, sprintEnd);
   const shownNow = input.past ? undefined : shown;
+  const options = input.view ?? DEFAULT_VIEW_OPTIONS;
   // Rules TIMELINE-43, TIMELINE-44: the history of each work item says when it joined and left the past sprint
   const membership = input.past?.membership;
   const movedOut = (row: TimelineRow): boolean => membership?.get(row.id)?.left !== undefined;
@@ -337,13 +340,25 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
     sprintEnd,
     now: shownNow,
     over: shownNow !== undefined && shownNow > sprintEnd,
-    work: work.filter((row) => !movedOut(row)).map(pastRow),
-    finished: finished.filter((row) => !movedOut(row)).map(pastRow),
-    movedOut: [...work, ...finished].filter(movedOut).map(pastRow),
+    // Rule TIMELINE-45: the finished and the moved-out work items grouped at the end, or in their place
+    ...arrangeRows(
+      (options.groupDone
+        ? ordered
+        : inItemOrder(
+            ordered,
+            input.workItems.map((item) => item.id)
+          )
+      ).map(pastRow),
+      { finished: (row) => finished.some((done) => done.id === row.id), movedOut },
+      options
+    ),
+    options,
     reviews: input.reviews.map((review) => after(reviewRow(review, { input, days, now }))),
     // Rule TIMELINE-37
-    reviewed: input.reviewed ? reviewedRows({ ...input.reviewed, days, now }).map(after) : [],
-    reviewedWanted: input.reviewed ? reviewedThreadsWanted(input.reviewed.pullRequests, axisStart) : [],
+    // Rule TIMELINE-45: hidden, the reviewed PRs are not drawn nor their threads read
+    reviewed: input.reviewed && options.showReviewed ? reviewedRows({ ...input.reviewed, days, now }).map(after) : [],
+    reviewedWanted:
+      input.reviewed && options.showReviewed ? reviewedThreadsWanted(input.reviewed.pullRequests, axisStart) : [],
     firstCommitsWanted: [...context.firstCommitsWanted],
     statesWanted: [...(context.statesWanted ?? [])].map(([id, key]) => ({ id, key })),
     commitsWanted: [...(context.commitsWanted ?? [])].map(([id, wanted]) => ({ id, ...wanted })),

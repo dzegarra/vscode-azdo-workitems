@@ -935,9 +935,10 @@ export function workItemRow(cards: readonly BoardWorkCard[], context: RowContext
 export function rowsOfCards(
   cards: readonly BoardWorkCard[],
   context: RowContext
-): { work: TimelineRow[]; finished: TimelineRow[] } {
+): { work: TimelineRow[]; finished: TimelineRow[]; ordered: TimelineRow[] } {
   const work: TimelineRow[] = [];
   const finished: TimelineRow[] = [];
+  const ordered: TimelineRow[] = [];
   const ids = [...new Set(cards.map((card) => card.id))];
   for (const id of ids) {
     const item = context.input.workItems.find((candidate) => candidate.id === id);
@@ -947,6 +948,7 @@ export function rowsOfCards(
     );
     // Rule TIMELINE-19: the finished work items come after the open ones
     (item && isFinishedState(item.state) ? finished : work).push(row);
+    ordered.push(row);
   }
-  return { work, finished };
+  return { work, finished, ordered };
 }

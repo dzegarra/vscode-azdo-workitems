@@ -182,6 +182,7 @@ export function withMembership(
     return {
       ...clipped,
       faded: true,
+      movedOut: true,
       note: { text: targetText(left.to), tone: 'moved', detail: detail.join(' · ') },
     };
   }
