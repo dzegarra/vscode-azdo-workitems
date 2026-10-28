@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { layoutMarkers, markerRows, mergeSegments } from './timelineLayout';
+import { layoutMarkers, markerRows, mergeSegments, withAtRest } from './timelineLayout';
 import type { TimelineMarker, TimelineSegment } from './timelineTypes';
 
 const seg = (
@@ -84,5 +84,36 @@ describe('marks of a lane (TIMELINE-30)', () => {
 
   it('has one row without marks', () => {
     expect(markerRows([])).toBe(1);
+  });
+});
+
+describe('withAtRest (Rule TIMELINE-33)', () => {
+  const event = (kind: TimelineMarker['kind'], at: number, tone?: TimelineMarker['tone']): TimelineMarker => ({
+    kind,
+    at,
+    text: '',
+    tone,
+    tip: { title: kind, lines: [] },
+  });
+
+  it('keeps at rest only the failed latest CI run and the conflicts', () => {
+    const marks = withAtRest([
+      event('ci', 1, 'fail'),
+      event('push', 2),
+      event('ci', 3, 'fail'),
+      event('approve', 4),
+      event('conflicts', 5),
+    ]);
+    expect(marks.map((marker) => marker.atRest === true)).toEqual([false, false, true, false, true]);
+  });
+
+  it('shows no CI mark at rest when the latest run passed or is still running', () => {
+    expect(withAtRest([event('ci', 1, 'fail'), event('ci', 2, 'pass')]).some((marker) => marker.atRest)).toBe(false);
+    expect(withAtRest([event('ci', 1, 'fail'), event('ci', 2, 'running')]).some((marker) => marker.atRest)).toBe(false);
+  });
+
+  it('keeps the mark at rest when marks of the same moment are merged', () => {
+    const [merged] = layoutMarkers([event('ci', 1, 'fail'), { ...event('ci', 1.01, 'fail'), atRest: true }]);
+    expect(merged).toMatchObject({ count: 2, atRest: true });
   });
 });

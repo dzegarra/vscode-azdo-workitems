@@ -1640,7 +1640,7 @@
           "totalflowx.appearance.showCompleted": {
             "type": "boolean",
             "default": true,
-            "markdownDescription": "Show the finished work items and the PRs merged in the sprint on the **Track board** and the **Sprint timeline**. The **Completed** button in the header of both tabs changes it. Off: a finished work item that breaks a team rule stays visible.",
+            "markdownDescription": "Show the finished work items and the PRs merged in the sprint on the **Track board**. The **Completed** button in its header changes it. Off: a finished work item that breaks a team rule stays visible. The **Sprint timeline** always shows them, faded.",
             "scope": "application",
             "order": 10
           },
@@ -1660,6 +1660,36 @@
             "markdownDescription": "Where the **implementation** of a PR starts on the **Sprint timeline** (the first bar of its row, and the start of the **Branch** station of its work item). The first commit alone can come days after the work began, and the activation of the task alone depends on how tidy you are with states, so it depends on how you work. Without the chosen source the other one is used, then the activation of the work item (drawn as approximate), then the start of the sprint.",
             "scope": "application",
             "order": 11
+          },
+          "totalflowx.appearance.timelineDensityMine": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "compact"
+            ],
+            "enumDescriptions": [
+              "Two-line rows: the work item rows are 48 px, the PR rows have a strip of marks above the bar.",
+              "One-line rows of 30 px; the PR rows have a thin bar and their task after the title."
+            ],
+            "default": "normal",
+            "markdownDescription": "Row style of the **Sprint timeline** in **Mine + my reviews**. The **Normal | Compact** switch in the header of the timeline changes it.",
+            "scope": "application",
+            "order": 12
+          },
+          "totalflowx.appearance.timelineDensityTeam": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "compact"
+            ],
+            "enumDescriptions": [
+              "Two-line rows: the work item rows are 48 px, the PR rows have a strip of marks above the bar.",
+              "One-line rows of 30 px; the PR rows have a thin bar and their task after the title."
+            ],
+            "default": "compact",
+            "markdownDescription": "Row style of the **Sprint timeline** in **Whole team**. The **Normal | Compact** switch in the header of the timeline changes it.",
+            "scope": "application",
+            "order": 13
           }
         }
       },

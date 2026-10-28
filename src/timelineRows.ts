@@ -22,7 +22,7 @@ import type { PullRequestStamps } from './pullRequestTimeline';
 import { isFinishedState, stateCategory } from './states';
 import type { TeamPullRequestInfo } from './teamData';
 import { axisPosition, type TimelineDay } from './timelineAxis';
-import { layoutMarkers, markerRows, mergeSegments } from './timelineLayout';
+import { layoutMarkers, markerRows, mergeSegments, withAtRest } from './timelineLayout';
 import {
   dateText,
   dayLabel,
@@ -179,7 +179,7 @@ interface PrDraw {
   title: string;
   merged: boolean;
   draft: boolean;
-  /** The row of the PR is not drawn (a merged PR outside of the axis, or hidden by the Completed chip) */
+  /** The row of the PR is not drawn (a merged PR outside of the axis) */
   hidden: boolean;
   /** Undefined: its dates are not known */
   facts?: PrFacts;
@@ -295,11 +295,10 @@ function pullRequestsOf(
       commit: mine?.commit ?? theirs?.commit,
       state: stateSignature(reviewers, draft),
     };
-    // A merged PR has its row when the Completed chip is on and it was merged within the axis (Rule TIMELINE-17)
+    // A merged PR has its row when it was merged within the axis (Rules TIMELINE-17, TIMELINE-19)
     const hidden =
       merged &&
-      (!input.board.showCompleted ||
-        closed === undefined ||
+      (closed === undefined ||
         !mergedInRange({ closedDate: new Date(closed).toISOString() }, axisStart, days[days.length - 1].endMs));
     let facts: PrFacts | undefined;
     let stations: StationSpan[] = [];
@@ -553,7 +552,7 @@ function pullRequestChild(
       ? []
       : [{ kind: event.kind, at, text: event.text, tone: event.tone, tip: { title: event.title, lines: event.lines } }];
   });
-  const markers = layoutMarkers(marks);
+  const markers = layoutMarkers(withAtRest(marks));
   const closedAt = facts.closed;
   const merged =
     draw.merged && closedAt !== undefined

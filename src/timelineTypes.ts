@@ -9,22 +9,20 @@ import type { MyPullRequestModel } from './myPullRequests';
 import type { HistoryRef, HistoryView } from './prHistoryCache';
 import type { LifecycleEventKind } from './prLifecycle';
 import type { ReviewRequestModel } from './reviewRequests';
-import type { ScheduledIteration } from './schedule';
+import type { SprintTeams } from './sprintTitle';
 import type { TimelineDay } from './timelineAxis';
+import type { TimelineDensity } from './timelineDensity';
 import type { PeoplePicker } from './teamBoardModel';
 import type { PickedPerson } from './teamPeople';
 import type { TeamTimelineInput } from './teamTimelineModel';
 import type { BoardAction, BoardModel } from './trackBoardModel';
 import type { WebviewMessage, WorkItemModel } from './viewModel';
 
-export type TimelineRange = 'sprint' | 'sprintAndNext';
-
 /** Messages of the Sprint timeline: the buttons post the messages of the sidebar, so the same code runs them */
 export type TimelineMessage =
   | WebviewMessage
-  | { type: 'setTimelineRange'; range: TimelineRange }
   | { type: 'openBoard'; key?: string }
-  | { type: 'setShowCompleted'; show: boolean }
+  | { type: 'setTimelineDensity'; density: TimelineDensity }
   | { type: 'setTeamScope'; scope: 'mine' | 'team' }
   | { type: 'setTeamPeople'; people: PickedPerson[] }
   /** Rule TIMELINE-29: the work items whose rows are expanded (the panel reads the history of their PRs) */
@@ -34,7 +32,7 @@ export type TimelineMessage =
 
 /**
  * The colour of a bar: the stations of a work item row (branch, pullRequest, ci, review, ready, needsYou), the phases
- * of a PR row (implementation, draft, review, ready), the reviews owed and the planned work
+ * of a PR row (implementation, draft, review, ready) and the reviews owed
  */
 export type SegmentKind =
   | 'asleep'
@@ -45,7 +43,6 @@ export type SegmentKind =
   | 'implementation'
   | 'needsYou'
   | 'overdue'
-  | 'planned'
   | 'pullRequest'
   | 'ready'
   | 'review'
@@ -61,6 +58,8 @@ export interface TimelineSegment {
   tip: string;
   approximate?: boolean;
   dashed?: boolean;
+  /** Rule TIMELINE-31: the part of an open bar past the end of the sprint (faded, under the hatch of the margin) */
+  after?: boolean;
 }
 
 export interface TimelinePopover {
@@ -98,6 +97,8 @@ export interface TimelineMarker {
   count?: number;
   /** The tooltip: who, when, what */
   tip: { title: string; lines: string[] };
+  /** Rule TIMELINE-33: a problem (the latest CI run failed, conflicts now): shown at rest; the others on hover */
+  atRest?: boolean;
 }
 
 /** How far the history of a PR is: nothing asked (collapsed row), being read, read, or it could not be read */
@@ -169,7 +170,7 @@ export type TimelineChild = PlaceholderChild | PullRequestChild | TasksChild | T
 
 export interface TimelineRow {
   key: string;
-  section: 'planned' | 'review' | 'work';
+  section: 'review' | 'work';
   id: number;
   /** "PBI · #66280" (the label is drawn from `label`; this is its plain text) */
   header: string;
@@ -196,7 +197,7 @@ export interface TimelineRow {
   open: TimelineMessage;
   /** The card of the Track board */
   boardKey?: string;
-  /** Rule TIMELINE-23: a row of another person: compact label, no button, no popover */
+  /** Rule TIMELINE-23: a row of another person: no button, no popover */
   readOnly?: boolean;
   /** Where the bar ends, in days: the button and the note go after it */
   end: number;
@@ -228,7 +229,7 @@ export interface TimelineSection {
   meta: string;
   /** "2 need you · 1 asleep", "waiting on reviewers" */
   summary: string;
-  /** Rows of the person: compact and read-only (the user's own rows are `work`, `finished` and `planned` of the model) */
+  /** Rows of the person, read-only (the user's own rows are `work` and `finished` of the model) */
   rows: TimelineRow[];
   /** Rule TIMELINE-19, per person: the finished work items, after the open ones */
   finished: TimelineRow[];
@@ -254,21 +255,23 @@ export interface TimelineTeam {
 export interface TimelineModel {
   status: 'error' | 'loading' | 'ready';
   error?: string;
-  range: TimelineRange;
+  /** Rule TIMELINE-32: the row style of the view shown */
+  density: TimelineDensity;
   /** The scope chip: the user's work (default) or the whole team (the rows of the others are in `team`) */
   scope: 'mine' | 'team';
   team?: TimelineTeam;
-  header: { sprint: string; dates?: string; left?: string; hurry: boolean };
-  days: Pick<TimelineDay, 'date' | 'label' | 'last' | 'next' | 'today' | 'weekStart'>[];
+  /** Rule SPRINT-TITLE-1: the title the teams share, the "N teams" chip */
+  header: { sprint: string; teams?: SprintTeams; dates?: string; left?: string; hurry: boolean };
+  days: Pick<TimelineDay, 'after' | 'date' | 'label' | 'last' | 'today' | 'weekStart'>[];
+  /** Rule TIMELINE-31: where the sprint ends on the axis (the days after it are the margin) */
+  sprintEnd: number;
   /** Where NOW is on the axis; undefined outside of it */
   now?: number;
+  /** Rule TIMELINE-31: NOW is past the end of the sprint (in the margin): drawn faded, behind the text */
+  over: boolean;
   work: TimelineRow[];
   /** Rule TIMELINE-19: the finished work items, after the open ones, in "DONE THIS SPRINT" */
   finished: TimelineRow[];
-  /** The finished work items and the merged PRs are shown (the setting shared with the Track board) */
-  showCompleted: boolean;
-  /** The work items planned in the next sprint ("This + next sprint") */
-  planned: { rows: TimelineRow[]; note?: string };
   reviews: TimelineRow[];
   reviewsTitle: string;
   /** Rule TIMELINE-20: the PRs drawn whose first commit is not known yet (empty when the setting does not read commits) */
@@ -276,13 +279,6 @@ export interface TimelineModel {
   develop: { branch: string; spans: DevelopSpan[]; label?: { text: string; at: number }; note?: string };
   notes: string[];
   look: BoardModel['look'];
-}
-
-export interface PlannedItem {
-  id: number;
-  title: string;
-  type: string;
-  state: string;
 }
 
 export interface TimelineInput {
@@ -293,10 +289,10 @@ export interface TimelineInput {
   workItems: WorkItemModel[];
   myPullRequests: MyPullRequestModel[];
   reviews: ReviewRequestModel[];
+  /** The sprint drawn: the current iteration that ends first (as the board header) */
   sprint?: { name: string; startDate?: string; finishDate?: string };
-  schedule?: readonly ScheduledIteration[];
-  range: TimelineRange;
-  planned: { status: 'error' | 'loading' | 'off' | 'ready'; items: PlannedItem[] };
+  /** Rule TIMELINE-32: the row style of the view shown; default Normal */
+  density?: TimelineDensity;
   /** The PRs of the user that were merged (My Pull Requests already has them): drawn when merged within the axis */
   completedPullRequests?: readonly CompletedPullRequestInfo[];
   base: { branch: string; enabled: boolean; runs: readonly BaseBranchRun[]; health?: BaseBranchHealth };

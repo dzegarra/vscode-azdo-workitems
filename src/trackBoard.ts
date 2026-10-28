@@ -54,12 +54,14 @@ export function currentBoard(
   reviews: ReviewRequestsWatcher,
   myPullRequests: MyPullRequestsWatcher,
   kinds: readonly BoardKind[] = ALL_KINDS,
-  team?: TeamWorkStore
+  team?: TeamWorkStore,
+  showCompleted = settings().showCompleted
 ): BoardModel {
   const now = new Date();
   const base = store.toViewModel(NO_FILTER);
   const iterations = base.iterations.map((iteration) => ({
     name: iteration.name,
+    teams: iteration.teams,
     startDate: iteration.startDate,
     finishDate: iteration.finishDate,
     progress: sprintProgress(iteration.startDate, iteration.finishDate, now, workingDaysSetting()),
@@ -76,7 +78,7 @@ export function currentBoard(
     maxWaitHours: reviewSettings().maxWaitHours,
     iterations,
     kinds: [...kinds],
-    showCompleted: settings().showCompleted,
+    showCompleted,
     completed: myPullRequests.completedPullRequests(),
     now,
     look: settings().look,
@@ -117,7 +119,7 @@ export function currentBoard(
       },
       reviews: board.reviews,
       kinds: [...kinds],
-      showCompleted: settings().showCompleted,
+      showCompleted,
       completed: snapshot ? mergedPullRequests(snapshot) : [],
       since: mergedSince(iterations, now.getTime()),
       rules: { ...reviewSettings(), workingDays: workingDaysSetting() },

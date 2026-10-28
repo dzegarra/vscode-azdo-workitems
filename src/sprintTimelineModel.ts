@@ -9,15 +9,17 @@ import { brokenSince, type BaseBranchRun } from './baseBranchHealth';
 import { formatAge } from './myPullRequests';
 import type { HistoryRef } from './prHistoryCache';
 import type { ReviewRequestModel } from './reviewRequests';
-import { axisPosition, buildAxis, iterationDay, nextIteration, type TimelineDay } from './timelineAxis';
+import { iterationDates } from './sprintTitle';
+import { AFTER_SPRINT_DAYS, axisPosition, buildAxis, type TimelineDay } from './timelineAxis';
 import { rowsOfCards, type RowContext } from './timelineRows';
 import { dayText, toSegment } from './timelineSpans';
 import type { SegmentKind, TimelineInput, TimelineModel, TimelineRow, TimelineSegment } from './timelineTypes';
 import type { BoardModel } from './trackBoardModel';
 import { addWorkingMs } from './workingTime';
 
-export { axisPosition, buildAxis, nextIteration, type TimelineDay } from './timelineAxis';
+export { AFTER_SPRINT_DAYS, axisPosition, buildAxis, type TimelineDay } from './timelineAxis';
 export * from './timelineTypes';
+export type { TimelineDensity } from './timelineDensity';
 export { withAsleep, needsYouSince, readySince, type Span } from './timelineSpans';
 export { rowsOfCards, workItemRow, type RowContext } from './timelineRows';
 
@@ -159,113 +161,76 @@ function developOf(input: TimelineInput, days: TimelineDay[], now: number): Time
 
 /* ---------- The whole timeline ---------- */
 
-function plannedRows(
-  input: TimelineInput,
-  days: TimelineDay[],
-  next: { name: string } | undefined
-): TimelineModel['planned'] {
-  if (input.range !== 'sprintAndNext') {
-    return { rows: [] };
-  }
-  if (!next) {
-    return { rows: [], note: 'The next sprint of this team is not in the iteration schedule' };
-  }
-  if (input.planned.status === 'error') {
-    return { rows: [], note: `What is planned in ${next.name} could not be read` };
-  }
-  if (input.planned.status !== 'ready') {
-    return { rows: [], note: `Reading what is planned in ${next.name}…` };
-  }
-  const first = days.findIndex((day) => day.next);
-  return {
-    rows: input.planned.items.map((item) => ({
-      key: `planned:${String(item.id)}`,
-      section: 'planned' as const,
-      id: item.id,
-      header: `#${String(item.id)}${item.type === 'Bug' ? ' · Bug' : ''}`,
-      title: item.title,
-      bug: item.type === 'Bug',
-      segments: [
-        {
-          kind: 'planned' as const,
-          start: Math.max(first, 0),
-          end: days.length,
-          text: `planned in ${next.name} · ${item.state}`,
-          tip: `Planned in ${next.name} (${item.state})`,
-          dashed: true,
-        },
-      ],
-      open: { type: 'openDetails' as const, id: item.id },
-      end: days.length,
-    })),
-    note: input.planned.items.length ? undefined : `Nothing of yours is planned in ${next.name} yet`,
-  };
-}
-
 function headerOf(input: TimelineInput, board: BoardModel): TimelineModel['header'] {
-  const start = input.sprint?.startDate && iterationDay(input.sprint.startDate);
-  const finish = input.sprint?.finishDate && iterationDay(input.sprint.finishDate);
-  const format = (date: [number, number, number]) =>
-    new Date(Date.UTC(...date)).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
   return {
-    sprint: input.sprint?.name ?? board.header.sprint,
-    dates: start && finish ? `${format(start)} – ${format(finish)} · working days only` : undefined,
+    // Rule SPRINT-TITLE-1: the title and the chip of the board (the same sprint: the one that ends first)
+    sprint: board.header.sprint,
+    teams: board.header.teams,
+    dates: input.sprint ? iterationDates(input.sprint) : undefined,
     left: board.header.left,
     hurry: board.header.hurry,
   };
 }
 
-// Rule TIMELINE-10
-/** An open work item gets a dashed "spills over" extension past the end of the sprint (a projection, not a date) */
-export function withSpill(
-  row: TimelineRow,
-  board: Pick<BoardModel, 'work'>,
-  sprintEnd: number,
-  total: number
-): TimelineRow {
-  const card = board.work.find((candidate) => candidate.key === row.key);
-  if (!card || ['done', 'ready', 'toStart'].includes(card.column) || row.outline) {
-    return row;
-  }
+/** The working days of the axis: the sprint, then the margin after it (Rules TIMELINE-2, TIMELINE-31) */
+export function axisOf(input: TimelineInput): { days: TimelineDay[]; sprintEnd: number } {
+  const start = input.sprint?.startDate?.slice(0, 10);
+  const finish = input.sprint?.finishDate?.slice(0, 10);
+  const days = start && finish ? buildAxis(start, finish, input.workingDays, input.now, AFTER_SPRINT_DAYS) : [];
+  const last = days.findIndex((day) => day.after);
+  return { days, sprintEnd: last < 0 ? days.length : last };
+}
+
+// Rule TIMELINE-31
+/** Splits the bars at the end of the sprint: what is past it is the `after` part (faded, under the hatch) */
+function splitAtEnd(segments: readonly TimelineSegment[], sprintEnd: number): TimelineSegment[] {
+  return segments.flatMap((segment) => {
+    if (segment.end <= sprintEnd) {
+      return [segment];
+    }
+    if (segment.start >= sprintEnd) {
+      return [{ ...segment, text: undefined, after: true }];
+    }
+    return [
+      { ...segment, end: sprintEnd },
+      { ...segment, start: sprintEnd, text: undefined, after: true },
+    ];
+  });
+}
+
+// Rule TIMELINE-31
+/**
+ * Once the sprint is over, what is still open keeps running up to NOW, but past the end of the sprint its bar is the
+ * faded `after` part; the text and the buttons after a bar stay at the end of the sprint
+ */
+export function withAfterSprint(row: TimelineRow, sprintEnd: number): TimelineRow {
+  const children = row.children?.map((child) => {
+    switch (child.kind) {
+      case 'pr':
+      case 'task':
+        return { ...child, segments: splitAtEnd(child.segments, sprintEnd), end: Math.min(child.end, sprintEnd) };
+      case 'tasks':
+      case 'placeholder':
+        return child;
+    }
+  });
   return {
     ...row,
-    segments: [
-      ...row.segments,
-      {
-        kind: 'branch',
-        start: sprintEnd,
-        end: Math.min(total, sprintEnd + 1.5),
-        text: 'spills over',
-        tip: 'Not done by the end of the sprint: what is left continues in the next one',
-        dashed: true,
-      },
-    ],
+    segments: splitAtEnd(row.segments, sprintEnd),
+    end: Math.min(row.end, sprintEnd),
+    children,
   };
 }
 
-/** The working days of the axis, and the next sprint when the range asks for it (Rules TIMELINE-2, TIMELINE-10) */
-export function axisOf(input: TimelineInput): { days: TimelineDay[]; next: ReturnType<typeof nextIteration> } {
-  const next = input.sprint
-    ? nextIteration({ name: input.sprint.name, finishDate: input.sprint.finishDate }, input.schedule)
-    : undefined;
-  const start = input.sprint?.startDate?.slice(0, 10);
-  const finish = input.sprint?.finishDate?.slice(0, 10);
-  const days =
-    start && finish
-      ? buildAxis(start, finish, input.workingDays, input.now, input.range === 'sprintAndNext' ? next : undefined)
-      : [];
-  return { days, next };
-}
-
-// Rules TIMELINE-1, TIMELINE-10, TIMELINE-13, TIMELINE-16, TIMELINE-19
+// Rules TIMELINE-1, TIMELINE-13, TIMELINE-16, TIMELINE-19, TIMELINE-31, TIMELINE-32
 export function buildSprintTimeline(input: TimelineInput): TimelineModel {
   const now = input.now.getTime();
   const { board } = input;
-  const { days, next } = axisOf(input);
+  const { days, sprintEnd } = axisOf(input);
   const base = {
     status: board.status,
     error: board.error,
-    range: input.range,
+    density: input.density ?? 'normal',
     header: headerOf(input, board),
     look: board.look,
     scope: input.scope ?? 'mine',
@@ -275,10 +240,10 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
     return {
       ...base,
       days: [],
+      sprintEnd: 0,
+      over: false,
       work: [],
       finished: [],
-      showCompleted: board.showCompleted,
-      planned: { rows: [] },
       reviews: [],
       firstCommitsWanted: [],
       develop: { branch: input.base.branch, spans: [] },
@@ -290,28 +255,25 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
   // The faded cards of the merged PRs are the board's: the timeline draws the merged PRs it has dates for (TIMELINE-17)
   const cards = board.work.filter((card) => card.merged === undefined);
   const { work, finished } = rowsOfCards(cards, context);
-  const spillFrom = days.findIndex((day) => day.next);
-  const rows =
-    input.range === 'sprintAndNext' && spillFrom > 0
-      ? work.map((row) => withSpill(row, board, spillFrom, days.length))
-      : work;
   const position = axisPosition(now, days);
+  const shown = now >= axisStart && position < days.length ? position : undefined;
+  const after = (row: TimelineRow): TimelineRow => withAfterSprint(row, sprintEnd);
   return {
     ...base,
-    days: days.map(({ date, label, last, next: isNext, today, weekStart }) => ({
+    days: days.map(({ after: isAfter, date, label, last, today, weekStart }) => ({
+      after: isAfter,
       date,
       label,
       last,
-      next: isNext,
       today,
       weekStart,
     })),
-    now: now >= axisStart && position < days.length ? position : undefined,
-    work: rows,
-    finished,
-    showCompleted: board.showCompleted,
-    planned: plannedRows(input, days, next),
-    reviews: input.reviews.map((review) => reviewRow(review, { input, days, now })),
+    sprintEnd,
+    now: shown,
+    over: shown !== undefined && shown > sprintEnd,
+    work: work.map(after),
+    finished: finished.map(after),
+    reviews: input.reviews.map((review) => after(reviewRow(review, { input, days, now }))),
     firstCommitsWanted: [...context.firstCommitsWanted],
     develop: developOf(input, days, now),
     notes: board.notes,

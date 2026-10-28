@@ -12,6 +12,7 @@ import { parsePeople, type PickedPerson } from './teamPeople';
 import { normalizePopoverDelay } from './popoverDelay';
 import { normalizeHoverStyle } from './hoverStyle';
 import { normalizeCodingStart } from './codingStart';
+import { normalizeTimelineDensity, type TimelineDensity } from './timelineDensity';
 import { normalizeLook } from './look';
 import { normalizeTaskCountStyle } from './taskCountStyle';
 import { normalizeWorkingOnAnimation } from './workingOn';
@@ -30,11 +31,22 @@ export function compilePullRequestTaskPattern(source: string): RegExp {
   }
 }
 
-/** The Completed chip of the Track board and of the Sprint timeline (Rule BOARD-25): the setting is the user's, for both */
+/** The Completed chip of the Track board (Rule BOARD-25): the setting is the user's */
 export async function setShowCompleted(show: boolean): Promise<void> {
   await vscode.workspace
     .getConfiguration(SECTION)
     .update('appearance.showCompleted', show, vscode.ConfigurationTarget.Global);
+}
+
+/** Rule TIMELINE-32: the row style of the Sprint timeline, per view (the switch of its header writes it) */
+export async function setTimelineDensity(scope: 'mine' | 'team', density: TimelineDensity): Promise<void> {
+  await vscode.workspace
+    .getConfiguration(SECTION)
+    .update(
+      scope === 'team' ? 'appearance.timelineDensityTeam' : 'appearance.timelineDensityMine',
+      density,
+      vscode.ConfigurationTarget.Global
+    );
 }
 
 /** Rule TEAM-1: the people of the Whole team view are saved in the user's settings (the picker writes them) */
@@ -87,11 +99,16 @@ export function settings() {
     },
     hoverStyle: normalizeHoverStyle(config.get<string>('appearance.hoverStyle', 'border')),
     look: normalizeLook(config.get<string>('appearance.look', 'theme')),
-    /** Rule BOARD-25: the finished work items and the merged PRs on the Track board and the Sprint timeline */
+    /** Rule BOARD-25: the finished work items and the merged PRs on the Track board */
     showCompleted: config.get<boolean>('appearance.showCompleted', true),
     asleepPulse: config.get<boolean>('appearance.asleepPulse', true),
     /** Rule TIMELINE-20: where coding starts on the Sprint timeline */
     timelineCodingStart: normalizeCodingStart(config.get<string>('appearance.timelineCodingStart', 'earliest')),
+    /** Rule TIMELINE-32: the row style of the Sprint timeline, per view */
+    timelineDensity: {
+      mine: normalizeTimelineDensity(config.get<string>('appearance.timelineDensityMine'), 'normal'),
+      team: normalizeTimelineDensity(config.get<string>('appearance.timelineDensityTeam'), 'compact'),
+    },
     popoverDelay: normalizePopoverDelay(config.get<unknown>('popovers.hoverDelay')),
     tasksCountStyle: normalizeTaskCountStyle(config.get<string>('tasks.countStyle', 'filled')),
     workingOn: {

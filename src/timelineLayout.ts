@@ -54,6 +54,23 @@ export function mergeSegments(segments: readonly TimelineSegment[], minDays = MI
   }, []);
 }
 
+// Rule TIMELINE-33
+/**
+ * The marks shown at rest are the problems only: the ✕ of the latest CI run when it failed (a run still going is the
+ * latest: then nothing), and ⚠ conflicts now. Every other mark waits for the hover of the row
+ */
+export function withAtRest(markers: readonly TimelineMarker[]): TimelineMarker[] {
+  const latestCi = [...markers]
+    .filter((marker) => marker.kind === 'ci')
+    .sort((a, b) => a.at - b.at)
+    .at(-1);
+  return markers.map((marker) =>
+    marker.kind === 'conflicts' || (marker === latestCi && marker.tone === 'fail')
+      ? { ...marker, atRest: true }
+      : marker
+  );
+}
+
 // Rule TIMELINE-30
 /**
  * Marks that never overlap: those of the same kind at the same moment are one ("2✓"); each mark goes to the first row of
@@ -74,6 +91,9 @@ export function layoutMarkers(markers: readonly TimelineMarker[]): TimelineMarke
       same.count = count;
       same.text = `${String(count)}${marker.text}`;
       same.tip = { title: same.tip.title, lines: [...same.tip.lines, ...marker.tip.lines] };
+      if (marker.atRest) {
+        same.atRest = true;
+      }
     } else {
       merged.push({ ...marker, count: undefined });
     }

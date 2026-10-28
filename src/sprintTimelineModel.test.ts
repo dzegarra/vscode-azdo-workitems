@@ -12,7 +12,6 @@ import {
   developSpans,
   historyRefsOf,
   needsYouSince,
-  nextIteration,
   readySince,
   withAsleep,
   type TimelineInput,
@@ -65,46 +64,11 @@ describe('axis (TIMELINE-2)', () => {
     expect(axisPosition(at(30, 10), days)).toBe(days.length);
   });
 
-  it('extends over the next sprint, whose days are marked', () => {
-    const wide = buildAxis('2026-10-12', '2026-10-23', WORKING, NOW, { start: '2026-10-26', finish: '2026-11-06' });
-    expect(wide).toHaveLength(20);
-    expect(wide.filter((day) => day.next)).toHaveLength(10);
-    expect(wide.filter((day) => day.last)).toHaveLength(1);
-  });
-});
-
-describe('nextIteration (TIMELINE-10)', () => {
-  const schedule = [
-    {
-      path: 'P\\R\\Platform Sprint 122',
-      name: 'Platform Sprint 122',
-      start: '2026-10-12T00:00:00Z',
-      finish: '2026-10-23T00:00:00Z',
-    },
-    {
-      path: 'P\\R\\Platform Sprint 123',
-      name: 'Platform Sprint 123',
-      start: '2026-10-26T00:00:00Z',
-      finish: '2026-11-06T00:00:00Z',
-    },
-    {
-      path: 'P\\R\\Platform Sprint 124',
-      name: 'Platform Sprint 124',
-      start: '2026-11-09T00:00:00Z',
-      finish: '2026-11-20T00:00:00Z',
-    },
-    { path: 'P\\R\\UX Sprint 50', name: 'UX Sprint 50', start: '2026-10-26T00:00:00Z', finish: '2026-11-06T00:00:00Z' },
-  ];
-
-  it('is the next sprint of the same team', () => {
-    expect(nextIteration({ name: 'Platform Sprint 122', finishDate: '2026-10-23T00:00:00Z' }, schedule)?.path).toBe(
-      'P\\R\\Platform Sprint 123'
-    );
-  });
-
-  it('is nothing without a schedule or a later sprint of the team', () => {
-    expect(nextIteration({ name: 'Platform Sprint 122', finishDate: '2026-10-23' }, undefined)).toBeUndefined();
-    expect(nextIteration({ name: 'UX Sprint 50', finishDate: '2026-11-06' }, schedule)).toBeUndefined();
+  it('adds the working days of the margin after the sprint, marked (TIMELINE-31)', () => {
+    const wide = buildAxis('2026-10-12', '2026-10-23', WORKING, NOW, 2);
+    expect(wide).toHaveLength(12);
+    expect(wide.filter((day) => day.after).map((day) => day.label)).toEqual(['Mo 26', 'Tu 27']);
+    expect(wide.filter((day) => day.last).map((day) => day.label)).toEqual(['Fr 23']);
   });
 });
 
@@ -294,8 +258,6 @@ function timeline(
     myPullRequests: mineModels,
     reviews,
     sprint: { name: 'Platform Sprint 122', startDate: '2026-10-12T00:00:00Z', finishDate: '2026-10-23T00:00:00Z' },
-    range: 'sprint',
-    planned: { status: 'off', items: [] },
     base: { branch: 'develop', enabled: true, runs: [] },
     ...overrides,
   });
@@ -338,7 +300,33 @@ describe('buildSprintTimeline', () => {
   it('puts the NOW line at the time and has one column per working day (TIMELINE-13)', () => {
     const model = timeline([workItem({ pullRequests: [pullRequest()], dates: { activated: iso(14, 9) } })], [mine()]);
     expect(model.now).toBeCloseTo(8 + 14 / 24);
-    expect(model.days).toHaveLength(10);
+    expect(model.days).toHaveLength(12);
+    expect(model.sprintEnd).toBe(10);
+    expect(model.over).toBe(false);
+  });
+
+  it('keeps open bars running past the end of the sprint, faded, with the text at the end (TIMELINE-31)', () => {
+    const later = new Date(2026, 9, 26, 15);
+    const model = timeline(
+      [workItem({ pullRequests: [pullRequest()], dates: { activated: iso(14, 9) } })],
+      [mine()],
+      [],
+      {
+        now: later,
+      }
+    );
+    expect(model.now).toBeCloseTo(10 + 15 / 24);
+    expect(model.over).toBe(true);
+    const [row] = model.work;
+    const after = row.segments.filter((segment) => segment.after);
+    expect(after.length).toBeGreaterThan(0);
+    expect(after.every((segment) => segment.start >= 10 && segment.text === undefined)).toBe(true);
+    expect(row.segments.filter((segment) => !segment.after).every((segment) => segment.end <= 10)).toBe(true);
+    expect(row.end).toBe(10);
+  });
+
+  it('has no NOW line once the margin is over too (TIMELINE-13)', () => {
+    expect(timeline([], [], [], { now: new Date(2026, 9, 29, 10) }).now).toBeUndefined();
   });
 
   it('makes the zZ span clickable with the ASLEEP popover and its buttons (TIMELINE-8)', () => {
@@ -382,43 +370,6 @@ describe('buildSprintTimeline', () => {
     expect(soon.note?.text).toBe('due Fri 08:00 · 5 h left');
     expect(fresh.segments.some((segment) => segment.kind === 'overdue')).toBe(false);
     expect(model.reviewsTitle).toBe('REVIEWS YOU OWE · 24 WORKING HOURS FROM PUBLISH');
-  });
-
-  it('adds the next sprint, the planned work and the spill over with "This + next sprint" (TIMELINE-10)', () => {
-    const schedule = [
-      {
-        path: 'P\\R\\Platform Sprint 123',
-        name: 'Platform Sprint 123',
-        start: '2026-10-26T00:00:00Z',
-        finish: '2026-11-06T00:00:00Z',
-      },
-    ];
-    const model = timeline([workItem({ pullRequests: [pullRequest()] })], [mine()], [], {
-      range: 'sprintAndNext',
-      schedule,
-      planned: {
-        status: 'ready',
-        items: [{ id: 99, title: 'Later', type: 'Product Backlog Item', state: 'Approved' }],
-      },
-    });
-    expect(model.days).toHaveLength(20);
-    expect(model.planned.rows.map((row) => row.id)).toEqual([99]);
-    expect(model.planned.rows[0].segments[0]).toMatchObject({ kind: 'planned', start: 10, end: 20, dashed: true });
-    expect(model.work[0].segments.at(-1)).toMatchObject({ text: 'spills over', dashed: true, start: 10 });
-  });
-
-  it('says why the planned work is missing instead of inventing it (TIMELINE-14)', () => {
-    const wide = { range: 'sprintAndNext' as const };
-    expect(timeline([], [], [], wide).planned.note).toContain('not in the iteration schedule');
-    const schedule = [
-      { path: 'P\\R\\Platform Sprint 123', name: 'Platform Sprint 123', start: '2026-10-26', finish: '2026-11-06' },
-    ];
-    expect(timeline([], [], [], { ...wide, schedule, planned: { status: 'error', items: [] } }).planned.note).toContain(
-      'could not be read'
-    );
-    expect(timeline([], [], [], { ...wide, schedule, planned: { status: 'ready', items: [] } }).planned.note).toContain(
-      'Nothing of yours'
-    );
   });
 
   it('draws the base branch and tells how long it has been broken (TIMELINE-12)', () => {
@@ -620,9 +571,6 @@ describe('the row of a work item (TIMELINE-15, TIMELINE-16)', () => {
     const model = timeline([done, open], [mine({ id: 10 })]);
     expect(model.work.map((row) => row.id)).toEqual([1]);
     expect(model.finished.map((row) => row.id)).toEqual([2]);
-    const hidden = timeline([done, open], [mine({ id: 10 })], [], {}, { showCompleted: false });
-    expect(hidden.finished).toEqual([]);
-    expect(hidden.showCompleted).toBe(false);
   });
 
   it('goes back to Branch when a PR was merged and a task is still open (TRACK-7)', () => {
@@ -742,15 +690,6 @@ describe('the work item with several PRs (TIMELINE-16, TIMELINE-17)', () => {
   it('has one compact row for the tasks still to do', () => {
     const tasks = build().work[0].children?.find((child) => child.kind === 'tasks');
     expect(tasks).toMatchObject({ title: '2 tasks to do', sub: 'Task 67170 · Task 67171' });
-  });
-
-  it('has no merged rows with the Completed chip off', () => {
-    const model = timeline(items67145(), mineOf, [], { completedPullRequests: completed }, { showCompleted: false });
-    expect(model.work[0].children?.filter((child) => child.kind === 'pr').map((child) => child.key)).toEqual([
-      'pr:67145:14012',
-      'pr:67145:14008',
-      'pr:67145:14021',
-    ]);
   });
 });
 

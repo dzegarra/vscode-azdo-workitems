@@ -78,6 +78,7 @@ src/trackBoard.ts         Track board panel (one editor tab, redraws on store / 
 src/sharedMessages.ts     the buttons the sidebar and the Track board share (PR, review and work item actions): both views run them here
 src/workItemsView.ts      sidebar webview provider: builds the ViewModel (src/viewModel.ts) and handles messages
 src/webview/main.ts       sidebar webview (cards, PR boxes, filters); src/webview/dependencies.ts: dependency map; src/webview/board.ts: Track board (media/board.css); src/webview/timeline.ts: Sprint timeline (media/timeline.css)
+src/sprintTitle.ts        pure: the sprint title the teams share and the "N teams" chip of the Track board and the timeline (Rule SPRINT-TITLE-1); markup: src/webview/sprintTeams.ts
 src/codingStart.ts        pure: where coding starts on the Sprint timeline (setting appearance.timelineCodingStart, Rule TIMELINE-20), first commit of a PR (parsing, cache rules)
 src/teamView.ts           pure (phase 7): whole-team scope (globalState key), teams read, team badges, initials, avatar colours, Rule TEAM-1
 src/teamPeople.ts         pure: the people of the Whole team view (setting `totalflowx.teamView.people`), picker rows, filter, query identities, Rules TEAM-1, TEAM-2
@@ -88,7 +89,8 @@ src/teamWorkStore.ts      fetches the team data (feature `teamView`, only when a
 src/teamTimelineModel.ts  pure: Whole team Sprint timeline (a section per person, read-only rows, summaries), Rules TIMELINE-21..26
 src/webview/peoplePicker.ts  the scope switch and People picker shared by the board and timeline webviews (Rules TEAM-1, TIMELINE-21)
 src/sprintTimeline.ts     Sprint timeline panel (editor tab, dist/timeline.js, media/timeline.css; webview: src/webview/timeline.ts): one row per work item by station, expandable to its PRs (Rules TIMELINE-*);
-                          requests: the planned work of the next sprint, the first commits and, only for the rows the user expanded, the history of their PRs (src/pullRequestHistory.ts)
+                          requests: the first commits and, only for the rows the user expanded, the history of their PRs (src/pullRequestHistory.ts);
+                          row style per view: src/timelineDensity.ts (pure, Rule TIMELINE-32)
 src/sprintTimelineModel.ts pure: reviews, base branch, planned rows, header, `buildSprintTimeline`; types in src/timelineTypes.ts, axis in src/timelineAxis.ts, spans in src/timelineSpans.ts
 src/timelineRows.ts       pure: the work item row (stations over time) and what it expands to (PR rows, tasks, placeholder); src/teamTimelineModel.ts: the same for the other people, read-only
 src/prLifecycle.ts        pure: station of a PR moment by moment, its phases and its events from threads + CI runs (reuses src/pullRequestPhases.ts); src/workItemStations.ts: the station of a work item from its PRs

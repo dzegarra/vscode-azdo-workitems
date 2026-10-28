@@ -39,8 +39,6 @@ function build(snap: TeamSnapshot, overrides: Partial<TeamTimelineInput> = {}, s
     myPullRequests: [],
     reviews: [],
     sprint: { name: 'Sprint 1', startDate: '2026-10-12T00:00:00Z', finishDate: '2026-10-23T00:00:00Z' },
-    range: 'sprint',
-    planned: { status: 'off', items: [] },
     base: { branch: 'develop', enabled: false, runs: [] },
     scope: scope === 'team' ? 'team' : 'mine',
     team: {
@@ -99,7 +97,7 @@ describe('buildWholeTeamTimeline', () => {
     expect(rows.every((row) => row.readOnly)).toBe(true);
   });
 
-  it('draws merged PRs within the axis, and none with Completed off (TIMELINE-17, TIMELINE-19)', () => {
+  it('draws merged PRs within the axis, whatever the Completed chip of the board (TIMELINE-17, TIMELINE-19)', () => {
     const snap = snapshot({
       items: [rawItem(6, { links: links([], 30), ...person('Ana Ruiz', 'ana') })],
       pullRequests: [
@@ -111,8 +109,8 @@ describe('buildWholeTeamTimeline', () => {
       rows.flatMap((row) => row.children ?? []).filter((child) => child.kind === 'pr' && child.merged !== undefined);
     const withMerged = build(snap).team?.sections.at(1)?.rows ?? [];
     expect(mergedOf(withMerged)).toHaveLength(1);
-    const hidden = build(snap, {}, false).team?.sections.at(1)?.rows ?? [];
-    expect(mergedOf(hidden)).toEqual([]);
+    const boardOff = build(snap, {}, false).team?.sections.at(1)?.rows ?? [];
+    expect(mergedOf(boardOff)).toHaveLength(1);
   });
 
   it('puts the finished work items of a person apart (TIMELINE-19)', () => {
@@ -124,7 +122,11 @@ describe('buildWholeTeamTimeline', () => {
     });
     const section = build(snap).team?.sections.at(1);
     expect(section?.finished.map((row) => row.id)).toEqual([7]);
-    expect(build(snap, {}, false).team?.sections.at(1)?.finished).toEqual([]);
+    expect(
+      build(snap, {}, false)
+        .team?.sections.at(1)
+        ?.finished.map((row) => row.id)
+    ).toEqual([7]);
   });
 
   it('starts the coding of a PR of another person at the activation of its task, with no request (TIMELINE-24)', () => {

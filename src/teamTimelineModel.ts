@@ -10,7 +10,7 @@ import {
   axisOf,
   buildSprintTimeline,
   rowsOfCards,
-  withSpill,
+  withAfterSprint,
   type RowContext,
   type TimelineInput,
   type TimelineModel,
@@ -136,12 +136,11 @@ interface PersonRows {
 /** The rows of one person: their cards as the Track board builds them, drawn with the timeline's row builders */
 function personRows(
   person: TeamPerson,
-  base: { input: TimelineInput; team: TeamTimelineInput; days: RowContext['days']; now: number }
+  base: { input: TimelineInput; team: TeamTimelineInput; days: RowContext['days']; sprintEnd: number; now: number }
 ): PersonRows {
-  const { input, team, days, now } = base;
+  const { input, team, days, sprintEnd, now } = base;
   const models = person.items.map((item) => item.model);
   const items = boardItems(models, team.kinds);
-  const showCompleted = input.board.showCompleted;
   const axisStart = days[0].startMs;
   // The merged PRs are rows of their work item when it is expanded (TIMELINE-17), not cards: the board's merged cards are left out
   const { cards } = boardCards({
@@ -149,7 +148,8 @@ function personRows(
     workItems: models,
     myPullRequests: [],
     queue: [],
-    showCompleted,
+    // Rule TIMELINE-19: the timeline always draws the finished work items
+    showCompleted: true,
     completed: [],
     since: 0,
   });
@@ -176,12 +176,9 @@ function personRows(
     const found = teamCards.find(({ card }) => card.key === row.boardKey);
     return found && rowNote(found.card.markers);
   };
-  const spillFrom = days.findIndex((day) => day.next);
-  const spilled = (row: TimelineRow): TimelineRow =>
-    input.range === 'sprintAndNext' && spillFrom > 0 ? withSpill(row, { work: cards }, spillFrom, days.length) : row;
   return {
-    work: rows.work.map((row) => readOnlyRow(spilled(row), noteOf(row))),
-    finished: rows.finished.map((row) => readOnlyRow(row, noteOf(row))),
+    work: rows.work.map((row) => readOnlyRow(withAfterSprint(row, sprintEnd), noteOf(row))),
+    finished: rows.finished.map((row) => readOnlyRow(withAfterSprint(row, sprintEnd), noteOf(row))),
     cards,
     teamCards,
   };
@@ -192,8 +189,8 @@ const distinct = (ids: readonly number[]): number[] => [...new Set(ids)];
 // Rules TIMELINE-21..25
 /**
  * The Sprint timeline of the user, with (scope "team") one section per person chosen under it. The user's section keeps
- * the rows, buttons and popovers of the "mine" timeline (`work`, `finished`, `planned`, `reviews`); the others' are
- * compact and read-only. Without people chosen only the user's section is shown, with a hint
+ * the rows, buttons and popovers of the "mine" timeline (`work`, `finished`, `reviews`); the others' are the same
+ * rows, read-only. Without people chosen only the user's section is shown, with a hint
  */
 export function buildWholeTeamTimeline(input: TimelineInput): TimelineModel {
   const model = buildSprintTimeline(input);
@@ -201,14 +198,14 @@ export function buildWholeTeamTimeline(input: TimelineInput): TimelineModel {
   if (input.scope !== 'team' || !team) {
     return model;
   }
-  const { days } = axisOf(input);
+  const { days, sprintEnd } = axisOf(input);
   const showBadges = team.teamCount > 1;
   const you = team.people.find((person) => person.you);
   const others = team.people.filter((person) => !person.you);
   const now = input.now.getTime();
   const build = (person: TeamPerson): PersonRows & { person: TeamPerson } =>
     days.length
-      ? { ...personRows(person, { input, team, days, now }), person }
+      ? { ...personRows(person, { input, team, days, sprintEnd, now }), person }
       : { work: [], finished: [], cards: [], teamCards: [], person };
   const asleep: TimelineTeam['asleep'] = [];
 

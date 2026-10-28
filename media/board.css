@@ -60,6 +60,44 @@ body.board-page.look-totalflow.vscode-light:not([class*='vscode-high-contrast'])
   font-weight: 600;
 }
 
+.bd-teams {
+  position: relative;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: default;
+}
+
+.bd-teams:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.bd-teams-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 280px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editor-background));
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  box-shadow: 0 4px 12px rgb(0 0 0 / 25%);
+  white-space: nowrap;
+}
+
+.bd-teams:hover .bd-teams-list,
+.bd-teams:focus .bd-teams-list {
+  display: flex;
+}
+
 .bd-left {
   color: var(--muted);
   font-family: var(--vscode-editor-font-family, monospace);

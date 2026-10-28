@@ -1,5 +1,6 @@
 /** The Track board webview (redesign): six columns of cards, a drawer with the selected card and hover summaries */
 import { escapeHtml } from '../html';
+import { renderSprintTeams } from './sprintTeams';
 import { icon } from '../icons';
 import { lookClass } from '../look';
 import type { BoardUpdate } from '../trackBoard';
@@ -343,8 +344,10 @@ function renderHeader(current: BoardModel): string {
       )}">${escapeHtml(current.header.left)}</span>`
     : '';
   return `<header class="bd-header"><h1 class="bd-sprint">${escapeHtml(current.header.sprint)}${
-    current.team && current.team.teamCount > 1 ? ` · ${String(current.team.teamCount)} teams` : ''
-  }</h1>${left}${stats}
+    !current.header.teams && current.team && current.team.teamCount > 1
+      ? ` · ${String(current.team.teamCount)} teams`
+      : ''
+  }</h1>${renderSprintTeams(current.header.teams)}${left}${stats}
     <div class="bd-tabs" role="group" aria-label="View"><button class="bd-chip" aria-pressed="true">Track board</button><button class="bd-chip" data-open-timeline aria-pressed="false">Sprint timeline</button></div>
     ${renderScope(current.scope)}${renderPeoplePicker(current.scope === 'team' ? current.team?.picker : undefined)}
     <div class="bd-chips" role="group" aria-label="Type">${chip('backlog', 'Backlog Items')}${chip('bug', 'Bugs')}</div>

@@ -24,14 +24,61 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   --tl-on-green: #fff;
 }
 
+/* The legend: a panel under its button, closed by default (Rule TIMELINE-34) */
+.tl-legend-anchor {
+  position: relative;
+}
+
+.tl-legend-anchor .bd-chip[aria-expanded='true'] {
+  border-color: var(--vscode-focusBorder);
+}
+
 .tl-legend {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
   display: flex;
-  flex: none;
   flex-direction: column;
-  gap: 6px;
-  padding: 0 20px 10px;
+  gap: 14px;
+  width: min(760px, calc(100vw - 40px));
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bd-card, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.35);
   color: var(--muted);
   font-size: 11px;
+}
+
+.tl-legend-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tl-legend-sub {
+  flex: none;
+  width: 64px;
+  color: var(--vscode-disabledForeground, var(--muted));
+  font-style: italic;
+}
+
+.tl-swatch.seg-wait {
+  background: var(--tl-draft);
+}
+
+.tl-swatch.seg-dueSoon {
+  background: var(--needs-you);
+}
+
+.tl-swatch.dev-green {
+  background: var(--passed);
+}
+
+.tl-swatch.dev-red {
+  background: var(--broken);
 }
 
 .tl-legend-line {
@@ -43,7 +90,6 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
 
 .tl-legend-title {
   flex: none;
-  width: 100px;
   color: var(--vscode-disabledForeground, var(--muted));
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: 10px;
@@ -126,7 +172,7 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
 .tl-row-days {
   position: sticky;
   top: 0;
-  z-index: 3;
+  z-index: 5;
   height: auto;
   border-bottom: 1px solid var(--border);
   background: var(--vscode-editor-background);
@@ -147,8 +193,7 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   text-overflow: ellipsis;
 }
 
-.tl-day.week,
-.tl-day.next:first-of-type {
+.tl-day.week {
   border-left: 1px solid var(--border);
 }
 
@@ -157,8 +202,10 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   font-weight: 600;
 }
 
-.tl-day.next {
-  opacity: 0.85;
+/* Rule TIMELINE-31: the days after the sprint are grey */
+.tl-day.after {
+  color: color-mix(in srgb, var(--vscode-disabledForeground, var(--muted)) 70%, transparent);
+  font-weight: 400;
 }
 
 /* ---------- Body: the sections and the overlay (week separators, today, NOW) ---------- */
@@ -183,14 +230,61 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   bottom: 0;
 }
 
-.tl-weeksep,
-.tl-nextsep {
+.tl-weeksep {
   width: 0;
   border-left: 1px solid var(--border);
 }
 
-.tl-nextsep {
-  border-left-style: dashed;
+/* Rule TIMELINE-31: the margin after the sprint, hatched over the faded bars; the text after a bar is above it */
+.tl-overlay > .tl-aftersprint {
+  border-left: 1px dashed var(--border);
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--vscode-foreground) 3.5%, transparent) 0 6px,
+    transparent 6px 12px
+  );
+  background-color: color-mix(in srgb, var(--vscode-editor-background) 55%, transparent);
+}
+
+.tl-after-caption {
+  position: absolute;
+  top: 4px;
+  left: 8px;
+  color: var(--vscode-disabledForeground, var(--muted));
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+
+.tl-seg.after {
+  opacity: 0.22;
+}
+
+.tl-overlay.over .tl-now,
+.tl-now-flag.over {
+  opacity: 0.3;
+}
+
+.tl-days {
+  position: relative;
+}
+
+.tl-days .tl-now-flag {
+  top: auto;
+  bottom: 0;
+  transform: translate(-50%, 50%);
+  border-radius: 3px;
+  line-height: 13px;
+}
+
+.tl-grid.density-compact .tl-row.pr .tl-note,
+.tl-grid.density-compact .tl-row.pr .tl-after {
+  top: 0;
+  height: var(--tl-row);
+  padding-bottom: 0;
+  align-items: center;
 }
 
 .tl-todaycol {
@@ -374,10 +468,6 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   border-radius: 0 4px 4px 0;
 }
 
-.tl-seg.seg-planned {
-  color: var(--muted);
-}
-
 .tl-seg.seg-asleep {
   border: 2px solid var(--needs-you);
   background: repeating-linear-gradient(
@@ -466,7 +556,8 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
-  z-index: 1;
+  /* Above the overlay: the text and the buttons are never under the hatch of the margin nor under NOW once it fades */
+  z-index: 3;
 }
 
 .tl-after {
@@ -477,12 +568,6 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   position: static;
   height: auto;
   padding: 0;
-}
-
-.tl-note.flip,
-.tl-after.flip {
-  padding: 0 6px;
-  background: color-mix(in srgb, var(--vscode-editor-background) 85%, transparent);
 }
 
 .tl-note.tone-overdue {
@@ -1217,30 +1302,129 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   white-space: nowrap;
 }
 
-.tl-row.compact {
-  --tl-row: 34px;
+/* Rule TIMELINE-23: the rows of a person, indented under their header with a rail in their colour; the label column
+ * shrinks by the indentation so the lanes stay on the axis */
+.tl-person-rows {
+  position: relative;
+  padding-left: 18px;
 }
 
-.tl-label.compact {
+.tl-person-rows::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 6px;
+  left: 7px;
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--swatch, var(--border)) 55%, transparent);
+}
+
+.tl-person-rows.colour-0 {
+  --swatch: var(--in-flight);
+}
+
+.tl-person-rows.colour-1 {
+  --swatch: var(--passed);
+}
+
+.tl-person-rows.colour-2 {
+  --swatch: var(--needs-you);
+}
+
+.tl-person-rows.colour-3 {
+  --swatch: var(--broken);
+}
+
+.tl-person-rows.colour-4 {
+  --swatch: var(--working-here, var(--in-flight));
+}
+
+.tl-person-rows.colour-5 {
+  --swatch: var(--pending);
+}
+
+.tl-person-rows .tl-row {
+  grid-template-columns: calc(var(--tl-label) - 18px) minmax(0, 1fr);
+}
+
+/* ---------- Marks at rest and on hover (Rule TIMELINE-33): at rest only the problems ---------- */
+
+.tl-row.pr .tl-mk:not(.at-rest) {
+  visibility: hidden;
+}
+
+.tl-row.pr:hover .tl-mk,
+.tl-row.pr:focus-within .tl-mk {
+  visibility: visible;
+}
+
+/* ---------- Compact rows (Rule TIMELINE-32): one line, thin PR bars ---------- */
+
+.tl-grid.density-compact .tl-row:not(.tl-person, .tl-row-days, .tl-row-develop) {
+  --tl-row: 30px;
+  --tl-bar: 16px;
+}
+
+.tl-grid.density-compact .tl-row.child.pr,
+.tl-grid.density-compact .tl-row.child.pr.rows-2,
+.tl-grid.density-compact .tl-row.child.pr.rows-3 {
+  --tl-row: 34px;
+  --tl-bar: 8px;
+}
+
+.tl-grid.density-compact .tl-label.wi,
+.tl-grid.density-compact .tl-label.child,
+.tl-grid.density-compact .tl-label:not(.plain) {
   flex-direction: row;
   align-items: center;
-  gap: 8px;
-  padding-left: 8px;
+  gap: 6px;
 }
 
-.tl-label.compact .tl-id {
+.tl-grid.density-compact .tl-label .tl-l1 {
   flex: none;
-  overflow: visible;
-  font-weight: 700;
+  max-width: 60%;
 }
 
-.tl-label.compact .tl-title {
+.tl-grid.density-compact .tl-label .tl-state {
+  display: none;
+}
+
+.tl-grid.density-compact .tl-label.wi .tl-title.strong {
   min-width: 0;
+  padding-left: 0;
+}
+
+.tl-grid.density-compact .tl-label .tl-l1 .tl-title {
   flex: 0 1 auto;
 }
 
-.tl-label.compact .tl-pr {
-  flex: none;
+.tl-grid.density-compact .tl-sub {
+  min-width: 0;
+}
+
+.tl-grid.density-compact .tl-sub::before {
+  content: '· ';
+}
+
+.tl-grid.density-compact .tl-row.pr .tl-seg {
+  top: calc((var(--tl-row) - var(--tl-bar)) / 2);
+  color: transparent;
+}
+
+.tl-grid.density-compact .tl-row.pr .tl-mk,
+.tl-grid.density-compact .tl-row.pr .tl-mk.mr-1,
+.tl-grid.density-compact .tl-row.pr .tl-mk.mr-2 {
+  top: 9px;
+}
+
+.tl-grid.density-compact .tl-strip {
+  height: 100%;
+}
+
+.tl-grid.density-compact .tl-seg {
+  font-size: 10.5px;
+  line-height: var(--tl-bar);
 }
 
 .tl-footer {

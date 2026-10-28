@@ -11,6 +11,7 @@ import type { MyPullRequestModel, ReviewerModel } from './myPullRequests';
 import type { RunModel } from './pipelines';
 import type { ReviewRequestModel } from './reviewRequests';
 import type { SprintProgress } from './sprintCountdown';
+import { sprintTitle, type SprintTeams } from './sprintTitle';
 import type { TeamBoardModel } from './teamBoardModel';
 import type { PickedPerson } from './teamPeople';
 import type { TeamScope } from './teamView';
@@ -254,7 +255,8 @@ export interface BoardModel {
   status: 'error' | 'loading' | 'ready';
   error?: string;
   /** Sprint name, "2 days left" and whether it is time to hurry */
-  header: { sprint: string; left?: string; hurry: boolean; tooltip?: string };
+  /** Rule SPRINT-TITLE-1: the title the teams share, the "N teams" chip */
+  header: { sprint: string; teams?: SprintTeams; left?: string; hurry: boolean; tooltip?: string };
   kinds: BoardKind[];
   columns: BoardColumn[];
   work: BoardWorkCard[];
@@ -274,7 +276,7 @@ export interface BoardModel {
   team?: TeamBoardModel;
 }
 
-/** Tooltip of the Completed chip of the header of the Track board and of the Sprint timeline (Rule BOARD-25) */
+/** Tooltip of the Completed chip of the header of the Track board (Rule BOARD-25) */
 export const COMPLETED_TOOLTIP =
   'Show or hide the finished work items and the merged PRs. Hidden, the finished work items fold into one card, and one that breaks a team rule keeps its own card.';
 
@@ -294,7 +296,13 @@ export interface BoardInput {
   reviewsStatus: 'error' | 'loading' | 'ready';
   reviewsError?: string;
   maxWaitHours: number;
-  iterations: { name: string; startDate?: string; finishDate?: string; progress?: SprintProgress }[];
+  iterations: {
+    name: string;
+    teams?: string[];
+    startDate?: string;
+    finishDate?: string;
+    progress?: SprintProgress;
+  }[];
   kinds: BoardKind[];
   /** Rule BOARD-25: show the finished work items and the PRs merged in the sprint */
   showCompleted: boolean;
@@ -1311,11 +1319,13 @@ function headerOf(iterations: BoardInput['iterations']): BoardModel['header'] {
     .filter((candidate) => candidate.progress)
     .sort((a, b) => (a.finishDate ?? '').localeCompare(b.finishDate ?? ''))
     .at(0);
+  const { title, teams } = sprintTitle(iterations, iteration);
   if (!iteration?.progress) {
-    return { sprint: iterations.at(0)?.name ?? 'Sprint', hurry: false };
+    return { sprint: title, teams, hurry: false };
   }
   return {
-    sprint: iteration.name,
+    sprint: title,
+    teams,
     left: iteration.progress.text,
     hurry: iteration.progress.hurry,
     tooltip: iteration.progress.tooltip,

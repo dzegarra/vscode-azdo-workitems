@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
-import { resolveContext, setShowCompleted, settings, workingDaysSetting } from './config';
+import { setTimelineDensity, settings, workingDaysSetting } from './config';
 import type { WorkItemModel } from './viewModel';
 import type { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import { PullRequestHistory } from './pullRequestHistory';
@@ -10,20 +10,17 @@ import { reviewSettings } from './reviewRequestsWatcher';
 import { sprintProgress } from './sprintCountdown';
 import {
   historyRefsOf,
-  nextIteration,
   OPEN_SPRINT_TIMELINE_COMMAND,
-  type PlannedItem,
   type TimelineMessage,
   type TimelineModel,
-  type TimelineRange,
 } from './sprintTimelineModel';
-import { stateCategory } from './states';
 import { groupByPerson, shapeTeamItems, teamCompletedPullRequests, teamOfIteration, waitedOnBy } from './teamData';
 import { parsePeople } from './teamPeople';
 import { buildWholeTeamTimeline, type TeamTimelineInput } from './teamTimelineModel';
 import type { TeamWorkStore } from './teamWorkStore';
 import { ALL_KINDS, boardItems } from './trackBoardModel';
 import { isSharedMessage, runSharedMessage } from './sharedMessages';
+import { densityOf, normalizeTimelineDensity } from './timelineDensity';
 import { currentBoard, OPEN_TRACK_BOARD_COMMAND, teamStatus } from './trackBoard';
 import type { WorkItemsStore } from './workItemsStore';
 
@@ -32,26 +29,15 @@ export { OPEN_SPRINT_TIMELINE_COMMAND };
 /** What the panel posts to its webview */
 export type TimelineUpdate = { type: 'timeline'; model: TimelineModel };
 
-interface PlannedState {
-  status: 'error' | 'loading' | 'off' | 'ready';
-  items: PlannedItem[];
-}
-
 /**
  * The Sprint timeline: an editor tab with the work of the sprint on a working-days axis. It draws what the store, My
- * Pull Requests, the review requests and the base branch runs already have. The only request of its own is the list of
- * what the user has planned in the next sprint: one query per load of the work items, only while the tab is visible
- * and shows "This + next sprint", the first commit of the PRs it draws when the setting needs it (Rule TIMELINE-14), and
- * the history of the PRs of the rows the user expanded: their threads (not asked for my own PRs, My Pull Requests has
+ * Pull Requests, the review requests and the base branch runs already have. Its own requests are the first commit of the
+ * PRs it draws when the setting needs it (Rule TIMELINE-14), and the history of the PRs of the rows the user expanded: their threads (not asked for my own PRs, My Pull Requests has
  * them) and the whole history of their CI runs, only while the tab is visible (Rule TIMELINE-29)
  */
 export class SprintTimelinePanel implements vscode.Disposable {
   private panel?: vscode.WebviewPanel;
   private ready = false;
-  private range: TimelineRange = 'sprint';
-  private planned: PlannedState = { status: 'off', items: [] };
-  /** "<load>:<path>" of the last query, so a load of the work items asks once */
-  private plannedKey?: string;
   /** Rule TIMELINE-18: the work items whose rows are expanded in the webview (it tells us when they change) */
   private expanded = new Set<number>();
   /** Rule TIMELINE-29: the history of the PRs of the expanded rows */
@@ -192,16 +178,15 @@ export class SprintTimelinePanel implements vscode.Disposable {
       now: new Date(),
       workingDays: workingDaysSetting(),
       maxWaitHours: reviewSettings().maxWaitHours,
-      board: currentBoard(this.store, this.reviews, this.myPullRequests),
+      // Rule TIMELINE-19: the timeline always draws the finished work items and the merged PRs (no Completed chip)
+      board: currentBoard(this.store, this.reviews, this.myPullRequests, undefined, undefined, true),
       workItems,
       scope: this.team.scope,
       team: this.teamInput(workItems),
       myPullRequests: this.myPullRequests.models().items,
       reviews: this.reviews.models(),
       sprint,
-      schedule: this.store.iterationSchedule,
-      range: this.range,
-      planned: this.range === 'sprintAndNext' ? this.planned : { status: 'off', items: [] },
+      density: densityOf(this.team.scope, settings().timelineDensity),
       completedPullRequests: this.myPullRequests.completedPullRequests(),
       codingStart: settings().timelineCodingStart,
       firstCommits: this.myPullRequests.firstCommitDates(),
@@ -221,10 +206,6 @@ export class SprintTimelinePanel implements vscode.Disposable {
       return;
     }
     const sprint = this.sprint();
-    const next = sprint && nextIteration(sprint, this.store.iterationSchedule);
-    if (this.range === 'sprintAndNext' && next) {
-      void this.loadPlanned(next.path);
-    }
     let model = this.buildModel(sprint);
     // Rule TIMELINE-29: the history of the PRs of the expanded rows, only while the tab is visible; the rows say they
     // are loading in this very draw
@@ -247,30 +228,6 @@ export class SprintTimelinePanel implements vscode.Disposable {
     }
   }
 
-  /** What the user has planned in the next sprint: one query per load of the work items (cached by that load) */
-  private async loadPlanned(path: string): Promise<void> {
-    const key = `${String(this.store.loadCount)}:${path}`;
-    if (this.plannedKey === key) {
-      return;
-    }
-    this.plannedKey = key;
-    this.planned = { status: 'loading', items: [] };
-    try {
-      await this.store.whenRepositoryReady();
-      const { client } = resolveContext(this.store.repository());
-      const items = await client.getMyWorkItems([path]);
-      this.planned = {
-        status: 'ready',
-        items: items
-          .filter((item) => item.type !== 'Task' && stateCategory(item.state) !== 'removed')
-          .map((item) => ({ id: item.id, title: item.title, type: item.type, state: item.state })),
-      };
-    } catch {
-      this.planned = { status: 'error', items: [] };
-    }
-    this.post();
-  }
-
   private async onMessage(message: TimelineMessage): Promise<void> {
     try {
       if (message.type === 'ready') {
@@ -279,9 +236,9 @@ export class SprintTimelinePanel implements vscode.Disposable {
         await this.store.ensureLoaded();
         return;
       }
-      if (message.type === 'setTimelineRange') {
-        this.range = message.range;
-        this.post();
+      if (message.type === 'setTimelineDensity') {
+        // Rule TIMELINE-32: the style of the view shown; the change of the setting redraws the tab (extension.ts)
+        await setTimelineDensity(this.team.scope, normalizeTimelineDensity(message.density, 'normal'));
         return;
       }
       if (message.type === 'setExpanded') {
@@ -308,11 +265,6 @@ export class SprintTimelinePanel implements vscode.Disposable {
       }
       if (message.type === 'refresh') {
         this.team.forceReload();
-      }
-      if (message.type === 'setShowCompleted') {
-        // Rule TIMELINE-19: the change of the setting redraws both tabs (extension.ts)
-        await setShowCompleted(message.show);
-        return;
       }
       if (message.type === 'openBoard') {
         await vscode.commands.executeCommand(OPEN_TRACK_BOARD_COMMAND, message.key);

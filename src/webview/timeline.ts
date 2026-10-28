@@ -29,7 +29,7 @@ import {
   toggleRow,
   type ExpansionChoices,
 } from '../timelineExpansion';
-import { COMPLETED_TOOLTIP, type BoardAction } from '../trackBoardModel';
+import type { BoardAction } from '../trackBoardModel';
 import {
   avatarHtml,
   closePickerOnEscape,
@@ -39,6 +39,7 @@ import {
   restorePicker,
   startPeoplePicker,
 } from './peoplePicker';
+import { renderSprintTeams } from './sprintTeams';
 
 interface VsCodeApi {
   postMessage(message: TimelineMessage): void;
@@ -59,6 +60,8 @@ let tips = new Map<string, { tip: TimelineMarker['tip']; tone: string }>();
 let choices: ExpansionChoices = {};
 /** The expanded work items the panel was told about (it reads the history of their PRs): posted only when they change */
 let postedIds: number[] = [];
+/** Rule TIMELINE-34: the legend panel is open (closed by default, UI-only) */
+let legendOpen = false;
 
 function savedState(): Record<string, unknown> {
   const state = vscode.getState();
@@ -89,6 +92,10 @@ function renderSegment(segment: TimelineSegment, popoverKey?: string): string {
   if (segment.dashed) {
     classes.push('dashed');
   }
+  if (segment.after) {
+    // Rule TIMELINE-31: past the end of the sprint, faded under the hatch of the margin
+    classes.push('after');
+  }
   const attrs = popoverKey ? ` data-popover="${popoverKey}" tabindex="0" role="button"` : '';
   return `<span class="${classes.join(' ')}" data-from="${String(segment.start)}" data-to="${String(
     segment.end
@@ -110,6 +117,10 @@ function markerHtml(marker: TimelineMarker, positioned: boolean): string {
   const classes = ['tl-mk', `mk-${marker.kind}`, `mr-${String(marker.row ?? 0)}`];
   if (marker.tone) {
     classes.push(`mk-${marker.tone}`);
+  }
+  if (marker.atRest) {
+    // Rule TIMELINE-33: a problem is shown at rest; the other marks on the hover of the row
+    classes.push('at-rest');
   }
   const key = `t${String(tips.size)}`;
   tips.set(key, { tip: marker.tip, tone: marker.tone === 'fail' ? 'reject' : marker.kind });
@@ -149,12 +160,6 @@ function renderLabel(row: TimelineRow, expanded: boolean): string {
     label.state ? `<span class="tl-state">${escapeHtml(label.state)}</span>` : '',
     label.meta ? `<span class="tl-meta">${escapeHtml(label.meta)}</span>` : '',
   ].join('');
-  if (row.readOnly) {
-    // Rule TIMELINE-23: the rows of others are one line: the id, the short title and the state
-    return `<div class="tl-label compact"${toggle}>${chevron}${id}<span class="tl-title">${escapeHtml(
-      row.title
-    )}</span>${here}</div>`;
-  }
   if (row.expandable) {
     return `<div class="tl-label wi"${toggle}><span class="tl-l1">${chevron}${head}${here}</span><span class="tl-title strong">${escapeHtml(
       row.title
@@ -257,7 +262,8 @@ function renderRow(row: TimelineRow): string {
     }
   }
   if (row.readOnly) {
-    classes.push('compact');
+    // Rule TIMELINE-23: the same row as the user's, without buttons
+    classes.push('read-only');
   }
   if (row.faded) {
     classes.push('faded');
@@ -323,7 +329,11 @@ function section(title: string, body: string, note?: string, sub = false): strin
   }${body}`;
 }
 
-/** The legend: the stations of the work item rows, then the phases and events of the PR rows (Rules TIMELINE-16..19) */
+// Rule TIMELINE-34
+/**
+ * The legend, behind the Legend button of the header: work item rows, then PR rows (phases, what the hover shows, the
+ * problems), then reviews and develop
+ */
 function renderLegend(team: boolean): string {
   const item = (cls: string, label: string): string =>
     `<span class="tl-key"><span class="tl-swatch seg-${cls}"></span>${label}</span>`;
@@ -331,6 +341,10 @@ function renderLegend(team: boolean): string {
     `<span class="tl-key"><span class="tl-mk static mk-${marker.kind}${
       marker.tone ? ` mk-${marker.tone}` : ''
     }">${escapeHtml(marker.text)}</span>${label}</span>`;
+  const group = (title: string, lines: string[]): string =>
+    `<div class="tl-legend-group"><span class="tl-legend-title">${title}</span>${lines
+      .map((line) => `<div class="tl-legend-line">${line}</div>`)
+      .join('')}</div>`;
   // Rule TIMELINE-15: the key to the first line of a label
   const key = `<span class="tl-key tl-tagkey" aria-label="What the first line of a label says">${tagHtml({
     text: 'PBI',
@@ -339,42 +353,44 @@ function renderLegend(team: boolean): string {
     text: 'Task',
     tone: 'task',
   })}task title</span>`;
-  const stations = `<div class="tl-legend-line"><span class="tl-legend-title">WORK ITEM ROWS</span>${item(
-    'branch',
-    'Branch'
-  )}${item('pullRequest', 'Pull request (draft)')}${item('ci', 'CI')}${item('review', 'Review')}${item(
-    'ready',
-    'Ready to be merged'
-  )}${item('needsYou', team ? 'needs its owner' : 'needs you')}${team ? item('overdue', 'review overdue') : ''}${item(
-    'asleep',
-    'no update (zZ)'
-  )}<span class="tl-key">✓ Done</span><span class="tl-key dep">⛓ dependency</span>${key}</div>`;
-  const phases = `<div class="tl-legend-line"><span class="tl-legend-title">PR ROWS</span>${item(
-    'implementation',
-    'Implementation'
-  )}${item('draft', 'Draft')}${item('review', 'Review')}${item(
-    'ready',
-    'Ready to merge'
-  )}<span class="tl-key">✓ Merged</span><span class="tl-legend-sep"></span>${sample(
-    { kind: 'push', text: '', tone: undefined },
-    'push'
-  )}${sample({ kind: 'ci', text: '✓', tone: 'pass' }, 'CI run')}${sample(
-    { kind: 'ci', text: '✕', tone: 'fail' },
-    ''
-  )}${sample({ kind: 'ci', text: '', tone: 'running' }, 'running')}${sample(
-    { kind: 'reviewers', text: '+1', tone: undefined },
-    'reviewer added'
-  )}${sample({ kind: 'approve', text: 'AR', tone: undefined }, 'approved')}${sample(
-    { kind: 'wait', text: 'JB', tone: undefined },
-    'waits for author'
-  )}${sample({ kind: 'reject', text: 'MN', tone: undefined }, 'rejected')}${sample(
-    { kind: 'autoComplete', text: 'A', tone: undefined },
-    'auto-complete'
-  )}${sample({ kind: 'conflicts', text: '⚠', tone: undefined }, 'conflicts now')}${sample(
-    { kind: 'comments', text: '💬3', tone: undefined },
-    'comments'
-  )}</div>`;
-  return `<div class="tl-legend" aria-label="Legend">${stations}${phases}</div>`;
+  const workItems = group('WORK ITEM ROWS', [
+    `${item('branch', 'Branch')}${item('pullRequest', 'Pull request (draft)')}${item('ci', 'CI')}${item(
+      'review',
+      'Review'
+    )}${item('ready', 'Ready to be merged')}${item('needsYou', team ? 'needs its owner' : 'needs you')}`,
+    `${item('asleep', 'no update (zZ)')}<span class="tl-key">✓ Done</span><span class="tl-key dep">⛓ dependency</span>`,
+    key,
+  ]);
+  const pullRequests = group('PR ROWS', [
+    `${item('implementation', 'Implementation')}${item('draft', 'Draft')}${item('review', 'Review')}${item(
+      'ready',
+      'Ready to merge'
+    )}<span class="tl-key">✓ Merged</span>`,
+    `<span class="tl-legend-sub">on hover</span>${sample({ kind: 'push', text: '', tone: undefined }, 'push')}${sample(
+      { kind: 'ci', text: '✓', tone: 'pass' },
+      'CI run'
+    )}${sample({ kind: 'ci', text: '', tone: 'running' }, 'running')}${sample(
+      { kind: 'reviewers', text: '+1', tone: undefined },
+      'reviewer added'
+    )}${sample({ kind: 'approve', text: 'AR', tone: undefined }, 'approved')}${sample(
+      { kind: 'wait', text: 'JB', tone: undefined },
+      'waits for author'
+    )}${sample({ kind: 'reject', text: 'MN', tone: undefined }, 'rejected')}${sample(
+      { kind: 'autoComplete', text: 'A', tone: undefined },
+      'auto-complete'
+    )}${sample({ kind: 'comments', text: '💬3', tone: undefined }, 'comments')}`,
+    `<span class="tl-legend-sub">always</span>${sample(
+      { kind: 'ci', text: '✕', tone: 'fail' },
+      'latest CI run failed'
+    )}${sample({ kind: 'conflicts', text: '⚠', tone: undefined }, 'conflicts now')}`,
+  ]);
+  const reviews = group('REVIEWS · DEVELOP', [
+    `${item('wait', 'waiting for your review')}${item('dueSoon', 'due soon')}${item('overdue', 'overdue')}${
+      team ? item('overdue', 'review overdue (others)') : ''
+    }`,
+    `<span class="tl-key"><span class="tl-swatch dev-green"></span>develop green</span><span class="tl-key"><span class="tl-swatch dev-red"></span>develop broken</span>`,
+  ]);
+  return `<div class="tl-legend" id="tl-legend" role="dialog" aria-label="Legend">${workItems}${pullRequests}${reviews}</div>`;
 }
 
 /** The rows that can be expanded, wherever they are drawn */
@@ -388,10 +404,6 @@ function expandableRows(current: TimelineModel): TimelineRow[] {
 }
 
 function renderHeader(current: TimelineModel): string {
-  const range = (id: 'sprint' | 'sprintAndNext', text: string, title?: string): string =>
-    `<button class="bd-chip" data-range="${id}" aria-pressed="${String(current.range === id)}"${
-      title ? ` title="${escapeHtml(title)}"` : ''
-    }>${text}</button>`;
   const left = current.header.left
     ? `<span class="bd-left${current.header.hurry ? ' hurry' : ''}">${escapeHtml(current.header.left)}</span>`
     : '';
@@ -401,21 +413,23 @@ function renderHeader(current: TimelineModel): string {
         team.sections.length === 1 ? 'person' : 'people'
       } shown · ${String(team.openItems)} open items</span>`
     : '';
-  const teams = team && team.teamCount > 1 ? ` · ${String(team.teamCount)} teams` : '';
+  const teams = !current.header.teams && team && team.teamCount > 1 ? ` · ${String(team.teamCount)} teams` : '';
   const anyExpanded = expandedIds(expandableRows(current), choices).length > 0;
+  // Rule TIMELINE-32: the row style of the view shown
+  const density = (id: TimelineModel['density'], text: string): string =>
+    `<button class="bd-chip" data-density="${id}" aria-pressed="${String(current.density === id)}">${text}</button>`;
   return `<header class="bd-header"><h1 class="bd-sprint">${escapeHtml(current.header.sprint)}${teams}</h1>${
     current.header.dates ? `<span class="bd-left">${escapeHtml(current.header.dates)}</span>` : ''
-  }${left}${stats}
+  }${renderSprintTeams(current.header.teams)}${left}${stats}
     <div class="bd-tabs" role="group" aria-label="View"><button class="bd-chip" data-open-board aria-pressed="false">Track board</button><button class="bd-chip" aria-pressed="true">Sprint timeline</button></div>
     ${renderScope(current.scope)}${renderPeoplePicker(team?.picker)}
-    <div class="bd-chips" role="group" aria-label="Range">${range('sprint', 'This sprint')}${range(
-    'sprintAndNext',
-    'This + next sprint',
-    'Widen the view to the next sprint too: what is already planned there and what will spill over'
-  )}</div>
-    <div class="bd-chips" role="group" aria-label="Completed"><button class="bd-chip chip-completed" data-completed aria-pressed="${String(
-      current.showCompleted
-    )}" title="${escapeHtml(COMPLETED_TOOLTIP)}">Completed</button></div>
+    <div class="bd-chips" role="group" aria-label="Row style" title="Row style of this view">${density(
+      'normal',
+      'Normal'
+    )}${density('compact', 'Compact')}</div>
+    <div class="tl-legend-anchor"><button class="bd-chip" data-legend aria-expanded="${String(
+      legendOpen
+    )}" aria-controls="tl-legend">Legend</button>${legendOpen ? renderLegend(team !== undefined) : ''}</div>
     <button class="bd-chip chip-collapse${
       team ? ' icon-only' : ''
     }" data-collapse-all aria-label="Collapse all" title="Collapse every work item row"${
@@ -430,7 +444,7 @@ function renderDays(current: TimelineModel): string {
       (day) =>
         `<span title="${escapeHtml(day.date)}" class="tl-day${day.weekStart ? ' week' : ''}${
           day.today ? ' today' : ''
-        }${day.next ? ' next' : ''}">${escapeHtml(day.label)}${day.last ? ' · end' : ''}</span>`
+        }${day.after ? ' after' : ''}">${escapeHtml(day.label)}${day.last ? ' · end' : ''}</span>`
     )
     .join('');
 }
@@ -487,15 +501,6 @@ function renderBody(current: TimelineModel): string {
   const finished = current.finished.length
     ? section('DONE THIS SPRINT', current.finished.map(renderRow).join(''), undefined, !!team)
     : '';
-  const planned =
-    current.range === 'sprintAndNext'
-      ? section(
-          'PLANNED IN THE NEXT SPRINT',
-          current.planned.rows.map(renderRow).join(''),
-          current.planned.note,
-          !!team
-        )
-      : '';
   const reviews = current.reviews.length
     ? current.reviews.map(renderRow).join('')
     : '<p class="tl-empty-row">No review is waiting for you</p>';
@@ -505,9 +510,10 @@ function renderBody(current: TimelineModel): string {
   )}</div></div>`;
   const develop = section('DEVELOP', renderDevelop(current.develop), undefined, !!team);
   const reviewsSection = section(current.reviewsTitle, reviews, undefined, !!team);
+  const grid = `tl-grid density-${current.density}`;
   if (!team) {
-    return `<div class="tl-grid">${days}<div class="tl-body"><div class="tl-overlay" aria-hidden="true"></div>
-    ${section('MY WORK ITEMS', work)}${finished}${planned}${notes}${reviewsSection}${develop}</div></div>`;
+    return `<div class="${grid}">${days}<div class="tl-body"><div class="tl-overlay" aria-hidden="true"></div>
+    ${section('MY WORK ITEMS', work)}${finished}${notes}${reviewsSection}${develop}</div></div>`;
   }
   // Rule TIMELINE-21: one section per person, the user's first with the rows, buttons and popovers of the "mine" timeline
   const others = team.sections
@@ -516,14 +522,17 @@ function renderBody(current: TimelineModel): string {
       const done = person.finished.length
         ? section('DONE THIS SPRINT', person.finished.map(renderRow).join(''), undefined, true)
         : '';
-      return `${renderPersonHeader(person)}${person.rows.map(renderRow).join('')}${done}`;
+      // Rule TIMELINE-23: the rows of a person are indented under their header, with a rail in their colour
+      return `${renderPersonHeader(person)}<div class="tl-person-rows colour-${String(person.colour)}">${person.rows
+        .map(renderRow)
+        .join('')}${done}</div>`;
     })
     .join('');
   const extra = youSection ? youSection.rows.map(renderRow).join('') : '';
-  return `<div class="tl-grid">${days}<div class="tl-body"><div class="tl-overlay" aria-hidden="true"></div>
+  return `<div class="${grid}">${days}<div class="tl-body"><div class="tl-overlay" aria-hidden="true"></div>
     ${teamStatusHtml(team)}${
     youSection ? renderPersonHeader(youSection) : ''
-  }${work}${extra}${finished}${planned}${notes}${reviewsSection}${others}${develop}</div></div>`;
+  }${work}${extra}${finished}${notes}${reviewsSection}${others}${develop}</div></div>`;
 }
 
 /** Positions and sizes come from the model in days: they are set after the markup is in place (strict CSP) */
@@ -536,15 +545,6 @@ function place(root: HTMLElement, current: TimelineModel): void {
     element.style.left = percent(from);
     if (element.dataset.to !== undefined) {
       element.style.width = percent(Number(element.dataset.to) - from);
-    }
-  });
-  // No room for a note or a button after the bar: it goes over the right end of the lane
-  root.querySelectorAll<HTMLElement>('.tl-note, .tl-after').forEach((element) => {
-    const lane = element.parentElement?.getBoundingClientRect();
-    if (lane && element.getBoundingClientRect().right > lane.right) {
-      element.classList.add('flip');
-      element.style.left = 'auto';
-      element.style.right = '6px';
     }
   });
   const overlay = root.querySelector<HTMLElement>('.tl-overlay');
@@ -563,17 +563,24 @@ function place(root: HTMLElement, current: TimelineModel): void {
       if (day.today) {
         mark('tl-todaycol', index, 1);
       }
-      if (day.next && !current.days[index - 1]?.next) {
-        mark('tl-nextsep', index, 0);
-      }
     });
+    // Rule TIMELINE-31: the margin after the sprint is hatched; past the end of the sprint NOW fades behind the text
+    if (current.sprintEnd < total) {
+      mark('tl-aftersprint', current.sprintEnd, total - current.sprintEnd);
+      const caption = document.createElement('span');
+      caption.className = 'tl-after-caption';
+      caption.textContent = 'AFTER THE SPRINT';
+      overlay.lastElementChild?.append(caption);
+    }
+    overlay.classList.toggle('over', current.over);
     if (current.now !== undefined) {
       mark('tl-now', current.now, 0);
+      // The flag sits at the foot of the sticky row of the days, so it stays visible while the rows scroll under it
       const flag = document.createElement('span');
-      flag.className = 'tl-now-flag';
+      flag.className = `tl-now-flag${current.over ? ' over' : ''}`;
       flag.textContent = 'NOW';
       flag.style.left = percent(current.now);
-      overlay.append(flag);
+      (root.querySelector('.tl-days') ?? overlay).append(flag);
     }
   }
 }
@@ -722,15 +729,23 @@ document.addEventListener('click', (event) => {
   if (run(target)) {
     return;
   }
-  const range = target?.closest<HTMLElement>('[data-range]');
-  if (range) {
-    post({ type: 'setTimelineRange', range: range.dataset.range === 'sprintAndNext' ? 'sprintAndNext' : 'sprint' });
+  const density = target?.closest<HTMLElement>('[data-density]');
+  if (density) {
+    // Rule TIMELINE-32
+    post({ type: 'setTimelineDensity', density: density.dataset.density === 'compact' ? 'compact' : 'normal' });
     return;
   }
-  if (target?.closest('[data-completed]')) {
-    // Rule TIMELINE-19
-    post({ type: 'setShowCompleted', show: !(model?.showCompleted ?? true) });
+  if (target?.closest('[data-legend]')) {
+    // Rule TIMELINE-34: a click opens the legend, a second one closes it
+    legendOpen = !legendOpen;
+    render();
+    app?.querySelector<HTMLElement>('[data-legend]')?.focus();
     return;
+  }
+  if (legendOpen && !target?.closest('.tl-legend')) {
+    // A click outside closes the legend
+    legendOpen = false;
+    render();
   }
   if (target?.closest('[data-collapse-all]') && model) {
     // Rule TIMELINE-18
@@ -761,6 +776,13 @@ document.addEventListener('click', (event) => {
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     hideTip();
+    if (legendOpen) {
+      // Rule TIMELINE-34
+      legendOpen = false;
+      render();
+      app?.querySelector<HTMLElement>('[data-legend]')?.focus();
+      return;
+    }
     if (!closePickerOnEscape({ render })) {
       hidePopover();
     }
