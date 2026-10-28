@@ -290,6 +290,8 @@ Work item 67145 has five PRs in flight at once (one failing CI, one ready to com
 
 - **The timeline reserves 2 days after the sprint for what follows the bars** (designed, not built yet): near the end of the sprint the NOW line reaches the right edge and the notes and buttons after the bars had no room; the code moved them over the end of the bar, hiding exactly what is happening now. A fixed column on the right was tried and rejected (it looked like a separate table and took 200 px); a margin of 2 days costs less (each day is 1/12 of the width instead of 1/10) and keeps the text next to its bar.
 
+- **After the sprint, open bars keep running, faded** (designed, not built yet): stopping them at the end of the sprint hid that the work is still going on; running them at full colour put the text on top of the bars, and pushing the text after NOW left it no room. Faded under the hatch of the margin, the bars show the work goes on and the text over them stays readable.
+
 ### Whole team (phase 7b)
 
 - **Others' implementation starts at the task activation, never the first commit**: the first commit is one request per PR; for everybody that is too many. The linked task is already in the batch of children. The publication date is the creation unless TEAM-6 read the threads, and their PRs are drawn without threads until the user expands the row (approximate phases, no green span); then their threads and CI history are read like the user's (TEAM-8). Rules TIMELINE-22, TIMELINE-24.
