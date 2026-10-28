@@ -138,11 +138,13 @@ export const STATION_RANK: Record<Exclude<StationKind, 'needsYou'>, number> = {
 interface Parsed {
   system: SystemEvent[];
   reviewersAdded: { at: number; count: number; names: string[] }[];
+  /** Reviewers promoted to required by the author (an auto-added policy reviewer has no "added" thread) */
+  reviewersRequired: { at: number; name: string }[];
   comments: { at: number; author?: string }[];
 }
 
-function addedNames(thread: ThreadResponse): string[] {
-  const key = property(thread, 'CodeReviewReviewersUpdatedAddedIdentity');
+function identityNames(thread: ThreadResponse, keyProperty: string): string[] {
+  const key = property(thread, keyProperty);
   const name = key ? thread.identities?.[key]?.displayName : undefined;
   return name ? [name] : [];
 }
@@ -151,6 +153,7 @@ function addedNames(thread: ThreadResponse): string[] {
 function parseThreads(threads: readonly ThreadResponse[]): Parsed {
   const system: SystemEvent[] = [];
   const reviewersAdded: Parsed['reviewersAdded'] = [];
+  const reviewersRequired: Parsed['reviewersRequired'] = [];
   const comments: Parsed['comments'] = [];
   for (const thread of threads) {
     const type = property(thread, 'CodeReviewThreadType');
@@ -168,7 +171,15 @@ function parseThreads(threads: readonly ThreadResponse[]): Parsed {
     if (type === 'ReviewersUpdate') {
       const count = Number(property(thread, 'CodeReviewReviewersUpdatedNumAdded'));
       if (count > 0) {
-        reviewersAdded.push({ at, count, names: addedNames(thread) });
+        reviewersAdded.push({ at, count, names: identityNames(thread, 'CodeReviewReviewersUpdatedAddedIdentity') });
+      }
+      if (
+        Number(property(thread, 'CodeReviewReviewersUpdatedNumChanged')) > 0 &&
+        property(thread, 'CodeReviewReviewersUpdatedChangedToRequired').toLowerCase() === 'true'
+      ) {
+        for (const name of identityNames(thread, 'CodeReviewReviewersUpdatedChangedIdentity')) {
+          reviewersRequired.push({ at, name });
+        }
       }
       continue;
     }
@@ -180,8 +191,9 @@ function parseThreads(threads: readonly ThreadResponse[]): Parsed {
   }
   system.sort((a, b) => a.at - b.at);
   reviewersAdded.sort((a, b) => a.at - b.at);
+  reviewersRequired.sort((a, b) => a.at - b.at);
   comments.sort((a, b) => a.at - b.at);
-  return { system, reviewersAdded, comments };
+  return { system, reviewersAdded, reviewersRequired, comments };
 }
 
 /* ---------- Stations moment by moment ---------- */
@@ -579,8 +591,7 @@ function pushEvents(facts: PrFacts, parsed: Parsed): LifecycleEvent[] {
 }
 
 // Rule TIMELINE-39
-/** Each reviewer added is a marker of their own with their initials (a count when the thread does not name them all) */
-function reviewerEvents(facts: PrFacts, parsed: Parsed): LifecycleEvent[] {
+function reviewersAddedEvents(facts: PrFacts, parsed: Parsed): LifecycleEvent[] {
   return parsed.reviewersAdded.flatMap((added) => {
     const title = `REVIEWER ADDED · PR ${String(facts.id)}`;
     const named = added.names.map((name) => ({
@@ -604,6 +615,23 @@ function reviewerEvents(facts: PrFacts, parsed: Parsed): LifecycleEvent[] {
         ]
       : named;
   });
+}
+
+// Rule TIMELINE-39
+/**
+ * Each reviewer added is a marker of their own with their initials (a count when the thread does not name them all);
+ * so is each reviewer made required (the only trace of a reviewer the policy added)
+ */
+function reviewerEvents(facts: PrFacts, parsed: Parsed): LifecycleEvent[] {
+  const madeRequired = parsed.reviewersRequired.map((changed) => ({
+    kind: 'reviewers' as const,
+    at: changed.at,
+    text: initials(changed.name),
+    title: `REVIEWER UPDATED · PR ${String(facts.id)}`,
+    lines: [`${changed.name} was made a required reviewer · ${stampText(changed.at)}`],
+  }));
+  const added = reviewersAddedEvents(facts, parsed);
+  return [...added, ...madeRequired].sort((a, b) => a.at - b.at);
 }
 
 // Rule TIMELINE-39
@@ -672,7 +700,9 @@ function runEvents(facts: PrFacts): LifecycleEvent[] {
  * them now, because Azure DevOps does not keep a history of them
  */
 export function pullRequestEvents(facts: PrFacts): LifecycleEvent[] {
-  const parsed = facts.threads ? parseThreads(facts.threads) : { system: [], reviewersAdded: [], comments: [] };
+  const parsed = facts.threads
+    ? parseThreads(facts.threads)
+    : { system: [], reviewersAdded: [], reviewersRequired: [], comments: [] };
   const auto = parsed.system
     .filter((event) => event.type === 'autoComplete')
     .map(

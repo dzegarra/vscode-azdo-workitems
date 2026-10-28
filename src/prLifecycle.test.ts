@@ -389,6 +389,28 @@ describe('events along the PR row (TIMELINE-27)', () => {
     expect(added.map((event) => event.text)).toEqual(['+1', '+1', '+1']);
   });
 
+  it('draws a reviewer made required with their initials, none when made optional (TIMELINE-27)', () => {
+    const changed = (hour: number, toRequired: string): ThreadResponse => ({
+      ...system('ReviewersUpdate', iso(15, hour), {
+        CodeReviewReviewersUpdatedNumAdded: 0,
+        CodeReviewReviewersUpdatedNumChanged: 1,
+        CodeReviewReviewersUpdatedChangedIdentity: '2',
+        CodeReviewReviewersUpdatedChangedToRequired: toRequired,
+      }),
+      identities: { '2': { id: 'p', displayName: 'Pia Klein' } },
+    });
+    const marks = (threads: ThreadResponse[]) =>
+      pullRequestEvents({ ...facts, threads }).filter((event) => event.kind === 'reviewers');
+    expect(marks([changed(9, 'True')])).toMatchObject([
+      {
+        text: 'PK',
+        at: at(15, 9),
+        lines: [`Pia Klein was made a required reviewer · ${stampText(at(15, 9))}`],
+      },
+    ]);
+    expect(marks([changed(9, 'False')])).toEqual([]);
+  });
+
   it('has a dot per comment thread, not one per day (TIMELINE-39)', () => {
     expect(events.filter((event) => event.kind === 'comments')).toHaveLength(3);
   });
