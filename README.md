@@ -180,7 +180,7 @@ Animations (confetti included) respect the system's reduced-motion setting. More
 ### Diagnostics
 
 - **Show Azure DevOps Usage** (command palette) opens a report of the requests made to Azure DevOps since the extension started and in the last hour: requests per feature (sidebar, CI runs, My Pull Requests, Waiting for your review, PR notifications, dependency map, Track board, Sprint timeline, Whole team view, Work Item Details panel, status bar, commands), requests per minute (averages, busiest minute, the last 15 minutes), and errors and throttling (by status, the last errors, throttled responses with Azure DevOps' rate-limit headers).
-- **Show Request Log** opens the **Totalflow X** output channel. With `totalflowx.diagnostics.logRequests` on, it logs one line per request: time, method, status, duration, feature and URL (never headers, tokens or bodies). Off by default; the counters of the report cost nothing noticeable either way.
+- **Show Request Log** opens the **Totalflow X** output channel. With `totalflowx.diagnostics.logRequests` on, it logs one line per request: time, method, status, duration, feature and URL (never headers, tokens or bodies). Off by default; the counters of the report cost nothing noticeable either way. Errors (for example a failed git command, with the command and what git printed) are always written to the same channel, whatever that setting says; the error notification has a **Show Output** button.
 
 ## 2. Sidebar
 

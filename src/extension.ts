@@ -33,6 +33,7 @@ import { linkTaskBranch } from './commands/linkTaskBranch';
 import { linkTaskPullRequest } from './commands/linkTaskPullRequest';
 import { addTask, changeState } from './commands/workItemEdits';
 import { registerDiagnostics } from './diagnostics';
+import { reportError } from './errorLog';
 import { withFeature } from './requestContext';
 import { DependencyMapPanel } from './dependencyMap';
 import { OPEN_SPRINT_TIMELINE_COMMAND, SprintTimelinePanel } from './sprintTimeline';
@@ -265,7 +266,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await store.whenRepositoryReady();
         await withFeature('commands', () => handler(...args));
       } catch (error) {
-        void vscode.window.showErrorMessage((error as Error).message);
+        reportError(error, id);
       }
     });
 

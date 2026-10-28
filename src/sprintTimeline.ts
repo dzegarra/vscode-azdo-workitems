@@ -1,3 +1,4 @@
+import { reportError } from './errorLog';
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import {
@@ -798,7 +799,7 @@ export class SprintTimelinePanel implements vscode.Disposable {
         );
       }
     } catch (error) {
-      void vscode.window.showErrorMessage((error as Error).message);
+      reportError(error, 'sprint timeline');
     }
   }
 

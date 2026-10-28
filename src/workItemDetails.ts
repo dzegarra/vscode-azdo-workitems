@@ -1,3 +1,4 @@
+import { reportError } from './errorLog';
 import { withFeature } from './requestContext';
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
@@ -149,7 +150,7 @@ export class WorkItemDetailsPanels implements vscode.Disposable {
         await runWorkItemAction(this.store, message);
       }
     } catch (error) {
-      void vscode.window.showErrorMessage((error as Error).message);
+      reportError(error, 'work item details');
     }
   }
 

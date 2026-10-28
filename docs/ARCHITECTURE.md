@@ -7,6 +7,7 @@ src/extension.ts          activation: creates the store, watchers, views, status
 src/repositoryGate.ts     startup gate (whenRepositoryReady on the store): await it before resolveContext in anything that can run at startup
 src/azdoClient.ts         REST client (fetch + bearer token from the VS Code Microsoft sign-in, src/auth.ts)
 src/requestRecorder.ts    the ONLY place that calls fetch: records every request (src/requestStats.ts, src/diagnostics.ts)
+src/errorLog.ts            shared "Totalflow X" output channel; reportError logs the full error and shows it with a Show Output button
 src/requestContext.ts     AsyncLocalStorage "feature" attribution of requests (withFeature)
 docs/RULES.md             decision tables of every rule (IDs referenced by `// Rule <ID>` comments; src/rulesDoc.test.ts)
 src/track.ts               pure (redesign): the six stations of a work item (Branch → PR → CI → Review → Ready to be merged → Done), Rules TRACK-*

@@ -1,3 +1,4 @@
+import { reportError } from './errorLog';
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { setShowCompleted, settings, workingDaysSetting } from './config';
@@ -259,7 +260,7 @@ export class TrackBoardPanel implements vscode.Disposable {
         );
       }
     } catch (error) {
-      void vscode.window.showErrorMessage((error as Error).message);
+      reportError(error, 'track board');
     }
   }
 

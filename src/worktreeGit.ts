@@ -29,7 +29,7 @@ export function git(cwd: string, args: string[]): Promise<string> {
         return;
       }
       const output = (stderr || stdout || error.message).trim();
-      reject(new Error(`git ${args.slice(0, 2).join(' ')} failed: ${output}`));
+      reject(new Error(`git ${args.join(' ')} failed in ${cwd}: ${output}`));
     });
   });
 }

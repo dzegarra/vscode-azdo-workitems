@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 import { SECTION } from './config';
+import { disposeOutputChannel, outputChannel } from './errorLog';
 import { requestStats, setRequestLogWriter } from './requestRecorder';
 import { buildUsageReport } from './usageReport';
 
 const LOG_SETTING = 'diagnostics.logRequests';
-const CHANNEL_NAME = 'Totalflow X';
 const USAGE_SCHEME = 'totalflowx-usage';
 const USAGE_URI = vscode.Uri.from({ scheme: USAGE_SCHEME, path: '/Azure DevOps usage.md' });
 
@@ -14,8 +14,7 @@ function logEnabled(): boolean {
 
 /** Request log (output channel) and usage report. Nothing is created or written while the log is off */
 export function registerDiagnostics(): vscode.Disposable[] {
-  let channel: vscode.OutputChannel | undefined;
-  const getChannel = () => (channel ??= vscode.window.createOutputChannel(CHANNEL_NAME));
+  const getChannel = outputChannel;
   const applySetting = () => setRequestLogWriter(logEnabled() ? (line) => getChannel().appendLine(line) : undefined);
   applySetting();
 
@@ -28,7 +27,7 @@ export function registerDiagnostics(): vscode.Disposable[] {
   return [
     changed,
     provider,
-    { dispose: () => channel?.dispose() },
+    { dispose: disposeOutputChannel },
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration(`${SECTION}.${LOG_SETTING}`)) {
         applySetting();

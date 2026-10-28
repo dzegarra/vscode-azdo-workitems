@@ -1,3 +1,4 @@
+import { reportError } from './errorLog';
 import { withFeature } from './requestContext';
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
@@ -116,7 +117,7 @@ export class DependencyMapPanel implements vscode.Disposable {
           await vscode.commands.executeCommand('totalflowx.openDetails', message.id);
       }
     } catch (error) {
-      void vscode.window.showErrorMessage((error as Error).message);
+      reportError(error, 'dependency map');
     }
   }
 
