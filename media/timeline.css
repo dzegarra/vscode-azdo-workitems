@@ -238,12 +238,12 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
 /* Rule TIMELINE-42: a line between the days, barely visible; clearer while the pointer is on the timeline */
 .tl-daysep {
   width: 0;
-  border-left: 1px solid color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--vscode-foreground) 2%, transparent);
   transition: border-color 0.15s;
 }
 
 .tl-body:hover .tl-daysep {
-  border-left-color: color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
+  border-left-color: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
 }
 
 /* Rule TIMELINE-31: the margin after the sprint, hatched over the faded bars; the text after a bar is above it */
