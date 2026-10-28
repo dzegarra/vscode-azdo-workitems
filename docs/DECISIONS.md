@@ -286,6 +286,8 @@ Work item 67145 has five PRs in flight at once (one failing CI, one ready to com
 
 - **The timeline can show the 4 sprints before the current one** (designed, not built yet): looking back a few sprints (what was carried over, how long reviews took, when develop broke) is enough for a retrospective; more would cost requests for little use. Past sprints are read only when opened, and once.
 
+- **Each view of the timeline has its own row style, Normal or Compact** (designed, not built yet): the user's own work is read in detail (Normal by default), the whole team is scanned (Compact by default, many people on one screen); the user can change either. Compact hides the marks at rest because, with many rows, they become noise; hovering a row shows everything, as in Normal.
+
 ### Whole team (phase 7b)
 
 - **Others' implementation starts at the task activation, never the first commit**: the first commit is one request per PR; for everybody that is too many. The linked task is already in the batch of children. The publication date is the creation unless TEAM-6 read the threads, and their PRs are drawn without threads until the user expands the row (approximate phases, no green span); then their threads and CI history are read like the user's (TEAM-8). Rules TIMELINE-22, TIMELINE-24.
