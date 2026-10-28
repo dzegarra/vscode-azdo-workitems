@@ -173,7 +173,9 @@ function renderLabel(row: TimelineRow, expanded: boolean): string {
 // Rule TIMELINE-28
 /** The row of a PR: while its history is read it is busy and says so; when it could not be read it says that */
 function renderPullRequestChild(child: PullRequestChild, last: boolean): string {
-  const loading = child.history === 'loading';
+  // Rules TIMELINE-28, TIMELINE-39: while something of the PR is read a soft light sweeps along the row; no visible
+  // text (near the end of the sprint it would fall off the right edge), only a status for screen readers
+  const loading = child.history === 'loading' || child.detailsLoading === true;
   const open = `data-msg="${named(child.open)}" title="Open PR ${String(child.prId)}"`;
   const segments = child.segments.map((segment) => renderSegment(segment)).join('');
   const markers = child.markers.map((marker) => markerHtml(marker, true)).join('');
@@ -184,7 +186,7 @@ function renderPullRequestChild(child: PullRequestChild, last: boolean): string 
   const after = merged || action ? `<span class="tl-after" data-from="${String(child.end)}">${action}</span>` : '';
   let status = '';
   if (loading) {
-    status = '<span class="tl-loading" role="status">Loading history…</span>';
+    status = `<span class="visually-hidden" role="status">Loading the history of PR ${String(child.prId)}</span>`;
   } else if (child.history === 'error') {
     status = '<span class="tl-loading error">History could not be read</span>';
   } else if (child.undated) {
@@ -192,7 +194,7 @@ function renderPullRequestChild(child: PullRequestChild, last: boolean): string 
   }
   return `<div class="tl-row child pr rows-${String(child.markerRows)}${child.merged ? ' faded' : ''}${
     loading ? ' loading' : ''
-  }" aria-busy="${String(loading)}"><div class="tl-label child${
+  }" data-pr="${String(child.prId)}" aria-busy="${String(loading)}"><div class="tl-label child${
     last ? ' last' : ''
   }" tabindex="0" role="button" ${open}><span class="tl-l1">${pillHtml(child.pill)}<span class="tl-title">${escapeHtml(
     child.title
@@ -387,15 +389,18 @@ function renderLegend(team: boolean): string {
     key,
   ]);
   const pullRequests = group('PR ROWS', [
-    `${item('implementation', 'Implementation')}${item('draft', 'Draft')}${item('review', 'Review')}${item(
-      'ready',
-      'Ready to merge'
-    )}<span class="tl-key">✓ Merged</span>`,
-    `<span class="tl-legend-sub">on hover</span>${sample({ kind: 'push', text: '', tone: undefined }, 'push')}${sample(
+    `${item('taskToDo', 'task to do')}${item('implementation', 'Implementation · task in progress')}${item(
+      'draft',
+      'Draft'
+    )}${item('review', 'Review')}${item('ready', 'Ready to merge')}<span class="tl-key">✓ Merged</span>`,
+    `<span class="tl-legend-sub">on hover</span>${sample(
+      { kind: 'commit', text: '', tone: undefined },
+      'commit'
+    )}${sample({ kind: 'push', text: '', tone: undefined }, 'push')}${sample(
       { kind: 'ci', text: '✓', tone: 'pass' },
       'CI run'
     )}${sample({ kind: 'ci', text: '', tone: 'running' }, 'running')}${sample(
-      { kind: 'reviewers', text: '+1', tone: undefined },
+      { kind: 'reviewers', text: 'MN', tone: undefined },
       'reviewer added'
     )}${sample({ kind: 'approve', text: 'AR', tone: undefined }, 'approved')}${sample(
       { kind: 'wait', text: 'JB', tone: undefined },
@@ -403,7 +408,7 @@ function renderLegend(team: boolean): string {
     )}${sample({ kind: 'reject', text: 'MN', tone: undefined }, 'rejected')}${sample(
       { kind: 'autoComplete', text: 'A', tone: undefined },
       'auto-complete'
-    )}${sample({ kind: 'comments', text: '💬3', tone: undefined }, 'comments')}`,
+    )}${sample({ kind: 'comments', text: '', tone: undefined }, 'comment')}`,
     `<span class="tl-legend-sub">always</span>${sample(
       { kind: 'ci', text: '✕', tone: 'fail' },
       'latest CI run failed'
@@ -827,7 +832,19 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
+// Rule TIMELINE-39: the first hover (or focus) of a PR row asks for its details, once per PR in this tab
+const hoveredPullRequests = new Set<number>();
+function hoverPullRequest(target: EventTarget | null): void {
+  const row = target instanceof Element ? target.closest<HTMLElement>('.tl-row.pr[data-pr]') : null;
+  const id = Number(row?.dataset.pr);
+  if (row && Number.isInteger(id) && !hoveredPullRequests.has(id)) {
+    hoveredPullRequests.add(id);
+    post({ type: 'hoverPullRequest', prId: id });
+  }
+}
+
 document.addEventListener('mouseover', (event) => {
+  hoverPullRequest(event.target);
   const anchor = event.target instanceof Element ? event.target.closest<HTMLElement>('.tl-mk[data-tip]') : null;
   if (anchor) {
     showTip(anchor);
@@ -841,6 +858,7 @@ document.addEventListener('mouseout', (event) => {
 });
 
 document.addEventListener('focusin', (event) => {
+  hoverPullRequest(event.target);
   const anchor = event.target instanceof Element ? event.target.closest<HTMLElement>('.tl-mk[data-tip]') : null;
   if (anchor) {
     showTip(anchor);

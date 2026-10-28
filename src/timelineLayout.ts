@@ -20,14 +20,15 @@ const sameBar = (a: TimelineSegment, b: TimelineSegment): boolean =>
 // Rule TIMELINE-30
 /**
  * One bar per station: adjacent bars of the same kind join (the later text wins: it is the one of now); a bar narrower
- * than `minDays` joins the previous one, except the last (it is the station now) and the first when it has no previous.
+ * than `minDays` joins the previous one (which keeps its text), except the last (it is the station now) and the first when it has no previous.
  * The exact times of what was absorbed stay in the tooltip
  */
 export function mergeSegments(segments: readonly TimelineSegment[], minDays = MIN_SEGMENT_DAYS): TimelineSegment[] {
   const out: TimelineSegment[] = [];
   const join = (into: TimelineSegment, next: TimelineSegment, note: boolean): void => {
     into.end = Math.max(into.end, next.end);
-    into.text = next.text ?? into.text;
+    // A blip absorbed keeps the text of the bar that absorbs it (it is too short to name the bar)
+    into.text = note ? into.text ?? next.text : next.text ?? into.text;
     into.approximate = into.approximate === true;
     into.tip = note ? `${into.tip}\n+ ${next.tip}` : into.tip;
   };
@@ -71,6 +72,9 @@ export function withAtRest(markers: readonly TimelineMarker[]): TimelineMarker[]
   );
 }
 
+/** Each of these is its own mark (Rule TIMELINE-39: every comment, commit and reviewer added) */
+const NEVER_MERGED = new Set<TimelineMarker['kind']>(['comments', 'commit', 'push', 'reviewers']);
+
 // Rule TIMELINE-30
 /**
  * Marks that never overlap: those of the same kind at the same moment are one ("2✓"); each mark goes to the first row of
@@ -84,7 +88,7 @@ export function layoutMarkers(markers: readonly TimelineMarker[]): TimelineMarke
         candidate.kind === marker.kind &&
         candidate.tone === marker.tone &&
         marker.at - candidate.at <= MARK_MERGE_DAYS &&
-        marker.kind !== 'push'
+        !NEVER_MERGED.has(marker.kind)
     );
     if (same) {
       const count = (same.count ?? 1) + 1;
@@ -100,6 +104,10 @@ export function layoutMarkers(markers: readonly TimelineMarker[]): TimelineMarke
   }
   const lastAt: number[] = [];
   return merged.map((marker) => {
+    // Rule TIMELINE-39: a commit is a line over the bar, not a mark of the strip
+    if (marker.kind === 'commit') {
+      return { ...marker, row: 0 };
+    }
     let row = lastAt.findIndex((at) => marker.at - at >= MARK_GAP_DAYS);
     if (row === -1) {
       row = Math.min(lastAt.length, MAX_MARK_ROWS - 1);

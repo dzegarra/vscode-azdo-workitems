@@ -384,13 +384,21 @@ describe('events along the PR row (TIMELINE-27)', () => {
     expect(events.map((event) => event.at)).toEqual([...events.map((event) => event.at)].sort((a, b) => a - b));
   });
 
-  it('puts the reviewers added within ten minutes in one marker', () => {
+  it('has a marker per reviewer added, a count for those the thread does not name (TIMELINE-39)', () => {
     const added = events.filter((event) => event.kind === 'reviewers');
-    expect(added.map((event) => event.text)).toEqual(['+2', '+1']);
+    expect(added.map((event) => event.text)).toEqual(['+1', '+1', '+1']);
   });
 
-  it('puts the comment threads of a day in one marker', () => {
-    expect(events.filter((event) => event.kind === 'comments').map((event) => event.text)).toEqual(['2', '1']);
+  it('has a dot per comment thread, not one per day (TIMELINE-39)', () => {
+    expect(events.filter((event) => event.kind === 'comments')).toHaveLength(3);
+  });
+
+  it('draws the commits once read, those before the PR too (TIMELINE-39)', () => {
+    const withCommits = pullRequestEvents({ ...facts, commits: [at(10, 9), at(15, 8)] });
+    expect(withCommits.filter((event) => event.kind === 'commit').map((event) => event.at)).toEqual([
+      at(10, 9),
+      at(15, 8),
+    ]);
   });
 
   it('says who, when and what in the tooltip of a vote, with the approvals so far', () => {

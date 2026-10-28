@@ -47,6 +47,7 @@ export type LifecycleEventKind =
   | 'autoComplete'
   | 'ci'
   | 'comments'
+  | 'commit'
   | 'conflicts'
   | 'push'
   | 'reject'
@@ -98,6 +99,8 @@ export interface PrFacts {
   /** CI runs: the whole history when `runsComplete`, else the latest run of each pipeline */
   runs?: readonly Pick<RunModel, 'finishTime' | 'id' | 'pipeline' | 'startTime' | 'state'>[];
   runsComplete?: boolean;
+  /** Rule TIMELINE-39: when the commits of the PR were made (read on the first hover of its row); undefined: not read */
+  commits?: readonly number[];
   /** Where the implementation starts (Rule TIMELINE-20) */
   implementation?: { at: number; approximate: boolean; detail: string };
   /** The board's say on the PR now (open PRs) */
@@ -107,7 +110,6 @@ export interface PrFacts {
   now: number;
 }
 
-const MS_PER_MINUTE = 60_000;
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
 /** "We 21 16:30": the weekday, the day of the month and the hour, as the tooltips of the timeline say it */
@@ -526,13 +528,7 @@ export function pullRequestPhases(facts: PrFacts, stations: readonly StationSpan
 
 /* ---------- Events ---------- */
 
-const CLUSTER_MS = 10 * MS_PER_MINUTE;
 const DAY_MS = 86_400_000;
-
-const dayKey = (ms: number): string => {
-  const date = new Date(ms);
-  return `${String(date.getFullYear())}-${String(date.getMonth())}-${String(date.getDate())}`;
-};
 
 const plural = (count: number, noun: string): string => `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
 
@@ -582,52 +578,55 @@ function pushEvents(facts: PrFacts, parsed: Parsed): LifecycleEvent[] {
     }));
 }
 
-/** The reviewers added within ten minutes of each other are one marker: "+4" */
+// Rule TIMELINE-39
+/** Each reviewer added is a marker of their own with their initials (a count when the thread does not name them all) */
 function reviewerEvents(facts: PrFacts, parsed: Parsed): LifecycleEvent[] {
-  const groups: { at: number; count: number; names: string[] }[] = [];
-  for (const added of parsed.reviewersAdded) {
-    const last = groups.at(-1);
-    if (last && added.at - last.at <= CLUSTER_MS) {
-      last.count += added.count;
-      last.names.push(...added.names);
-    } else {
-      groups.push({ ...added, names: [...added.names] });
-    }
-  }
-  return groups.map((group) => ({
-    kind: 'reviewers' as const,
-    at: group.at,
-    text: `+${String(group.count)}`,
-    title: `REVIEWERS ADDED · PR ${String(facts.id)}`,
-    lines: [
-      `${plural(group.count, 'reviewer')} added · ${stampText(group.at)}`,
-      ...(group.names.length ? [group.names.join(', ')] : []),
-    ],
+  return parsed.reviewersAdded.flatMap((added) => {
+    const title = `REVIEWER ADDED · PR ${String(facts.id)}`;
+    const named = added.names.map((name) => ({
+      kind: 'reviewers' as const,
+      at: added.at,
+      text: initials(name),
+      title,
+      lines: [`${name} was added · ${stampText(added.at)}`],
+    }));
+    const rest = added.count - added.names.length;
+    return rest > 0
+      ? [
+          ...named,
+          {
+            kind: 'reviewers' as const,
+            at: added.at,
+            text: `+${String(rest)}`,
+            title,
+            lines: [`${plural(rest, 'reviewer')} added · ${stampText(added.at)}`],
+          },
+        ]
+      : named;
+  });
+}
+
+// Rule TIMELINE-39
+/** Every comment thread is its own dot */
+function commentEvents(facts: PrFacts, parsed: Parsed): LifecycleEvent[] {
+  return parsed.comments.map((comment) => ({
+    kind: 'comments' as const,
+    at: comment.at,
+    text: '',
+    title: `COMMENT · PR ${String(facts.id)}`,
+    lines: [`${comment.author ?? 'Someone'} commented · ${stampText(comment.at)}`],
   }));
 }
 
-/** The comment threads of a day are one marker: "💬 3" */
-function commentEvents(facts: PrFacts, parsed: Parsed): LifecycleEvent[] {
-  const days = new Map<string, { at: number; authors: Set<string>; count: number }>();
-  for (const comment of parsed.comments) {
-    const key = dayKey(comment.at);
-    const day = days.get(key) ?? { at: comment.at, authors: new Set<string>(), count: 0 };
-    day.count += 1;
-    day.at = comment.at;
-    if (comment.author) {
-      day.authors.add(comment.author);
-    }
-    days.set(key, day);
-  }
-  return [...days.values()].map((day) => ({
-    kind: 'comments' as const,
-    at: day.at,
-    text: String(day.count),
-    title: `COMMENTS · PR ${String(facts.id)}`,
-    lines: [
-      `${plural(day.count, 'comment thread')} · ${stampText(day.at)}`,
-      ...(day.authors.size ? [[...day.authors].join(', ')] : []),
-    ],
+// Rule TIMELINE-39
+/** The commits of the PR, once read: a white line each */
+function commitEvents(facts: PrFacts): LifecycleEvent[] {
+  return (facts.commits ?? []).map((at) => ({
+    kind: 'commit' as const,
+    at,
+    text: '',
+    title: `COMMIT · PR ${String(facts.id)}`,
+    lines: [`Committed · ${stampText(at)}`],
   }));
 }
 
@@ -698,15 +697,19 @@ export function pullRequestEvents(facts: PrFacts): LifecycleEvent[] {
         ]
       : [];
   const end = facts.closed ?? facts.now;
-  return [
-    ...pushEvents(facts, parsed),
-    ...runEvents(facts),
-    ...reviewerEvents(facts, parsed),
-    ...voteEvents(facts, parsed),
-    ...auto,
-    ...commentEvents(facts, parsed),
-    ...conflicts,
-  ]
-    .filter((event) => event.at >= facts.created - DAY_MS && event.at <= end + DAY_MS)
-    .sort((a, b) => a.at - b.at);
+  return (
+    [
+      ...pushEvents(facts, parsed),
+      ...runEvents(facts),
+      ...reviewerEvents(facts, parsed),
+      ...voteEvents(facts, parsed),
+      ...auto,
+      ...commentEvents(facts, parsed),
+      ...commitEvents(facts),
+      ...conflicts,
+    ]
+      // Commits made before the PR are drawn too: they sit in its implementation (Rule TIMELINE-39)
+      .filter((event) => (event.kind === 'commit' || event.at >= facts.created - DAY_MS) && event.at <= end + DAY_MS)
+      .sort((a, b) => a.at - b.at)
+  );
 }

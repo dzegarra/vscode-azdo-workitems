@@ -30,6 +30,8 @@ export type TimelineMessage =
   /** Rule TIMELINE-29: the work items whose rows are expanded (the panel reads the history of their PRs) */
   | { type: 'setExpanded'; ids: number[] }
   | { type: 'openTeamPullRequest'; url: string }
+  /** Rule TIMELINE-39: the pointer is on the row of a PR for the first time: read its commits and its task's history */
+  | { type: 'hoverPullRequest'; prId: number }
   | { type: 'ready' };
 
 /**
@@ -55,6 +57,7 @@ export type SegmentKind =
   | 'stateInReview'
   | 'stateNew'
   | 'stateReopened'
+  | 'taskToDo'
   | 'wait';
 
 export interface TimelineSegment {
@@ -133,6 +136,8 @@ export interface PullRequestChild {
   action?: BoardAction & { primary: boolean };
   /** Its history: the row draws a skeleton while it is read (aria-busy) */
   history: HistoryLoad;
+  /** Rule TIMELINE-39: its commits or the history of its task are being read (the row sweeps) */
+  detailsLoading?: boolean;
   /** What the panel needs to read the history of the PR */
   historyRef?: HistoryRef;
   /** A click on the pill and the title */
@@ -295,6 +300,8 @@ export interface TimelineModel {
   firstCommitsWanted: number[];
   /** Rule TIMELINE-35: the work items drawn and the key of their state history (the panel reads what it lacks) */
   statesWanted: { id: number; key: string }[];
+  /** Rule TIMELINE-39: the commits of the PRs hovered (the panel reads what it lacks) */
+  commitsWanted: { id: number; key: string; repositoryId?: string }[];
   develop: {
     branch: string;
     spans: DevelopSpan[];
@@ -329,6 +336,12 @@ export interface TimelineInput {
   firstCommits?: ReadonlyMap<number, string>;
   /** Rule TIMELINE-37: the PRs of others the user voted on, and their threads read so far */
   reviewed?: Omit<ReviewedInput, 'days' | 'now'>;
+  /** Rule TIMELINE-39: the PRs whose row was hovered, the times of their commits read so far, and those being read */
+  hovered?: ReadonlySet<number>;
+  commits?: ReadonlyMap<number, readonly number[]>;
+  detailsLoading?: ReadonlySet<number>;
+  /** The work items (and tasks) whose state history is being read */
+  statesLoading?: ReadonlySet<number>;
   /** Rule TIMELINE-35: the changes of state read so far, by work item id (until then the states are guessed) */
   stateHistory?: ReadonlyMap<number, readonly StateChange[]>;
   /** Rule TIMELINE-29: the history read so far of the PRs (threads and CI runs), by PR id */

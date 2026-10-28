@@ -291,6 +291,7 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
       reviewedWanted: [],
       firstCommitsWanted: [],
       statesWanted: [],
+      commitsWanted: [],
       develop: { branch: input.base.branch, spans: [], merges: [], culprits: [] },
       notes: ['The dates of the sprint are not known, so there is no axis to draw'],
     };
@@ -303,6 +304,7 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
     now,
     firstCommitsWanted: new Set(),
     statesWanted: new Map(),
+    commitsWanted: new Map(),
   };
   // The faded cards of the merged PRs are the board's: the timeline draws the merged PRs it has dates for (TIMELINE-17)
   const cards = board.work.filter((card) => card.merged === undefined);
@@ -331,6 +333,7 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
     reviewedWanted: input.reviewed ? reviewedThreadsWanted(input.reviewed.pullRequests, axisStart) : [],
     firstCommitsWanted: [...context.firstCommitsWanted],
     statesWanted: [...(context.statesWanted ?? [])].map(([id, key]) => ({ id, key })),
+    commitsWanted: [...(context.commitsWanted ?? [])].map(([id, wanted]) => ({ id, ...wanted })),
     develop: developOf(input, days, now),
     notes: board.notes,
   };

@@ -79,6 +79,17 @@ export interface CommitRef {
   committer?: { date?: string };
 }
 
+// Rule TIMELINE-39
+/** When each commit was made, oldest first: the committer date (a rebase moves it), else the author date */
+export function commitTimes(commits: readonly CommitRef[]): number[] {
+  return commits
+    .flatMap((commit) => {
+      const at = Date.parse(commit.committer?.date ?? commit.author?.date ?? '');
+      return Number.isNaN(at) ? [] : [at];
+    })
+    .sort((a, b) => a - b);
+}
+
 /** The oldest author date (ISO) of the commits of the pages of `pullRequests/{id}/commits`; the committer date as fallback */
 export function oldestCommitDate(commits: readonly CommitRef[]): string | undefined {
   return commits

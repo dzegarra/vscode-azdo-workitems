@@ -1142,10 +1142,12 @@ body.vscode-light .tl-dev-tick {
   color: var(--muted);
 }
 
+/* Rule TIMELINE-39: a reviewer only added: grey initials with a dashed border */
 .tl-mk.mk-reviewers {
-  border: 1px solid var(--in-flight);
-  border-radius: 8px;
-  color: var(--vscode-textLink-foreground, var(--in-flight));
+  min-width: 18px;
+  border: 1px dashed var(--muted);
+  border-radius: 9px;
+  color: var(--muted);
 }
 
 .tl-mk.mk-approve,
@@ -1181,10 +1183,64 @@ body.vscode-light .tl-dev-tick {
   font-size: 11px;
 }
 
+/* Rule TIMELINE-39: every comment is its own dot */
 .tl-mk.mk-comments {
-  border: 1px solid var(--border);
-  color: var(--vscode-foreground);
-  font-weight: 600;
+  width: 8px;
+  min-width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  padding: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--vscode-foreground) 70%, transparent);
+}
+
+.tl-mk.static.mk-comments {
+  display: inline-block;
+  margin-top: 0;
+}
+
+/* Rule TIMELINE-39: a commit is a white line over the bar */
+.tl-mk.mk-commit {
+  width: 2px;
+  min-width: 2px;
+  height: 20px;
+  padding: 0;
+  border-radius: 1px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25);
+}
+
+.tl-row.pr .tl-mk.mk-commit {
+  top: 26px;
+}
+
+.tl-row.pr.rows-2 .tl-mk.mk-commit {
+  top: 42px;
+}
+
+.tl-row.pr.rows-3 .tl-mk.mk-commit {
+  top: 58px;
+}
+
+.tl-mk.static.mk-commit {
+  display: inline-block;
+  height: 14px;
+}
+
+.tl-grid.density-compact .tl-row.pr .tl-mk.mk-commit {
+  top: 9px;
+  height: 16px;
+}
+
+.tl-seg.seg-taskToDo,
+.tl-swatch.seg-taskToDo {
+  border: 1px dashed var(--border);
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--vscode-foreground) 10%, transparent) 0 4px,
+    transparent 4px 8px
+  );
+  color: var(--muted);
 }
 
 /* The tooltip of a mark: who, when, what */

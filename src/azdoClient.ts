@@ -907,6 +907,11 @@ export class AzdoClient {
    * COMMIT_PAGES) and the oldest date of all is kept, whatever the order. Undefined: the PR has no commit
    */
   async getPullRequestFirstCommitDate(repositoryId: string, pullRequestId: number): Promise<string | undefined> {
+    return oldestCommitDate(await this.getPullRequestCommits(repositoryId, pullRequestId));
+  }
+
+  /** The commits of the PR, at most COMMIT_PAGES pages of COMMIT_PAGE_SIZE (Rules TIMELINE-20, TIMELINE-39) */
+  async getPullRequestCommits(repositoryId: string, pullRequestId: number): Promise<CommitRef[]> {
     const commits: CommitRef[] = [];
     let continuation: string | undefined;
     for (let page = 0; page < COMMIT_PAGES; page++) {
@@ -922,7 +927,7 @@ export class AzdoClient {
         break;
       }
     }
-    return oldestCommitDate(commits);
+    return commits;
   }
 
   /** ID of the latest iteration (push) of the PR; undefined when it has none */

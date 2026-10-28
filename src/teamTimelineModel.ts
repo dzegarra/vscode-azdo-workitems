@@ -143,9 +143,10 @@ function personRows(
     sprintEnd: number;
     now: number;
     statesWanted: Map<number, string>;
+    commitsWanted: Map<number, { key: string; repositoryId?: string }>;
   }
 ): PersonRows {
-  const { input, team, days, sprintEnd, now, statesWanted } = base;
+  const { input, team, days, sprintEnd, now, statesWanted, commitsWanted } = base;
   const models = person.items.map((item) => item.model);
   const items = boardItems(models, team.kinds);
   const axisStart = days[0].startMs;
@@ -178,6 +179,7 @@ function personRows(
     now,
     firstCommitsWanted: new Set(),
     statesWanted,
+    commitsWanted,
   };
   const rows = rowsOfCards(cards, context);
   const noteOf = (row: TimelineRow): TimelineRow['note'] => {
@@ -212,9 +214,10 @@ export function buildWholeTeamTimeline(input: TimelineInput): TimelineModel {
   const others = team.people.filter((person) => !person.you);
   const now = input.now.getTime();
   const statesWanted = new Map<number, string>();
+  const commitsWanted = new Map<number, { key: string; repositoryId?: string }>();
   const build = (person: TeamPerson): PersonRows & { person: TeamPerson } =>
     days.length
-      ? { ...personRows(person, { input, team, days, sprintEnd, now, statesWanted }), person }
+      ? { ...personRows(person, { input, team, days, sprintEnd, now, statesWanted, commitsWanted }), person }
       : { work: [], finished: [], cards: [], teamCards: [], person };
   const asleep: TimelineTeam['asleep'] = [];
 
@@ -306,6 +309,12 @@ export function buildWholeTeamTimeline(input: TimelineInput): TimelineModel {
       ...[...statesWanted]
         .filter(([id]) => !model.statesWanted.some((entry) => entry.id === id))
         .map(([id, key]) => ({ id, key })),
+    ],
+    commitsWanted: [
+      ...model.commitsWanted,
+      ...[...commitsWanted]
+        .filter(([id]) => !model.commitsWanted.some((entry) => entry.id === id))
+        .map(([id, wanted]) => ({ id, ...wanted })),
     ],
     team: {
       status: team.status,

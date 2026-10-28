@@ -62,6 +62,11 @@ export class KeyedReads<T> {
     return this.inFlight.has(id);
   }
 
+  /** The ids being read */
+  loadingIds(): Set<number> {
+    return new Set(this.inFlight.keys());
+  }
+
   /** The values read so far, by id */
   snapshot(): Map<number, T> {
     return new Map([...this.entries].map(([id, entry]) => [id, entry.value]));

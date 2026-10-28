@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { resolveContext, setTimelineDensity, settings, workingDaysSetting } from './config';
 import { KeyedReads } from './keyedReads';
 import { stateChanges, type StateChange } from './workItemStateHistory';
+import { commitTimes } from './codingStart';
 import type { WorkItemModel } from './viewModel';
 import type { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import { PullRequestHistory } from './pullRequestHistory';
@@ -52,6 +53,10 @@ export class SprintTimelinePanel implements vscode.Disposable {
   /** Rule TIMELINE-37: the threads of the reviewed PRs the review poll does not have (the closed ones) */
   private readonly reviewedThreads: KeyedReads<ThreadResponse[]>;
   private readonly reviewedRepositories = new Map<number, string>();
+  /** Rule TIMELINE-39: the PRs whose row the pointer reached, and the times of their commits (read on that hover) */
+  private hovered = new Set<number>();
+  private readonly commits: KeyedReads<number[]>;
+  private readonly commitRepositories = new Map<number, string>();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -74,6 +79,10 @@ export class SprintTimelinePanel implements vscode.Disposable {
         }),
       () => this.post()
     );
+    this.commits = new KeyedReads(
+      (id) => this.readCommits(id),
+      () => this.post()
+    );
     this.reviewedThreads = new KeyedReads(
       (id) =>
         withFeature('sprintTimeline', async () => {
@@ -83,6 +92,15 @@ export class SprintTimelinePanel implements vscode.Disposable {
         }),
       () => this.post()
     );
+  }
+
+  // Rule TIMELINE-39
+  private readCommits(id: number): Promise<number[]> {
+    return withFeature('sprintTimeline', async () => {
+      await this.store.whenRepositoryReady();
+      const { client } = resolveContext(this.store.repository());
+      return commitTimes(await client.getPullRequestCommits(this.commitRepositories.get(id) ?? '', id));
+    });
   }
 
   // Rule TIMELINE-37
@@ -143,6 +161,7 @@ export class SprintTimelinePanel implements vscode.Disposable {
         this.ready = false;
         // A new tab starts with its own rows collapsed or expanded: it tells which
         this.expanded = new Set();
+        this.hovered = new Set();
       });
     });
   }
@@ -238,6 +257,10 @@ export class SprintTimelinePanel implements vscode.Disposable {
       firstCommits: this.myPullRequests.firstCommitDates(),
       history: this.history.snapshot(),
       stateHistory: this.states.snapshot(),
+      hovered: this.hovered,
+      commits: this.commits.snapshot(),
+      detailsLoading: new Set([...this.hovered].filter((id) => this.commits.loading(id))),
+      statesLoading: this.states.loadingIds(),
       reviewed: this.reviewedInput(),
       base: {
         branch: settings().baseBranch,
@@ -263,6 +286,16 @@ export class SprintTimelinePanel implements vscode.Disposable {
       this.history.request(historyRefsOf(model, this.expanded)),
       this.states.request(model.statesWanted),
       this.reviewedThreads.request(model.reviewedWanted.filter((wanted) => !known.has(wanted.id))),
+      // Rule TIMELINE-39: the commits of the PRs hovered (their tasks' histories are among the states above)
+      this.commits.request(
+        model.commitsWanted.flatMap((wanted) => {
+          if (wanted.repositoryId === undefined) {
+            return [];
+          }
+          this.commitRepositories.set(wanted.id, wanted.repositoryId);
+          return [{ id: wanted.id, key: wanted.key }];
+        })
+      ),
     ];
     if (started.some(Boolean)) {
       model = this.buildModel(sprint);
@@ -306,6 +339,14 @@ export class SprintTimelinePanel implements vscode.Disposable {
         // Rule TIMELINE-18: the webview posts the expanded work items when they change; their PRs' history is read now
         this.expanded = new Set(message.ids.filter((id) => Number.isInteger(id)));
         this.post();
+        return;
+      }
+      if (message.type === 'hoverPullRequest') {
+        // Rule TIMELINE-39: the first hover of a PR row reads its commits and its task's history (once per key)
+        if (Number.isInteger(message.prId) && !this.hovered.has(message.prId)) {
+          this.hovered = new Set([...this.hovered, message.prId]);
+          this.post();
+        }
         return;
       }
       if (message.type === 'openTeamPullRequest') {

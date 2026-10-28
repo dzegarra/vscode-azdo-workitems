@@ -52,6 +52,9 @@ export interface OtherTaskModel {
   assignedTo?: string;
   /** ActivatedDate of the task: where the coding of its PR starts on the Sprint timeline of other people (Rule TIMELINE-24) */
   activated?: string;
+  /** CreatedDate and revision of the task: the "task to do" part of the row of its PR (Rule TIMELINE-39) */
+  created?: string;
+  rev?: number;
   taskPullRequests: TaskPullRequestModel[];
   taskBranches?: TaskBranchModel[];
   /** A branch of the task is checked out here or in another worktree: its row is highlighted */

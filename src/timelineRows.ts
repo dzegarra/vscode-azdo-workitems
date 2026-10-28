@@ -65,6 +65,8 @@ export interface RowContext {
   firstCommitsWanted: Set<number>;
   /** Rule TIMELINE-35: the work items drawn and the key of their state history (`id:rev`) */
   statesWanted?: Map<number, string>;
+  /** Rule TIMELINE-39: the PRs hovered and the key of their commits (a merged PR for good, an open one by its commit) */
+  commitsWanted?: Map<number, { key: string; repositoryId?: string }>;
 }
 
 const plural = (count: number, noun: string): string => `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
@@ -105,8 +107,25 @@ interface TaskFacts {
   title: string;
   state: string;
   activated?: number;
+  created?: number;
+  /** Key of its state history (`id:rev`), read on the hover of its PR (Rule TIMELINE-39) */
+  stateKey: string;
   prIds: number[];
   canCreatePullRequest: boolean;
+}
+
+// Rule TIMELINE-39
+/** The creation and the first activation of a task from its state history, once read */
+function taskMoments(id: number, input: TimelineInput): { created?: number; activated?: number } {
+  const changes = input.stateHistory?.get(id);
+  if (!changes?.length) {
+    return {};
+  }
+  const sorted = [...changes].sort((a, b) => a.at - b.at);
+  return {
+    created: sorted[0].at,
+    activated: sorted.find((change) => stateCategory(change.state) === 'in-progress')?.at,
+  };
 }
 
 /** The tasks of a work item that are not removed: the Task children in the list and the ones outside it */
@@ -118,6 +137,8 @@ function tasksOfItem(item: WorkItemModel, input: TimelineInput): TaskFacts[] {
       title: task.title,
       state: task.state,
       activated: instant(task.dates?.activated),
+      created: instant(task.dates?.created),
+      stateKey: `${String(task.id)}:${task.rev === undefined ? '?' : String(task.rev)}`,
       prIds: (task.taskPullRequests ?? []).map((pr) => pr.id),
       canCreatePullRequest: task.canCreatePullRequest === true,
     }));
@@ -128,10 +149,17 @@ function tasksOfItem(item: WorkItemModel, input: TimelineInput): TaskFacts[] {
       title: task.title,
       state: task.state,
       activated: instant(task.activated),
+      created: instant(task.created),
+      stateKey: `${String(task.id)}:${task.rev === undefined ? '?' : String(task.rev)}`,
       prIds: task.taskPullRequests.map((pr) => pr.id),
       canCreatePullRequest: task.canCreatePullRequest === true,
     }));
-  return [...own, ...others].filter((task) => stateCategory(task.state) !== 'removed');
+  return [...own, ...others]
+    .filter((task) => stateCategory(task.state) !== 'removed')
+    .map((task) => {
+      const read = taskMoments(task.id, input);
+      return { ...task, created: read.created ?? task.created, activated: read.activated ?? task.activated };
+    });
 }
 
 // Rule TIMELINE-20
@@ -322,6 +350,8 @@ function pullRequestsOf(
         })),
         conflicts: mine?.conflicts ?? theirs?.conflicts ?? false,
         threads: history?.threads,
+        // Rule TIMELINE-39: read on the first hover of the row
+        commits: input.commits?.get(pr.id),
         runs: history?.runs ?? runs,
         runsComplete: history?.runs !== undefined,
         implementation,
@@ -534,6 +564,45 @@ function pullRequestChild(
       : [{ kind: event.kind, at, text: event.text, tone: event.tone, tip: { title: event.title, lines: event.lines } }];
   });
   const markers = layoutMarkers(withAtRest(marks));
+  // Rule TIMELINE-39: before the implementation, the linked task while it was to do; read on the first hover
+  const linked = tasks.filter((task) => task.prIds.includes(draw.id));
+  const { input } = context;
+  if (input.hovered?.has(draw.id)) {
+    context.commitsWanted?.set(draw.id, {
+      key: draw.merged ? 'closed' : draw.ref.commit ?? 'open',
+      repositoryId: draw.ref.repositoryId,
+    });
+    linked.forEach((task) => context.statesWanted?.set(task.id, task.stateKey));
+  }
+  const detailsLoading =
+    input.detailsLoading?.has(draw.id) === true || linked.some((task) => input.statesLoading?.has(task.id) === true);
+  const implementationStart = segments.at(0)?.start;
+  const task = linked
+    .filter((candidate) => candidate.created !== undefined)
+    .sort((a, b) => (a.created ?? 0) - (b.created ?? 0))
+    .at(0);
+  const toDo =
+    task?.created !== undefined && implementationStart !== undefined
+      ? toSegment(
+          {
+            kind: 'taskToDo',
+            start: Math.max(task.created, axisStart),
+            end: Math.min(facts.implementation?.at ?? facts.created, facts.created),
+            text: 'task to do',
+            detail: `Task ${String(task.id)} to do, before its work started`,
+            fromBefore: task.created < axisStart,
+          },
+          days
+        )
+      : undefined;
+  // The implementation that starts at the activation of the task is the task in progress
+  const startedByTask = task?.activated !== undefined && facts.implementation?.at === task.activated;
+  const drawn = [
+    ...(toDo && toDo.end <= (implementationStart ?? 0) + 0.001 ? [toDo] : []),
+    ...segments.map((segment) =>
+      startedByTask && segment.kind === 'implementation' ? { ...segment, text: 'task in progress' } : segment
+    ),
+  ];
   const closedAt = facts.closed;
   const merged =
     draw.merged && closedAt !== undefined
@@ -544,9 +613,10 @@ function pullRequestChild(
   const action = !draw.merged && openCount > 1 && !context.team ? pullRequestAction(draw) : undefined;
   return {
     ...base,
-    segments: mergeSegments(segments),
+    segments: mergeSegments(drawn),
     markers,
     markerRows: markerRows(markers),
+    ...(detailsLoading ? { detailsLoading } : {}),
     ...(merged ? { merged } : {}),
     ...(action ? { action } : {}),
     end,

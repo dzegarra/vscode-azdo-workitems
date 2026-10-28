@@ -670,6 +670,44 @@ describe('the work item with several PRs (TIMELINE-16, TIMELINE-17)', () => {
     expect(row.defaultExpanded).toBe(true);
   });
 
+  it('reads the commits and the task history of a PR on its first hover only (TIMELINE-39)', () => {
+    expect(build().commitsWanted).toEqual([]);
+    const hovered = build({ hovered: new Set([14021]) });
+    expect(hovered.commitsWanted.map((wanted) => wanted.id)).toEqual([14021]);
+    expect(hovered.statesWanted.map((wanted) => wanted.id)).toContain(67163);
+  });
+
+  it('draws the commits, the task to do before the work and the task in progress (TIMELINE-39)', () => {
+    const model = build({
+      hovered: new Set([14021]),
+      commits: new Map([[14021, [at(19, 15), at(20, 9)]]]),
+      stateHistory: new Map([
+        [
+          67163,
+          [
+            { at: at(15, 9), state: 'To Do' },
+            { at: at(16, 9), state: 'In Progress' },
+          ],
+        ],
+      ]),
+      detailsLoading: new Set([14021]),
+    });
+    const pr = model.work[0].children?.find((child) => child.key === 'pr:67145:14021');
+    expect(pr?.kind).toBe('pr');
+    if (pr?.kind !== 'pr') {
+      return;
+    }
+    // The two hours of draft are too short to see (TIMELINE-30): the implementation absorbs them, keeping its text
+    expect(pr.segments.slice(0, 2).map((segment) => [segment.kind, segment.text])).toEqual([
+      ['taskToDo', 'task to do'],
+      ['implementation', 'task in progress'],
+    ]);
+    expect(pr.segments[0].start).toBeCloseTo(3 + 9 / 24);
+    expect(pr.segments[1].start).toBeCloseTo(4 + 9 / 24);
+    expect(pr.markers.filter((marker) => marker.kind === 'commit')).toHaveLength(2);
+    expect(pr.detailsLoading).toBe(true);
+  });
+
   it('puts the PRs under it, oldest first, the merged ones within the axis among them, then the tasks (TIMELINE-18)', () => {
     const [row] = build().work;
     expect(row.children?.map((child) => child.key)).toEqual([
