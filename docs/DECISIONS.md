@@ -288,6 +288,8 @@ Work item 67145 has five PRs in flight at once (one failing CI, one ready to com
 
 - **Each view of the timeline has its own row style, Normal or Compact** (designed, not built yet): the user's own work is read in detail (Normal by default), the whole team is scanned (Compact by default, many people on one screen); the user can change either. The row style only changes the size: in both, the PR bar shows at rest its phases and the problems the user must act on (the latest CI run failed, conflicts now), and everything else on hover. A problem must not depend on the user pointing at the right bar; the history (earlier runs, auto-complete, commits, comments, votes) would be noise at rest.
 
+- **The timeline reserves 2 days after the sprint for what follows the bars** (designed, not built yet): near the end of the sprint the NOW line reaches the right edge and the notes and buttons after the bars had no room; the code moved them over the end of the bar, hiding exactly what is happening now. A fixed column on the right was tried and rejected (it looked like a separate table and took 200 px); a margin of 2 days costs less (each day is 1/12 of the width instead of 1/10) and keeps the text next to its bar.
+
 ### Whole team (phase 7b)
 
 - **Others' implementation starts at the task activation, never the first commit**: the first commit is one request per PR; for everybody that is too many. The linked task is already in the batch of children. The publication date is the creation unless TEAM-6 read the threads, and their PRs are drawn without threads until the user expands the row (approximate phases, no green span); then their threads and CI history are read like the user's (TEAM-8). Rules TIMELINE-22, TIMELINE-24.
