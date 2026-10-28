@@ -11,6 +11,7 @@ import type { HistoryRef } from './prHistoryCache';
 import type { ReviewRequestModel } from './reviewRequests';
 import { iterationDates } from './sprintTitle';
 import { AFTER_SPRINT_DAYS, axisPosition, buildAxis, type TimelineDay } from './timelineAxis';
+import { historyRow } from './pastSprints';
 import { reviewedRows, reviewedThreadsWanted } from './reviewedTimeline';
 import { rowsOfCards, type RowContext } from './timelineRows';
 import { dayText, toSegment } from './timelineSpans';
@@ -209,8 +210,9 @@ function headerOf(input: TimelineInput, board: BoardModel): TimelineModel['heade
     sprint: board.header.sprint,
     teams: board.header.teams,
     dates: input.sprint ? iterationDates(input.sprint) : undefined,
-    left: board.header.left,
-    hurry: board.header.hurry,
+    // Rule TIMELINE-41: a past sprint says when it ended instead of the days left
+    left: input.past ? input.past.ended : board.header.left,
+    hurry: input.past ? false : board.header.hurry,
   };
 }
 
@@ -251,7 +253,6 @@ export function withAfterSprint(row: TimelineRow, sprintEnd: number): TimelineRo
       case 'pr':
       case 'task':
         return { ...child, segments: splitAtEnd(child.segments, sprintEnd), end: Math.min(child.end, sprintEnd) };
-      case 'tasks':
       case 'placeholder':
         return child;
     }
@@ -273,6 +274,8 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
     status: board.status,
     error: board.error,
     density: input.density ?? 'normal',
+    sprints: input.sprints ?? [{ offset: 0, title: board.header.sprint }],
+    sprintOffset: input.sprintOffset ?? 0,
     header: headerOf(input, board),
     look: board.look,
     scope: input.scope ?? 'mine',
@@ -311,7 +314,10 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
   const { work, finished } = rowsOfCards(cards, context);
   const position = axisPosition(now, days);
   const shown = now >= axisStart && position < days.length ? position : undefined;
-  const after = (row: TimelineRow): TimelineRow => withAfterSprint(row, sprintEnd);
+  // Rule TIMELINE-41: a past sprint has no NOW line and its rows are history (no buttons)
+  const after = (row: TimelineRow): TimelineRow =>
+    input.past ? historyRow(withAfterSprint(row, sprintEnd)) : withAfterSprint(row, sprintEnd);
+  const shownNow = input.past ? undefined : shown;
   return {
     ...base,
     days: days.map(({ after: isAfter, date, label, last, today, weekStart }) => ({
@@ -323,8 +329,8 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
       weekStart,
     })),
     sprintEnd,
-    now: shown,
-    over: shown !== undefined && shown > sprintEnd,
+    now: shownNow,
+    over: shownNow !== undefined && shownNow > sprintEnd,
     work: work.map(after),
     finished: finished.map(after),
     reviews: input.reviews.map((review) => after(reviewRow(review, { input, days, now }))),

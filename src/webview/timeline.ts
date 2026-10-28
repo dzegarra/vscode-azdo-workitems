@@ -8,7 +8,6 @@ import type {
   PullRequestChild,
   RowLabel,
   TaskChild,
-  TasksChild,
   TimelineChild,
   TimelineMarker,
   TimelineMessage,
@@ -62,6 +61,8 @@ let choices: ExpansionChoices = {};
 let postedIds: number[] = [];
 /** Rule TIMELINE-34: the legend panel is open (closed by default, UI-only) */
 let legendOpen = false;
+/** Rule TIMELINE-40: the menu of sprints on the title is open */
+let sprintMenuOpen = false;
 
 function savedState(): Record<string, unknown> {
   const state = vscode.getState();
@@ -204,10 +205,10 @@ function renderPullRequestChild(child: PullRequestChild, last: boolean): string 
 }
 
 function renderTaskChild(child: TaskChild, last: boolean): string {
-  const open = `data-msg="${named(child.open)}" title="Open the work item"`;
+  const open = `data-msg="${named(child.open)}" title="Open task ${String(child.taskId)}"`;
   const segments = child.segments.map((segment) => renderSegment(segment)).join('');
   const action = child.action ? actionButton(child.action, 'plain') : '';
-  return `<div class="tl-row child task"><div class="tl-label child${
+  return `<div class="tl-row child task${child.done ? ' faded' : ''}"><div class="tl-label child${
     last ? ' last' : ''
   }" tabindex="0" role="button" ${open}><span class="tl-l1">${tagHtml({
     text: 'Task',
@@ -219,28 +220,12 @@ function renderTaskChild(child: TaskChild, last: boolean): string {
   }</div></div>`;
 }
 
-function renderTasksChild(child: TasksChild, last: boolean): string {
-  const open = `data-msg="${named(child.open)}" title="Open the work item"`;
-  return `<div class="tl-row child task"><div class="tl-label child${
-    last ? ' last' : ''
-  }" tabindex="0" role="button" ${open}><span class="tl-l1">${tagHtml({
-    text: 'Task',
-    tone: 'task',
-  })}<span class="tl-title">${escapeHtml(
-    child.title
-  )}</span></span></div><div class="tl-lane"><div class="tl-fill"><span class="tl-outline">${escapeHtml(
-    child.sub
-  )}</span></div></div></div>`;
-}
-
 function renderChild(child: TimelineChild, last: boolean): string {
   switch (child.kind) {
     case 'pr':
       return renderPullRequestChild(child, last);
     case 'task':
       return renderTaskChild(child, last);
-    case 'tasks':
-      return renderTasksChild(child, last);
     case 'placeholder':
       return `<div class="tl-row child placeholder"><div class="tl-label child last"><span class="tl-title empty">${escapeHtml(
         child.text
@@ -433,6 +418,45 @@ function expandableRows(current: TimelineModel): TimelineRow[] {
   ].filter((row) => row.expandable);
 }
 
+// Rule TIMELINE-40
+/** ‹ title › : the previous and next sprints, and a menu of the current one and the 4 before it on the title */
+function renderSprintSwitch(current: TimelineModel, teams: string): string {
+  const offsets = current.sprints.map((sprint) => sprint.offset);
+  const older = offsets.includes(current.sprintOffset + 1);
+  const newer = current.sprintOffset > 0;
+  const step = (direction: 'newer' | 'older', enabled: boolean, label: string, glyph: string): string =>
+    `<button class="bd-icon-button tl-sprint-step" data-sprint-step="${direction}" aria-label="${label}" title="${label}"${
+      enabled ? '' : ' disabled'
+    }>${glyph}</button>`;
+  const menu = sprintMenuOpen
+    ? `<div class="tl-sprint-list" role="listbox" aria-label="Sprints">${current.sprints
+        .map(
+          (sprint) =>
+            `<button class="tl-sprint-option" role="option" data-sprint="${String(
+              sprint.offset
+            )}" aria-selected="${String(sprint.offset === current.sprintOffset)}">${escapeHtml(
+              sprint.title
+            )}<span class="tl-sprint-when">${
+              sprint.offset === 0 ? 'current' : `${String(sprint.offset)} back`
+            }</span></button>`
+        )
+        .join('')}</div>`
+    : '';
+  return `<div class="tl-sprint-switch">${step(
+    'older',
+    older,
+    'Previous sprint',
+    '‹'
+  )}<h1 class="bd-sprint"><button class="tl-sprint-title" data-sprint-menu aria-haspopup="listbox" aria-expanded="${String(
+    sprintMenuOpen
+  )}" title="Choose the sprint">${escapeHtml(current.header.sprint)}${teams}</button></h1>${step(
+    'newer',
+    newer,
+    'Next sprint',
+    '›'
+  )}${menu}</div>`;
+}
+
 function renderHeader(current: TimelineModel): string {
   const left = current.header.left
     ? `<span class="bd-left${current.header.hurry ? ' hurry' : ''}">${escapeHtml(current.header.left)}</span>`
@@ -448,7 +472,7 @@ function renderHeader(current: TimelineModel): string {
   // Rule TIMELINE-32: the row style of the view shown
   const density = (id: TimelineModel['density'], text: string): string =>
     `<button class="bd-chip" data-density="${id}" aria-pressed="${String(current.density === id)}">${text}</button>`;
-  return `<header class="bd-header"><h1 class="bd-sprint">${escapeHtml(current.header.sprint)}${teams}</h1>${
+  return `<header class="bd-header">${renderSprintSwitch(current, teams)}${
     current.header.dates ? `<span class="bd-left">${escapeHtml(current.header.dates)}</span>` : ''
   }${renderSprintTeams(current.header.teams)}${left}${stats}
     <div class="bd-tabs" role="group" aria-label="View"><button class="bd-chip" data-open-board aria-pressed="false">Track board</button><button class="bd-chip" aria-pressed="true">Sprint timeline</button></div>
@@ -511,7 +535,7 @@ function renderFooter(team: TimelineTeam): string {
 }
 
 function renderBody(current: TimelineModel): string {
-  if (current.status === 'loading' && !current.days.length) {
+  if (current.status === 'loading' && (!current.days.length || current.sprintOffset > 0)) {
     return '<p class="message muted">Loading the sprint…</p>';
   }
   if (current.status === 'error') {
@@ -543,7 +567,10 @@ function renderBody(current: TimelineModel): string {
   const reviewed = current.reviewed.length
     ? section('REVIEWED BY YOU · THIS SPRINT', current.reviewed.map(renderRow).join(''), undefined, true)
     : '';
-  const reviewsSection = `${section(current.reviewsTitle, reviews, undefined, !!team)}${reviewed}`;
+  // Rule TIMELINE-41: a past sprint has no reviews owed, only the ones done
+  const reviewsSection = `${
+    current.sprintOffset > 0 ? '' : section(current.reviewsTitle, reviews, undefined, !!team)
+  }${reviewed}`;
   const grid = `tl-grid density-${current.density}`;
   if (!team) {
     return `<div class="${grid}">${days}<div class="tl-body"><div class="tl-overlay" aria-hidden="true"></div>
@@ -776,6 +803,33 @@ document.addEventListener('click', (event) => {
     app?.querySelector<HTMLElement>('[data-legend]')?.focus();
     return;
   }
+  const sprintStep = target?.closest<HTMLElement>('[data-sprint-step]');
+  if (sprintStep && model) {
+    // Rule TIMELINE-40: ‹ goes back one sprint, › forward
+    sprintMenuOpen = false;
+    const offset = model.sprintOffset + (sprintStep.dataset.sprintStep === 'older' ? 1 : -1);
+    post({ type: 'setSprint', offset: Math.max(0, offset) });
+    return;
+  }
+  const sprintOption = target?.closest<HTMLElement>('[data-sprint]');
+  if (sprintOption) {
+    sprintMenuOpen = false;
+    post({ type: 'setSprint', offset: Number(sprintOption.dataset.sprint) });
+    render();
+    return;
+  }
+  if (target?.closest('[data-sprint-menu]')) {
+    sprintMenuOpen = !sprintMenuOpen;
+    render();
+    app
+      ?.querySelector<HTMLElement>(sprintMenuOpen ? '.tl-sprint-option[aria-selected="true"]' : '[data-sprint-menu]')
+      ?.focus();
+    return;
+  }
+  if (sprintMenuOpen && !target?.closest('.tl-sprint-list')) {
+    sprintMenuOpen = false;
+    render();
+  }
   if (legendOpen && !target?.closest('.tl-legend')) {
     // A click outside closes the legend
     legendOpen = false;
@@ -810,6 +864,12 @@ document.addEventListener('click', (event) => {
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     hideTip();
+    if (sprintMenuOpen) {
+      sprintMenuOpen = false;
+      render();
+      app?.querySelector<HTMLElement>('[data-sprint-menu]')?.focus();
+      return;
+    }
     if (legendOpen) {
       // Rule TIMELINE-34
       legendOpen = false;

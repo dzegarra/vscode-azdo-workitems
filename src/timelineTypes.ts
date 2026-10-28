@@ -32,6 +32,8 @@ export type TimelineMessage =
   | { type: 'openTeamPullRequest'; url: string }
   /** Rule TIMELINE-39: the pointer is on the row of a PR for the first time: read its commits and its task's history */
   | { type: 'hoverPullRequest'; prId: number }
+  /** Rule TIMELINE-40: the sprint shown, 0 the current one, 1 the one before… */
+  | { type: 'setSprint'; offset: number }
   | { type: 'ready' };
 
 /**
@@ -147,29 +149,20 @@ export interface PullRequestChild {
   undated?: boolean;
 }
 
-/** A task of the work item that has no PR (Rule TIMELINE-18) */
+/** A task of the work item that has no PR, whatever its state (Rule TIMELINE-18) */
 export interface TaskChild {
   kind: 'task';
   key: string;
   taskId: number;
   title: string;
-  /** "In Progress since We 21 · no PR" */
+  /** "In Progress since We 21 · no PR", "To Do · created We 14", "Done We 21 · no PR" */
   sub: string;
+  /** Done: drawn faded */
+  done?: boolean;
   segments: TimelineSegment[];
   action?: BoardAction & { primary: boolean };
   open: TimelineMessage;
   end: number;
-}
-
-/** One compact row for the tasks that are still to do or already done, with no PR */
-export interface TasksChild {
-  kind: 'tasks';
-  key: string;
-  /** "5 tasks to do", "2 tasks done" */
-  title: string;
-  /** The titles, "Interfaces update · TFIO update · +3" */
-  sub: string;
-  open: TimelineMessage;
 }
 
 /** The work item has no PR and no task yet */
@@ -180,7 +173,7 @@ export interface PlaceholderChild {
   hint: string;
 }
 
-export type TimelineChild = PlaceholderChild | PullRequestChild | TasksChild | TaskChild;
+export type TimelineChild = PlaceholderChild | PullRequestChild | TaskChild;
 
 export interface TimelineRow {
   key: string;
@@ -275,6 +268,9 @@ export interface TimelineModel {
   error?: string;
   /** Rule TIMELINE-32: the row style of the view shown */
   density: TimelineDensity;
+  /** Rule TIMELINE-40: the sprints the switch offers (the current one first) and the one shown */
+  sprints: { offset: number; title: string }[];
+  sprintOffset: number;
   /** The scope chip: the user's work (default) or the whole team (the rows of the others are in `team`) */
   scope: 'mine' | 'team';
   team?: TimelineTeam;
@@ -327,6 +323,11 @@ export interface TimelineInput {
   sprint?: { name: string; startDate?: string; finishDate?: string };
   /** Rule TIMELINE-32: the row style of the view shown; default Normal */
   density?: TimelineDensity;
+  /** Rule TIMELINE-40: the sprints of the switch and the one shown */
+  sprints?: { offset: number; title: string }[];
+  sprintOffset?: number;
+  /** Rule TIMELINE-41: a past sprint, drawn as history ("ended Mon 26 Oct" instead of the days left) */
+  past?: { ended?: string };
   /** The PRs of the user that were merged (My Pull Requests already has them): drawn when merged within the axis */
   completedPullRequests?: readonly CompletedPullRequestInfo[];
   base: { branch: string; enabled: boolean; runs: readonly BaseBranchRun[]; health?: BaseBranchHealth };

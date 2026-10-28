@@ -90,7 +90,7 @@ src/teamTimelineModel.ts  pure: Whole team Sprint timeline (a section per person
 src/webview/peoplePicker.ts  the scope switch and People picker shared by the board and timeline webviews (Rules TEAM-1, TIMELINE-21)
 src/sprintTimeline.ts     Sprint timeline panel (editor tab, dist/timeline.js, media/timeline.css; webview: src/webview/timeline.ts): one row per work item by station, expandable to its PRs (Rules TIMELINE-*);
                           requests: the first commits and, only for the rows the user expanded, the history of their PRs (src/pullRequestHistory.ts);
-                          row style per view: src/timelineDensity.ts (pure, Rule TIMELINE-32)
+                          row style per view: src/timelineDensity.ts (pure, Rule TIMELINE-32); past sprints: src/pastSprints.ts (pure, Rules TIMELINE-40, TIMELINE-41)
 src/sprintTimelineModel.ts pure: reviews, base branch, planned rows, header, `buildSprintTimeline`; types in src/timelineTypes.ts, axis in src/timelineAxis.ts, spans in src/timelineSpans.ts
 src/timelineRows.ts       pure: the work item row (stations over time) and what it expands to (PR rows, tasks, placeholder); src/teamTimelineModel.ts: the same for the other people, read-only
 src/workItemStateHistory.ts pure: the states of a work item row (from `wit/workItems/{id}/updates`), In review approximated, Rules TIMELINE-35, TIMELINE-36

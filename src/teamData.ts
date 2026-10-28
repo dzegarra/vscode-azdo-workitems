@@ -171,6 +171,7 @@ export function shapeTeamItems(snapshot: TeamSnapshot, options: TeamShapeOptions
           assignedTo: task.assignedTo,
           activated: stringField(task, 'Microsoft.VSTS.Common.ActivatedDate'),
           created: stringField(task, 'System.CreatedDate'),
+          stateChanged: stringField(task, 'Microsoft.VSTS.Common.StateChangeDate'),
           rev: typeof task.fields['System.Rev'] === 'number' ? task.fields['System.Rev'] : undefined,
           taskPullRequests: taskPullRequests(task),
         })

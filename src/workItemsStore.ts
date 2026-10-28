@@ -1362,6 +1362,7 @@ export class WorkItemsStore {
           assignedTo: task.assignedTo,
           activated: stringField(task, 'Microsoft.VSTS.Common.ActivatedDate'),
           created: stringField(task, 'System.CreatedDate'),
+          stateChanged: stringField(task, 'Microsoft.VSTS.Common.StateChangeDate'),
           rev: workItemRev(task),
           taskPullRequests: this.taskPullRequests(taskPullRequests),
           taskBranches: otherBranches,

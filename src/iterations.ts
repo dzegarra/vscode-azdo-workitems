@@ -34,11 +34,13 @@ export function wiqlString(value: string): string {
 }
 
 /** WIQL query of the work items assigned to the signed-in user in any of the given iterations */
-export function buildMyWorkItemsQuery(iterationPaths: string[]): string {
+export function buildMyWorkItemsQuery(iterationPaths: string[], asOf?: string): string {
   return [
     'SELECT [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me',
     `AND [System.IterationPath] IN (${iterationPaths.map(wiqlString).join(', ')})`,
     'ORDER BY [System.WorkItemType], [System.Id]',
+    // Rule TIMELINE-41: a past sprint as it was when it ended (the work items carried over were still in it)
+    ...(asOf ? [`ASOF ${wiqlString(asOf)}`] : []),
   ].join(' ');
 }
 

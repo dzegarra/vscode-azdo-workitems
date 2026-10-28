@@ -4,6 +4,17 @@ import { resolveContext, setTimelineDensity, settings, workingDaysSetting } from
 import { KeyedReads } from './keyedReads';
 import { stateChanges, type StateChange } from './workItemStateHistory';
 import { commitTimes } from './codingStart';
+import { mapLimit, MAX_IN_FLIGHT } from './concurrency';
+import {
+  asOfMoment,
+  axisIteration,
+  endedText,
+  PAST_SPRINTS,
+  sprintChoices,
+  type CurrentIteration,
+  type SprintChoice,
+} from './pastSprints';
+import type { ScheduledIteration } from './schedule';
 import type { WorkItemModel } from './viewModel';
 import type { MyPullRequestsWatcher } from './myPullRequestsWatcher';
 import { PullRequestHistory } from './pullRequestHistory';
@@ -12,6 +23,7 @@ import type { ReviewRequestsWatcher } from './reviewRequestsWatcher';
 import { reviewSettings } from './reviewRequestsWatcher';
 import { sprintProgress } from './sprintCountdown';
 import {
+  buildSprintTimeline,
   historyRefsOf,
   OPEN_SPRINT_TIMELINE_COMMAND,
   type TimelineMessage,
@@ -19,11 +31,18 @@ import {
   type TimelineModel,
 } from './sprintTimelineModel';
 import type { ThreadResponse } from './reviewThreads';
-import { groupByPerson, shapeTeamItems, teamCompletedPullRequests, teamOfIteration, waitedOnBy } from './teamData';
+import {
+  groupByPerson,
+  shapeTeamItems,
+  teamCompletedPullRequests,
+  teamOfIteration,
+  waitedOnBy,
+  type TeamSnapshot,
+} from './teamData';
 import { parsePeople } from './teamPeople';
 import { buildWholeTeamTimeline, type TeamTimelineInput } from './teamTimelineModel';
 import type { TeamWorkStore } from './teamWorkStore';
-import { ALL_KINDS, boardItems } from './trackBoardModel';
+import { ALL_KINDS, boardItems, buildBoard } from './trackBoardModel';
 import { isSharedMessage, runSharedMessage } from './sharedMessages';
 import { densityOf, normalizeTimelineDensity } from './timelineDensity';
 import { currentBoard, OPEN_TRACK_BOARD_COMMAND, teamStatus } from './trackBoard';
@@ -57,6 +76,12 @@ export class SprintTimelinePanel implements vscode.Disposable {
   private hovered = new Set<number>();
   private readonly commits: KeyedReads<number[]>;
   private readonly commitRepositories = new Map<number, string>();
+  /** Rule TIMELINE-40: the sprint shown (0: the current one), the schedule the past ones come from, and their work */
+  private offset = 0;
+  private schedule?: ScheduledIteration[];
+  private scheduleAsked = false;
+  private readonly past: KeyedReads<TeamSnapshot>;
+  private readonly pastChoicesAsked = new Map<number, SprintChoice>();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -83,6 +108,10 @@ export class SprintTimelinePanel implements vscode.Disposable {
       (id) => this.readCommits(id),
       () => this.post()
     );
+    this.past = new KeyedReads(
+      (offset) => this.readPastSprint(offset),
+      () => this.post()
+    );
     this.reviewedThreads = new KeyedReads(
       (id) =>
         withFeature('sprintTimeline', async () => {
@@ -92,6 +121,92 @@ export class SprintTimelinePanel implements vscode.Disposable {
         }),
       () => this.post()
     );
+  }
+
+  /** The current iterations of the user's teams */
+  private currentIterations(): CurrentIteration[] {
+    return this.store
+      .toViewModel({
+        types: [],
+        hiddenStates: [],
+        hiddenPullRequestStates: [],
+        hiddenPriorities: [],
+        hiddenPredecessorStates: [],
+        hiddenDuplicates: [],
+      })
+      .iterations.map((iteration) => ({
+        name: iteration.name,
+        path: iteration.path,
+        teams: iteration.teams,
+        startDate: iteration.startDate,
+        finishDate: iteration.finishDate,
+      }));
+  }
+
+  // Rule TIMELINE-40
+  /** The current sprint and the ones before it (the schedule is read once when a past sprint is first wanted) */
+  private choices(): SprintChoice[] {
+    return sprintChoices(this.currentIterations(), this.schedule ?? this.store.iterationSchedule);
+  }
+
+  private loadSchedule(): void {
+    if (this.scheduleAsked || this.store.iterationSchedule) {
+      return;
+    }
+    this.scheduleAsked = true;
+    void withFeature('sprintTimeline', async () => {
+      try {
+        await this.store.whenRepositoryReady();
+        const { client } = resolveContext(this.store.repository());
+        this.schedule = await client.getIterationSchedule();
+        this.post();
+      } catch {
+        // Without the schedule the switch only has the current sprint; Refresh asks again
+        this.scheduleAsked = false;
+      }
+    });
+  }
+
+  // Rule TIMELINE-41
+  /**
+   * The user's work of a past sprint as it was when it ended: the WIQL of the sidebar ASOF the end of its last day, the
+   * work items and their tasks asOf that moment, and the PRs linked to them (6 at a time). Read once per sprint
+   */
+  private readPastSprint(offset: number): Promise<TeamSnapshot> {
+    return withFeature('sprintTimeline', async () => {
+      const choice = this.pastChoicesAsked.get(offset);
+      const asOf = choice && asOfMoment(choice.iterations);
+      if (!choice || !asOf) {
+        throw new Error('The dates of this sprint are not known');
+      }
+      await this.store.whenRepositoryReady();
+      const { client } = resolveContext(this.store.repository());
+      const all = await client.getMyWorkItems(
+        choice.iterations.map((iteration) => iteration.path),
+        asOf
+      );
+      const items = all.filter(
+        (item) => ['Product Backlog Item', 'Bug'].includes(item.type) && item.state !== 'Removed'
+      );
+      const children = await client.getWorkItems([...new Set(items.flatMap((item) => item.links.childIds))], asOf);
+      const links = [
+        ...new Map(
+          [...items, ...children].flatMap((item) => item.links.pullRequests).map((link) => [link.id, link])
+        ).values(),
+      ];
+      const read = await mapLimit(links, MAX_IN_FLIGHT, (link) => client.getPullRequest(link.id, link.projectId));
+      return {
+        teams: [],
+        iterations: [],
+        items,
+        children,
+        pullRequests: read.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : [])),
+        runs: new Map(),
+        publishedAt: new Map(),
+        myId: await client.getMyId(),
+        fetchedAt: Date.now(),
+      };
+    });
   }
 
   // Rule TIMELINE-39
@@ -162,6 +277,7 @@ export class SprintTimelinePanel implements vscode.Disposable {
         // A new tab starts with its own rows collapsed or expanded: it tells which
         this.expanded = new Set();
         this.hovered = new Set();
+        this.offset = 0;
       });
     });
   }
@@ -230,6 +346,12 @@ export class SprintTimelinePanel implements vscode.Disposable {
 
   /** The model from what the store and the watchers have now, with the history read so far */
   private buildModel(sprint: ReturnType<SprintTimelinePanel['sprint']>): TimelineModel {
+    const choices = this.choices();
+    const sprints = choices.map(({ offset, title }) => ({ offset, title }));
+    const pastChoice = choices.find((choice) => choice.offset === this.offset && choice.offset > 0);
+    if (pastChoice) {
+      return this.buildPastModel(pastChoice, sprints);
+    }
     const base = this.store.baseBranch;
     const workItems = this.store.toViewModel({
       types: [],
@@ -252,6 +374,8 @@ export class SprintTimelinePanel implements vscode.Disposable {
       reviews: this.reviews.models(),
       sprint,
       density: densityOf(this.team.scope, settings().timelineDensity),
+      sprints,
+      sprintOffset: 0,
       completedPullRequests: this.myPullRequests.completedPullRequests(),
       codingStart: settings().timelineCodingStart,
       firstCommits: this.myPullRequests.firstCommitDates(),
@@ -271,12 +395,103 @@ export class SprintTimelinePanel implements vscode.Disposable {
     });
   }
 
+  // Rules TIMELINE-40, TIMELINE-41
+  /**
+   * A past sprint: the user's work as it was when it ended, drawn as history (no NOW, no buttons, no reviews owed).
+   * Whole team shows the current sprint only for now: a past sprint shows the user's own work with a note
+   */
+  private buildPastModel(choice: SprintChoice, sprints: { offset: number; title: string }[]): TimelineModel {
+    const asOf = asOfMoment(choice.iterations);
+    const end = new Date(Math.min(Date.now(), asOf ? Date.parse(asOf) : Date.now()));
+    const data = this.past.get(choice.offset);
+    const workItems = data
+      ? shapeTeamItems(data, {
+          ownIds: new Set(),
+          baseBranch: settings().baseBranch,
+          staleAfterWorkingDays: settings().alerts.staleAfterWorkingDays,
+          workingDays: workingDaysSetting(),
+          now: end,
+        }).map((item) => item.model)
+      : [];
+    let status: TimelineModel['status'] = data ? 'ready' : 'loading';
+    if (!data && this.past.failed(choice.offset)) {
+      status = 'error';
+    }
+    const board = buildBoard({
+      status,
+      error: status === 'error' ? `The work items of ${choice.title} could not be read` : undefined,
+      workItems,
+      myPullRequests: [],
+      reviews: [],
+      reviewsStatus: 'ready',
+      maxWaitHours: reviewSettings().maxWaitHours,
+      iterations: choice.iterations.map((iteration) => ({ ...iteration, teams: [...(iteration.teams ?? [])] })),
+      kinds: [...ALL_KINDS],
+      showCompleted: true,
+      completed: [],
+      now: end,
+      look: settings().look,
+      popoverDelay: settings().popoverDelay,
+      scope: 'mine',
+    });
+    const axis = axisIteration(choice.iterations);
+    const model = buildSprintTimeline({
+      now: end,
+      workingDays: workingDaysSetting(),
+      maxWaitHours: reviewSettings().maxWaitHours,
+      board,
+      workItems,
+      myPullRequests: [],
+      reviews: [],
+      sprint: axis,
+      density: densityOf(this.team.scope, settings().timelineDensity),
+      sprints,
+      sprintOffset: choice.offset,
+      past: { ended: endedText(axis?.finishDate) },
+      scope: this.team.scope,
+      completedPullRequests: data ? teamCompletedPullRequests(data) : [],
+      codingStart: 'taskActivated',
+      history: this.history.snapshot(),
+      stateHistory: this.states.snapshot(),
+      hovered: this.hovered,
+      commits: this.commits.snapshot(),
+      detailsLoading: new Set([...this.hovered].filter((id) => this.commits.loading(id))),
+      statesLoading: this.states.loadingIds(),
+      reviewed: this.reviewedInput(),
+      base: {
+        branch: settings().baseBranch,
+        enabled: settings().baseBranchAlert.enabled,
+        runs: this.store.baseBranchHistory,
+        health: undefined,
+      },
+    });
+    const notes = [
+      ...model.notes,
+      ...(this.team.scope === 'team' ? ['Whole team shows the current sprint only: this is your own work'] : []),
+    ];
+    return { ...model, notes };
+  }
+
   /** Draws the timeline again from what the store and the watchers have now */
   post(): void {
     if (!this.panel || !this.ready || !this.panel.visible) {
       return;
     }
     const sprint = this.sprint();
+    // Rule TIMELINE-40: the schedule gives the past sprints; a past sprint shown is read once
+    this.loadSchedule();
+    const choice = this.offset > 0 ? this.choices().find((candidate) => candidate.offset === this.offset) : undefined;
+    if (choice) {
+      this.pastChoicesAsked.set(choice.offset, choice);
+      this.past.request([
+        {
+          id: choice.offset,
+          key: `${choice.iterations.map((iteration) => iteration.path).join('|')}@${
+            asOfMoment(choice.iterations) ?? ''
+          }`,
+        },
+      ]);
+    }
     let model = this.buildModel(sprint);
     // Only while the tab is visible, each once per immutable key; the rows say they are loading in this very draw:
     // Rule TIMELINE-29, the history of the PRs of the expanded rows; Rule TIMELINE-35, the state history of the work
@@ -341,6 +556,14 @@ export class SprintTimelinePanel implements vscode.Disposable {
         this.post();
         return;
       }
+      if (message.type === 'setSprint') {
+        // Rule TIMELINE-40: the current sprint or one of the 4 before it
+        if (Number.isInteger(message.offset) && message.offset >= 0 && message.offset <= PAST_SPRINTS) {
+          this.offset = message.offset;
+          this.post();
+        }
+        return;
+      }
       if (message.type === 'hoverPullRequest') {
         // Rule TIMELINE-39: the first hover of a PR row reads its commits and its task's history (once per key)
         if (Number.isInteger(message.prId) && !this.hovered.has(message.prId)) {
@@ -367,6 +590,11 @@ export class SprintTimelinePanel implements vscode.Disposable {
       }
       if (message.type === 'refresh') {
         this.team.forceReload();
+        // Rule TIMELINE-41: Refresh reads the past sprint shown again
+        if (this.offset > 0) {
+          this.past.forget(this.offset);
+          this.post();
+        }
       }
       if (message.type === 'openBoard') {
         await vscode.commands.executeCommand(OPEN_TRACK_BOARD_COMMAND, message.key);

@@ -38,7 +38,6 @@ import type {
   SegmentKind,
   RowLabel,
   TaskChild,
-  TasksChild,
   TimelineChild,
   TimelineInput,
   TimelineMarker,
@@ -108,6 +107,8 @@ interface TaskFacts {
   state: string;
   activated?: number;
   created?: number;
+  /** When it last changed state (a task done: when it was done) */
+  stateChanged?: number;
   /** Key of its state history (`id:rev`), read on the hover of its PR (Rule TIMELINE-39) */
   stateKey: string;
   prIds: number[];
@@ -138,6 +139,7 @@ function tasksOfItem(item: WorkItemModel, input: TimelineInput): TaskFacts[] {
       state: task.state,
       activated: instant(task.dates?.activated),
       created: instant(task.dates?.created),
+      stateChanged: instant(task.dates?.stateChanged),
       stateKey: `${String(task.id)}:${task.rev === undefined ? '?' : String(task.rev)}`,
       prIds: (task.taskPullRequests ?? []).map((pr) => pr.id),
       canCreatePullRequest: task.canCreatePullRequest === true,
@@ -150,6 +152,7 @@ function tasksOfItem(item: WorkItemModel, input: TimelineInput): TaskFacts[] {
       state: task.state,
       activated: instant(task.activated),
       created: instant(task.created),
+      stateChanged: instant(task.stateChanged),
       stateKey: `${String(task.id)}:${task.rev === undefined ? '?' : String(task.rev)}`,
       prIds: task.taskPullRequests.map((pr) => pr.id),
       canCreatePullRequest: task.canCreatePullRequest === true,
@@ -628,51 +631,73 @@ function pullRequestChild(
 function taskChildren(item: WorkItemModel, tasks: readonly TaskFacts[], context: RowContext): TimelineChild[] {
   const { days, axisStart, now } = context;
   const without = tasks.filter((task) => task.prIds.length === 0);
-  const children: TimelineChild[] = [];
-  for (const task of without.filter((candidate) => stateCategory(candidate.state) === 'in-progress')) {
-    const start = task.activated;
-    const guess = start === undefined || start > now;
-    const segment = toSegment(
-      {
-        kind: 'branch',
-        start: guess ? axisStart : Math.max(start, axisStart),
-        end: now,
-        text: 'in progress',
-        detail: 'Task in progress, no PR yet',
-        approximate: guess,
-        fromBefore: !guess && start < axisStart,
-        approximateNote: 'The task has no activation date',
-      },
-      days
-    );
-    const action = createPullRequestAction(item, task, context);
-    children.push({
-      kind: 'task',
-      key: `task:${String(item.id)}:${String(task.id)}`,
-      taskId: task.id,
-      title: task.title,
-      sub: `${task.state}${guess ? '' : ` since ${dayLabel(start)}`} · no PR`,
-      segments: segment ? [segment] : [],
-      ...(action ? { action: { ...action, primary: false } } : {}),
-      open: { type: 'openDetails', id: item.id },
-      end: segment?.end ?? 0,
-    } satisfies TaskChild);
-  }
-  const toDo = without.filter((task) => stateCategory(task.state) === 'proposed');
-  const done = without.filter((task) => stateCategory(task.state) === 'done');
-  if (toDo.length || done.length) {
-    const titles = (toDo.length ? toDo : done).map((task) => task.title);
-    const shown = titles.slice(0, 3).join(' · ');
-    const more = titles.length > 3 ? ` · +${String(titles.length - 3)}` : '';
-    children.push({
-      kind: 'tasks',
-      key: `tasks:${String(item.id)}`,
-      title: toDo.length ? `${plural(toDo.length, 'task')} to do` : `${plural(done.length, 'task')} done`,
-      sub: `${shown}${more}${toDo.length && done.length ? ` · ${String(done.length)} done` : ''}`,
-      open: { type: 'openDetails', id: item.id },
-    } satisfies TasksChild);
-  }
-  return children;
+  const order = { 'in-progress': 0, proposed: 1, done: 2, removed: 3 } as const;
+  return [...without]
+    .sort((a, b) => order[stateCategory(a.state)] - order[stateCategory(b.state)])
+    .map((task): TaskChild => {
+      const category = stateCategory(task.state);
+      let span: Span;
+      let sub: string;
+      if (category === 'done') {
+        // Rule TIMELINE-18: a task done without a PR, from its activation to when it was done
+        const end = Math.min(task.stateChanged ?? now, now);
+        const start = task.activated !== undefined && task.activated < end ? task.activated : undefined;
+        span = {
+          kind: 'implementation',
+          start: start ?? Math.min(end, axisStart),
+          end,
+          text: 'done',
+          detail: 'Task done, without a PR',
+          approximate: start === undefined,
+          fromBefore: start !== undefined && start < axisStart,
+          approximateNote: 'The task has no activation date',
+        };
+        sub = `${task.state}${task.stateChanged === undefined ? '' : ` ${dayLabel(task.stateChanged)}`} · no PR`;
+      } else if (category === 'in-progress') {
+        const start = task.activated;
+        const guess = start === undefined || start > now;
+        span = {
+          kind: 'branch',
+          start: guess ? axisStart : Math.max(start, axisStart),
+          end: now,
+          text: 'in progress',
+          detail: 'Task in progress, no PR yet',
+          approximate: guess,
+          fromBefore: !guess && start < axisStart,
+          approximateNote: 'The task has no activation date',
+        };
+        sub = `${task.state}${guess ? '' : ` since ${dayLabel(start)}`} · no PR`;
+      } else {
+        // Rule TIMELINE-18: a task still to do, hatched from its creation
+        const created = task.created;
+        const guess = created === undefined || created > now;
+        span = {
+          kind: 'taskToDo',
+          start: guess ? axisStart : Math.max(created, axisStart),
+          end: now,
+          text: 'to do',
+          detail: 'Task to do',
+          approximate: guess,
+          fromBefore: !guess && created < axisStart,
+          approximateNote: 'The task has no creation date',
+        };
+        sub = `${task.state}${guess ? '' : ` · created ${dayLabel(created)}`}`;
+      }
+      const segment = toSegment(span, days);
+      const action = category === 'in-progress' ? createPullRequestAction(item, task, context) : undefined;
+      return {
+        kind: 'task',
+        key: `task:${String(item.id)}:${String(task.id)}`,
+        taskId: task.id,
+        title: task.title,
+        sub,
+        segments: segment ? [segment] : [],
+        ...(action ? { action: { ...action, primary: false } } : {}),
+        ...(category === 'done' ? { done: true } : {}),
+        open: { type: 'openDetails', id: task.id },
+        end: segment?.end ?? 0,
+      };
+    });
 }
 
 // Rule TIMELINE-18
@@ -782,7 +807,8 @@ export function workItemRow(cards: readonly BoardWorkCard[], context: RowContext
     ...draws.flatMap((draw) => (draw.facts?.closed === undefined ? [] : [draw.facts.closed]))
   );
   // Rule TIMELINE-35: the states of the work item, from its history once read
-  const changes = input.stateHistory?.get(item.id);
+  // The changes after now are not drawn (a past sprint is drawn as of its end, Rule TIMELINE-41)
+  const changes = input.stateHistory?.get(item.id)?.filter((change) => change.at <= now);
   const finishedAt = finished
     ? finishedStateAt({ changes, state: item.state, dates: item.dates }) ?? (lastClosed || now)
     : undefined;

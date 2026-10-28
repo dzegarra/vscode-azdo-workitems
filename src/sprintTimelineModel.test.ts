@@ -717,7 +717,8 @@ describe('the work item with several PRs (TIMELINE-16, TIMELINE-17)', () => {
       'pr:67145:13802',
       'pr:67145:14021',
       'task:67145:67166',
-      'tasks:67145',
+      'task:67145:67170',
+      'task:67145:67171',
     ]);
   });
 
@@ -762,9 +763,28 @@ describe('the work item with several PRs (TIMELINE-16, TIMELINE-17)', () => {
     expect(row(model)).not.toHaveProperty('action');
   });
 
-  it('has one compact row for the tasks still to do', () => {
-    const tasks = build().work[0].children?.find((child) => child.kind === 'tasks');
-    expect(tasks).toMatchObject({ title: '2 tasks to do', sub: 'Task 67170 · Task 67171' });
+  it('has a row per task without a PR, the ones to do hatched from their creation (TIMELINE-18)', () => {
+    const tasks = build().work[0].children?.flatMap((child) =>
+      child.kind === 'task' ? [[child.taskId, child.segments.at(0)?.kind, child.sub]] : []
+    );
+    expect(tasks).toEqual([
+      [67166, 'branch', 'In Progress since We 21 · no PR'],
+      [67170, 'taskToDo', 'To Do'],
+      [67171, 'taskToDo', 'To Do'],
+    ]);
+  });
+
+  it('draws a task done without a PR from its activation to when it was done (TIMELINE-18)', () => {
+    const item = workItem({ id: 3, dates: { activated: iso(13, 9) } });
+    const done = task(31, 3, 'Done', { dates: { activated: iso(14, 9), stateChanged: iso(16, 12), created: iso(12) } });
+    const child = timeline([item, done]).work[0].children?.at(0);
+    expect(child).toMatchObject({
+      kind: 'task',
+      done: true,
+      sub: 'Done Fr 16 · no PR',
+      open: { type: 'openDetails', id: 31 },
+    });
+    expect(child?.kind === 'task' && child.segments[0].start).toBeCloseTo(2 + 9 / 24);
   });
 });
 
@@ -779,7 +799,7 @@ describe('a work item with nothing under it (TIMELINE-18)', () => {
 
   it('has a row for its tasks when it has some but no PR', () => {
     const [row] = timeline([workItem({ id: 5, dates: { activated: iso(15, 9) } }), task(51, 5, 'To Do')]).work;
-    expect(row.children?.map((child) => child.kind)).toEqual(['tasks']);
+    expect(row.children?.map((child) => child.kind)).toEqual(['task']);
   });
 
   it('does not start expanded when it needs the user but has nothing under it but the placeholder', () => {

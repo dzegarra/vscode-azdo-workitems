@@ -245,16 +245,19 @@ export class AzdoClient {
   }
 
   /** Work items assigned to the signed-in user in any of the given iterations */
-  async getMyWorkItems(iterationPaths: string[]): Promise<WorkItem[]> {
+  async getMyWorkItems(iterationPaths: string[], asOf?: string): Promise<WorkItem[]> {
     if (!iterationPaths.length) {
       return [];
     }
-    const query = buildMyWorkItemsQuery(iterationPaths);
+    const query = buildMyWorkItemsQuery(iterationPaths, asOf);
     const result = await this.request<{ workItems: { id: number }[] }>(this.url('wit/wiql'), {
       method: 'POST',
       body: JSON.stringify({ query }),
     });
-    return this.getWorkItems(result.workItems.map((wi) => wi.id));
+    return this.getWorkItems(
+      result.workItems.map((wi) => wi.id),
+      asOf
+    );
   }
 
   // Rule TEAM-2
@@ -327,7 +330,8 @@ export class AzdoClient {
     );
   }
 
-  async getWorkItems(ids: number[]): Promise<WorkItem[]> {
+  /** The work items with their relations; `asOf`: as they were at that moment (Rule TIMELINE-41) */
+  async getWorkItems(ids: number[], asOf?: string): Promise<WorkItem[]> {
     if (!ids.length) {
       return [];
     }
@@ -337,7 +341,11 @@ export class AzdoClient {
       // "fields" cannot be combined with "$expand"; relations give parent / children / branches / PRs.
       // Deleted or inaccessible work items come back as null instead of failing the whole request
       const result = await this.request<{ value: (WorkItemResponse | null)[] }>(
-        this.url(`wit/workitems?ids=${chunk.join(',')}&$expand=relations&errorPolicy=Omit`)
+        this.url(
+          `wit/workitems?ids=${chunk.join(',')}&$expand=relations&errorPolicy=Omit${
+            asOf ? `&asOf=${encodeURIComponent(asOf)}` : ''
+          }`
+        )
       );
       items.push(...result.value.filter((wi): wi is WorkItemResponse => !!wi).map((wi) => this.toWorkItem(wi)));
     }

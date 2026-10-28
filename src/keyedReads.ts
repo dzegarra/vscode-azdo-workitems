@@ -42,7 +42,7 @@ export function idsToRead(
 export class KeyedReads<T> {
   private readonly entries = new Map<number, KeyedEntry<T>>();
   private readonly inFlight = new Map<number, string>();
-  private readonly failed = new Map<number, { key: string; at: number }>();
+  private readonly failedReads = new Map<number, { key: string; at: number }>();
   /** Requests made so far */
   requests = 0;
 
@@ -62,6 +62,17 @@ export class KeyedReads<T> {
     return this.inFlight.has(id);
   }
 
+  /** The last read of the id failed (it is asked again after a while, or after `forget`) */
+  failed(id: number): boolean {
+    return this.failedReads.has(id);
+  }
+
+  /** Forgets what was read or failed for the id: the next request reads it again (Refresh) */
+  forget(id: number): void {
+    this.entries.delete(id);
+    this.failedReads.delete(id);
+  }
+
   /** The ids being read */
   loadingIds(): Set<number> {
     return new Set(this.inFlight.keys());
@@ -77,7 +88,7 @@ export class KeyedReads<T> {
     const toRead = idsToRead(wanted, {
       entries: this.entries,
       inFlight: this.inFlight,
-      failed: this.failed,
+      failed: this.failedReads,
       now: this.clock(),
     });
     if (!toRead.length) {
@@ -93,9 +104,9 @@ export class KeyedReads<T> {
       try {
         this.requests += 1;
         this.entries.set(id, { key, value: await this.read(id) });
-        this.failed.delete(id);
+        this.failedReads.delete(id);
       } catch {
-        this.failed.set(id, { key, at: this.clock() });
+        this.failedReads.set(id, { key, at: this.clock() });
       } finally {
         this.inFlight.delete(id);
       }

@@ -1620,3 +1620,86 @@ body.vscode-light .tl-dev-tick {
     animation: tl-shimmer 1.3s linear infinite;
   }
 }
+
+/* ---------- The sprint switch: ‹ title › and the menu of sprints (Rule TIMELINE-40) ---------- */
+
+.tl-sprint-switch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tl-sprint-title {
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tl-sprint-title:hover {
+  background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+}
+
+.tl-sprint-title:focus-visible,
+.tl-sprint-option:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.tl-sprint-step {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.tl-sprint-step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.tl-sprint-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 24px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bd-card, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.35);
+}
+
+.tl-sprint-option {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tl-sprint-option:hover,
+.tl-sprint-option[aria-selected='true'] {
+  background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+}
+
+.tl-sprint-option[aria-selected='true'] {
+  font-weight: 600;
+}
+
+.tl-sprint-when {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}

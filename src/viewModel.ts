@@ -54,6 +54,8 @@ export interface OtherTaskModel {
   activated?: string;
   /** CreatedDate and revision of the task: the "task to do" part of the row of its PR (Rule TIMELINE-39) */
   created?: string;
+  /** StateChangeDate of the task: when a task without PR was done (Rule TIMELINE-18) */
+  stateChanged?: string;
   rev?: number;
   taskPullRequests: TaskPullRequestModel[];
   taskBranches?: TaskBranchModel[];
