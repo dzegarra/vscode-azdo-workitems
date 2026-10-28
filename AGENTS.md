@@ -3,7 +3,7 @@
 VS Code extension (ID `abb-totalflowx.vscode-azdo-workitems`, display name "Totalflow X devtools for Azure Devops") that brings the team's Azure DevOps work into the editor: work items of the current sprints, branches, pull requests, reviews, CI runs, dependencies, and the team rules (alerts, warnings).
 
 - **Seven blocks** organize the documentation (README, RULES, DECISIONS) and the design canvas (one page per block, plus an Archive page): 1. General rules (states, stations, PR rules, alerts, actions and flows, the data shared by the Whole team views, look, fun, settings), 2. Sidebar, 3. Work Item Details panel, 4. Track board, 5. Sprint timeline, 6. Dependency map, 7. Status bar & notifications. A rule goes to General rules when more than one view uses it; how a view shows it goes to that view's block. Each view keeps its own Whole team part. The code is not organized by block.
-- Design canvas (Claude Design, private to its owner): <https://claude.ai/artifact/DMR5fwa1qJBSPC5p5L8vJL>.
+- Design canvas (Claude Design, private to its owner): <https://claude.ai/artifact/DMR5fwa1qJBSPC5p5L8vJL>. Changes start there: see [Design first](#design-first).
 - What it does, for users: [README.md](README.md).
 - Why things are the way they are: [docs/DECISIONS.md](docs/DECISIONS.md). **Read it before changing behaviour.**
 - The exact decision rules (which states are shown, which actions are unlocked), with stable IDs: [docs/RULES.md](docs/RULES.md).
@@ -126,6 +126,14 @@ media/*.css               styles of the webviews (webview.css shared by the side
 2. **Rendering**: the webviews can be rendered without VS Code. Build, then load `dist/webview.js` (or `dist/dependencies.js`) and `media/*.css` in a static HTML page with the same CSP meta, a stub of `acquireVsCodeApi` (records `postMessage`), CSS variables for the VS Code theme tokens, and a script that posts a `{ type: 'state', model }` (or `{ type: 'graph', graph }`) message. Drive it with Playwright (not a dependency of this repo: use `npx playwright`) in dark and light, at 260–340 px for the sidebar, and look at the screenshots.
 3. **Real data, read-only**: `az rest --resource 499b84ac-1321-427f-aa17-267ca6975798 --url "<GET url>"` (the Azure DevOps resource id), or an Azure DevOps MCP server's read tools. Bundle the pure modules with esbuild into a small Node script to run them on real responses.
 4. Things that need a real VS Code (dialogs, QuickPicks, notifications, status bar, git API calls, new windows) must be tried with F5 or the installed `.vsix` before calling a feature done.
+
+## Design first
+
+The design canvas is the reference of what the extension looks like and does. **Every change follows this order**:
+
+1. **Design**: update the boards of the canvas first (re-read the board and `canvas.json` right before publishing: the owner edits them too). A board that no longer matches goes to the Archive page instead of staying wrong.
+2. **Implementation**: then the code, to match the design.
+3. **Rules and decisions**: RULES.md and DECISIONS.md describe the same thing as the design and the code, in the same change. When the code had to differ from the design (a limit found while building), the design is updated to what was built, and the reason goes to DECISIONS.md.
 
 ## Keeping these documents current
 
