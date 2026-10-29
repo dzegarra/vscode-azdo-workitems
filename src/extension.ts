@@ -39,7 +39,7 @@ import { DependencyMapPanel } from './dependencyMap';
 import { OPEN_SPRINT_TIMELINE_COMMAND, SprintTimelinePanel } from './sprintTimeline';
 import { TeamWorkStore } from './teamWorkStore';
 import { OPEN_TRACK_BOARD_COMMAND, TrackBoardPanel } from './trackBoard';
-import { CurrentWorkItemStatusBar } from './currentWorkItemStatusBar';
+import { CurrentWorkItemStatusBar, PICK_BRANCH_WORK_ITEM_COMMAND } from './currentWorkItemStatusBar';
 import {
   ADD_BUILD_NOTES_SKIP_TAG_COMMAND,
   RETARGET_PULL_REQUEST_COMMAND,
@@ -637,6 +637,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         myPullRequests.poll()
       );
     }),
+    command(PICK_BRANCH_WORK_ITEM_COMMAND, () => currentWorkItemStatusBar.pick()),
     command('totalflowx.openIterationBoard', () => openIterationBoard(currentRepository(), store)),
     command('totalflowx.selectTeams', () => selectTeams(currentRepository())),
     // No requests and no repository needed: does not wait for the repository like the commands above

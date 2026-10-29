@@ -289,6 +289,11 @@
         "category": "Totalflow X"
       },
       {
+        "command": "totalflowx.openBranchWorkItems",
+        "title": "Open a Work Item of the Current Branch",
+        "category": "Totalflow X"
+      },
+      {
         "command": "totalflowx.checkReviewRequests",
         "title": "Check Pull Requests Waiting for My Review",
         "category": "Totalflow X"
@@ -444,6 +449,10 @@
       "commandPalette": [
         {
           "command": "totalflowx.checkout",
+          "when": "false"
+        },
+        {
+          "command": "totalflowx.openBranchWorkItems",
           "when": "false"
         },
         {
@@ -721,8 +730,16 @@
             ],
             "default": "id",
             "scope": "application",
-            "description": "What the status bar item of the work item of the checked out branch shows. The full title is always in its tooltip.",
+            "description": "What the status bar item of the work item of the checked out branch shows. The full title is always in its tooltip. With several work items, only the first one shows its title.",
             "order": 6
+          },
+          "totalflowx.workingOn.statusBarMaxItems": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 3,
+            "scope": "application",
+            "description": "How many work items of the checked out branch the status bar item lists (closest iteration first) before showing \"+N\" for the rest. All of them are in the tooltip.",
+            "order": 7
           }
         }
       },
