@@ -3,7 +3,7 @@
 VS Code extension (ID `abb-totalflowx.vscode-azdo-workitems`, display name "Totalflow X devtools for Azure Devops") that brings the team's Azure DevOps work into the editor: work items of the current sprints, branches, pull requests, reviews, CI runs, dependencies, and the team rules (alerts, warnings).
 
 - **Seven blocks** organize the documentation (README, RULES, DECISIONS) and the design canvas (one page per block, plus an Archive page): 1. General rules (states, stations, PR rules, alerts, actions and flows, the data shared by the Whole team views, look, fun, settings), 2. Sidebar, 3. Work Item Details panel, 4. Track board, 5. Sprint timeline, 6. Dependency map, 7. Status bar & notifications. A rule goes to General rules when more than one view uses it; how a view shows it goes to that view's block. Each view keeps its own Whole team part. The code is not organized by block.
-- Design canvas (Claude Design, private to its owner): <https://claude.ai/artifact/DMR5fwa1qJBSPC5p5L8vJL>. Changes start there: see [Design first](#design-first).
+- Design canvas (Claude Design, private to its owner): <https://claude.ai/artifact/DMR5fwa1qJBSPC5p5L8vJL>. Ask the user whether a change starts there: see [Design first](#design-first).
 - What it does, for users: [README.md](README.md).
 - Why things are the way they are: [docs/DECISIONS.md](docs/DECISIONS.md). **Read it before changing behaviour.**
 - The exact decision rules (which states are shown, which actions are unlocked), with stable IDs: [docs/RULES.md](docs/RULES.md).
@@ -63,7 +63,7 @@ The full file map (every module, its role and its `Rules` IDs) is in [docs/ARCHI
 
 ## Design first
 
-The design canvas is the reference of what the extension looks like and does. **Every change follows this order**:
+The design canvas is the reference of what the extension looks like and does. **Before starting to implement a change, ask the user whether to update the designs first**: it is not always necessary, so never decide it alone. If the answer is no, skip step 1 (and go straight to the code); if yes, the change follows this order:
 
 1. **Design**: update the boards of the canvas first (re-read the board and `canvas.json` right before publishing: the owner edits them too). A board that no longer matches goes to the Archive page instead of staying wrong.
 2. **Implementation**: then the code, to match the design.
