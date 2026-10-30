@@ -13,6 +13,8 @@ export interface TimelineViewOptions {
   groupMovedOut: boolean;
   /** The bar of the protected branch (Rule TIMELINE-12) */
   showDevelop: boolean;
+  /** Rules TIMELINE-39, TIMELINE-45: the details of the PR rows on screen are read without hovering them */
+  alwaysShowPrEvents: boolean;
   /** The completed work item, PR and task rows, and the reviewed PRs, are faded */
   dimCompleted: boolean;
 }
@@ -25,6 +27,7 @@ export const TIMELINE_VIEW_SWITCHES: readonly TimelineViewSwitch[] = [
   'groupDone',
   'groupMovedOut',
   'showDevelop',
+  'alwaysShowPrEvents',
 ];
 
 export const DEFAULT_VIEW_OPTIONS: TimelineViewOptions = {
@@ -32,6 +35,7 @@ export const DEFAULT_VIEW_OPTIONS: TimelineViewOptions = {
   groupDone: true,
   groupMovedOut: true,
   showDevelop: true,
+  alwaysShowPrEvents: false,
   dimCompleted: true,
 };
 
@@ -41,6 +45,7 @@ export const VIEW_OPTION_SETTINGS: Record<keyof TimelineViewOptions, string> = {
   groupDone: 'appearance.timelineGroupDone',
   groupMovedOut: 'appearance.timelineGroupMovedOut',
   showDevelop: 'appearance.timelineShowDevelop',
+  alwaysShowPrEvents: 'appearance.timelineAlwaysShowPrEvents',
   dimCompleted: 'appearance.timelineDimCompleted',
 };
 
@@ -58,6 +63,7 @@ export function normalizeViewOptions(read: Partial<Record<keyof TimelineViewOpti
     groupDone: pick('groupDone'),
     groupMovedOut: pick('groupMovedOut'),
     showDevelop: pick('showDevelop'),
+    alwaysShowPrEvents: pick('alwaysShowPrEvents'),
     dimCompleted: pick('dimCompleted'),
   };
 }

@@ -19,6 +19,7 @@ import {
   baseBranchAlarmSoundEnabled,
   funEnabled,
   funSoundsEnabled,
+  isOwnZoomChange,
   resolveContext,
   SECTION,
   settings,
@@ -353,7 +354,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       myPullRequests.start();
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (!event.affectsConfiguration(SECTION)) {
+      if (!event.affectsConfiguration(SECTION) || isOwnZoomChange(event)) {
+        // Rule TIMELINE-48: the zoom of the timeline written by its own webview needs no redraw
         return;
       }
       // The look, the review deadline and the days of the sprint show on the board

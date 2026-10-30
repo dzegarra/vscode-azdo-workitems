@@ -11,6 +11,7 @@ import {
   buildSprintTimeline,
   rowsOfCards,
   withAfterSprint,
+  withEarliestStart,
   type RowContext,
   type TimelineInput,
   type TimelineModel,
@@ -26,8 +27,11 @@ import type { CompletedPullRequestInfo } from './completedPullRequests';
 import { boardCards, boardItems, type BoardKind, type BoardWorkCard } from './trackBoardModel';
 import { historyRow, withMembership } from './pastSprints';
 import { axisPosition } from './timelineAxis';
+import { earliestPullRequestStart } from './timelineRows';
+import type { WorkItemModel } from './viewModel';
 import { arrangeRows, DEFAULT_VIEW_OPTIONS, inItemOrder } from './timelineView';
 import type { SprintMembership } from './sprintMembership';
+import { asleepIdsOf, countLoading } from './timelineFooter';
 
 /** What the Whole team timeline needs besides the user's own timeline (Rule TIMELINE-21) */
 export interface TeamTimelineInput {
@@ -139,21 +143,27 @@ interface PersonRows {
   teamCards: { card: TeamCard; overdue: boolean }[];
 }
 
-// Rules TIMELINE-22..24
-/** The rows of one person: their cards as the Track board builds them, drawn with the timeline's row builders */
-function personRows(
+interface PersonBase {
+  input: TimelineInput;
+  team: TeamTimelineInput;
+  days: RowContext['days'];
+  sprintStart: number;
+  now: number;
+  statesWanted: Map<number, string>;
+  commitsWanted: Map<number, { key: string; repositoryId?: string }>;
+}
+
+/** The cards of one person as the Track board builds them, and the context their rows are drawn in */
+function personSetup(
   person: TeamPerson,
-  base: {
-    input: TimelineInput;
-    team: TeamTimelineInput;
-    days: RowContext['days'];
-    sprintEnd: number;
-    now: number;
-    statesWanted: Map<number, string>;
-    commitsWanted: Map<number, { key: string; repositoryId?: string }>;
-  }
-): PersonRows {
-  const { input, team, days, sprintEnd, now, statesWanted, commitsWanted } = base;
+  base: PersonBase
+): {
+  models: WorkItemModel[];
+  cards: BoardWorkCard[];
+  teamCards: ReturnType<typeof toTeamCard>[];
+  context: RowContext;
+} {
+  const { input, team, days, sprintStart, now, statesWanted, commitsWanted } = base;
   const models = person.items.map((item) => item.model);
   const items = boardItems(models, team.kinds);
   const axisStart = days[0].startMs;
@@ -183,11 +193,48 @@ function personRows(
     team: { pullRequests: new Map(person.items.flatMap((item) => item.pullRequests).map((pr) => [pr.id, pr])) },
     days,
     axisStart,
+    sprintStart: (days.at(sprintStart) ?? days[0]).startMs,
     now,
     firstCommitsWanted: new Set(),
     statesWanted,
     commitsWanted,
   };
+  return { models, cards, teamCards, context };
+}
+
+// Rule TIMELINE-2
+/** The input with the earliest start of the drawn PRs of the user and of the people chosen (the axis is shared) */
+function withTeamEarliestStart(given: TimelineInput, team: TeamTimelineInput): TimelineInput {
+  const mine = withEarliestStart(given);
+  if (!(given.daysBeforeSprint && given.daysBeforeSprint > 0)) {
+    return mine;
+  }
+  const { days, sprintStart } = axisOf({ ...given, earliestStart: undefined });
+  if (!days.length) {
+    return mine;
+  }
+  const starts = team.people.flatMap((person) => {
+    const { cards, context } = personSetup(person, {
+      input: given,
+      team,
+      days,
+      sprintStart,
+      now: given.now.getTime(),
+      statesWanted: new Map(),
+      commitsWanted: new Map(),
+    });
+    const earliest = earliestPullRequestStart(cards, context);
+    return earliest === undefined ? [] : [earliest];
+  });
+  const all = [...starts, ...(mine.earliestStart === undefined ? [] : [mine.earliestStart])];
+  return all.length ? { ...mine, earliestStart: Math.min(...all) } : mine;
+}
+
+// Rules TIMELINE-22..24
+/** The rows of one person: their cards as the Track board builds them, drawn with the timeline's row builders */
+function personRows(person: TeamPerson, base: PersonBase & { sprintEnd: number }): PersonRows {
+  const { input, team, days, sprintEnd } = base;
+  const { models, cards, teamCards, context } = personSetup(person, base);
   const rows = rowsOfCards(cards, context);
   const noteOf = (row: TimelineRow): TimelineRow['note'] => {
     const found = teamCards.find(({ card }) => card.key === row.boardKey);
@@ -234,13 +281,15 @@ const distinct = (ids: readonly number[]): number[] => [...new Set(ids)];
  * the rows, buttons and popovers of the "mine" timeline (`work`, `finished`, `reviews`); the others' are the same
  * rows, read-only. Without people chosen only the user's section is shown, with a hint
  */
-export function buildWholeTeamTimeline(input: TimelineInput): TimelineModel {
-  const model = buildSprintTimeline(input);
-  const team = input.team;
-  if (input.scope !== 'team' || !team) {
-    return model;
+export function buildWholeTeamTimeline(given: TimelineInput): TimelineModel {
+  const team = given.team;
+  if (given.scope !== 'team' || !team) {
+    return buildSprintTimeline(given);
   }
-  const { days, sprintEnd } = axisOf(input);
+  // Rule TIMELINE-2: the PRs of the people chosen can start before the sprint too: the axis is the same for everybody
+  const input = withTeamEarliestStart(given, team);
+  const model = buildSprintTimeline(input);
+  const { days, sprintStart, sprintEnd } = axisOf(input);
   const showBadges = team.teamCount > 1;
   const you = team.people.find((person) => person.you);
   const others = team.people.filter((person) => !person.you);
@@ -249,7 +298,10 @@ export function buildWholeTeamTimeline(input: TimelineInput): TimelineModel {
   const commitsWanted = new Map<number, { key: string; repositoryId?: string }>();
   const build = (person: TeamPerson): PersonRows & { person: TeamPerson } =>
     days.length
-      ? { ...personRows(person, { input, team, days, sprintEnd, now, statesWanted, commitsWanted }), person }
+      ? {
+          ...personRows(person, { input, team, days, sprintStart, sprintEnd, now, statesWanted, commitsWanted }),
+          person,
+        }
       : { work: [], finished: [], movedOut: [], cards: [], teamCards: [], person };
   const asleep: TimelineTeam['asleep'] = [];
 
@@ -259,7 +311,7 @@ export function buildWholeTeamTimeline(input: TimelineInput): TimelineModel {
   const youRows = you ? build(you) : undefined;
   const youBadges = new Set(ownIds.map((id) => team.ownBadges.get(id)).filter((badge): badge is string => !!badge));
   const youCards = input.board.work;
-  const youAsleep = distinct(youCards.filter((card) => card.asleep).map((card) => card.id));
+  const youAsleep = asleepIdsOf(youCards);
   asleep.push(...youAsleep.map((id) => ({ id, owner: 'you' })));
   const extraIds = distinct((youRows?.cards ?? []).map((card) => card.id));
   const youName = team.youName ?? 'You';
@@ -303,7 +355,7 @@ export function buildWholeTeamTimeline(input: TimelineInput): TimelineModel {
     );
     const badges = new Set(open.map((item) => item.team).filter((badge): badge is string => !!badge));
     const cards = built.teamCards.map(({ card }) => card);
-    const asleepIds = distinct(built.cards.filter((card) => card.asleep).map((card) => card.id));
+    const asleepIds = asleepIdsOf(built.cards);
     asleep.push(...asleepIds.map((id) => ({ id, owner: first })));
     openItems += open.length;
     return [
@@ -336,14 +388,26 @@ export function buildWholeTeamTimeline(input: TimelineInput): TimelineModel {
       },
     ];
   });
+  // Rule TIMELINE-50: the people chosen whose work is not read yet get a header and skeleton rows
+  const pending: TimelineTeam['pending'] =
+    team.status === 'loading'
+      ? team.chosen.map((person) => ({
+          key: person.id,
+          name: shortPersonName(person.name),
+          initials: initials(person.name),
+          colour: avatarColour(shortPersonName(person.name)),
+        }))
+      : [];
+  const allStatesWanted = [
+    ...model.statesWanted,
+    ...[...statesWanted]
+      .filter(([id]) => !model.statesWanted.some((entry) => entry.id === id))
+      .map(([id, key]) => ({ id, key })),
+  ];
   return {
     ...model,
-    statesWanted: [
-      ...model.statesWanted,
-      ...[...statesWanted]
-        .filter(([id]) => !model.statesWanted.some((entry) => entry.id === id))
-        .map(([id, key]) => ({ id, key })),
-    ],
+    statesLoading: countLoading(allStatesWanted, input.statesLoading),
+    statesWanted: allStatesWanted,
     commitsWanted: [
       ...model.commitsWanted,
       ...[...commitsWanted]
@@ -363,6 +427,7 @@ export function buildWholeTeamTimeline(input: TimelineInput): TimelineModel {
       sections: [youSection, ...sections],
       openItems,
       asleep,
+      pending,
     },
   };
 }

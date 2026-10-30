@@ -9,6 +9,7 @@ import {
   axisPosition,
   buildAxis,
   buildSprintTimeline,
+  daysBeforeStart,
   developSpans,
   historyRefsOf,
   needsYouSince,
@@ -17,6 +18,7 @@ import {
   type TimelineInput,
   type TimelineRow,
 } from './sprintTimelineModel';
+import { normalizeDaysBeforeSprint } from './timelineAxis';
 import { buildBoard, type BoardInput } from './trackBoardModel';
 import type { PullRequestModel, WorkItemModel } from './viewModel';
 
@@ -72,6 +74,36 @@ describe('axis (TIMELINE-2)', () => {
   });
 });
 
+describe('the days before the sprint (TIMELINE-2)', () => {
+  it('adds the working days before the sprint, marked, and leaves the sprint where it was', () => {
+    const wide = buildAxis('2026-10-12', '2026-10-23', WORKING, NOW, 2, 2);
+    expect(wide.map((day) => day.label).slice(0, 4)).toEqual(['Th 8', 'Fr 9', 'Mo 12', 'Tu 13']);
+    expect(wide.filter((day) => day.before).map((day) => day.label)).toEqual(['Th 8', 'Fr 9']);
+    expect(wide.filter((day) => day.last).map((day) => day.label)).toEqual(['Fr 23']);
+    expect(wide).toHaveLength(14);
+    // The position of a moment of the sprint is shifted by the days added
+    expect(axisPosition(at(12, 0), wide)).toBe(2);
+    expect(axisPosition(at(9, 12), wide)).toBeCloseTo(1.5);
+  });
+
+  it('needs the working day of the earliest start, at most the maximum', () => {
+    // Monday 12th is the first day: Friday 9th and Thursday 8th are the days before
+    expect(daysBeforeStart('2026-10-12', at(8, 10), WORKING, 5)).toBe(2);
+    expect(daysBeforeStart('2026-10-12', at(8, 10), WORKING, 1)).toBe(1);
+    expect(daysBeforeStart('2026-10-12', at(9, 10), WORKING, 5)).toBe(1);
+    // A start on Saturday belongs to Monday, the first day of the sprint: nothing is added
+    expect(daysBeforeStart('2026-10-12', at(10, 10), WORKING, 5)).toBe(0);
+    expect(daysBeforeStart('2026-10-12', at(13, 10), WORKING, 5)).toBe(0);
+    expect(daysBeforeStart('2026-10-12', undefined, WORKING, 5)).toBe(0);
+    expect(daysBeforeStart('2026-10-12', at(1, 10), WORKING, 0)).toBe(0);
+    expect(daysBeforeStart('2026-10-12', at(1, 10), WORKING, 3)).toBe(3);
+  });
+
+  it('keeps the setting between 0 and 10, default 1', () => {
+    expect([undefined, 'x', -2, 0, 2.4, 99].map(normalizeDaysBeforeSprint)).toEqual([1, 1, 0, 0, 2, 10]);
+  });
+});
+
 describe('the moments behind needs you and ready (TIMELINE-16)', () => {
   const stamps = {
     createdAt: iso(16),
@@ -102,17 +134,18 @@ describe('the moments behind needs you and ready (TIMELINE-16)', () => {
 });
 
 describe('withAsleep (TIMELINE-8)', () => {
-  it('replaces what the period without update covers with the zZ span', () => {
+  it('keeps the states and flags the part from the last update on', () => {
     const spans = [
       { kind: 'branch' as const, start: at(14, 9), end: at(15, 10) },
       { kind: 'pullRequest' as const, start: at(15, 10), end: at(22, 14) },
     ];
-    const asleep = withAsleep(spans, at(19, 9), at(22, 14), 'zZ no update for 3 working days');
-    expect(asleep.map((span) => [span.kind, span.start, span.end])).toEqual([
-      ['branch', at(14, 9), at(15, 10)],
-      ['pullRequest', at(15, 10), at(19, 9)],
-      ['asleep', at(19, 9), at(22, 14)],
+    const asleep = withAsleep(spans, at(19, 9), at(22, 14), 'zZ: no update for 3 working days');
+    expect(asleep.map((span) => [span.kind, span.start, span.end, span.asleep ?? false])).toEqual([
+      ['branch', at(14, 9), at(15, 10), false],
+      ['pullRequest', at(15, 10), at(19, 9), false],
+      ['pullRequest', at(19, 9), at(22, 14), true],
     ]);
+    expect(asleep[2].detail).toContain('no update for 3 working days');
   });
 });
 
@@ -305,6 +338,31 @@ describe('buildSprintTimeline', () => {
     expect(model.over).toBe(false);
   });
 
+  it('starts the axis at the earliest PR that predates the sprint, up to the setting (TIMELINE-2)', () => {
+    const early = [workItem({ pullRequests: [pullRequest()], dates: { activated: iso(14, 9) } })];
+    const prs = [mine({ stamps: { createdAt: iso(8, 10), publishedAt: iso(8, 15) } })];
+    const wide = timeline(early, prs, [], { daysBeforeSprint: 5 });
+    // Thursday 8th and Friday 9th are added, the sprint keeps its length
+    expect(wide.days.slice(0, 3).map((day) => [day.label, day.before])).toEqual([
+      ['Th 8', true],
+      ['Fr 9', true],
+      ['Mo 12', false],
+    ]);
+    expect(wide.days).toHaveLength(14);
+    expect(wide.sprintStart).toBe(2);
+    expect(wide.sprintEnd).toBe(12);
+    expect(wide.now).toBeCloseTo(10 + 14 / 24);
+    // The bar of the PR starts in the days before the sprint instead of being cut
+    const pr = wide.work[0].children?.find((child) => child.kind === 'pr');
+    expect(pr?.segments.at(0)?.start).toBeCloseTo(0.0 + 10 / 24);
+    // The setting is a maximum
+    expect(timeline(early, prs, [], { daysBeforeSprint: 1 }).sprintStart).toBe(1);
+    // Nothing is added without a setting, or when no PR predates the sprint
+    expect(timeline(early, prs).sprintStart).toBe(0);
+    expect(timeline(early, [mine()], [], { daysBeforeSprint: 5 }).sprintStart).toBe(0);
+    expect(timeline(early, [mine()], [], { daysBeforeSprint: 5 }).days).toHaveLength(12);
+  });
+
   it('keeps open bars running past the end of the sprint, faded, with the text at the end (TIMELINE-31)', () => {
     const later = new Date(2026, 9, 26, 15);
     const model = timeline(
@@ -350,6 +408,23 @@ describe('buildSprintTimeline', () => {
     expect(moved.note).toEqual({ text: '→ Sprint 124', tone: 'moved', detail: 'moved Th 22' });
     expect(Math.max(...moved.segments.map((segment) => segment.end))).toBeLessThanOrEqual(8 + 11 / 24 + 1e-9);
     expect(moved.end).toBeLessThanOrEqual(8 + 11 / 24 + 1e-9);
+  });
+
+  it('draws the PR of a past sprint still open after its end into the margin, faded like the rest (TIMELINE-41)', () => {
+    const items = [workItem({ pullRequests: [pullRequest()], dates: { activated: iso(14, 9) } })];
+    const input = { now: new Date(2026, 9, 27, 23, 59) };
+    const ends = (today: number | undefined): { after: number; all: number } => {
+      const model = timeline(items, [mine()], [], { ...input, past: { ended: 'ended Tue 27 Oct', today } });
+      const segments = model.work[0].children?.flatMap((child) => (child.kind === 'pr' ? child.segments : [])) ?? [];
+      return {
+        after: segments.filter((segment) => segment.after).length,
+        all: Math.max(...segments.map((segment) => segment.end)),
+      };
+    };
+    const stopped = ends(new Date(2026, 9, 27, 23, 59).getTime());
+    const running = ends(new Date(2026, 10, 30).getTime());
+    expect(running.all).toBeGreaterThan(stopped.all);
+    expect(running.after).toBeGreaterThan(0);
   });
 
   it('draws the states of a work item not started in a past sprint, not the outline (TIMELINE-41)', () => {
@@ -401,14 +476,17 @@ describe('buildSprintTimeline', () => {
           state: 'Active',
           displayState: 'Active',
           notUpdated: { days: 3, text: 'Not updated for 3 working days' },
-          dates: { changed: iso(19, 9) },
+          dates: { changed: iso(19, 9), activated: iso(14, 9) },
           pullRequests: [pullRequest({ tone: 'draft', status: 'Draft' })],
         }),
       ],
       [mine({ isDraft: true, stamps: { createdAt: iso(15, 10) } })]
     );
     const [row] = model.work;
-    expect(row.segments.at(-1)).toMatchObject({ kind: 'asleep', text: 'zZ no update for 3 working days' });
+    // The segment keeps its state colour and text; it is flagged and its tooltip says for how long
+    expect(row.segments.at(-1)).toMatchObject({ asleep: true });
+    expect(row.segments.at(-1)?.kind).not.toBe('asleep');
+    expect(row.segments.at(-1)?.tip).toContain('no update for 3 working days');
     expect(row.popover?.title).toBe('ASLEEP · #1');
     expect(row.popover?.actions.map((action) => action.label)).toEqual([
       'Publish draft',
@@ -540,6 +618,22 @@ describe('the row of a work item (TIMELINE-15, TIMELINE-16)', () => {
     expect(rows[1].label).toEqual({ tag: { text: 'BUG', tone: 'bug' }, id: '#2', state: 'Committed' });
   });
 
+  it('carries the work items linked by the Duplicate link, both directions (TIMELINE-47)', () => {
+    const link = (id: number) => ({ id, title: '', type: 'Bug', state: 'New', stateCategory: 'proposed' as const });
+    const rows = timeline(
+      [
+        workItem({ id: 1, duplicateOf: [link(7)], duplicates: [link(8)], pullRequests: [pullRequest({ id: 10 })] }),
+        workItem({ id: 2, pullRequests: [pullRequest({ id: 20 })] }),
+      ],
+      [mine({ id: 10 }), mine({ id: 20 })]
+    ).work;
+    expect(rows[0].duplicates).toEqual([
+      { id: 7, role: 'original' },
+      { id: 8, role: 'duplicate' },
+    ]);
+    expect(rows[1].duplicates).toBeUndefined();
+  });
+
   it('counts the PRs in the state when there are several', () => {
     const row = timeline(
       [workItem({ id: 3, pullRequests: [pullRequest({ id: 31 }), pullRequest({ id: 32 }), COMPLETED(30)] })],
@@ -644,7 +738,11 @@ describe('the row of a work item (TIMELINE-15, TIMELINE-16)', () => {
     );
     expect(rows.work).toEqual([]);
     const [row] = rows.finished;
-    expect(row).toMatchObject({ faded: true, merged: { text: '✓ done Fr 16' } });
+    expect(row).toMatchObject({
+      faded: true,
+      merged: { text: 'Done Fr 16' },
+      finish: { kind: 'done', text: '✓', at: 4 + 17 / 24 },
+    });
     expect(kinds(row)).toEqual(['stateCommitted', 'stateInReview']);
     expect(row.segments.at(-1)?.end).toBeCloseTo(4 + 17 / 24);
     expect(row.defaultExpanded).toBe(false);
@@ -658,7 +756,74 @@ describe('the row of a work item (TIMELINE-15, TIMELINE-16)', () => {
       displayState: 'Ready to Test',
       dates: { stateChanged: iso(20, 17) },
     });
-    expect(timeline([bug]).finished[0].merged?.text).toBe('✓ Ready to Test Tu 20');
+    const row = timeline([bug]).finished[0];
+    expect(row.merged?.text).toBe('Ready to Test Tu 20');
+    expect(row.merged?.almostDone).toBe(true);
+    // Rule TIMELINE-35: Ready to Test is no final state: no badge, a bar of its own colour up to now
+    expect(row.finish).toBeUndefined();
+    expect(kinds(row)?.at(-1)).toBe('stateReadyToTest');
+  });
+
+  it('draws a finished work item as a badge at the exact moment it changed, with who changed it (TIMELINE-35)', () => {
+    const item = workItem({ id: 5, state: 'Closed', displayState: 'Closed' });
+    const row = timeline([item], [], [], {
+      stateHistory: new Map([
+        [
+          5,
+          [
+            { at: at(13, 9), state: 'Committed' },
+            { at: at(15, 14), state: 'Closed', by: 'Ana Ruiz' },
+          ],
+        ],
+      ]),
+    }).finished[0];
+    // The bar of the previous state ends at the badge and nothing follows it
+    expect(kinds(row)).toEqual(['stateCommitted']);
+    expect(row.segments.at(-1)?.end).toBeCloseTo(3 + 14 / 24);
+    expect(row.finish).toMatchObject({ at: expect.closeTo(3 + 14 / 24) as number, kind: 'done', text: '✓' });
+    expect(row.finish?.tip).toContain('Closed');
+    expect(row.finish?.tip).toContain('Ana Ruiz');
+    expect(row.merged?.text).toBe('Closed Th 15');
+  });
+
+  it('draws a Removed work item as a grey badge (TIMELINE-35)', () => {
+    // The board never lists a removed item: its card comes from the state it had, the row is drawn from the item as it is now
+    const open = workItem({ id: 6 });
+    const removed = workItem({ id: 6, state: 'Removed', displayState: 'Removed' });
+    const row = timeline([open], [], [], {
+      workItems: [removed],
+      stateHistory: new Map([
+        [
+          6,
+          [
+            { at: at(13, 9), state: 'New' },
+            { at: at(14, 9), state: 'Removed' },
+          ],
+        ],
+      ]),
+    }).work[0];
+    expect(row.finish).toMatchObject({ kind: 'removed', text: '✕' });
+    expect(kinds(row)).toEqual(['stateNew']);
+  });
+
+  it('draws a Done period that was left as a bar, and only the final finish as a badge (TIMELINE-35)', () => {
+    const item = workItem({ id: 4, state: 'Done', displayState: 'Done' });
+    const row = timeline([item], [], [], {
+      stateHistory: new Map([
+        [
+          4,
+          [
+            { at: at(12, 9), state: 'Committed' },
+            { at: at(14, 9), state: 'Done' },
+            { at: at(15, 9), state: 'ReOpened' },
+            { at: at(16, 9), state: 'Committed' },
+            { at: at(20, 9), state: 'Done' },
+          ],
+        ],
+      ]),
+    }).finished[0];
+    expect(kinds(row)).toEqual(['stateCommitted', 'stateDone', 'stateReopened', 'stateCommitted']);
+    expect(row.finish).toMatchObject({ kind: 'done', at: expect.closeTo(6 + 9 / 24) as number });
   });
 
   it('puts the finished work items after the open ones, in their own list, and hides them without Completed', () => {
@@ -684,7 +849,7 @@ describe('the row of a work item (TIMELINE-15, TIMELINE-16)', () => {
         ],
       ]),
     }).work[0];
-    expect(kinds(row)).toEqual(['stateCommitted', 'stateDone', 'stateReopened', 'stateCommitted']);
+    expect(kinds(row)).toEqual(['stateCommitted', 'stateReadyToTest', 'stateReopened', 'stateCommitted']);
   });
 });
 
@@ -1069,5 +1234,28 @@ describe('when the implementation starts, on the row of a PR (TIMELINE-20)', () 
   it('ignores a first commit after the creation of the PR', () => {
     const model = build('firstCommit', [[72, iso(21, 9)]]);
     expect(implementation(model, 72)?.tip).toContain('since the work item was activated, approximate');
+  });
+});
+
+describe('zoom, asleep and loading facts of the model (Rules TIMELINE-25, TIMELINE-48, TIMELINE-50)', () => {
+  it('carries the zoom of the setting, clamped, 100 by default', () => {
+    expect(timeline([workItem()]).zoom).toBe(100);
+    expect(timeline([workItem()], [], [], { zoom: 200 }).zoom).toBe(200);
+    expect(timeline([workItem()], [], [], { zoom: 5000 }).zoom).toBe(1000);
+    expect(timeline([workItem()], [], [], { zoom: 700 }).zoom).toBe(700);
+    expect(timeline([workItem()]).zoomModifier).toBe('ctrl');
+    expect(timeline([workItem()], [], [], { zoomModifier: 'shift' }).zoomModifier).toBe('shift');
+  });
+
+  it('has no asleep work item and nothing loading by default', () => {
+    const model = timeline([workItem()]);
+    expect(model.asleep).toEqual([]);
+    expect(model.statesLoading).toBe(0);
+  });
+
+  it('counts the work items drawn whose state history is being read', () => {
+    const model = timeline([workItem()], [], [], { statesLoading: new Set([workItem().id]) });
+    expect(model.statesWanted.map((entry) => entry.id)).toContain(workItem().id);
+    expect(model.statesLoading).toBe(1);
   });
 });

@@ -19,13 +19,14 @@ import {
   type StationSpan,
 } from './prLifecycle';
 import type { PullRequestStamps } from './pullRequestTimeline';
-import { isFinishedState, stateCategory } from './states';
+import { isClosedState, isFinishedState, normalizeState, stateCategory } from './states';
 import type { TeamPullRequestInfo } from './teamData';
 import { axisPosition, type TimelineDay } from './timelineAxis';
 import { layoutMarkers, mergeSegments, withAtRest } from './timelineLayout';
 import {
   dateText,
   dayLabel,
+  dayText,
   instant,
   needsYouSince,
   readySince,
@@ -47,11 +48,16 @@ import type {
 } from './timelineTypes';
 import { trackPullRequest } from './track';
 import { pullRequestTitle, type BoardAction, type BoardWorkCard } from './trackBoardModel';
+import { timelineDuplicates } from './duplicates';
 import type { WorkItemModel } from './viewModel';
 import { workItemStations, type WorkItemStationSpan } from './workItemStations';
-import { finishedAt as finishedStateAt, stateSpans, type StateKind } from './workItemStateHistory';
+import { finalKind, finishedChange, stateSpans, type StateKind } from './workItemStateHistory';
 
 const MS_PER_HOUR = 3_600_000;
+
+/** Where a guess starts when the real start is not known: the first day of the sprint (not of the margin before it) */
+const guessFrom = (context: Pick<RowContext, 'axisStart' | 'sprintStart'>): number =>
+  context.sprintStart ?? context.axisStart;
 
 export interface RowContext {
   input: TimelineInput;
@@ -59,6 +65,8 @@ export interface RowContext {
   team?: { pullRequests: ReadonlyMap<number, TeamPullRequestInfo> };
   days: TimelineDay[];
   axisStart: number;
+  /** Rule TIMELINE-2: the first day of the sprint (ms) when the axis starts earlier; guesses start here. Default: `axisStart` */
+  sprintStart?: number;
   now: number;
   /** The PRs drawn whose first commit is not known yet (Rule TIMELINE-20) */
   firstCommitsWanted: Set<number>;
@@ -70,11 +78,9 @@ export interface RowContext {
 
 const plural = (count: number, noun: string): string => `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
 
-/** "✓ done We 21", or "✓ Ready to Test We 21" for a Bug (TRACK-7: developers finish a Bug at Ready to Test); no day: just the word */
-const doneMark = (at: number | undefined, bug: boolean): string => {
-  const word = bug ? 'Ready to Test' : 'done';
-  return at === undefined ? `✓ ${word}` : `✓ ${word} ${dayLabel(at)}`;
-};
+/** "Done We 21", "Closed We 21", "Ready to Test We 21" (TRACK-7: developers finish a Bug at Ready to Test); no day: just the state */
+const doneMark = (at: number | undefined, state: string): string =>
+  at === undefined ? state : `${state} ${dayLabel(at)}`;
 
 const firstName = (name: string): string => name.split(' ').at(0) ?? name;
 
@@ -293,6 +299,20 @@ function currentOf(
   }
 }
 
+// Rule TIMELINE-41
+/**
+ * Up to where an open PR is drawn: now, or in a past sprint (drawn as of its end) up to the end of the axis, the margin
+ * after the sprint included, but never past the real present. The events of the PR in the margin are there already
+ */
+function prNow(context: RowContext): number {
+  const { past } = context.input;
+  if (!past) {
+    return context.now;
+  }
+  const axisEnd = context.days.at(-1)?.endMs ?? context.now;
+  return Math.max(context.now, Math.min(axisEnd, past.today ?? axisEnd));
+}
+
 // Rules TIMELINE-16, TIMELINE-17, TIMELINE-22
 /** The PRs of a work item that are drawn: open ones and merged ones, with their stations, oldest creation first */
 function pullRequestsOf(
@@ -362,7 +382,7 @@ function pullRequestsOf(
         current: merged ? undefined : currentOf(card, draft, runs, stamps),
         // Rule TIMELINE-16: a merged PR was ready from its last vote; without a vote event no green span is invented
         readySince: merged && stamps?.lastVoteAt !== undefined ? readySince(runs, stamps) : undefined,
-        now: context.now,
+        now: prNow(context),
       };
       stations = pullRequestStations(facts);
     }
@@ -423,6 +443,8 @@ const STATE_SEGMENT: Record<StateKind, SegmentKind> = {
   committed: 'stateCommitted',
   inReview: 'stateInReview',
   done: 'stateDone',
+  readyToTest: 'stateReadyToTest',
+  removed: 'stateRemoved',
   reopened: 'stateReopened',
 };
 
@@ -528,12 +550,12 @@ function pullRequestChild(
   const { facts } = draw;
   if (!facts) {
     // Its dates are not known: what is known is drawn, approximate (a bar from the start of the work to now)
-    const start = knownStart ?? axisStart;
+    const start = knownStart ?? guessFrom(context);
     const guess = toSegment(
       {
         kind: draw.draft ? 'draft' : 'review',
         start: Math.max(start, axisStart),
-        end: context.now,
+        end: prNow(context),
         text: draw.draft ? 'draft' : 'review',
         detail: draw.draft ? 'draft · self-review' : 'review',
         approximate: true,
@@ -643,7 +665,7 @@ function taskChildren(item: WorkItemModel, tasks: readonly TaskFacts[], context:
         const start = task.activated !== undefined && task.activated < end ? task.activated : undefined;
         span = {
           kind: 'implementation',
-          start: start ?? Math.min(end, axisStart),
+          start: start ?? Math.min(end, guessFrom(context)),
           end,
           text: 'done',
           detail: 'Task done, without a PR',
@@ -657,7 +679,7 @@ function taskChildren(item: WorkItemModel, tasks: readonly TaskFacts[], context:
         const guess = start === undefined || start > now;
         span = {
           kind: 'branch',
-          start: guess ? axisStart : Math.max(start, axisStart),
+          start: guess ? guessFrom(context) : Math.max(start, axisStart),
           end: now,
           text: 'in progress',
           detail: 'Task in progress, no PR yet',
@@ -672,7 +694,7 @@ function taskChildren(item: WorkItemModel, tasks: readonly TaskFacts[], context:
         const guess = created === undefined || created > now;
         span = {
           kind: 'taskToDo',
-          start: guess ? axisStart : Math.max(created, axisStart),
+          start: guess ? guessFrom(context) : Math.max(created, axisStart),
           end: now,
           text: 'to do',
           detail: 'Task to do',
@@ -751,6 +773,8 @@ export function workItemRow(cards: readonly BoardWorkCard[], context: RowContext
     title: card.itemTitle,
     label,
     here: cards.some((candidate) => candidate.here),
+    // Rule TIMELINE-47
+    duplicates: item ? timelineDuplicates(item) : undefined,
     bug: card.itemKind === 'bug',
     segments: [],
     open: { type: 'openDetails', id: card.id },
@@ -805,7 +829,8 @@ export function workItemRow(cards: readonly BoardWorkCard[], context: RowContext
       end: days.length,
     };
   }
-  const finished = isFinishedState(item.state);
+  // Done-like or Removed: the work ended (a Removed one is not on the board, but a past sprint can still draw it)
+  const finished = isClosedState(item.state);
   const lastClosed = Math.max(
     0,
     ...draws.flatMap((draw) => (draw.facts?.closed === undefined ? [] : [draw.facts.closed]))
@@ -813,11 +838,11 @@ export function workItemRow(cards: readonly BoardWorkCard[], context: RowContext
   // Rule TIMELINE-35: the states of the work item, from its history once read
   // The changes after now are not drawn (a past sprint is drawn as of its end, Rule TIMELINE-41)
   const changes = input.stateHistory?.get(item.id)?.filter((change) => change.at <= now);
-  const finishedAt = finished
-    ? finishedStateAt({ changes, state: item.state, dates: item.dates }) ?? (lastClosed || now)
-    : undefined;
+  const finishChange = finished ? finishedChange({ changes, state: item.state, dates: item.dates }) : undefined;
+  const finishedAt = finished ? finishChange?.at ?? (lastClosed || now) : undefined;
   const started =
-    workStart(item, draws, tasks) ?? (card.column === 'toStart' ? undefined : { at: axisStart, approximate: true });
+    workStart(item, draws, tasks) ??
+    (card.column === 'toStart' ? undefined : { at: guessFrom(context), approximate: true });
   const stations = workItemStations({
     now,
     started,
@@ -872,7 +897,7 @@ export function workItemRow(cards: readonly BoardWorkCard[], context: RowContext
       spans,
       Math.max(from, axisStart),
       now,
-      `zZ no update for ${String(card.asleep.days)} working day${card.asleep.days === 1 ? '' : 's'}`
+      `zZ: no update for ${String(card.asleep.days)} working day${card.asleep.days === 1 ? '' : 's'}`
     );
     const draft = openDraws.find((draw) => draw.draft && draw.mine)?.mine;
     popover = {
@@ -911,13 +936,26 @@ export function workItemRow(cards: readonly BoardWorkCard[], context: RowContext
   }
   const waitsOn = item.openPredecessors?.at(0);
   const end = segments.at(-1)?.end ?? 0;
-  // Rule TIMELINE-19: a finished work item is faded, with its mark at the day it finished
+  // Rule TIMELINE-19: a finished work item is faded, with what it says after the bar ("Done Thu 22")
   const done = finished
     ? {
         at: finishedAt === undefined ? end : Math.max(axisPosition(finishedAt, days), end),
-        text: doneMark(instant(item.dates?.stateChanged), item.type === 'Bug'),
+        text: doneMark(finishedAt, item.state),
+        ...(normalizeState(item.state) === normalizeState('Ready to Test') ? { almostDone: true } : {}),
       }
     : undefined;
+  // Rule TIMELINE-35: a final state (Done, Closed, Removed) is a point badge at the moment it changed, if within the axis;
+  // Ready to Test is no final state: it stays a bar
+  const final = finalKind(item.state);
+  const finish =
+    final && finishedAt !== undefined && finishedAt >= axisStart
+      ? {
+          at: axisPosition(finishedAt, days),
+          kind: final,
+          text: final === 'done' ? '✓' : '✕',
+          tip: [item.state, dayText(finishedAt), finishChange?.by].filter(Boolean).join(' · '),
+        }
+      : undefined;
   return {
     ...base,
     segments,
@@ -926,6 +964,7 @@ export function workItemRow(cards: readonly BoardWorkCard[], context: RowContext
     action,
     popover,
     ...(done ? { faded: true, merged: done } : {}),
+    ...(finish ? { finish } : {}),
     end: done ? done.at : end,
   };
 }
@@ -951,4 +990,36 @@ export function rowsOfCards(
     ordered.push(row);
   }
   return { work, finished, ordered };
+}
+
+// Rule TIMELINE-2
+/**
+ * The earliest start of the PRs drawn for these cards: where the first phase of their row begins (the implementation
+ * start of Rule TIMELINE-20, else the creation). A merged PR counts when it is drawn (merged within the axis of the
+ * context). Undefined: no PR is drawn
+ */
+export function earliestPullRequestStart(cards: readonly BoardWorkCard[], context: RowContext): number | undefined {
+  // The PRs are only measured here: what the real pass asks for (first commits) is not asked twice
+  const probe: RowContext = {
+    ...context,
+    firstCommitsWanted: new Set(),
+    statesWanted: undefined,
+    commitsWanted: undefined,
+  };
+  const starts = [...new Set(cards.map((card) => card.id))].flatMap((id) => {
+    const item = context.input.workItems.find((candidate) => candidate.id === id);
+    if (!item) {
+      return [];
+    }
+    const draws = pullRequestsOf(
+      item,
+      cards.filter((card) => card.id === id),
+      tasksOfItem(item, context.input),
+      probe
+    );
+    return draws.flatMap((draw) =>
+      !draw.hidden && draw.facts ? [draw.facts.implementation?.at ?? draw.facts.created] : []
+    );
+  });
+  return starts.length ? Math.min(...starts) : undefined;
 }

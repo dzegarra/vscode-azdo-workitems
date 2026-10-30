@@ -26,6 +26,8 @@ export interface Span {
   approximateNote?: string;
   /** Derived, not a fact of Azure DevOps (In review, TIMELINE-36): drawn dashed */
   dashed?: boolean;
+  /** Rule TIMELINE-8: no update in this period; `detail` says for how long */
+  asleep?: boolean;
 }
 
 /** "We 14": the weekday and the day of the month, as the axis */
@@ -76,22 +78,36 @@ export function toSegment(span: Span, days: readonly TimelineDay[]): TimelineSeg
     tip,
     approximate: approximate || span.fromBefore === true,
     ...(span.dashed ? { dashed: true } : {}),
+    ...(span.asleep ? { asleep: true } : {}),
   };
 }
 
 // Rule TIMELINE-8
-/** The period without update replaces what it covers with the hatched zZ span */
-export function withAsleep(spans: Span[], from: number, to: number, text: string): Span[] {
+/**
+ * The period without update marks what it covers: the spans keep their state (colour and text), the part from `from`
+ * on is flagged `asleep` (the bar says "zZ" in its text) and `note` joins its tooltip
+ */
+export function withAsleep(spans: Span[], from: number, to: number, note: string): Span[] {
   if (to <= from) {
     return spans;
   }
-  const kept = spans.flatMap((span): Span[] => {
+  return spans.flatMap((span): Span[] => {
     if (span.end <= from) {
       return [span];
     }
-    return span.start < from ? [{ ...span, end: from }] : [];
+    const asleep: Span = {
+      ...span,
+      start: Math.max(span.start, from),
+      asleep: true,
+      detail: `${span.detail ?? span.kind} · ${note}`,
+    };
+    return span.start < from
+      ? [
+          { ...span, end: from },
+          { ...asleep, fromBefore: false, approximate: false },
+        ]
+      : [asleep];
   });
-  return [...kept, { kind: 'asleep', start: from, end: to, text, detail: 'no update' }];
 }
 
 // Rule TIMELINE-16

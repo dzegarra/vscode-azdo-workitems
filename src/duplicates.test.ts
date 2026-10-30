@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { duplicateFilterValue, duplicateLinks, iterationLabel } from './duplicates';
+import { duplicateFilterValue, duplicateLinks, iterationLabel, timelineDuplicates } from './duplicates';
 
 const schedule = [{ path: 'Flow\\R3\\Platform Sprint 122', name: 'Platform Sprint 122' }];
 
@@ -45,5 +45,22 @@ describe('duplicateFilterValue', () => {
     expect(duplicateFilterValue({ duplicateOf: [{}] })).toBe('Duplicates');
     expect(duplicateFilterValue({ duplicateOf: [] })).toBeUndefined();
     expect(duplicateFilterValue({})).toBeUndefined();
+  });
+});
+
+describe('timelineDuplicates (Rule TIMELINE-47)', () => {
+  const link = (id: number) => ({ id, title: '', type: 'Bug', state: 'New', stateCategory: 'proposed' as const });
+
+  it('lists the originals and the duplicates, both directions, with their role', () => {
+    expect(timelineDuplicates({ duplicateOf: [link(1)], duplicates: [link(2), link(3)] })).toEqual([
+      { id: 1, role: 'original' },
+      { id: 2, role: 'duplicate' },
+      { id: 3, role: 'duplicate' },
+    ]);
+  });
+
+  it('says nothing when there are no links or they are unknown', () => {
+    expect(timelineDuplicates({})).toBeUndefined();
+    expect(timelineDuplicates({ duplicateOf: [], duplicates: [] })).toBeUndefined();
   });
 });

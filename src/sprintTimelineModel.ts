@@ -10,17 +10,19 @@ import { formatAge } from './myPullRequests';
 import type { HistoryRef } from './prHistoryCache';
 import type { ReviewRequestModel } from './reviewRequests';
 import { iterationDates } from './sprintTitle';
-import { AFTER_SPRINT_DAYS, axisPosition, buildAxis, type TimelineDay } from './timelineAxis';
+import { AFTER_SPRINT_DAYS, axisPosition, buildAxis, daysBeforeStart, type TimelineDay } from './timelineAxis';
 import { historyRow, withMembership } from './pastSprints';
 import { arrangeRows, DEFAULT_VIEW_OPTIONS, inItemOrder } from './timelineView';
 import { reviewedRows, reviewedThreadsWanted } from './reviewedTimeline';
-import { rowsOfCards, type RowContext } from './timelineRows';
+import { earliestPullRequestStart, rowsOfCards, type RowContext } from './timelineRows';
 import { dayText, toSegment } from './timelineSpans';
 import type { SegmentKind, TimelineInput, TimelineModel, TimelineRow, TimelineSegment } from './timelineTypes';
 import type { BoardModel } from './trackBoardModel';
 import { addWorkingMs } from './workingTime';
+import { asleepIdsOf, countLoading } from './timelineFooter';
+import { normalizeZoom, normalizeZoomModifier } from './timelineZoom';
 
-export { AFTER_SPRINT_DAYS, axisPosition, buildAxis, type TimelineDay } from './timelineAxis';
+export { AFTER_SPRINT_DAYS, axisPosition, buildAxis, daysBeforeStart, type TimelineDay } from './timelineAxis';
 export * from './timelineTypes';
 export type { TimelineDensity } from './timelineDensity';
 export { withAsleep, needsYouSince, readySince, type Span } from './timelineSpans';
@@ -217,13 +219,48 @@ function headerOf(input: TimelineInput, board: BoardModel): TimelineModel['heade
   };
 }
 
-/** The working days of the axis: the sprint, then the margin after it (Rules TIMELINE-2, TIMELINE-31) */
-export function axisOf(input: TimelineInput): { days: TimelineDay[]; sprintEnd: number } {
+/**
+ * The working days of the axis: the margin before the sprint (as many days as the PRs that start before it need, at most
+ * `daysBeforeSprint`, from `earliestStart`), the sprint, then the margin after it (Rules TIMELINE-2, TIMELINE-31).
+ * `sprintStart` is the index of the first day of the sprint, `sprintEnd` that of the first day after it
+ */
+export function axisOf(input: TimelineInput): { days: TimelineDay[]; sprintStart: number; sprintEnd: number } {
   const start = input.sprint?.startDate?.slice(0, 10);
   const finish = input.sprint?.finishDate?.slice(0, 10);
-  const days = start && finish ? buildAxis(start, finish, input.workingDays, input.now, AFTER_SPRINT_DAYS) : [];
+  const before = start
+    ? daysBeforeStart(start, input.earliestStart, input.workingDays, input.daysBeforeSprint ?? 0)
+    : 0;
+  const days = start && finish ? buildAxis(start, finish, input.workingDays, input.now, AFTER_SPRINT_DAYS, before) : [];
   const last = days.findIndex((day) => day.after);
-  return { days, sprintEnd: last < 0 ? days.length : last };
+  return { days, sprintStart: before, sprintEnd: last < 0 ? days.length : last };
+}
+
+// Rule TIMELINE-2
+/**
+ * The input with the earliest start of the drawn PRs of the user, measured on the axis of the sprint alone (the team
+ * timeline adds the PRs of the people chosen first, so this keeps what it set). Nothing to measure when no days before
+ * the sprint are wanted
+ */
+export function withEarliestStart(input: TimelineInput): TimelineInput {
+  if (input.earliestStart !== undefined || !(input.daysBeforeSprint && input.daysBeforeSprint > 0)) {
+    return input;
+  }
+  const { days } = axisOf(input);
+  if (!days.length) {
+    return input;
+  }
+  const context: RowContext = {
+    input,
+    days,
+    axisStart: days[0].startMs,
+    now: input.now.getTime(),
+    firstCommitsWanted: new Set(),
+  };
+  const earliest = earliestPullRequestStart(
+    input.board.work.filter((card) => card.merged === undefined),
+    context
+  );
+  return earliest === undefined ? input : { ...input, earliestStart: earliest };
 }
 
 // Rule TIMELINE-31
@@ -267,10 +304,11 @@ export function withAfterSprint(row: TimelineRow, sprintEnd: number): TimelineRo
 }
 
 // Rules TIMELINE-1, TIMELINE-13, TIMELINE-16, TIMELINE-19, TIMELINE-31, TIMELINE-32
-export function buildSprintTimeline(input: TimelineInput): TimelineModel {
+export function buildSprintTimeline(given: TimelineInput): TimelineModel {
+  const input = withEarliestStart(given);
   const now = input.now.getTime();
   const { board } = input;
-  const { days, sprintEnd } = axisOf(input);
+  const { days, sprintStart, sprintEnd } = axisOf(input);
   const base = {
     status: board.status,
     error: board.error,
@@ -280,12 +318,16 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
     header: headerOf(input, board),
     look: board.look,
     scope: input.scope ?? 'mine',
+    zoom: normalizeZoom(input.zoom),
+    zoomModifier: normalizeZoomModifier(input.zoomModifier),
+    asleep: asleepIdsOf(board.work),
     reviewsTitle: `REVIEWS YOU OWE · ${String(input.maxWaitHours)} WORKING HOURS FROM PUBLISH`,
   };
   if (!days.length) {
     return {
       ...base,
       days: [],
+      sprintStart: 0,
       sprintEnd: 0,
       over: false,
       options: input.view ?? DEFAULT_VIEW_OPTIONS,
@@ -298,6 +340,7 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
       firstCommitsWanted: [],
       statesWanted: [],
       commitsWanted: [],
+      statesLoading: 0,
       develop: { branch: input.base.branch, spans: [], merges: [], culprits: [] },
       notes: ['The dates of the sprint are not known, so there is no axis to draw'],
     };
@@ -307,6 +350,7 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
     input,
     days,
     axisStart,
+    sprintStart: (days.at(sprintStart) ?? days[0]).startMs,
     now,
     firstCommitsWanted: new Set(),
     statesWanted: new Map(),
@@ -329,14 +373,16 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
     withMembership(after(row), membership?.get(row.id), (ms) => axisPosition(ms, days));
   return {
     ...base,
-    days: days.map(({ after: isAfter, date, label, last, today, weekStart }) => ({
+    days: days.map(({ after: isAfter, before, date, label, last, today, weekStart }) => ({
       after: isAfter,
+      before,
       date,
       label,
       last,
       today,
       weekStart,
     })),
+    sprintStart,
     sprintEnd,
     now: shownNow,
     over: shownNow !== undefined && shownNow > sprintEnd,
@@ -362,6 +408,10 @@ export function buildSprintTimeline(input: TimelineInput): TimelineModel {
     firstCommitsWanted: [...context.firstCommitsWanted],
     statesWanted: [...(context.statesWanted ?? [])].map(([id, key]) => ({ id, key })),
     commitsWanted: [...(context.commitsWanted ?? [])].map(([id, wanted]) => ({ id, ...wanted })),
+    statesLoading: countLoading(
+      [...(context.statesWanted ?? [])].map(([id]) => ({ id })),
+      input.statesLoading
+    ),
     develop: developOf(input, days, now),
     notes: board.notes,
   };

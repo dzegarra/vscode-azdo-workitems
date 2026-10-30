@@ -51,10 +51,17 @@ describe('bars of a lane (TIMELINE-30)', () => {
     ]);
   });
 
-  it('keeps the zZ span and bars that are wide enough, and does not join a dashed bar to a solid one', () => {
+  it('keeps the zZ part apart from the bar before it, and does not join a dashed bar to a solid one', () => {
     expect(
-      mergeSegments([seg('review', 0, 2), seg('asleep', 2, 2.01), seg('asleep', 2.01, 4)]).map((bar) => bar.kind)
-    ).toEqual(['review', 'asleep']);
+      mergeSegments([
+        seg('review', 0, 2),
+        seg('review', 2, 2.01, { asleep: true }),
+        seg('review', 2.01, 4, { asleep: true }),
+      ]).map((bar) => [bar.start, bar.end, bar.asleep ?? false])
+    ).toEqual([
+      [0, 2, false],
+      [2, 4, true],
+    ]);
     expect(mergeSegments([seg('branch', 0, 1), seg('branch', 1, 2, { dashed: true })])).toHaveLength(2);
   });
 });

@@ -1678,6 +1678,15 @@
             "scope": "application",
             "order": 11
           },
+          "totalflowx.appearance.timelineDaysBeforeSprint": {
+            "type": "number",
+            "default": 1,
+            "minimum": 0,
+            "maximum": 10,
+            "markdownDescription": "**Sprint timeline**: the most working days drawn **before the sprint**, hatched and marked *BEFORE THE SPRINT*, so the PRs that started earlier are not cut at the first day. It is a maximum used as needed: the axis starts at the earliest start of a drawn PR, never more than this many working days before the sprint, and nothing is added when no PR started before it. `0`: never.",
+            "scope": "application",
+            "order": 12
+          },
           "totalflowx.appearance.timelineDensityMine": {
             "type": "string",
             "enum": [
@@ -1691,7 +1700,7 @@
             "default": "normal",
             "markdownDescription": "Row style of the **Sprint timeline** in **Mine + my reviews**. The **Normal | Compact** switch in the header of the timeline changes it.",
             "scope": "application",
-            "order": 12
+            "order": 13
           },
           "totalflowx.appearance.timelineDensityTeam": {
             "type": "string",
@@ -1706,42 +1715,70 @@
             "default": "compact",
             "markdownDescription": "Row style of the **Sprint timeline** in **Whole team**. The **Normal | Compact** switch in the header of the timeline changes it.",
             "scope": "application",
-            "order": 13
+            "order": 14
           },
           "totalflowx.appearance.timelineShowReviewed": {
             "type": "boolean",
             "default": true,
             "markdownDescription": "**Sprint timeline**: show **REVIEWED BY YOU**, the PRs of others you already voted on. A switch of **View options** (the last icon of its header) changes it.",
             "scope": "application",
-            "order": 14
+            "order": 15
           },
           "totalflowx.appearance.timelineGroupDone": {
             "type": "boolean",
             "default": true,
             "markdownDescription": "**Sprint timeline**: the completed work items are grouped at the end, in **DONE THIS SPRINT**; off, each stays in its place among the open ones. A switch of **View options** changes it.",
             "scope": "application",
-            "order": 15
+            "order": 16
           },
           "totalflowx.appearance.timelineGroupMovedOut": {
             "type": "boolean",
             "default": true,
             "markdownDescription": "**Sprint timeline**, past sprints: the work items that left the sprint before it ended are grouped at the end, in **MOVED OUT DURING THE SPRINT**; off, each stays in its place among the others. A switch of **View options** changes it.",
             "scope": "application",
-            "order": 16
+            "order": 17
           },
           "totalflowx.appearance.timelineShowDevelop": {
             "type": "boolean",
             "default": true,
             "markdownDescription": "**Sprint timeline**: show the bar of the protected branch (`totalflowx.baseBranch`, e.g. develop) under the work. A switch of **View options** changes it.",
             "scope": "application",
-            "order": 17
+            "order": 18
+          },
+          "totalflowx.appearance.timelineAlwaysShowPrEvents": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "**Sprint timeline**, **PR events always visible**: load the commits, pushes, CI runs and reviews of the PR rows on screen without hovering them (only the rows drawn and visible, once per PR) and show all their marks at rest. A switch of **View options** changes it. Off, a PR row reads them on its first hover and shows them while hovered.",
+            "scope": "application",
+            "order": 20
+          },
+          "totalflowx.appearance.timelineZoom": {
+            "type": "number",
+            "default": 100,
+            "minimum": 50,
+            "maximum": 1000,
+            "markdownDescription": "**Sprint timeline**: the horizontal zoom, in percent of the default width of a day (50 to 1000). The rows keep their height; a zoomed timeline scrolls sideways with the labels fixed. The `−` `+` and reset buttons of the header and the **mouse wheel with the key of `#totalflowx.appearance.timelineZoomModifier#`** change it (the same for Mine and Whole team).",
+            "scope": "application",
+            "order": 21
+          },
+          "totalflowx.appearance.timelineZoomModifier": {
+            "type": "string",
+            "enum": ["ctrl", "shift"],
+            "enumDescriptions": [
+              "Ctrl + mouse wheel zooms the Sprint timeline",
+              "Shift + mouse wheel zooms the Sprint timeline"
+            ],
+            "default": "ctrl",
+            "markdownDescription": "**Sprint timeline**: the key to hold with the mouse wheel to zoom. The wheel without it scrolls as usual.",
+            "scope": "application",
+            "order": 22
           },
           "totalflowx.appearance.timelineDimCompleted": {
             "type": "boolean",
             "default": true,
             "markdownDescription": "**Sprint timeline**: dim the rows of the completed work items, merged PRs, done tasks and the PRs you reviewed. Off, they look like the others (the work items moved out of a past sprint stay dimmed).",
             "scope": "application",
-            "order": 18
+            "order": 19
           }
         }
       },

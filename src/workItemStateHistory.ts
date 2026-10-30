@@ -3,11 +3,13 @@
  * its updates (`wit/workItems/{id}/updates`, one request per work item, kept by its revision), or guessed from the
  * dates the work item already carries until they arrive. Pure, so no "vscode" import
  */
-import { stateCategory } from './states';
+import { normalizeState, stateCategory } from './states';
 
 /** One update of a work item as the API gives it: only what the timeline reads */
 export interface WorkItemUpdate {
   rev?: number;
+  /** Who made the update */
+  revisedBy?: { displayName?: string };
   fields?: Record<string, { oldValue?: unknown; newValue?: unknown } | undefined>;
 }
 
@@ -15,9 +17,11 @@ export interface WorkItemUpdate {
 export interface StateChange {
   at: number;
   state: string;
+  /** Who changed it (`System.ChangedBy` of the update), when the update says */
+  by?: string;
 }
 
-export type StateKind = 'approved' | 'committed' | 'done' | 'inReview' | 'new' | 'reopened';
+export type StateKind = 'approved' | 'committed' | 'done' | 'inReview' | 'new' | 'readyToTest' | 'removed' | 'reopened';
 
 /** A state over time; `approximate`: guessed from the dates of the work item (its history is not read yet) */
 export interface StateSpan {
@@ -36,23 +40,58 @@ const at = (value: unknown): number | undefined => {
   return Number.isNaN(ms) ? undefined : ms;
 };
 
+/** The name of an identity field (`{ displayName }` in the updates, or a plain string) */
+const personName = (value: unknown): string | undefined => {
+  if (typeof value === 'string') {
+    return value || undefined;
+  }
+  if (value && typeof value === 'object' && 'displayName' in value && typeof value.displayName === 'string') {
+    return value.displayName || undefined;
+  }
+  return undefined;
+};
+
 // Rule TIMELINE-35
 /**
  * The changes of state of a work item, oldest first, from its updates: each update that sets `System.State` (the
- * first one creates the work item in its first state), at its `System.ChangedDate`
+ * first one creates the work item in its first state), at its `System.ChangedDate`, by `System.ChangedBy` (or the
+ * reviser of the update)
  */
 export function stateChanges(updates: readonly WorkItemUpdate[]): StateChange[] {
   return updates.flatMap((update) => {
     const state = update.fields?.['System.State']?.newValue;
     const when = at(update.fields?.['System.ChangedDate']?.newValue);
-    return typeof state === 'string' && when !== undefined ? [{ at: when, state }] : [];
+    if (typeof state !== 'string' || when === undefined) {
+      return [];
+    }
+    const by = personName(update.fields?.['System.ChangedBy']?.newValue) ?? personName(update.revisedBy);
+    return [{ at: when, state, ...(by ? { by } : {}) }];
   });
 }
 
+/** Ready to Test: done for the developer, but the testers can still reopen it, so it is not a final state */
+const isReadyToTest = (state: string): boolean => normalizeState(state) === 'readytotest';
+
 // Rule TIMELINE-35
-/** The kind of a state: its colour on the row. Ready to Test is the finish line of a Bug: drawn as Done */
+/**
+ * The final states: Done, Closed… (`done`) and Removed (`removed`), drawn as a point badge when they end the history.
+ * Ready to Test is not one (it stays a bar)
+ */
+export function finalKind(state: string): 'done' | 'removed' | undefined {
+  if (isReadyToTest(state)) {
+    return undefined;
+  }
+  const category = stateCategory(state);
+  return category === 'done' || category === 'removed' ? category : undefined;
+}
+
+// Rule TIMELINE-35
+/** The kind of a state: its colour on the row. Ready to Test is a bar of its own colour (a Bug can come back from it) */
 export function stateKind(state: string): StateKind {
   const name = state.toLowerCase();
+  if (isReadyToTest(state)) {
+    return 'readyToTest';
+  }
   if (name === 'new') {
     return 'new';
   }
@@ -64,8 +103,9 @@ export function stateKind(state: string): StateKind {
   }
   switch (stateCategory(state)) {
     case 'done':
-    case 'removed':
       return 'done';
+    case 'removed':
+      return 'removed';
     case 'proposed':
       return 'approved';
     case 'in-progress':
@@ -107,21 +147,23 @@ function withInReview(spans: StateSpan[], published: number | undefined): StateS
 // Rules TIMELINE-35, TIMELINE-36
 /**
  * The states of the work item over time, oldest first: each state from its change to the next one; the last one up
- * to now, or, for a finished work item, a mark (the span ends where it finished). In review is approximated in the
+ * to now, or, for a work item in a final state (Done, Closed, Removed), a badge at the change (the span ends where it
+ * finished; a Done period that was left, ReOpened, stays a bar). Ready to Test is a bar up to now. In review is approximated in the
  * past by the publication of the first PR while Committed (it is derived from the tasks now, STATE-10). Without the
  * history: the state now since its last change (`StateChangeDate`, exact), and before it Committed from the activation
  * (approximate)
  */
 export function stateSpans(input: StateSpanInput): StateSpan[] {
   const { now } = input;
-  const finished = stateCategory(input.state) === 'done' || stateCategory(input.state) === 'removed';
+  const finished = finalKind(input.state) !== undefined;
   let spans: StateSpan[];
   if (input.changes?.length) {
     const changes = [...input.changes].sort((a, b) => a.at - b.at);
     spans = changes.flatMap((change, index) => {
       const next = changes.at(index + 1);
       const kind = stateKind(change.state);
-      if (!next && (kind === 'done' || finished)) {
+      // Rule TIMELINE-35: the final state is a badge at its change, not a section
+      if (!next && finalKind(change.state) !== undefined) {
         return [];
       }
       const end = next?.at ?? now;
@@ -151,11 +193,22 @@ export function stateSpans(input: StateSpanInput): StateSpan[] {
   return withInReview(spans, input.firstPublished);
 }
 
-/** Where a work item finished: its last change to a finished state (from the history), else `StateChangeDate` */
-export function finishedAt(input: Pick<StateSpanInput, 'changes' | 'dates' | 'state'>): number | undefined {
+/** The change that finished the work item (Done, Ready to Test, Removed…): when and, if read, by whom */
+export function finishedChange(
+  input: Pick<StateSpanInput, 'changes' | 'dates' | 'state'>
+): { at: number; by?: string } | undefined {
   if (!['done', 'removed'].includes(stateCategory(input.state))) {
     return undefined;
   }
   const last = input.changes?.length ? [...input.changes].sort((a, b) => a.at - b.at).at(-1) : undefined;
-  return last?.at ?? at(input.dates?.stateChanged);
+  if (last) {
+    return { at: last.at, ...(last.by ? { by: last.by } : {}) };
+  }
+  const changed = at(input.dates?.stateChanged);
+  return changed === undefined ? undefined : { at: changed };
+}
+
+/** Where a work item finished: its last change to a finished state (from the history), else `StateChangeDate` */
+export function finishedAt(input: Pick<StateSpanInput, 'changes' | 'dates' | 'state'>): number | undefined {
+  return finishedChange(input)?.at;
 }

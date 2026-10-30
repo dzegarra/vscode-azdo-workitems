@@ -65,6 +65,23 @@ export function duplicateLinks(
   };
 }
 
+/** A work item linked to a row by the Duplicate link (Rule TIMELINE-47) */
+export interface TimelineDuplicate {
+  id: number;
+  /** "original": the row's work item is a duplicate of this one; "duplicate": this one duplicates the row's work item */
+  role: 'duplicate' | 'original';
+}
+
+// Rule TIMELINE-47
+/** The work items linked to this one by the Duplicate link, both directions. Undefined when there are none or they are unknown */
+export function timelineDuplicates(item: DuplicateLinks): TimelineDuplicate[] | undefined {
+  const links: TimelineDuplicate[] = [
+    ...(item.duplicateOf ?? []).map((link) => ({ id: link.id, role: 'original' as const })),
+    ...(item.duplicates ?? []).map((link) => ({ id: link.id, role: 'duplicate' as const })),
+  ];
+  return links.length ? links : undefined;
+}
+
 /** Value of the "Duplicates" filter chip */
 export const DUPLICATES = 'Duplicates';
 

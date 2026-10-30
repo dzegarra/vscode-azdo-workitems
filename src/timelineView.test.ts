@@ -45,6 +45,12 @@ describe('the view options (Rules TIMELINE-45, TIMELINE-46)', () => {
     });
   });
 
+  it('shows the PR events only on hover by default (Rule TIMELINE-45)', () => {
+    expect(DEFAULT_VIEW_OPTIONS.alwaysShowPrEvents).toBe(false);
+    expect(normalizeViewOptions({ alwaysShowPrEvents: true }).alwaysShowPrEvents).toBe(true);
+    expect(isTimelineViewSwitch('alwaysShowPrEvents')).toBe(true);
+  });
+
   it('accepts only the switches of the panel from the webview', () => {
     expect(isTimelineViewSwitch('groupDone')).toBe(true);
     expect(isTimelineViewSwitch('dimCompleted')).toBe(false);

@@ -177,6 +177,15 @@ describe('buildWholeTeamTimeline', () => {
   });
 });
 
+describe('people not read yet (TIMELINE-50)', () => {
+  it('lists the people chosen as pending while the team loads, and none once it is ready', () => {
+    const snap = snapshot({ items: [] });
+    const loading = build(snap, { status: 'loading', people: [] });
+    expect(loading.team?.pending).toEqual([expect.objectContaining({ key: 'ana', name: 'Ana Ruiz' })]);
+    expect(build(snap).team?.pending).toEqual([]);
+  });
+});
+
 describe('sectionSummary', () => {
   const facts = {
     you: false,

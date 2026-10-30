@@ -16,7 +16,7 @@ export const MARK_MERGE_DAYS = 0.03;
 export const BURST_DAYS = 10 / (24 * 60);
 
 const sameBar = (a: TimelineSegment, b: TimelineSegment): boolean =>
-  a.kind === b.kind && a.end >= b.start && a.dashed === b.dashed;
+  a.kind === b.kind && a.end >= b.start && a.dashed === b.dashed && a.asleep === b.asleep;
 
 // Rule TIMELINE-30
 /**
@@ -38,7 +38,7 @@ export function mergeSegments(segments: readonly TimelineSegment[], minDays = MI
     const isLast = index === segments.length - 1;
     if (last && sameBar(last, segment)) {
       join(last, segment, false);
-    } else if (last && !isLast && segment.end - segment.start < minDays && segment.kind !== 'asleep') {
+    } else if (last && !isLast && segment.end - segment.start < minDays && !segment.asleep) {
       join(last, segment, true);
     } else {
       out.push({ ...segment });

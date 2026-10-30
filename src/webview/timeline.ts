@@ -40,7 +40,26 @@ import {
   startPeoplePicker,
 } from './peoplePicker';
 import { renderSprintTeams } from './sprintTeams';
+import type { TimelineDuplicate } from '../duplicates';
 import { isTimelineViewSwitch, type TimelineViewSwitch } from '../timelineView';
+import { asleepKnown, loadingText, workItemsLoading } from '../timelineFooter';
+import {
+  canZoomOut,
+  dayMinWidth,
+  DEFAULT_ZOOM,
+  drawnDayWidth,
+  easeOut,
+  fitZoom,
+  isZoomWheel,
+  MAX_ZOOM,
+  nextZoomIn,
+  nextZoomOut,
+  scrollAfterZoom,
+  wheelZoom,
+  zoomKeyName,
+  ZOOM_SAVE_DELAY_MS,
+  ZOOM_TRANSITION_MS,
+} from '../timelineZoom';
 
 interface VsCodeApi {
   postMessage(message: TimelineMessage): void;
@@ -69,6 +88,25 @@ let optionsOpen = false;
 let dimCompleted = true;
 /** Rule TIMELINE-40: the menu of sprints on the title is open */
 let sprintMenuOpen = false;
+/** Rule TIMELINE-48: the zoom drawn (percent of the width of a day): applied at once, saved after a pause */
+let zoom = DEFAULT_ZOOM;
+/** Rule TIMELINE-49: the zoom at which the whole axis fits the lanes (measured after drawing and on resize) */
+let fit = 0;
+/** Rule TIMELINE-49: the day width (px) drawn while the transition of a zoom button runs; undefined otherwise */
+let dayWidthShown: number | undefined;
+let zoomFrame: number | undefined;
+let zoomTimer: number | undefined;
+/** The width under which a bar is drawn wider than its days: its padding and its text need room (media/timeline.css) */
+const MIN_BAR_PX = 16;
+/** Rule TIMELINE-49: a zoom animation (and the re-layout after it) is running: the zoom buttons are disabled */
+let zoomBusy = false;
+/** Rule TIMELINE-48: the zoom last written to the setting, and the one the last model carried (to tell a change made elsewhere) */
+let lastPostedZoom: number | undefined;
+let lastModelZoom: number | undefined;
+/** Rule TIMELINE-49: the zoom wheel is gathered here and applied once per frame */
+let wheelDelta = 0;
+let wheelX = 0;
+let wheelFrame: number | undefined;
 
 function savedState(): Record<string, unknown> {
   const state = vscode.getState();
@@ -104,9 +142,11 @@ function renderSegment(segment: TimelineSegment, popoverKey?: string): string {
     classes.push('after');
   }
   const attrs = popoverKey ? ` data-popover="${popoverKey}" tabindex="0" role="button"` : '';
+  // Rule TIMELINE-8: no update: the text of the bar ends with a bold orange zZ (the bar keeps the colour of its state)
+  const zz = segment.asleep ? `${segment.text ? ' · ' : ''}<b class="tl-zz">zZ</b>` : '';
   return `<span class="${classes.join(' ')}" data-from="${String(segment.start)}" data-to="${String(
     segment.end
-  )}" title="${escapeHtml(segment.tip)}"${attrs}>${escapeHtml(segment.text ?? '')}</span>`;
+  )}" title="${escapeHtml(segment.tip)}"${attrs}>${escapeHtml(segment.text ?? '')}${zz}</span>`;
 }
 
 const tagHtml = (tag: NonNullable<RowLabel['tag']>): string =>
@@ -148,7 +188,9 @@ function markerHtml(marker: TimelineMarker, positioned: boolean): string {
 function renderLabel(row: TimelineRow, expanded: boolean): string {
   const label = row.label;
   const open = `data-msg="${named(row.open)}" title="Open #${String(row.id)}"`;
-  const here = row.here ? '<span class="tl-here">● here</span>' : '';
+  const here = row.here
+    ? '<span class="tl-here" title="Its branch is checked out in this window" aria-label="Its branch is checked out in this window">● here</span>'
+    : '';
   const chevron = row.expandable ? `<span class="tl-chev" aria-hidden="true">${expanded ? '▾' : '▸'}</span>` : '';
   const toggle = row.expandable
     ? ` data-row="${String(row.id)}" tabindex="0" role="button" aria-expanded="${String(expanded)}" aria-label="${
@@ -273,7 +315,7 @@ function renderRow(row: TimelineRow): string {
     classes.push('loading');
   }
   const segments = row.segments
-    .map((segment) => renderSegment(segment, segment.kind === 'asleep' ? popoverKey : undefined))
+    .map((segment) => renderSegment(segment, segment.asleep ? popoverKey : undefined))
     .join('');
   const chip =
     row.chip && row.segments.at(0) && row.segments[0].start > 1.3
@@ -287,8 +329,16 @@ function renderRow(row: TimelineRow): string {
   } else if (row.note) {
     note = `<span class="tl-note tone-${row.note.tone}">${escapeHtml(row.note.text)}</span>`;
   }
+  // Rule TIMELINE-35: the badge of a final state at the moment it changed; what the row says follows it
+  const finish = row.finish
+    ? `<span class="tl-fin fin-${row.finish.kind}" data-from="${String(row.finish.at)}" title="${escapeHtml(
+        row.finish.tip
+      )}" tabindex="0" role="img" aria-label="${escapeHtml(row.finish.tip)}">${escapeHtml(row.finish.text)}</span>`
+    : '';
   const merged = row.merged
-    ? `<span class="tl-note tone-merged" data-from="${String(row.merged.at)}">${escapeHtml(row.merged.text)}</span>`
+    ? `<span class="tl-note tone-merged${row.finish ? ' badged' : ''}${
+        row.merged.almostDone ? ' almost-done' : ''
+      }" data-from="${String(row.merged.at)}">${escapeHtml(row.merged.text)}</span>`
     : '';
   // Rule TIMELINE-37: the user's vote on a PR they reviewed
   const vote = row.vote
@@ -297,7 +347,7 @@ function renderRow(row: TimelineRow): string {
   const action = row.action
     ? actionButton(row.action, row.segments.some((segment) => segment.kind === 'needsYou') ? 'needsYou' : 'plain')
     : '';
-  const rowAttrs = row.expandable ? ` data-row="${String(row.id)}"` : '';
+  const rowAttrs = row.expandable ? ` data-row="${String(row.id)}" data-wi="${String(row.id)}"` : '';
   let lane: string;
   if (row.outline) {
     // Rule TIMELINE-9: the outline and its button share the lane (the outline gives way), so nothing overflows it
@@ -307,7 +357,7 @@ function renderRow(row: TimelineRow): string {
     lane = `${chip}<div class="tl-fill">${outline}${action}</div>`;
   } else {
     const after = note || action ? `<span class="tl-after" data-from="${String(row.end)}">${note}${action}</span>` : '';
-    lane = `${chip}${segments}${vote}${merged}${after}`;
+    lane = `${chip}${segments}${vote}${finish}${merged}${after}`;
   }
   const children =
     expanded && row.children
@@ -364,7 +414,7 @@ function section(title: string, body: string, note?: string, sub = false, hint?:
 // Rule TIMELINE-34
 /**
  * The legend, behind the Legend button of the header: work item rows, then PR rows (phases, what the hover shows, the
- * problems), then reviews and develop
+ * problems), then reviews
  */
 function renderLegend(team: boolean): string {
   const item = (cls: string, label: string): string =>
@@ -373,36 +423,31 @@ function renderLegend(team: boolean): string {
     `<span class="tl-key"><span class="tl-mk static mk-${marker.kind}${
       marker.tone ? ` mk-${marker.tone}` : ''
     }">${escapeHtml(marker.text)}</span>${label}</span>`;
+  // Rule TIMELINE-35: the badge of a final state
+  const badge = (kind: 'done' | 'removed', text: string, label: string): string =>
+    `<span class="tl-key"><span class="tl-fin static fin-${kind}">${text}</span>${label}</span>`;
   const group = (title: string, lines: string[]): string =>
     `<div class="tl-legend-group"><span class="tl-legend-title">${title}</span>${lines
       .map((line) => `<div class="tl-legend-line">${line}</div>`)
       .join('')}</div>`;
-  // Rule TIMELINE-15: the key to the first line of a label
-  const key = `<span class="tl-key tl-tagkey" aria-label="What the first line of a label says">${tagHtml({
-    text: 'PBI',
-    tone: 'pbi',
-  })}${tagHtml({ text: 'BUG', tone: 'bug' })}work item title${pillHtml({ text: 'PR …' })}PR title${tagHtml({
-    text: 'Task',
-    tone: 'task',
-  })}task title</span>`;
   // Rule TIMELINE-35: the work item rows draw states
   const workItems = group('WORK ITEM ROWS', [
     `${item('stateNew', 'New')}${item('stateApproved', 'Approved')}${item('stateCommitted', 'Committed')}${item(
       'stateInReview',
       'In review (from the first PR published)'
-    )}${item('stateDone', 'Done · Ready to Test')}${item('stateReopened', 'ReOpened')}`,
-    `${item('asleep', 'no update (zZ)')}<span class="tl-key">✓ Done</span><span class="tl-key dep">⛓ dependency</span>`,
-    key,
+    )}${item('stateReadyToTest', 'Ready to Test (Bug) · almost done')}${item('stateReopened', 'ReOpened')}`,
+    `${badge('done', '✓', 'Done / Closed, at the moment it changed')}${badge(
+      'removed',
+      '✕',
+      'Removed'
+    )}<span class="tl-key"><b class="tl-zz">zZ</b> in a segment's text: no update for days</span><span class="tl-key dep">⛓ dependency</span>`,
   ]);
   const pullRequests = group('PR ROWS', [
     `${item('taskToDo', 'task to do')}${item('implementation', 'Implementation · task in progress')}${item(
       'draft',
       'Draft'
     )}${item('review', 'Review')}${item('ready', 'Ready to merge')}<span class="tl-key">✓ Merged</span>`,
-    `<span class="tl-legend-sub">on hover</span>${sample(
-      { kind: 'commit', text: '', tone: undefined },
-      'commit'
-    )}<span class="tl-key"><span class="tl-mk static mk-commit many"></span><span class="tl-mk static mk-comments many"></span>several within minutes</span>${sample(
+    `${sample({ kind: 'commit', text: '', tone: undefined }, 'commit')}${sample(
       { kind: 'push', text: '', tone: undefined },
       'push'
     )}${sample({ kind: 'ci', text: '✓', tone: 'pass' }, 'CI run')}${sample(
@@ -418,16 +463,15 @@ function renderLegend(team: boolean): string {
       { kind: 'comments', text: '', tone: undefined },
       'comment'
     )}`,
-    `<span class="tl-legend-sub">always</span>${sample(
-      { kind: 'ci', text: '✕', tone: 'fail' },
-      'latest CI run failed'
-    )}${sample({ kind: 'conflicts', text: '⚠', tone: undefined }, 'conflicts now')}`,
+    `${sample({ kind: 'ci', text: '✕', tone: 'fail' }, 'latest CI run failed')}${sample(
+      { kind: 'conflicts', text: '⚠', tone: undefined },
+      'conflicts now'
+    )}`,
   ]);
-  const reviews = group('REVIEWS · DEVELOP', [
+  const reviews = group('REVIEWS', [
     `${item('wait', 'waiting for your review')}${item('dueSoon', 'due soon')}${item('overdue', 'overdue')}${
       team ? item('overdue', 'review overdue (others)') : ''
     }`,
-    `<span class="tl-key"><span class="tl-swatch dev-green"></span>develop green</span><span class="tl-key"><span class="tl-swatch dev-red"></span>develop broken</span>`,
   ]);
   return `<div class="tl-legend" id="tl-legend" role="dialog" aria-label="Legend">${workItems}${pullRequests}${reviews}</div>`;
 }
@@ -496,24 +540,45 @@ function renderViewOptions(current: TimelineModel): string {
     )}</span></span><span class="tl-switch-track" aria-hidden="true"><span class="tl-switch-knob"></span></span></button>`;
   return `<div class="tl-legend tl-options" id="tl-options" role="dialog" aria-label="View options"><h2>VIEW OPTIONS · MINE AND WHOLE TEAM</h2>${option(
     'showReviewed',
-    'Show "REVIEWED BY YOU"',
+    'Display your PRs to review',
     'The PRs of others you already voted on, under the reviews you owe'
   )}${option(
     'groupDone',
-    'Group the completed work items at the end',
+    'Group completed Work Items',
     'In "DONE THIS SPRINT". Off: each in its place among the open ones'
   )}${option(
     'groupMovedOut',
-    'Group the work items moved out at the end',
+    'Group re-scheduled Work Items',
     'Past sprints: in "MOVED OUT DURING THE SPRINT". Off: each in its place among the others, still faded, with its → pill'
   )}${option(
     'showDevelop',
-    `Show the ${current.develop.branch} bar`,
+    `Display the status of the "${current.develop.branch}" branch`,
     'The runs of the protected branch under the work'
+  )}${option(
+    'alwaysShowPrEvents',
+    'PR events always visible',
+    'Show the commits, pushes, comments, CI runs and reviews on every PR row, without hovering it'
   )}<p class="tl-options-foot">Completed rows dimmed or not: <button class="tl-link" data-open-dim-setting>Dim completed rows</button> in Settings</p></div>`;
 }
 
+/** Rule TIMELINE-49: on macOS the "ctrl" modifier is Cmd too */
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
+
+// Rule TIMELINE-48
+/** One of the three zoom buttons of the header: an icon, named by its tooltip, disabled at its limit */
+function zoomButton(
+  id: 'in' | 'out' | 'reset',
+  text: string,
+  name: 'zoomIn' | 'zoomOut' | 'zoomReset',
+  off: boolean
+): string {
+  return `<button class="icon-only" data-zoom="${id}" aria-label="${text}" title="${text}"${
+    off ? ' disabled' : ''
+  }>${icon(name)}</button>`;
+}
+
 function renderHeader(current: TimelineModel): string {
+  const key = zoomKeyName(current.zoomModifier, IS_MAC);
   const left = current.header.left
     ? `<span class="bd-left${current.header.hurry ? ' hurry' : ''}">${escapeHtml(current.header.left)}</span>`
     : '';
@@ -539,6 +604,17 @@ function renderHeader(current: TimelineModel): string {
       'Normal rows',
       'rows'
     )}${density('compact', 'Compact rows', 'rowsCompact')}</div>
+    <div class="bd-segment tl-zoom" role="group" aria-label="Zoom of the timeline">${zoomButton(
+      'out',
+      `Zoom out (${key} + wheel)`,
+      'zoomOut',
+      zoomBusy || !canZoomOut(zoom, fit)
+    )}${zoomButton('in', `Zoom in (${key} + wheel)`, 'zoomIn', zoomBusy || zoom >= MAX_ZOOM)}${zoomButton(
+    'reset',
+    `Reset zoom (${String(DEFAULT_ZOOM)} %)`,
+    'zoomReset',
+    zoomBusy || zoom === DEFAULT_ZOOM
+  )}</div>
     <div class="tl-legend-anchor"><button class="tl-tool" data-legend aria-expanded="${String(
       legendOpen
     )}" aria-controls="tl-legend" aria-label="Legend" title="Legend">${icon('info')}</button>${
@@ -561,7 +637,9 @@ function renderDays(current: TimelineModel): string {
       (day) =>
         `<span title="${escapeHtml(day.date)}" class="tl-day${day.weekStart ? ' week' : ''}${
           day.today ? ' today' : ''
-        }${day.after ? ' after' : ''}">${escapeHtml(day.label)}${day.last ? ' · end' : ''}</span>`
+        }${day.after ? ' after' : ''}${day.before ? ' before' : ''}">${escapeHtml(day.label)}${
+          day.last ? ' · end' : ''
+        }</span>`
     )
     .join('');
 }
@@ -578,9 +656,7 @@ function renderPersonHeader(person: TimelineSection): string {
 
 /** The lines under the header while the data of the team is not there yet, or could not be read */
 function teamStatusHtml(team: TimelineTeam): string {
-  if (team.status === 'loading') {
-    return '<p class="message muted">Loading the work of the teams…</p>';
-  }
+  // Rule TIMELINE-50: the loading of the team is said by the footer and drawn as skeleton rows
   if (team.status === 'error') {
     return `<p class="message error">The work of the team could not be loaded: ${escapeHtml(
       team.error ?? 'error'
@@ -589,17 +665,109 @@ function teamStatusHtml(team: TimelineTeam): string {
   return team.noPeople ? `<p class="message muted bd-people-hint">${escapeHtml(EMPTY_PEOPLE_HINT)}</p>` : '';
 }
 
-/** Rule TIMELINE-25: what is asleep, and who owns the read-only rows */
-function renderFooter(team: TimelineTeam): string {
-  const asleep = team.asleep.length
-    ? team.asleep.map((entry) => `#${String(entry.id)} (${escapeHtml(entry.owner)})`).join(' · ')
-    : 'nothing: every item in progress was updated';
-  return `<footer class="tl-footer"><span class="tl-fkey">ASLEEP</span><span class="tl-fasleep">${asleep}</span><span class="tl-fnote">Rows of other people are read-only · click a row to see its PRs · hover a bar or a mark for its details</span></footer>`;
+// Rules TIMELINE-25, TIMELINE-50
+/** The footer of both views: what is loading (the only place that says it), what is asleep, and the note of the view */
+function renderFooter(current: TimelineModel): string {
+  const team = current.scope === 'team' ? current.team : undefined;
+  const text = loadingText(current);
+  const loading = text
+    ? `<span class="tl-fload" role="status" aria-live="polite"><span class="tl-spinner" aria-hidden="true"></span>${escapeHtml(
+        text
+      )}</span>`
+    : '';
+  // Rule TIMELINE-51: each id is a button that scrolls to its row and flashes it
+  const link = (id: number, text: string): string =>
+    `<button class="tl-link" data-flash-row="${String(id)}">${text}</button>`;
+  const entries = team
+    ? team.asleep.map((entry) => link(entry.id, `#${String(entry.id)} (${escapeHtml(entry.owner)})`))
+    : current.asleep.map((id) => link(id, `#${String(id)}`));
+  const asleep = !asleepKnown(current)
+    ? ''
+    : `<span class="tl-fkey">ASLEEP</span><span class="tl-fasleep">${
+        entries.length ? entries.join(' · ') : 'nothing: every item in progress was updated'
+      }</span>`;
+  const note = `${
+    team ? 'Rows of other people are read-only · ' : ''
+  }click a row to see its PRs · hover a bar or a mark for its details`;
+  return `<footer class="tl-footer">${loading}${asleep}<span class="tl-fnote">${note}</span></footer>`;
+}
+
+// Rule TIMELINE-50
+/** Grey bars at varied places of a lane (percent of its width), one pattern per skeleton row */
+const SKELETON_BARS: readonly (readonly (readonly [number, number])[])[] = [
+  [
+    [3, 22],
+    [28, 30],
+    [62, 18],
+  ],
+  [
+    [8, 40],
+    [52, 28],
+  ],
+  [
+    [0, 18],
+    [22, 16],
+    [44, 34],
+  ],
+  [
+    [14, 30],
+    [50, 20],
+    [74, 14],
+  ],
+  [
+    [5, 26],
+    [36, 44],
+  ],
+  [
+    [20, 18],
+    [42, 26],
+    [72, 20],
+  ],
+];
+
+// Rule TIMELINE-50
+/** Rows that stand where the data will appear: a label (two short pills and a longer line) and a few bars, shimmering */
+function skeletonRows(count: number, from = 0): string {
+  return Array.from({ length: count }, (_, index) => {
+    const at = from + index;
+    const bars = SKELETON_BARS[at % SKELETON_BARS.length]
+      .map(
+        ([left, width]) => `<i class="sk sk-bar" data-sk-left="${String(left)}" data-sk-width="${String(width)}"></i>`
+      )
+      .join('');
+    return `<div class="tl-row tl-skel" aria-hidden="true"><div class="tl-label plain"><span class="tl-skel-l1"><i class="sk sk-pill"></i><i class="sk sk-pill short"></i></span><i class="sk sk-line w${String(
+      at % 3
+    )}"></i></div><div class="tl-lane">${bars}</div></div>`;
+  }).join('');
+}
+
+// Rule TIMELINE-50
+/** The first load: the header and the axis at once (when the days are known) over skeleton rows, with no text */
+function renderSkeletonBody(current: TimelineModel): string {
+  return `<div class="tl-grid density-${
+    current.density
+  }"><div class="tl-row tl-row-days"><div class="tl-label plain"></div><div class="tl-days">${renderDays(
+    current
+  )}</div></div><div class="tl-body"><div class="tl-overlay" aria-hidden="true"></div>${skeletonRows(6)}</div></div>`;
+}
+
+/** Nothing drawn yet in any view */
+function noRows(current: TimelineModel): boolean {
+  const team = current.scope === 'team' ? current.team : undefined;
+  return (
+    !current.work.length &&
+    !current.finished.length &&
+    !current.movedOut.length &&
+    !current.reviews.length &&
+    !current.reviewed.length &&
+    (team?.sections.every((person) => !person.rows.length && !person.finished.length && !person.movedOut.length) ??
+      true)
+  );
 }
 
 function renderBody(current: TimelineModel): string {
-  if (current.status === 'loading' && (!current.days.length || current.sprintOffset > 0)) {
-    return '<p class="message muted">Loading the sprint…</p>';
+  if (current.status === 'loading' && noRows(current)) {
+    return renderSkeletonBody(current);
   }
   if (current.status === 'error') {
     return `<p class="message error">${escapeHtml(current.error ?? 'Could not load the work items')}</p>`;
@@ -609,11 +777,10 @@ function renderBody(current: TimelineModel): string {
   }
   const team = current.scope === 'team' ? current.team : undefined;
   const youSection = team?.sections.find((person) => person.you);
-  const work = current.work.length
-    ? current.work.map(renderRow).join('')
-    : `<p class="tl-empty-row">${
-        current.finished.length ? 'No open work item' : 'None of your work items is in the sprint'
-      }</p>`;
+  // Rule TIMELINE-50: work items still being read: skeleton rows, never the "none" message
+  const noWork = current.finished.length ? 'No open work item' : 'None of your work items is in the sprint';
+  const openRows = current.work.length ? current.work.map(renderRow).join('') : `<p class="tl-empty-row">${noWork}</p>`;
+  const work = workItemsLoading(current) ? skeletonRows(3) : openRows;
   // Rule TIMELINE-19
   const finished = current.finished.length
     ? section('DONE THIS SPRINT', current.finished.map(renderRow).join(''), undefined, !!team)
@@ -642,7 +809,11 @@ function renderBody(current: TimelineModel): string {
   const reviewsSection = `${
     current.sprintOffset > 0 ? '' : section(current.reviewsTitle, reviews, undefined, !!team)
   }${reviewed}`;
-  const grid = `tl-grid density-${current.density}`;
+  // Rule TIMELINE-39: with "PR events always visible" every mark shows at rest, not only on hover
+  // Rules TIMELINE-31, TIMELINE-41: a past sprint's margin looks like the one before the sprint (`past`)
+  const grid = `tl-grid density-${current.density}${current.options.alwaysShowPrEvents ? ' marks-always' : ''}${
+    current.sprintOffset > 0 ? ' past' : ''
+  }`;
   if (!team) {
     return `<div class="${grid}">${days}<div class="tl-body"><div class="tl-overlay" aria-hidden="true"></div>
     ${section('MY WORK ITEMS', work)}${finished}${movedOut(
@@ -662,27 +833,31 @@ function renderBody(current: TimelineModel): string {
         .join('')}${done}${movedOut(person.movedOut)}</div>`;
     })
     .join('');
+  // Rule TIMELINE-50: a person whose work is not read yet: their header and a few skeleton rows
+  const pending = team.pending
+    .map(
+      (person, index) =>
+        `<div class="tl-row tl-person"><div class="tl-plabel">${avatarHtml(
+          person.initials,
+          person.colour
+        )}<b class="tl-pname">${escapeHtml(
+          person.name
+        )}</b><span class="tl-pmeta">loading…</span></div><div class="tl-psummary"></div></div><div class="tl-person-rows colour-${String(
+          person.colour
+        )}">${skeletonRows(3, index)}</div>`
+    )
+    .join('');
   const extra = youSection ? youSection.rows.map(renderRow).join('') : '';
   return `<div class="${grid}">${days}<div class="tl-body"><div class="tl-overlay" aria-hidden="true"></div>
     ${teamStatusHtml(team)}${youSection ? renderPersonHeader(youSection) : ''}${work}${extra}${finished}${movedOut([
     ...current.movedOut,
     ...(youSection?.movedOut ?? []),
-  ])}${notes}${reviewsSection}${others}${develop}</div></div>`;
+  ])}${notes}${reviewsSection}${others}${pending}${develop}</div></div>`;
 }
 
-/** Positions and sizes come from the model in days: they are set after the markup is in place (strict CSP) */
-function place(root: HTMLElement, current: TimelineModel): void {
-  const total = current.days.length;
-  root.style.setProperty('--tl-days', String(total));
-  const percent = (days: number): string => `${String((days / total) * 100)}%`;
-  root.querySelectorAll<HTMLElement>('[data-from]').forEach((element) => {
-    const from = Number(element.dataset.from);
-    element.style.left = percent(from);
-    if (element.dataset.to !== undefined) {
-      element.style.width = percent(Number(element.dataset.to) - from);
-    }
-  });
-  // Rule TIMELINE-30: the marks of a PR sit on one line; the ones that would touch are spread sideways
+// Rule TIMELINE-30
+/** The marks of a PR sit on one line; the ones that would touch are spread sideways (pixels: redone when the width changes) */
+function packStrips(root: HTMLElement, total: number): void {
   root.querySelectorAll<HTMLElement>('.tl-strip').forEach((strip) => {
     const width = strip.getBoundingClientRect().width;
     const marks = Array.from(strip.querySelectorAll<HTMLElement>('.tl-mk[data-from]'))
@@ -698,6 +873,57 @@ function place(root: HTMLElement, current: TimelineModel): void {
       mark.element.style.left = `${String(lefts[index] + mark.size / 2)}px`;
     });
   });
+}
+
+// Rules TIMELINE-17, TIMELINE-19
+/**
+ * Keeps the notes and buttons after a bar ("✓ merged Fr 16", "Done We 21", Complete…) to the right of the bar. A bar
+ * is never narrower than its padding (16 px), so a short last bar (a PR merged an hour after its last vote) ends past
+ * the day where its note is anchored: the note moves to the end of the bar. In pixels, so it runs again after a zoom
+ */
+function placeNotes(root: HTMLElement, total: number): void {
+  root.querySelectorAll<HTMLElement>('.tl-row:not(.tl-row-develop) > .tl-lane').forEach((lane) => {
+    const width = lane.clientWidth;
+    // The bar that ends last, and whether it is a short one (its own width is below what its padding and text need)
+    let end = 0;
+    let short = false;
+    lane.querySelectorAll<HTMLElement>(':scope > .tl-seg').forEach((segment) => {
+      const right = segment.offsetLeft + segment.offsetWidth;
+      if (right >= end) {
+        end = right;
+        short = ((Number(segment.dataset.to) - Number(segment.dataset.from)) / total) * width < MIN_BAR_PX * 3;
+      }
+    });
+    lane
+      .querySelectorAll<HTMLElement>(':scope > .tl-note[data-from], :scope > .tl-after[data-from]')
+      .forEach((note) => {
+        const anchor = (Number(note.dataset.from) / total) * width;
+        // Only a short bar can be drawn wider than its days; a bar that goes on deliberately is left alone
+        note.style.left = short && end > anchor ? `${String(end)}px` : `${String((anchor / width) * 100)}%`;
+      });
+  });
+}
+
+/** Positions and sizes come from the model in days: they are set after the markup is in place (strict CSP) */
+function place(root: HTMLElement, current: TimelineModel): void {
+  const total = current.days.length;
+  root.style.setProperty('--tl-days', String(total || 10));
+  // Rule TIMELINE-48: the width of a day, so the grid is wider than the panel when zoomed in
+  root.style.setProperty('--tl-day-min', `${String(dayWidthShown ?? dayMinWidth(zoom))}px`);
+  root.querySelectorAll<HTMLElement>('[data-sk-left]').forEach((element) => {
+    element.style.left = `${element.dataset.skLeft ?? '0'}%`;
+    element.style.width = `${element.dataset.skWidth ?? '10'}%`;
+  });
+  const percent = (days: number): string => `${String((days / total) * 100)}%`;
+  root.querySelectorAll<HTMLElement>('[data-from]').forEach((element) => {
+    const from = Number(element.dataset.from);
+    element.style.left = percent(from);
+    if (element.dataset.to !== undefined) {
+      element.style.width = percent(Number(element.dataset.to) - from);
+    }
+  });
+  packStrips(root, total);
+  placeNotes(root, total);
   const overlay = root.querySelector<HTMLElement>('.tl-overlay');
   if (overlay) {
     const mark = (className: string, from: number, width: number): void => {
@@ -718,6 +944,14 @@ function place(root: HTMLElement, current: TimelineModel): void {
         mark('tl-todaycol', index, 1);
       }
     });
+    // Rule TIMELINE-2: the days before the sprint (added as the PRs that start earlier need) are hatched, as the margin after it
+    if (current.sprintStart > 0) {
+      mark('tl-aftersprint tl-beforesprint', 0, current.sprintStart);
+      const caption = document.createElement('span');
+      caption.className = 'tl-after-caption';
+      caption.textContent = 'BEFORE THE SPRINT';
+      overlay.lastElementChild?.append(caption);
+    }
     // Rule TIMELINE-31: the margin after the sprint is hatched; past the end of the sprint NOW fades behind the text
     if (current.sprintEnd < total) {
       mark('tl-aftersprint', current.sprintEnd, total - current.sprintEnd);
@@ -762,6 +996,141 @@ function postExpanded(current: TimelineModel): void {
   }
 }
 
+// Rule TIMELINE-39: the first hover (or focus) of a PR row asks for its details, once per PR in this tab
+const hoveredPullRequests = new Set<number>();
+function hoverPullRequest(target: EventTarget | null): void {
+  const row = target instanceof Element ? target.closest<HTMLElement>('.tl-row.pr[data-pr]') : null;
+  const id = Number(row?.dataset.pr);
+  if (row && Number.isInteger(id) && !hoveredPullRequests.has(id)) {
+    hoveredPullRequests.add(id);
+    post({ type: 'hoverPullRequest', prId: id });
+  }
+}
+
+// Rules TIMELINE-39, TIMELINE-45: with "PR events always visible" the PR rows drawn and on screen ask for their
+// details as if hovered (the same message, once per PR and tab)
+let prObserver: IntersectionObserver | undefined;
+function observePullRequestRows(root: HTMLElement, always: boolean): void {
+  prObserver?.disconnect();
+  prObserver = undefined;
+  if (!always || typeof IntersectionObserver === 'undefined') {
+    return;
+  }
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.isIntersecting) {
+        hoverPullRequest(entry.target);
+        observer.unobserve(entry.target);
+      }
+    }
+  });
+  prObserver = observer;
+  for (const row of Array.from(root.querySelectorAll('.tl-row.pr[data-pr]'))) {
+    observer.observe(row);
+  }
+}
+
+// Rule TIMELINE-47: hovering (or focusing) a work item row highlights the rows of the work items linked to it by the
+// Duplicate link; a linked work item that is not drawn is said in the tooltip of the row
+let duplicateLinks = new Map<number, TimelineDuplicate[]>();
+function describeDuplicates(root: HTMLElement, current: TimelineModel): void {
+  duplicateLinks = new Map();
+  const drawn = new Set(
+    Array.from(root.querySelectorAll<HTMLElement>('.tl-row[data-wi]'), (row) => Number(row.dataset.wi))
+  );
+  for (const row of expandableRows(current)) {
+    if (!row.duplicates) {
+      continue;
+    }
+    duplicateLinks.set(row.id, row.duplicates);
+    const lines = row.duplicates
+      .filter((link) => !drawn.has(link.id))
+      .map(
+        (link) =>
+          `${link.role === 'original' ? 'Duplicate of' : 'Duplicated by'} #${String(link.id)} (not in this view)`
+      );
+    const label = root.querySelector<HTMLElement>(`.tl-row[data-wi="${String(row.id)}"] > .tl-label`);
+    if (lines.length && label) {
+      label.title = [label.title, ...lines].filter(Boolean).join('\n');
+    }
+  }
+}
+
+function highlightDuplicates(target: EventTarget | null): void {
+  const row = target instanceof Element ? target.closest<HTMLElement>('.tl-row[data-wi]') : null;
+  const linked = row ? duplicateLinks.get(Number(row.dataset.wi)) : undefined;
+  for (const lit of Array.from(document.querySelectorAll('.dup-hl'))) {
+    lit.classList.remove('dup-hl');
+  }
+  for (const link of linked ?? []) {
+    for (const other of Array.from(document.querySelectorAll(`.tl-row[data-wi="${String(link.id)}"]`))) {
+      other.classList.add('dup-hl');
+    }
+  }
+}
+
+const reducedMotion = (): boolean => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Rule TIMELINE-49
+/** Disables the zoom buttons at their limits and while a zoom animation runs (no redraw) */
+function updateZoomButtons(): void {
+  const set = (id: string, off: boolean): void => {
+    const button = app?.querySelector<HTMLButtonElement>(`[data-zoom="${id}"]`);
+    if (button) {
+      button.disabled = zoomBusy || off;
+    }
+  };
+  set('out', !canZoomOut(zoom, fit));
+  set('in', zoom >= MAX_ZOOM);
+  set('reset', zoom === DEFAULT_ZOOM);
+}
+
+// Rule TIMELINE-49
+/** Measures the zoom at which the whole axis fits the lanes, and updates the − button (no redraw) */
+function updateFit(): void {
+  const area = app?.querySelector<HTMLElement>('.tl-scroll');
+  const days = model?.days.length ?? 0;
+  if (!area || !days) {
+    return;
+  }
+  const style = getComputedStyle(area);
+  const label = app?.querySelector<HTMLElement>('.tl-row-days > .tl-label')?.getBoundingClientRect().width ?? 300;
+  const lanes = area.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - label;
+  fit = fitZoom(lanes, days);
+  updateZoomButtons();
+}
+
+// Rule TIMELINE-51
+let flashTimer: number | undefined;
+/**
+ * Scrolls the row of a work item into view (smooth, centred) and flashes it for 1.5 s with the look of the duplicate
+ * highlight; with reduced motion the scroll is instant and the highlight static. Nothing happens if it is not drawn
+ */
+function flashRow(id: number): void {
+  const rows = Array.from(document.querySelectorAll<HTMLElement>(`.tl-row[data-wi="${String(id)}"]`));
+  const first = rows.at(0);
+  if (!first) {
+    return;
+  }
+  const still = reducedMotion();
+  first.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'center' });
+  window.clearTimeout(flashTimer);
+  for (const lit of Array.from(document.querySelectorAll('.row-flash'))) {
+    lit.classList.remove('row-flash');
+  }
+  // Restarts the animation when the same row is clicked twice
+  void first.offsetWidth;
+  for (const row of rows) {
+    row.classList.add('row-flash');
+    row.addEventListener('animationend', () => row.classList.remove('row-flash'), { once: true });
+  }
+  flashTimer = window.setTimeout(() => {
+    for (const row of rows) {
+      row.classList.remove('row-flash');
+    }
+  }, 1600);
+}
+
 function render(): void {
   if (!app || !model) {
     return;
@@ -783,7 +1152,7 @@ function render(): void {
   const team = model.scope === 'team' ? model.team : undefined;
   app.innerHTML = `${renderHeader(model)}${renderLegend(team !== undefined)}<div class="tl-scroll">${renderBody(
     model
-  )}</div>${team ? renderFooter(team) : ''}`;
+  )}</div>${renderFooter(model)}`;
   restorePicker(app, picker);
   const grid = app.querySelector<HTMLElement>('.tl-grid');
   if (grid) {
@@ -791,6 +1160,9 @@ function render(): void {
     // Wide ranges scroll sideways: the grid is as wide as its days need
     app.querySelector<HTMLElement>('.tl-scroll')?.scrollTo({ left: scrollLeft, top: scrollTop });
   }
+  updateFit();
+  observePullRequestRows(app, model.options.alwaysShowPrEvents);
+  describeDuplicates(app, model);
   postExpanded(model);
 }
 
@@ -873,8 +1245,133 @@ function toggleFromRow(id: number): void {
   render();
 }
 
+// Rule TIMELINE-48
+/**
+ * Draws the zoom and saves it after a pause, so a wheel does not write the setting on every step. `cursorX`: the
+ * pointer from the left of the scrolling area, whose day stays under it; without it, the middle of the lanes on screen.
+ * Rule TIMELINE-49: with `animate` (the buttons) the width of the days moves to the new one in 150 ms, frame by frame,
+ * and the anchor stays where it is on every frame; the wheel is instant
+ */
+function setZoom(next: number, cursorX?: number, animate = false): void {
+  if (!model || next === zoom) {
+    return;
+  }
+  if (zoomFrame !== undefined) {
+    window.cancelAnimationFrame(zoomFrame);
+    zoomFrame = undefined;
+  }
+  const scroll = app?.querySelector<HTMLElement>('.tl-scroll');
+  const widthOf = (): number => app?.querySelector('.tl-days')?.getBoundingClientRect().width ?? 0;
+  const before = widthOf();
+  const left = scroll?.scrollLeft ?? 0;
+  const laneStart =
+    (app?.querySelector('.tl-days')?.getBoundingClientRect().left ?? 0) -
+    (scroll?.getBoundingClientRect().left ?? 0) +
+    left;
+  const from = dayWidthShown ?? drawnDayWidth(zoom, fit);
+  const to = drawnDayWidth(next, fit);
+  const animated = animate && !reducedMotion() && from !== to;
+  zoom = next;
+  dayWidthShown = animated ? from : undefined;
+  zoomBusy = animated;
+  // Nothing is drawn again: only the width of the days changes (a redraw in the middle of a zoom lost the scroll and
+  // the pointer's anchor), the marks placed in pixels follow it, once per frame at most
+  const grid = app?.querySelector<HTMLElement>('.tl-grid');
+  const applyWidth = (): void => {
+    grid?.style.setProperty('--tl-day-min', `${String(dayWidthShown ?? dayMinWidth(zoom))}px`);
+  };
+  const anchor = (): void => {
+    const after = widthOf();
+    if (scroll && before > 0 && after > 0) {
+      const x = cursorX ?? (laneStart + scroll.clientWidth) / 2;
+      scroll.scrollTo({ left: scrollAfterZoom(left, x, laneStart, after / before), top: scroll.scrollTop });
+    }
+  };
+  const relayout = (): void => {
+    if (grid && model) {
+      packStrips(grid, model.days.length || 10);
+      placeNotes(grid, model.days.length || 10);
+    }
+  };
+  applyWidth();
+  anchor();
+  relayout();
+  if (animated) {
+    const begin = performance.now();
+    const frame = (time: number): void => {
+      const progress = (time - begin) / ZOOM_TRANSITION_MS;
+      const done = progress >= 1;
+      dayWidthShown = done ? undefined : from + (to - from) * easeOut(progress);
+      applyWidth();
+      anchor();
+      relayout();
+      zoomFrame = done ? undefined : window.requestAnimationFrame(frame);
+      if (done) {
+        // Everything is in place: the buttons are safe to press again
+        zoomBusy = false;
+        updateZoomButtons();
+      }
+    };
+    zoomFrame = window.requestAnimationFrame(frame);
+  }
+  updateZoomButtons();
+  window.clearTimeout(zoomTimer);
+  zoomTimer = window.setTimeout(() => {
+    zoomTimer = undefined;
+    lastPostedZoom = zoom;
+    post({ type: 'setTimelineZoom', zoom });
+  }, ZOOM_SAVE_DELAY_MS);
+}
+
+/** The zoom a button leads to (`in`, `out`, `reset`) */
+function zoomTarget(how: string | undefined): number {
+  if (how === 'in') {
+    return nextZoomIn(zoom, fit);
+  }
+  return how === 'out' ? nextZoomOut(zoom, fit) : DEFAULT_ZOOM;
+}
+
+// Rule TIMELINE-49: the wheel with the key of the setting (Ctrl by default, a trackpad pinch included; or Shift) zooms
+// around the pointer; any other wheel scrolls as always. The events of a burst
+// are added up and applied once per frame (instant, nothing drawn again), so a fast wheel stays smooth
+document.addEventListener(
+  'wheel',
+  (event) => {
+    const area = event.target instanceof Element ? event.target.closest<HTMLElement>('.tl-scroll') : null;
+    if (!area || !isZoomWheel(event, model?.zoomModifier ?? 'ctrl', IS_MAC)) {
+      return;
+    }
+    event.preventDefault();
+    // A wheel that scrolls by lines reports 3 per notch, by pages 1: both are brought to pixels
+    const unit = [1, 33, 400].at(event.deltaMode) ?? 1;
+    wheelDelta += (event.deltaY || event.deltaX) * unit;
+    wheelX = event.clientX - area.getBoundingClientRect().left;
+    wheelFrame ??= window.requestAnimationFrame(() => {
+      wheelFrame = undefined;
+      const delta = wheelDelta;
+      wheelDelta = 0;
+      if (delta) {
+        setZoom(wheelZoom(zoom, fit, delta), wheelX);
+      }
+    });
+  },
+  { passive: false }
+);
+
 document.addEventListener('click', (event) => {
   const target = event.target instanceof Element ? event.target : null;
+  const zoomControl = target?.closest<HTMLElement>('[data-zoom]');
+  if (zoomControl) {
+    const how = zoomControl.dataset.zoom;
+    // Rule TIMELINE-49: the buttons animate the change of width
+    setZoom(zoomTarget(how), undefined, true);
+    return;
+  }
+  const flash = target?.closest<HTMLElement>('[data-flash-row]');
+  if (flash) {
+    flashRow(Number(flash.dataset.flashRow));
+    return;
+  }
   const trigger = target?.closest<HTMLElement>('[data-popover]');
   const content = trigger?.dataset.popover ? popovers.get(trigger.dataset.popover) : undefined;
   if (trigger && content) {
@@ -1014,19 +1511,9 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
-// Rule TIMELINE-39: the first hover (or focus) of a PR row asks for its details, once per PR in this tab
-const hoveredPullRequests = new Set<number>();
-function hoverPullRequest(target: EventTarget | null): void {
-  const row = target instanceof Element ? target.closest<HTMLElement>('.tl-row.pr[data-pr]') : null;
-  const id = Number(row?.dataset.pr);
-  if (row && Number.isInteger(id) && !hoveredPullRequests.has(id)) {
-    hoveredPullRequests.add(id);
-    post({ type: 'hoverPullRequest', prId: id });
-  }
-}
-
 document.addEventListener('mouseover', (event) => {
   hoverPullRequest(event.target);
+  highlightDuplicates(event.target);
   const anchor = event.target instanceof Element ? event.target.closest<HTMLElement>('.tl-mk[data-tip]') : null;
   if (anchor) {
     showTip(anchor);
@@ -1034,6 +1521,7 @@ document.addEventListener('mouseover', (event) => {
 });
 
 document.addEventListener('mouseout', (event) => {
+  highlightDuplicates(event.relatedTarget);
   if (event.target instanceof Element && event.target.closest('.tl-mk[data-tip]')) {
     hideTip();
   }
@@ -1041,22 +1529,45 @@ document.addEventListener('mouseout', (event) => {
 
 document.addEventListener('focusin', (event) => {
   hoverPullRequest(event.target);
+  highlightDuplicates(event.target);
   const anchor = event.target instanceof Element ? event.target.closest<HTMLElement>('.tl-mk[data-tip]') : null;
   if (anchor) {
     showTip(anchor);
   }
 });
 
-document.addEventListener('focusout', hideTip);
+document.addEventListener('focusout', () => {
+  hideTip();
+  highlightDuplicates(null);
+});
 
 window.addEventListener('message', (event: MessageEvent<TimelineUpdate>) => {
-  // The store posts on every CI poll: an identical model must not close the popover
-  const text = JSON.stringify(event.data.model);
-  if (text === lastModel) {
+  const next = event.data.model;
+  // The store posts on every CI poll: an identical model must not close the popover. The zoom is left out of the
+  // comparison: the one that comes back after our own write (or a stale one) is not a reason to draw again
+  const text = JSON.stringify({ ...next, zoom: 0 });
+  const same = text === lastModel;
+  lastModel = text;
+  model = next;
+  // Rule TIMELINE-48: the zoom of the setting is taken only when it changed elsewhere (the settings editor): never
+  // while a change of ours waits to be written, is animating, or when it is what we wrote
+  let zoomChanged = false;
+  if (next.zoom !== lastModelZoom) {
+    lastModelZoom = next.zoom;
+    if (
+      zoomTimer === undefined &&
+      zoomFrame === undefined &&
+      wheelFrame === undefined &&
+      next.zoom !== lastPostedZoom &&
+      next.zoom !== zoom
+    ) {
+      zoom = next.zoom;
+      zoomChanged = true;
+    }
+  }
+  if (same && !zoomChanged) {
     return;
   }
-  lastModel = text;
-  model = event.data.model;
   render();
 });
 
@@ -1064,6 +1575,25 @@ window.addEventListener('resize', () => {
   hidePopover();
   hideTip();
 });
+
+// Rule TIMELINE-49: the "fit" zoom follows the width of the panel; the marks placed in pixels follow the days
+if (app && typeof ResizeObserver !== 'undefined') {
+  let pending: number | undefined;
+  new ResizeObserver(() => {
+    if (pending !== undefined) {
+      return;
+    }
+    pending = window.requestAnimationFrame(() => {
+      pending = undefined;
+      updateFit();
+      const grid = app.querySelector<HTMLElement>('.tl-grid');
+      if (grid && model && zoomFrame === undefined) {
+        packStrips(grid, model.days.length || 10);
+        placeNotes(grid, model.days.length || 10);
+      }
+    });
+  }).observe(app);
+}
 
 startPeoplePicker({ post, picker: () => (model?.scope === 'team' ? model.team?.picker : undefined), render });
 

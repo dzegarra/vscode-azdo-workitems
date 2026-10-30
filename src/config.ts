@@ -12,6 +12,8 @@ import { parsePeople, type PickedPerson } from './teamPeople';
 import { normalizePopoverDelay } from './popoverDelay';
 import { normalizeHoverStyle } from './hoverStyle';
 import { normalizeCodingStart } from './codingStart';
+import { normalizeDaysBeforeSprint } from './timelineAxis';
+import { isOwnZoomEcho, normalizeZoom, normalizeZoomModifier } from './timelineZoom';
 import { normalizeTimelineDensity, type TimelineDensity } from './timelineDensity';
 import { normalizeViewOptions, VIEW_OPTION_SETTINGS, type TimelineViewSwitch } from './timelineView';
 import { normalizeLook } from './look';
@@ -48,6 +50,32 @@ export async function setTimelineDensity(scope: 'mine' | 'team', density: Timeli
       density,
       vscode.ConfigurationTarget.Global
     );
+}
+
+let lastZoomWrite: { zoom: number; at: number } | undefined;
+
+/** Rule TIMELINE-48: the zoom of the Sprint timeline (its header and the wheel write it, debounced in the webview) */
+export async function setTimelineZoom(zoom: number): Promise<void> {
+  const value = normalizeZoom(zoom);
+  lastZoomWrite = { zoom: value, at: Date.now() };
+  await vscode.workspace
+    .getConfiguration(SECTION)
+    .update('appearance.timelineZoom', value, vscode.ConfigurationTarget.Global);
+}
+
+/**
+ * Rule TIMELINE-48: the change event of the zoom setting that the Sprint timeline wrote itself. The webview already draws
+ * that zoom: rebuilding and redrawing the tab (and the Track board and the rest) in the middle of a zoom made it jump
+ */
+export function isOwnZoomChange(event: vscode.ConfigurationChangeEvent): boolean {
+  return (
+    event.affectsConfiguration(`${SECTION}.appearance.timelineZoom`) &&
+    isOwnZoomEcho(
+      lastZoomWrite,
+      Date.now(),
+      vscode.workspace.getConfiguration(SECTION).get<unknown>('appearance.timelineZoom')
+    )
+  );
 }
 
 /** Rule TIMELINE-45: a switch of the view options of the Sprint timeline (its panel writes it) */
@@ -112,6 +140,12 @@ export function settings() {
     asleepPulse: config.get<boolean>('appearance.asleepPulse', true),
     /** Rule TIMELINE-20: where coding starts on the Sprint timeline */
     timelineCodingStart: normalizeCodingStart(config.get<string>('appearance.timelineCodingStart', 'earliest')),
+    /** Rule TIMELINE-2: most working days added before the sprint when a PR starts earlier */
+    timelineDaysBeforeSprint: normalizeDaysBeforeSprint(config.get<unknown>('appearance.timelineDaysBeforeSprint')),
+    /** Rule TIMELINE-48: the horizontal zoom of the Sprint timeline, percent */
+    timelineZoom: normalizeZoom(config.get<unknown>('appearance.timelineZoom')),
+    /** Rule TIMELINE-49: the key held with the wheel to zoom the Sprint timeline */
+    timelineZoomModifier: normalizeZoomModifier(config.get<unknown>('appearance.timelineZoomModifier')),
     /** Rule TIMELINE-32: the row style of the Sprint timeline, per view */
     timelineDensity: {
       mine: normalizeTimelineDensity(config.get<string>('appearance.timelineDensityMine'), 'normal'),
@@ -123,6 +157,7 @@ export function settings() {
       groupDone: config.get<unknown>(VIEW_OPTION_SETTINGS.groupDone),
       groupMovedOut: config.get<unknown>(VIEW_OPTION_SETTINGS.groupMovedOut),
       showDevelop: config.get<unknown>(VIEW_OPTION_SETTINGS.showDevelop),
+      alwaysShowPrEvents: config.get<unknown>(VIEW_OPTION_SETTINGS.alwaysShowPrEvents),
       dimCompleted: config.get<unknown>(VIEW_OPTION_SETTINGS.dimCompleted),
     }),
     popoverDelay: normalizePopoverDelay(config.get<unknown>('popovers.hoverDelay')),

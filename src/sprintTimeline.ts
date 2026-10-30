@@ -6,6 +6,7 @@ import {
   SECTION,
   setTimelineDensity,
   setTimelineViewOption,
+  setTimelineZoom,
   settings,
   workingDaysSetting,
 } from './config';
@@ -524,6 +525,8 @@ export class SprintTimelinePanel implements vscode.Disposable {
       sprint,
       density: densityOf(this.team.scope, settings().timelineDensity),
       view: settings().timelineView,
+      zoom: settings().timelineZoom,
+      zoomModifier: settings().timelineZoomModifier,
       sprints,
       sprintOffset: 0,
       // Rule TIMELINE-17: the dates of the PRs linked to the work items that My Pull Requests does not list
@@ -534,6 +537,7 @@ export class SprintTimelinePanel implements vscode.Disposable {
       ),
       completedPullRequests: this.myPullRequests.completedPullRequests(),
       codingStart: settings().timelineCodingStart,
+      daysBeforeSprint: settings().timelineDaysBeforeSprint,
       firstCommits: this.myPullRequests.firstCommitDates(),
       history: this.history.snapshot(),
       stateHistory: this.states.snapshot(),
@@ -617,9 +621,11 @@ export class SprintTimelinePanel implements vscode.Disposable {
       sprint: axis,
       density: densityOf(this.team.scope, settings().timelineDensity),
       view: settings().timelineView,
+      zoom: settings().timelineZoom,
+      zoomModifier: settings().timelineZoomModifier,
       sprints,
       sprintOffset: choice.offset,
-      past: { ended: endedText(axis?.finishDate), membership: read?.membership },
+      past: { ended: endedText(axis?.finishDate), membership: read?.membership, today: Date.now() },
       scope: this.team.scope,
       completedPullRequests: data ? teamCompletedPullRequests(data) : [],
       // Rule TIMELINE-17: the open (or abandoned) PRs of a past sprint have their dates too
@@ -627,6 +633,7 @@ export class SprintTimelinePanel implements vscode.Disposable {
         (data?.pullRequests ?? []).map((pr) => [pr.pullRequestId, pullRequestInfo(pr, { publishedAt: new Map() })])
       ),
       codingStart: 'taskActivated',
+      daysBeforeSprint: settings().timelineDaysBeforeSprint,
       history: this.history.snapshot(),
       // Rule TIMELINE-43: the histories read to know which work items were in the sprint give their states too
       stateHistory: new Map([...this.states.snapshot(), ...this.pastChanges(choice.offset)]),
@@ -725,6 +732,13 @@ export class SprintTimelinePanel implements vscode.Disposable {
       if (message.type === 'setTimelineDensity') {
         // Rule TIMELINE-32: the style of the view shown; the change of the setting redraws the tab (extension.ts)
         await setTimelineDensity(this.team.scope, normalizeTimelineDensity(message.density, 'normal'));
+        return;
+      }
+      if (message.type === 'setTimelineZoom') {
+        // Rule TIMELINE-48: personal, shared by both views; the webview already drew it, the change redraws the tab
+        if (typeof message.zoom === 'number') {
+          await setTimelineZoom(message.zoom);
+        }
         return;
       }
       if (message.type === 'setTimelineViewOption') {

@@ -15,6 +15,9 @@ body.timeline-page {
   --tl-on-solid: #04101f;
   --tl-on-amber: #1a1200;
   --tl-on-green: #04170d;
+  /* Ready to Test (a Bug): "almost done", a green paler than Done, as the testers can still reopen it (TIMELINE-35) */
+  --tl-almost-done: #a6ebc4;
+  --tl-on-almost: #04170d;
 }
 
 /* Light themes have darker accents: white text reads on them (the Totalflow look keeps its bright accents) */
@@ -22,6 +25,8 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   --tl-on-solid: #fff;
   --tl-on-amber: #fff;
   --tl-on-green: #fff;
+  --tl-almost-done: #9bddb5;
+  --tl-on-almost: #04170d;
 }
 
 /* The legend: a panel under its button, closed by default (Rule TIMELINE-34) */
@@ -58,11 +63,52 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   gap: 8px;
 }
 
-.tl-legend-sub {
-  flex: none;
-  width: 64px;
-  color: var(--vscode-disabledForeground, var(--muted));
-  font-style: italic;
+.tl-legend-group + .tl-legend-group {
+  margin-top: 14px;
+}
+
+/* Rule TIMELINE-51: --flash fades from 1 to 0, so the row (and its sticky label) can fade out with the look of dup-hl */
+@property --flash {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
+@keyframes row-flash {
+  0%,
+  35% {
+    --flash: 1;
+  }
+
+  100% {
+    --flash: 0;
+  }
+}
+
+.tl-row.row-flash {
+  background: color-mix(in srgb, var(--in-flight) calc(14% * var(--flash)), transparent);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--in-flight) calc(100% * var(--flash)), transparent);
+  animation: row-flash 1.5s ease-out;
+}
+
+.tl-row.row-flash > :first-child {
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--in-flight) calc(14% * var(--flash)), transparent),
+    color-mix(in srgb, var(--in-flight) calc(14% * var(--flash)), transparent)
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tl-row.row-flash {
+    --flash: 1;
+    animation: none;
+  }
+}
+
+/* Rule TIMELINE-47: the rows of the work items linked by the Duplicate link to the one under the pointer */
+.tl-row.dup-hl {
+  background: color-mix(in srgb, var(--in-flight) 14%, transparent);
+  box-shadow: inset 3px 0 0 var(--in-flight);
 }
 
 .tl-swatch.seg-wait {
@@ -71,14 +117,6 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
 
 .tl-swatch.seg-dueSoon {
   background: var(--needs-you);
-}
-
-.tl-swatch.dev-green {
-  background: var(--passed);
-}
-
-.tl-swatch.dev-red {
-  background: var(--broken);
 }
 
 .tl-legend-line {
@@ -145,11 +183,6 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   background: var(--passed);
 }
 
-.tl-swatch.seg-asleep {
-  background: transparent;
-  border: 1px solid var(--needs-you);
-}
-
 .tl-scroll {
   flex: 1;
   min-height: 0;
@@ -158,15 +191,84 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
 }
 
 .tl-grid {
-  min-width: calc(var(--tl-label) + var(--tl-days, 10) * 64px);
+  /* Rule TIMELINE-48: --tl-day-min is the width of a day (64px at 100 %), set by the script from the zoom */
+  min-width: calc(var(--tl-label) + var(--tl-days, 10) * var(--tl-day-min, 64px));
 }
 
 .tl-row {
+  --tl-lw: var(--tl-label);
   display: grid;
-  grid-template-columns: var(--tl-label) minmax(0, 1fr);
+  grid-template-columns: var(--tl-lw) minmax(0, 1fr);
   align-items: center;
   height: var(--tl-row);
   border-bottom: 1px solid var(--tl-grid);
+}
+
+/* Rule TIMELINE-48: the label column stays on screen when a zoomed timeline scrolls sideways. The label spans the row (a
+ * sticky item cannot leave its grid area) with the width of its column; the lane stays in the second column */
+.tl-row > :first-child {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  box-sizing: border-box;
+  width: var(--tl-lw);
+  /* The whole height of the row, so nothing of the lane shows beside the text while the lanes scroll under it */
+  align-self: stretch;
+  position: sticky;
+  left: 0;
+  /* Above the notes and buttons after a bar (z-index 3), under the days row (5) */
+  z-index: 4;
+  background-color: var(--vscode-editor-background);
+  /* The 20px gutter of the scroll area, left of the label: opaque too, so the lanes do not show in it while they scroll */
+  box-shadow: -20px 0 0 var(--vscode-editor-background);
+  /* The line between rows is drawn by the label too (over the 1px border of the row), so the NOW line, the week
+   * separators and the hatches of the lanes do not show in it under the pinned column */
+  margin-bottom: -1px;
+  border-bottom: 1px solid var(--tl-grid);
+}
+
+.tl-row-days > :first-child {
+  border-bottom-color: var(--border);
+}
+
+.tl-row > :nth-child(2) {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.tl-row.wi:hover > :first-child {
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--vscode-foreground) 4%, transparent),
+    color-mix(in srgb, var(--vscode-foreground) 4%, transparent)
+  );
+}
+
+.tl-row.wi.expanded > :first-child {
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--vscode-foreground) 3%, transparent),
+    color-mix(in srgb, var(--vscode-foreground) 3%, transparent)
+  );
+}
+
+.tl-row.tl-person > :first-child {
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--vscode-foreground) 4%, transparent),
+    color-mix(in srgb, var(--vscode-foreground) 4%, transparent)
+  );
+}
+
+.tl-children .tl-row > :first-child {
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--vscode-foreground) 3%, transparent),
+    color-mix(in srgb, var(--vscode-foreground) 3%, transparent)
+  );
+  box-shadow: inset 2px 0 0 var(--tl-tree), -20px 0 0 var(--vscode-editor-background);
+}
+
+.tl-row.dup-hl > :first-child {
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--in-flight) 14%, transparent),
+    color-mix(in srgb, var(--in-flight) 14%, transparent)
+  );
 }
 
 .tl-row-days {
@@ -202,7 +304,8 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   font-weight: 600;
 }
 
-/* Rule TIMELINE-31: the days after the sprint are grey */
+/* Rules TIMELINE-2, TIMELINE-31: the days before and after the sprint are grey */
+.tl-day.before,
 .tl-day.after {
   color: color-mix(in srgb, var(--vscode-disabledForeground, var(--muted)) 70%, transparent);
   font-weight: 400;
@@ -257,6 +360,18 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   background-color: color-mix(in srgb, var(--vscode-editor-background) 55%, transparent);
 }
 
+/* Rule TIMELINE-2: the days before the sprint, hatched like the margin after it but over the bars unwashed */
+.tl-overlay > .tl-aftersprint.tl-beforesprint {
+  border-left: 0;
+  border-right: 1px dashed var(--border);
+  background-color: transparent;
+}
+
+/* Rules TIMELINE-31, TIMELINE-41: in a past sprint the margin after it looks like the one before it: no wash over the bars */
+.tl-grid.past .tl-overlay > .tl-aftersprint:not(.tl-beforesprint) {
+  background-color: transparent;
+}
+
 .tl-after-caption {
   position: absolute;
   top: 4px;
@@ -273,6 +388,11 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   opacity: 0.22;
 }
 
+/* Rule TIMELINE-41: the bars of a past sprint in the margin are as visible as the ones before the sprint */
+.tl-grid.past .tl-seg.after {
+  opacity: 1;
+}
+
 .tl-overlay.over .tl-now,
 .tl-now-flag.over {
   opacity: 0.3;
@@ -285,7 +405,8 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
 .tl-days .tl-now-flag {
   top: auto;
   bottom: 0;
-  transform: translate(-50%, 50%);
+  /* Rule TIMELINE-13: inside the sticky row of the days (above the body, so it cannot hang over the pinned label column) */
+  transform: translate(-50%, 0);
   border-radius: 3px;
   line-height: 13px;
 }
@@ -330,6 +451,22 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   letter-spacing: 0.12em;
 }
 
+/* Rule TIMELINE-48: the headings stay on screen like the label column when a zoomed timeline scrolls sideways */
+.tl-section,
+.tl-empty-row {
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  /* The pinned cell covers at least the whole label column (as the sticky row labels do): the lanes, the NOW line and the
+   * hatched margins scroll under it, never beside the text of a short heading. A longer text widens it */
+  width: fit-content;
+  min-width: var(--tl-label);
+  max-width: 100%;
+  box-sizing: border-box;
+  background-color: var(--vscode-editor-background);
+  box-shadow: -20px 0 0 var(--vscode-editor-background);
+}
+
 .tl-section:first-child {
   padding-top: 18px;
 }
@@ -351,6 +488,7 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
 .tl-label {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   align-items: stretch;
   gap: 2px;
   min-width: 0;
@@ -392,10 +530,6 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.tl-label:hover .tl-title {
-  text-decoration: underline;
 }
 
 /* ---------- Lanes and bars ---------- */
@@ -479,16 +613,12 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   border-radius: 0 4px 4px 0;
 }
 
-.tl-seg.seg-asleep {
-  border: 2px solid var(--needs-you);
-  background: repeating-linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--needs-you) 24%, var(--vscode-editor-background)) 0 6px,
-    color-mix(in srgb, var(--needs-you) 10%, var(--vscode-editor-background)) 6px 12px
-  );
+/* Rule TIMELINE-8: no update: the bar keeps its colour, its text ends with a bold orange zZ (bar text is white-ish on the
+ * blue states, so the orange of warnings reads on them; the shadow keeps it readable on the light theme too) */
+.tl-zz {
   color: var(--needs-you);
-  line-height: 16px;
-  cursor: pointer;
+  font-weight: 800;
+  text-shadow: 0 0 2px color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
 }
 
 .tl-seg.dashed {
@@ -659,6 +789,72 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
 .tl-swatch.seg-stateDone {
   background: color-mix(in srgb, var(--passed) 55%, var(--vscode-editor-background));
   color: var(--vscode-foreground);
+}
+
+.tl-seg.seg-stateReadyToTest,
+.tl-swatch.seg-stateReadyToTest {
+  background: var(--tl-almost-done);
+  color: var(--tl-on-almost);
+}
+
+/* A Removed period that was left (the work item came back): a neutral grey bar */
+.tl-seg.seg-stateRemoved,
+.tl-swatch.seg-stateRemoved {
+  background: color-mix(in srgb, var(--vscode-foreground) 28%, var(--vscode-editor-background));
+  color: var(--vscode-foreground);
+}
+
+/* Rule TIMELINE-35: a final state is a round badge at the moment it changed: ✓ Done / Closed, ✕ Removed */
+.tl-fin {
+  position: absolute;
+  top: calc((var(--tl-row) - var(--tl-fin, 18px)) / 2);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--tl-fin, 18px);
+  height: var(--tl-fin, 18px);
+  transform: translateX(-50%);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: default;
+}
+
+/* Rule TIMELINE-32: 18px in Normal rows, 14px in Compact rows */
+.tl-grid.density-compact .tl-fin {
+  --tl-fin: 14px;
+  font-size: 9px;
+}
+
+.tl-fin.static {
+  position: static;
+  transform: none;
+}
+
+.tl-fin.fin-done {
+  background: var(--passed);
+  color: var(--tl-on-green);
+}
+
+.tl-fin.fin-removed {
+  background: color-mix(in srgb, var(--vscode-foreground) 38%, var(--vscode-editor-background));
+  color: var(--vscode-editor-background);
+}
+
+.tl-fin:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.tl-note.tone-merged.badged {
+  padding-left: 18px;
+}
+
+.tl-grid.density-compact .tl-note.tone-merged.badged {
+  padding-left: 14px;
 }
 
 .tl-seg.seg-stateReopened,
@@ -873,11 +1069,6 @@ body.vscode-light .tl-dev-tick {
   white-space: nowrap;
 }
 
-.tl-key.tl-tagkey {
-  margin-left: auto;
-  gap: 6px;
-}
-
 .tl-swatch.bracket {
   height: 6px;
   border: 1.5px solid var(--muted);
@@ -969,7 +1160,7 @@ body.vscode-light .tl-dev-tick {
 }
 
 .tl-label.child {
-  position: relative;
+  /* Sticky (the rule of the first child of a row) is also the anchor of the tree lines: no position: relative here */
   gap: 3px;
   padding-left: 40px;
 }
@@ -1034,13 +1225,18 @@ body.vscode-light .tl-dev-tick {
   font-style: italic;
 }
 
-.tl-row.faded .tl-label,
+.tl-row.faded .tl-label > *,
 .tl-row.faded .tl-lane > .tl-seg {
   opacity: 0.6;
 }
 
 .tl-note.tone-merged {
   color: var(--passed);
+}
+
+/* Ready to Test: the pale green of its bar, darkened toward the text colour so it reads on the light theme too */
+.tl-note.tone-merged.almost-done {
+  color: color-mix(in srgb, var(--tl-almost-done) 60%, var(--vscode-foreground));
 }
 
 /* Marks that would touch go to the next row of the strip, and the row of the PR grows with them (Rule TIMELINE-30) */
@@ -1531,6 +1727,15 @@ body.vscode-light .tl-dev-tick {
   margin-top: 0;
 }
 
+/* The 14px above a person's header (its margin) show the lanes: the pinned label covers them over the label column too */
+.tl-row.tl-person > :first-child {
+  border-bottom-color: var(--border);
+  box-shadow:
+    -20px 0 0 var(--vscode-editor-background),
+    0 -14px 0 var(--vscode-editor-background),
+    -20px -14px 0 var(--vscode-editor-background);
+}
+
 .tl-plabel {
   display: flex;
   align-items: center;
@@ -1611,7 +1816,17 @@ body.vscode-light .tl-dev-tick {
 }
 
 .tl-person-rows .tl-row {
-  grid-template-columns: calc(var(--tl-label) - 18px) minmax(0, 1fr);
+  --tl-lw: calc(var(--tl-label) - 18px);
+}
+
+/* Their labels stay where they rest (18px in) when the lanes scroll under them; the opaque gutter covers the rail too */
+.tl-person-rows .tl-row > :first-child {
+  left: 18px;
+  box-shadow: -38px 0 0 var(--vscode-editor-background);
+}
+
+.tl-person-rows .tl-children .tl-row > :first-child {
+  box-shadow: inset 2px 0 0 var(--tl-tree), -38px 0 0 var(--vscode-editor-background);
 }
 
 /* ---------- Marks at rest and on hover (Rule TIMELINE-33): at rest only the problems ---------- */
@@ -1621,7 +1836,9 @@ body.vscode-light .tl-dev-tick {
 }
 
 .tl-row.pr:hover .tl-mk,
-.tl-row.pr:focus-within .tl-mk {
+.tl-row.pr:focus-within .tl-mk,
+/* "PR events always visible" (Rule TIMELINE-45): every mark at rest */
+.tl-grid.marks-always .tl-row.pr .tl-mk {
   visibility: visible;
 }
 
@@ -1641,6 +1858,7 @@ body.vscode-light .tl-dev-tick {
 .tl-grid.density-compact .tl-label.child,
 .tl-grid.density-compact .tl-label:not(.plain) {
   flex-direction: row;
+  justify-content: flex-start;
   align-items: center;
   gap: 6px;
 }
@@ -1674,6 +1892,13 @@ body.vscode-light .tl-dev-tick {
 .tl-grid.density-compact .tl-row.pr .tl-seg {
   top: 23px;
   color: transparent;
+}
+
+/* "✓ merged …" after the thin bar of a PR: centred on the bar (its line is not the middle of the row) */
+.tl-grid.density-compact .tl-row.child.pr .tl-note {
+  top: 23px;
+  height: var(--tl-bar);
+  padding-bottom: 0;
 }
 
 /* Compact too: the marks on their line above the thin bar */
@@ -1877,4 +2102,120 @@ body.vscode-light .tl-dev-tick {
   color: var(--muted);
   font-size: 12px;
   vertical-align: middle;
+}
+
+/* ---------- Zoom (Rule TIMELINE-48): the buttons of the header; a disabled one is at its limit ---------- */
+
+.tl-zoom button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tl-zoom button:not(:disabled):hover {
+  background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+  color: var(--vscode-foreground);
+}
+
+.tl-days:empty {
+  min-height: 28px;
+}
+
+/* ---------- Loading (Rule TIMELINE-50): skeleton rows where the data will appear, a spinner in the footer ---------- */
+
+.sk {
+  display: block;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+}
+
+.tl-skel .tl-label {
+  gap: 7px;
+  cursor: default;
+}
+
+.tl-skel-l1 {
+  display: flex;
+  gap: 6px;
+}
+
+.sk-pill {
+  width: 34px;
+  height: 12px;
+  border-radius: 6px;
+}
+
+.sk-pill.short {
+  width: 52px;
+}
+
+.sk-line {
+  width: 78%;
+  height: 9px;
+}
+
+.sk-line.w1 {
+  width: 62%;
+}
+
+.sk-line.w2 {
+  width: 88%;
+}
+
+.sk-bar {
+  position: absolute;
+  top: calc((var(--tl-row) - var(--tl-bar)) / 2);
+  height: var(--tl-bar);
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sk {
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--vscode-foreground) 8%, transparent) 0%,
+      color-mix(in srgb, var(--vscode-foreground) 18%, transparent) 50%,
+      color-mix(in srgb, var(--vscode-foreground) 8%, transparent) 100%
+    );
+    background-size: 200% 100%;
+    animation: tl-shimmer 2.2s linear infinite;
+  }
+}
+
+.tl-fload {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--vscode-foreground);
+}
+
+.tl-spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 2px solid color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
+  border-top-color: var(--in-flight);
+  border-radius: 50%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tl-spinner {
+    animation: tl-spin 0.9s linear infinite;
+  }
+}
+
+@keyframes tl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Rule TIMELINE-51: the ids of the ASLEEP list are buttons */
+.tl-link:hover {
+  text-decoration: underline;
+}
+
+.tl-link:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
 }

@@ -5,11 +5,13 @@
 import type { BaseBranchHealth, BaseBranchRun } from './baseBranchHealth';
 import type { CodingStartSetting } from './codingStart';
 import type { CompletedPullRequestInfo } from './completedPullRequests';
+import type { TimelineDuplicate } from './duplicates';
 import type { MyPullRequestModel } from './myPullRequests';
 import type { HistoryRef, HistoryView } from './prHistoryCache';
 import type { LifecycleEventKind } from './prLifecycle';
 import type { ReviewRequestModel } from './reviewRequests';
 import type { SprintTeams } from './sprintTitle';
+import type { ZoomModifier } from './timelineZoom';
 import type { SprintMembership } from './sprintMembership';
 import type { TimelineViewOptions, TimelineViewSwitch } from './timelineView';
 import type { TimelineDay } from './timelineAxis';
@@ -28,6 +30,8 @@ export type TimelineMessage =
   | WebviewMessage
   | { type: 'openBoard'; key?: string }
   | { type: 'setTimelineDensity'; density: TimelineDensity }
+  /** Rule TIMELINE-48: the zoom chosen (percent of the width of a day), saved in the user setting */
+  | { type: 'setTimelineZoom'; zoom: number }
   /** Rule TIMELINE-45: a switch of the view options */
   | { type: 'setTimelineViewOption'; option: TimelineViewSwitch; value: boolean }
   /** Rule TIMELINE-46: the link of the view options to the dimming setting */
@@ -49,7 +53,6 @@ export type TimelineMessage =
  */
 export type SegmentKind =
   | 'afterVote'
-  | 'asleep'
   | 'branch'
   | 'ci'
   | 'draft'
@@ -65,6 +68,8 @@ export type SegmentKind =
   | 'stateDone'
   | 'stateInReview'
   | 'stateNew'
+  | 'stateReadyToTest'
+  | 'stateRemoved'
   | 'stateReopened'
   | 'taskToDo'
   | 'wait';
@@ -79,6 +84,8 @@ export interface TimelineSegment {
   tip: string;
   approximate?: boolean;
   dashed?: boolean;
+  /** Rule TIMELINE-8: no update in this part of the bar: its text ends with a bold orange "zZ", the colour is the state's */
+  asleep?: boolean;
   /** Rule TIMELINE-31: the part of an open bar past the end of the sprint (faded, under the hatch of the margin) */
   after?: boolean;
 }
@@ -188,9 +195,17 @@ export interface TimelineRow {
   label?: RowLabel;
   /** A finished work item: faded, with its mark (Rule TIMELINE-19) */
   faded?: boolean;
-  /** "✓ done We 21" of a finished work item */
-  merged?: { at: number; text: string };
+  /** "Done We 21" after the bar of a finished work item (Rule TIMELINE-19) */
+  merged?: {
+    at: number;
+    text: string;
+    /** Ready to Test: the pale green of "almost done" (TIMELINE-35) */ almostDone?: boolean;
+  };
+  /** Rule TIMELINE-35: the point badge of a work item in a final state (Done, Closed, Removed), at the moment it changed */
+  finish?: { at: number; kind: 'done' | 'removed'; text: string; tip: string };
   here?: boolean;
+  /** Rule TIMELINE-47: the work items linked to this one by the Duplicate link (hovering the row highlights theirs) */
+  duplicates?: TimelineDuplicate[];
   /** Bug: the header is red */
   bug?: boolean;
   segments: TimelineSegment[];
@@ -271,6 +286,8 @@ export interface TimelineTeam {
   openItems: number;
   /** Rule TIMELINE-25: the asleep work items, with the owner: "you" or a first name */
   asleep: { id: number; owner: string }[];
+  /** Rule TIMELINE-50: the people chosen whose work is not read yet (header and skeleton rows, "loading…") */
+  pending: { key: string; name: string; initials: string; colour: number }[];
 }
 
 /** Rule TIMELINE-40: a sprint of the menu on the title: "Sprint 121", its dates "30 Sep – 13 Oct" */
@@ -293,9 +310,11 @@ export interface TimelineModel {
   team?: TimelineTeam;
   /** Rule SPRINT-TITLE-1: the title the teams share, the "N teams" chip */
   header: { sprint: string; teams?: SprintTeams; dates?: string; left?: string; hurry: boolean };
-  days: Pick<TimelineDay, 'after' | 'date' | 'label' | 'last' | 'today' | 'weekStart'>[];
+  days: Pick<TimelineDay, 'after' | 'before' | 'date' | 'label' | 'last' | 'today' | 'weekStart'>[];
   /** Rule TIMELINE-31: where the sprint ends on the axis (the days after it are the margin) */
   sprintEnd: number;
+  /** Rule TIMELINE-2: the index of the first day of the sprint; the days before it are the margin before the sprint */
+  sprintStart: number;
   /** Where NOW is on the axis; undefined outside of it */
   now?: number;
   /** Rule TIMELINE-31: NOW is past the end of the sprint (in the margin): drawn faded, behind the text */
@@ -330,6 +349,14 @@ export interface TimelineModel {
   };
   notes: string[];
   look: BoardModel['look'];
+  /** Rule TIMELINE-48: the zoom (percent of the width of a day, `appearance.timelineZoom`) */
+  zoom: number;
+  /** Rule TIMELINE-49: the key that zooms with the wheel (`appearance.timelineZoomModifier`) */
+  zoomModifier: ZoomModifier;
+  /** Rule TIMELINE-25: the asleep work items of the user (Mine and Whole team) */
+  asleep: number[];
+  /** Rule TIMELINE-50: how many of the work items drawn have their state history being read */
+  statesLoading: number;
 }
 
 export interface TimelineInput {
@@ -351,12 +378,24 @@ export interface TimelineInput {
    * Rule TIMELINE-41: a past sprint, drawn as history ("ended Mon 26 Oct" instead of the days left). Rules TIMELINE-43,
    * TIMELINE-44: what the history of each work item says of its time in the sprint (by id)
    */
-  past?: { ended?: string; membership?: ReadonlyMap<number, SprintMembership> };
+  past?: {
+    ended?: string;
+    membership?: ReadonlyMap<number, SprintMembership>;
+    /** Rule TIMELINE-41: the real current moment (ms): the PRs still open run into the margin up to it (or the axis end) */
+    today?: number;
+  };
   /** The PRs of the user that were merged (My Pull Requests already has them): drawn when merged within the axis */
   completedPullRequests?: readonly CompletedPullRequestInfo[];
   base: { branch: string; enabled: boolean; runs: readonly BaseBranchRun[]; health?: BaseBranchHealth };
   /** Rule TIMELINE-20: where the implementation starts (`totalflowx.appearance.timelineCodingStart`); default: the earliest of both */
   codingStart?: CodingStartSetting;
+  /**
+   * Rule TIMELINE-2: at most this many working days before the sprint are added to the axis, as needed by the PRs that
+   * start before it (`totalflowx.appearance.timelineDaysBeforeSprint`); default 0
+   */
+  daysBeforeSprint?: number;
+  /** Rule TIMELINE-2: the earliest start of a drawn PR (set by the builders; the axis takes what it needs from it) */
+  earliestStart?: number;
   /** Rule TIMELINE-20: author date (ISO) of the oldest commit of each PR, by PR id, of those already read */
   firstCommits?: ReadonlyMap<number, string>;
   /** Rule TIMELINE-37: the PRs of others the user voted on, and their threads read so far */
@@ -382,4 +421,8 @@ export interface TimelineInput {
   team?: TeamTimelineInput;
   /** Rules TIMELINE-45, TIMELINE-46: the view options; default: everything shown, grouped and dimmed */
   view?: TimelineViewOptions;
+  /** Rule TIMELINE-48: the zoom setting, percent; default 100 */
+  zoom?: number;
+  /** Rule TIMELINE-49: the key of the wheel zoom setting; default ctrl */
+  zoomModifier?: ZoomModifier;
 }
