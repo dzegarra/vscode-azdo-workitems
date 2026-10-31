@@ -720,6 +720,12 @@ body.timeline-page.vscode-light:not(.look-totalflow) {
   font-weight: 400;
 }
 
+/* Rule TIMELINE-52: what stops an open PR in review from being merged, after its bar (centred by .tl-after) */
+.tl-note.tone-blocker {
+  color: var(--muted);
+  font-weight: 400;
+}
+
 .tl-note.tone-dueSoon,
 .tl-note.tone-needsYou {
   color: var(--needs-you);

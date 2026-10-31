@@ -1,5 +1,6 @@
 import { getAccessToken } from './auth';
 import { recordedFetch } from './requestRecorder';
+import type { BranchCommit } from './baseBranchMerges';
 import { oldestCommitDate, type CommitRef } from './codingStart';
 import { CommitsDiff, hasSkipTag, PullRequestLabel } from './buildNotes';
 import {
@@ -29,6 +30,8 @@ const API_VERSION = '7.1';
 /** Commits of a PR per request, and the pages read at most (Rule TIMELINE-20) */
 const COMMIT_PAGE_SIZE = 100;
 const COMMIT_PAGES = 5;
+const MERGES_PAGE_SIZE = 200;
+const MERGES_PAGES = 3;
 /** The policy evaluations API only exists as a preview: 7.1 is refused */
 const POLICY_API_VERSION = '7.1-preview.1';
 const BASE_URL = 'https://dev.azure.com';
@@ -580,6 +583,30 @@ export class AzdoClient {
         repositoryId
       )}&$top=${MAX_BRANCH_BUILDS}`
     );
+  }
+
+  /**
+   * Rule TIMELINE-38: the commits of a branch between two dates, newest first. `$top` 200 a page, `$skip` for the next
+   * ones while a page is full, at most MERGES_PAGES pages
+   */
+  async getBranchCommits(repositoryId: string, branch: string, from: string, to: string): Promise<BranchCommit[]> {
+    const commits: BranchCommit[] = [];
+    for (let page = 0; page < MERGES_PAGES; page++) {
+      const criteria = `searchCriteria.itemVersion.version=${encodeURIComponent(
+        branch
+      )}&searchCriteria.fromDate=${encodeURIComponent(from)}&searchCriteria.toDate=${encodeURIComponent(
+        to
+      )}&searchCriteria.$top=${MERGES_PAGE_SIZE}&searchCriteria.$skip=${page * MERGES_PAGE_SIZE}`;
+      const result = await this.request<{ value?: BranchCommit[] }>(
+        this.url(`git/repositories/${repositoryId}/commits?${criteria}`)
+      );
+      const value = result.value ?? [];
+      commits.push(...value);
+      if (value.length < MERGES_PAGE_SIZE) {
+        break;
+      }
+    }
+    return commits;
   }
 
   /** Test runs published by a build (one per results file) */

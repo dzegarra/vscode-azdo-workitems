@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BaseBranchRun } from './baseBranchHealth';
+import type { BaseMerge } from './baseBranchMerges';
+import { DEFAULT_VIEW_OPTIONS } from './timelineView';
 import type { MyPullRequestModel } from './myPullRequests';
 import type { CompletedPullRequestInfo } from './completedPullRequests';
 import type { HistoryView } from './prHistoryCache';
@@ -558,6 +560,123 @@ describe('buildSprintTimeline', () => {
     expect(develop.culprits).toEqual([{ at: expect.closeTo(5 + 10 / 24) as number, text: 'PR 13874 → red' }]);
   });
 
+  describe('merges read from the commits of the base branch (TIMELINE-38)', () => {
+    const batched = (
+      buildId: number,
+      definitionId: number,
+      red: boolean,
+      finishTime: string,
+      sourceVersion: string
+    ): BaseBranchRun => ({
+      buildId,
+      definitionId,
+      pipeline: `P${String(definitionId)}`,
+      red,
+      finishTime,
+      sourceVersion,
+    });
+    const merge = (pullRequestId: number, day: number, hour: number): BaseMerge => ({
+      pullRequestId,
+      at: iso(day, hour),
+      commit: `c${String(pullRequestId)}`,
+    });
+    // Newest first, as the API lists them
+    const commits = [merge(14062, 21, 15), merge(14054, 21, 11), merge(14002, 20, 17), merge(13990, 20, 9)];
+
+    it('ticks each merge at the date of its commit, with the PRs of the runs the commits do not list', () => {
+      const runs: BaseBranchRun[] = [
+        { buildId: 1, definitionId: 1, pipeline: 'CI', red: false, finishTime: iso(14, 10), pullRequestId: 13800 },
+        batched(2, 1, false, iso(20, 18), 'c14002'),
+      ];
+      const { develop } = timeline([], [], [], { base: { branch: 'develop', enabled: true, runs, merges: commits } });
+      expect(develop.merges.map((tick) => tick.pr)).toEqual([13800, 13990, 14002, 14054, 14062]);
+      expect(develop.merges[0].tip).toContain('its run finished');
+      expect(develop.merges[3].tip).toMatch(/^PR 14054 merged · /);
+      expect(develop.merges[3].at).toBeCloseTo(develop.merges[2].at + 18 / 24, 1);
+    });
+
+    it('lets the commit date win over the run of the same PR', () => {
+      const runs: BaseBranchRun[] = [
+        { buildId: 1, definitionId: 1, pipeline: 'CI', red: false, finishTime: iso(21, 20), pullRequestId: 14054 },
+      ];
+      const { develop } = timeline([], [], [], {
+        base: { branch: 'develop', enabled: true, runs, merges: [merge(14054, 21, 11)] },
+      });
+      expect(develop.merges).toHaveLength(1);
+      expect(develop.merges[0].tip).not.toContain('its run finished');
+    });
+
+    it('falls back to the merge messages of the runs while the commits are not known', () => {
+      const runs: BaseBranchRun[] = [
+        { buildId: 1, definitionId: 1, pipeline: 'CI', red: false, finishTime: iso(14, 10), pullRequestId: 13800 },
+        batched(2, 1, false, iso(20, 18), 'c14002'),
+      ];
+      const { develop } = timeline([], [], [], { base: { branch: 'develop', enabled: true, runs } });
+      expect(develop.merges.map((tick) => tick.pr)).toEqual([13800]);
+    });
+
+    it('names the merge that broke the branch, or the batch (PR a +n)', () => {
+      const runs: BaseBranchRun[] = [
+        batched(1, 1, false, iso(20, 10), 'c13990'),
+        batched(2, 1, true, iso(21, 12), 'c14054'),
+        batched(3, 1, false, iso(21, 13), 'c14054'),
+        batched(4, 1, true, iso(21, 18), 'c14062'),
+        batched(5, 1, false, iso(21, 19), 'c14062'),
+        batched(6, 1, true, iso(22, 9), 'c14062'),
+      ];
+      const { develop } = timeline([], [], [], { base: { branch: 'develop', enabled: true, runs, merges: commits } });
+      // Run 2 built c14054 after c13990: 14002 and 14054; run 4 built c14062 after c14054: 14062 alone
+      expect(develop.culprits.map((culprit) => culprit.text)).toEqual([
+        'PR 14054 +1 → red',
+        'PR 14062 → red',
+        'PR 14062 → red',
+      ]);
+    });
+
+    it('names a batch of three', () => {
+      const runs: BaseBranchRun[] = [
+        batched(1, 1, false, iso(20, 10), 'c13990'),
+        batched(2, 1, true, iso(21, 18), 'c14062'),
+      ];
+      const { develop } = timeline([], [], [], { base: { branch: 'develop', enabled: true, runs, merges: commits } });
+      expect(develop.culprits.map((culprit) => culprit.text)).toEqual(['PR 14062 +2 → red']);
+    });
+
+    it('names the latest merge before the span when the commits cannot tell the batch', () => {
+      const runs: BaseBranchRun[] = [
+        batched(1, 1, false, iso(20, 10), 'unknown'),
+        batched(2, 1, true, iso(21, 18), 'c14062'),
+      ];
+      const { develop } = timeline([], [], [], { base: { branch: 'develop', enabled: true, runs, merges: commits } });
+      expect(develop.culprits.map((culprit) => culprit.text)).toEqual(['PR 14062 → red']);
+    });
+  });
+
+  describe('commits wanted for the develop strip (TIMELINE-38)', () => {
+    const runs: BaseBranchRun[] = [
+      { buildId: 1, definitionId: 1, pipeline: 'CI', red: false, finishTime: iso(20, 10), sourceVersion: 'aaa' },
+      { buildId: 2, definitionId: 1, pipeline: 'CI', red: false, finishTime: iso(21, 10), sourceVersion: 'bbb' },
+    ];
+    const base = { branch: 'develop', enabled: true, runs };
+
+    it('keys the current sprint by the head of the branch, so a new run is read again', () => {
+      const first = timeline([], [], [], { base }).mergesWanted;
+      const next = timeline([], [], [], { base: { ...base, runs: runs.slice(0, 1) } }).mergesWanted;
+      expect(first?.key).toMatch(/@bbb$/);
+      expect(next?.key).toMatch(/@aaa$/);
+      expect(first?.from).toBe(next?.from);
+    });
+
+    it('keys a past sprint by its axis only, and asks nothing when the strip is hidden or off', () => {
+      const past = timeline([], [], [], { base, now: new Date(2026, 10, 20) }).mergesWanted;
+      expect(past?.key).not.toContain('@');
+      expect(timeline([], [], [], { base: { ...base, enabled: false } }).mergesWanted).toBeUndefined();
+      expect(
+        timeline([], [], [], { base, view: { ...DEFAULT_VIEW_OPTIONS, showDevelop: false } }).mergesWanted
+      ).toBeUndefined();
+    });
+  });
+
   it('says so when the base branch alarm is off', () => {
     const model = timeline([], [], [], { base: { branch: 'develop', enabled: false, runs: [] } });
     expect(model.develop.note).toContain('off');
@@ -850,6 +969,80 @@ describe('the row of a work item (TIMELINE-15, TIMELINE-16)', () => {
       ]),
     }).work[0];
     expect(kinds(row)).toEqual(['stateCommitted', 'stateReadyToTest', 'stateReopened', 'stateCommitted']);
+  });
+});
+
+describe('what stops a PR in review from being merged (TIMELINE-52)', () => {
+  const blockerOf = (
+    mineOverrides: Partial<MyPullRequestModel>,
+    prs: PullRequestModel[] = [pullRequest({ id: 10 })],
+    extra: MyPullRequestModel[] = []
+  ) => {
+    const row = timeline(
+      [workItem({ pullRequests: prs, dates: { activated: iso(14, 9) } })],
+      [mine({ id: 10, ...mineOverrides }), ...extra]
+    ).work[0];
+    const child = row.children?.find((candidate) => candidate.kind === 'pr' && candidate.prId === 10);
+    return child?.kind === 'pr' ? child : undefined;
+  };
+
+  it('says it after the bar of an open PR in review', () => {
+    const child = blockerOf({ next: '1 more approval needed', nextTone: 'waiting' } as never);
+    expect(child?.blocker).toBe('1 more approval needed');
+  });
+
+  it('says nothing of a draft, of a PR ready to merge or of one with nothing to say', () => {
+    expect(
+      blockerOf({ isDraft: true, next: 'Publish' } as never, [pullRequest({ id: 10, tone: 'draft' })])?.blocker
+    ).toBeUndefined();
+    expect(blockerOf({ readyToMerge: true, next: 'Ready to merge' } as never)?.blocker).toBeUndefined();
+    expect(blockerOf({})?.blocker).toBeUndefined();
+  });
+
+  it('says nothing of a merged PR', () => {
+    const row = timeline(
+      [workItem({ pullRequests: [pullRequest({ id: 13801, tone: 'completed' }), pullRequest({ id: 10 })] })],
+      [mine({ id: 10, next: 'x' } as never)],
+      [],
+      { completedPullRequests: [merged(13801, 14, 16)] }
+    ).work[0];
+    const child = row.children?.find((candidate) => candidate.kind === 'pr' && candidate.prId === 13801);
+    expect(child?.kind === 'pr' ? child.blocker : 'missing').toBeUndefined();
+  });
+
+  it('says nothing where a button or a NEEDS YOU station already says what to do', () => {
+    const model = timeline(
+      [
+        workItem({
+          id: 67145,
+          dates: { activated: iso(13, 9) },
+          pullRequests: [
+            pullRequest({
+              id: 14021,
+              runs: [{ id: 1, pipeline: 'CI', state: 'failed', url: '', finishTime: iso(21, 10) }],
+            }),
+            pullRequest({ id: 14012 }),
+          ],
+        }),
+      ],
+      [
+        mine({
+          id: 14021,
+          next: 'Fix CI',
+          stamps: { createdAt: iso(19, 10), publishedAt: iso(19, 12) },
+          runs: [{ id: 1, pipeline: 'CI', state: 'failed', url: '', finishTime: iso(21, 10) }],
+        } as never),
+        mine({
+          id: 14012,
+          next: '1 more approval needed',
+          stamps: { createdAt: iso(14, 9), publishedAt: iso(14, 11) },
+        } as never),
+      ]
+    );
+    const prs = model.work[0].children?.flatMap((child) => (child.kind === 'pr' ? [child] : [])) ?? [];
+    expect(prs.find((child) => child.prId === 14021)?.blocker).toBeUndefined();
+    expect(prs.find((child) => child.prId === 14021)?.action).toBeDefined();
+    expect(prs.find((child) => child.prId === 14012)?.blocker).toBe('1 more approval needed');
   });
 });
 

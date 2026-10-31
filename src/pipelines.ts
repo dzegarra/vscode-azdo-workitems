@@ -17,6 +17,8 @@ export interface BuildRun {
   reason?: string;
   /** "ci.message" of the runs queued by a push: the commit message, "Merged PR 13837: …" after a merge */
   triggerInfo?: Record<string, string>;
+  /** Commit the run built: for a batched CI run of a branch, its head when the run was queued */
+  sourceVersion?: string;
   /** Who the run is for: whoever completed the PR for a run queued by its merge */
   requestedFor?: { displayName: string };
 }

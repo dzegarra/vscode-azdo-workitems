@@ -236,7 +236,14 @@ function renderPullRequestChild(child: PullRequestChild, last: boolean): string 
     ? `<span class="tl-note tone-merged" data-from="${String(child.merged.at)}">${escapeHtml(child.merged.text)}</span>`
     : '';
   const action = child.action ? actionButton(child.action, 'plain') : '';
-  const after = merged || action ? `<span class="tl-after" data-from="${String(child.end)}">${action}</span>` : '';
+  // Rule TIMELINE-52: what stops the merge, after the bar (its text may be cut at the right edge: the title has it all)
+  const blocker = child.blocker
+    ? `<span class="tl-note tone-blocker" title="${escapeHtml(child.blocker)}">${escapeHtml(child.blocker)}</span>`
+    : '';
+  const after =
+    merged || action || blocker
+      ? `<span class="tl-after" data-from="${String(child.end)}">${action}${blocker}</span>`
+      : '';
   let status = '';
   if (loading) {
     status = `<span class="visually-hidden" role="status">Loading the history of PR ${String(child.prId)}</span>`;
@@ -1149,10 +1156,7 @@ function render(): void {
   const scroll = app.querySelector('.tl-scroll');
   const scrollLeft = scroll?.scrollLeft ?? 0;
   const scrollTop = scroll?.scrollTop ?? 0;
-  const team = model.scope === 'team' ? model.team : undefined;
-  app.innerHTML = `${renderHeader(model)}${renderLegend(team !== undefined)}<div class="tl-scroll">${renderBody(
-    model
-  )}</div>${renderFooter(model)}`;
+  app.innerHTML = `${renderHeader(model)}<div class="tl-scroll">${renderBody(model)}</div>${renderFooter(model)}`;
   restorePicker(app, picker);
   const grid = app.querySelector<HTMLElement>('.tl-grid');
   if (grid) {

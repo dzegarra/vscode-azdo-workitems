@@ -693,6 +693,11 @@ export class WorkItemsStore {
   /** When the runs of the base branch were last fetched */
   private baseBranchFetchedAt = 0;
 
+  /** Id of the repository open in VS Code in Azure DevOps (undefined until the first load) */
+  get currentRepositoryId(): string | undefined {
+    return this.repositoryId;
+  }
+
   get baseBranchHistory(): readonly BaseBranchRun[] {
     return this.baseBranchRunList;
   }

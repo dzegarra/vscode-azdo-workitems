@@ -6,6 +6,7 @@
  * drawn approximate. Pure, so no "vscode" import
  */
 import { brokenSince, type BaseBranchRun } from './baseBranchHealth';
+import { mergesBetween, type BaseMerge } from './baseBranchMerges';
 import { formatAge } from './myPullRequests';
 import type { HistoryRef } from './prHistoryCache';
 import type { ReviewRequestModel } from './reviewRequests';
@@ -92,19 +93,22 @@ function reviewRow(
 // Rule TIMELINE-12
 /**
  * Green and red spans of the base branch from its runs: red while the latest finished run of any pipeline is red.
- * The strip starts at the first run known (the list holds the latest runs only)
+ * The strip starts at the first run known (the list holds the latest runs only). `startedBy` is the run that turned the
+ * branch to the colour of the span (none for the first span)
  */
 export function developSpans(
   runs: readonly BaseBranchRun[],
   now: number
-): { start: number; end: number; red: boolean; firstRun: number }[] {
+): { start: number; end: number; red: boolean; firstRun: number; startedBy?: BaseBranchRun }[] {
   const latest = new Map<number, boolean>();
-  const spans: { start: number; end: number; red: boolean; firstRun: number }[] = [];
+  const spans: ReturnType<typeof developSpans> = [];
   const first = runs.at(0);
   if (!first) {
     return spans;
   }
-  let cursor = Date.parse(first.finishTime);
+  const firstRun = Date.parse(first.finishTime);
+  let cursor = firstRun;
+  let startedBy: BaseBranchRun | undefined;
   let red = false;
   for (const run of runs) {
     const at = Date.parse(run.finishTime);
@@ -112,54 +116,108 @@ export function developSpans(
     const next = [...latest.values()].some(Boolean);
     if (next !== red) {
       if (at > cursor) {
-        spans.push({ start: cursor, end: at, red, firstRun: Date.parse(first.finishTime) });
+        spans.push({ start: cursor, end: at, red, firstRun, startedBy });
       }
       cursor = at;
+      startedBy = run;
       red = next;
     }
   }
   if (now > cursor) {
-    spans.push({ start: cursor, end: now, red, firstRun: Date.parse(first.finishTime) });
+    spans.push({ start: cursor, end: now, red, firstRun, startedBy });
   }
   return spans;
 }
 
+/**
+ * The merges that broke the branch: those between the commit the previous run of the same pipeline built (exclusive)
+ * and the one the run that turned it red built (inclusive), newest first. Undefined when the commits cannot tell
+ */
+function breakingMerges(
+  run: BaseBranchRun | undefined,
+  runs: readonly BaseBranchRun[],
+  merges: readonly BaseMerge[] | undefined
+): readonly BaseMerge[] | undefined {
+  const previous = run
+    ? runs
+        .slice(0, runs.indexOf(run))
+        .reverse()
+        .find((candidate) => candidate.definitionId === run.definitionId && candidate.sourceVersion)
+    : undefined;
+  if (!run?.sourceVersion || !previous?.sourceVersion || !merges) {
+    return undefined;
+  }
+  return mergesBetween(merges, previous.sourceVersion, run.sourceVersion);
+}
+
 // Rule TIMELINE-38
 /**
- * A tick per PR merged into the base branch (the merge message of the run it triggered: only merges that ran a
- * pipeline, within the latest runs read; several pipelines of one merge are one tick, at the first run to finish), and
- * above each red span the PR merged before it ("PR 13874 → red")
+ * A tick per PR merged into the base branch within the axis: at the commit date of its merge when the commits of the
+ * branch are known (`known`, newest first), else (or besides, for a PR they do not list) at the first run to finish of
+ * the merge message of the runs. Above each red span that starts within the axis, the merges that broke it: those
+ * between the commits built by the run that turned it red and the previous run ("PR 14002 → red", "PR 14002 +2 → red"
+ * for a batch of three), else the latest merge before the span ("PR 13874 → red")
  */
 export function developMerges(
   runs: readonly BaseBranchRun[],
-  days: readonly TimelineDay[]
+  days: readonly TimelineDay[],
+  known?: readonly BaseMerge[]
 ): { merges: TimelineModel['develop']['merges']; culprits: TimelineModel['develop']['culprits'] } {
-  const first = new Map<number, number>();
+  const ticks = new Map<number, { at: number; commit: boolean }>();
   runs.forEach((run) => {
     const at = Date.parse(run.finishTime);
     if (run.pullRequestId !== undefined && !Number.isNaN(at)) {
-      first.set(run.pullRequestId, Math.min(first.get(run.pullRequestId) ?? at, at));
+      ticks.set(run.pullRequestId, { at: Math.min(ticks.get(run.pullRequestId)?.at ?? at, at), commit: false });
     }
   });
+  known?.forEach((merge) => ticks.set(merge.pullRequestId, { at: Date.parse(merge.at), commit: true }));
   const inAxis = (ms: number): boolean => days.length > 0 && ms >= days[0].startMs && ms < days[days.length - 1].endMs;
-  const merges = [...first]
-    .filter(([, at]) => inAxis(at))
-    .sort((a, b) => a[1] - b[1])
-    .map(([pr, at]) => ({
-      at: axisPosition(at, days),
+  const merges = [...ticks]
+    .filter(([, tick]) => inAxis(tick.at))
+    .sort((a, b) => a[1].at - b[1].at)
+    .map(([pr, tick]) => ({
+      at: axisPosition(tick.at, days),
       pr,
-      tip: `PR ${String(pr)} merged · its run finished ${dayText(at)}`,
+      tip: tick.commit
+        ? `PR ${String(pr)} merged · ${dayText(tick.at)}`
+        : `PR ${String(pr)} merged · its run finished ${dayText(tick.at)}`,
     }));
   const culprits = developSpans(runs, Number.POSITIVE_INFINITY)
     .filter((span) => span.red && inAxis(span.start))
     .flatMap((span) => {
-      const before = [...first]
-        .filter(([, at]) => at <= span.start)
-        .sort((a, b) => b[1] - a[1])
+      const batch = breakingMerges(span.startedBy, runs, known);
+      if (batch?.length) {
+        const others = batch.length > 1 ? ` +${String(batch.length - 1)}` : '';
+        return [{ at: axisPosition(span.start, days), text: `PR ${String(batch[0].pullRequestId)}${others} → red` }];
+      }
+      const before = [...ticks]
+        .filter(([, tick]) => tick.at <= span.start)
+        .sort((a, b) => b[1].at - a[1].at)
         .at(0);
       return before ? [{ at: axisPosition(span.start, days), text: `PR ${String(before[0])} → red` }] : [];
     });
   return { merges, culprits };
+}
+
+/**
+ * Rule TIMELINE-38: the commits of the base branch the strip needs, when it is drawn. Key: the axis, plus for a sprint
+ * not over the commit the newest run built (a new run is a new head of the branch: read again); a past sprint is read
+ * once
+ */
+export function mergesWanted(
+  input: TimelineInput,
+  days: readonly TimelineDay[],
+  now: number
+): TimelineModel['mergesWanted'] {
+  const first = days.at(0);
+  const last = days.at(-1);
+  if (!first || !last || !input.base.enabled || !(input.view ?? DEFAULT_VIEW_OPTIONS).showDevelop) {
+    return undefined;
+  }
+  const from = new Date(first.startMs).toISOString();
+  const to = new Date(last.endMs).toISOString();
+  const head = last.endMs <= now ? undefined : input.base.runs.filter((run) => run.sourceVersion).at(-1)?.sourceVersion;
+  return { key: `${from}..${to}${head ? `@${head}` : ''}`, from, to };
 }
 
 function developOf(input: TimelineInput, days: TimelineDay[], now: number): TimelineModel['develop'] {
@@ -190,7 +248,7 @@ function developOf(input: TimelineInput, days: TimelineDay[], now: number): Time
   if (!spans.length) {
     return { branch: base.branch, spans, merges: [], culprits: [], note: 'No finished run of the base branch yet' };
   }
-  const { merges, culprits } = developMerges(base.runs, days);
+  const { merges, culprits } = developMerges(base.runs, days, base.merges);
   const since = base.health && brokenSince(base.health);
   const culprit = base.health?.broken.at(0)?.brokenBy.pullRequestId;
   const label =
@@ -412,6 +470,7 @@ export function buildSprintTimeline(given: TimelineInput): TimelineModel {
       [...(context.statesWanted ?? [])].map(([id]) => ({ id })),
       input.statesLoading
     ),
+    mergesWanted: mergesWanted(input, days, now),
     develop: developOf(input, days, now),
     notes: board.notes,
   };

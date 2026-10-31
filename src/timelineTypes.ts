@@ -2,6 +2,7 @@
  * The model of the Sprint timeline: what the panel posts to its webview. The rows are built by timelineRows.ts, the
  * rest by sprintTimelineModel.ts. Types only, so no "vscode" import
  */
+import type { BaseMerge } from './baseBranchMerges';
 import type { BaseBranchHealth, BaseBranchRun } from './baseBranchHealth';
 import type { CodingStartSetting } from './codingStart';
 import type { CompletedPullRequestInfo } from './completedPullRequests';
@@ -146,6 +147,8 @@ export interface PullRequestChild {
   /** "✓ merged Fr 16" */
   merged?: { at: number; text: string };
   action?: BoardAction & { primary: boolean };
+  /** Rule TIMELINE-52: what stops an open PR in review from being merged, after its bar */
+  blocker?: string;
   /** Its history: the row draws a skeleton while it is read (aria-busy) */
   history: HistoryLoad;
   /** Rule TIMELINE-39: its commits or the history of its task are being read (the row sweeps) */
@@ -338,10 +341,12 @@ export interface TimelineModel {
   statesWanted: { id: number; key: string }[];
   /** Rule TIMELINE-39: the commits of the PRs hovered (the panel reads what it lacks) */
   commitsWanted: { id: number; key: string; repositoryId?: string }[];
+  /** Rule TIMELINE-38: the commits of the base branch the develop strip needs (the panel reads them once per key) */
+  mergesWanted?: { key: string; from: string; to: string };
   develop: {
     branch: string;
     spans: DevelopSpan[];
-    /** Rule TIMELINE-38: a tick per merged PR (from the merge messages of the runs) and the PR before each red span */
+    /** Rule TIMELINE-38: a tick per merged PR (from the commits of the branch, else the merge messages of the runs) and the PR(s) before each red span */
     merges: { at: number; pr: number; tip: string }[];
     culprits: { at: number; text: string }[];
     label?: { text: string; at: number };
@@ -386,7 +391,14 @@ export interface TimelineInput {
   };
   /** The PRs of the user that were merged (My Pull Requests already has them): drawn when merged within the axis */
   completedPullRequests?: readonly CompletedPullRequestInfo[];
-  base: { branch: string; enabled: boolean; runs: readonly BaseBranchRun[]; health?: BaseBranchHealth };
+  base: {
+    branch: string;
+    enabled: boolean;
+    runs: readonly BaseBranchRun[];
+    health?: BaseBranchHealth;
+    /** Rule TIMELINE-38: the PRs merged within the axis, newest first (undefined: not read yet, or the read failed) */
+    merges?: readonly BaseMerge[];
+  };
   /** Rule TIMELINE-20: where the implementation starts (`totalflowx.appearance.timelineCodingStart`); default: the earliest of both */
   codingStart?: CodingStartSetting;
   /**

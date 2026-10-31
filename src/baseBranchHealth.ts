@@ -166,6 +166,8 @@ export interface BaseBranchRun {
   finishTime: string;
   /** "Merged PR 13837: …" in its trigger message */
   pullRequestId?: number;
+  /** Commit the run built (Rule TIMELINE-38: the merges between two runs are the ones that broke it) */
+  sourceVersion?: string;
 }
 
 // Rule TIMELINE-12
@@ -198,6 +200,7 @@ export function baseBranchRuns(
           red: isRed(state),
           finishTime: build.finishTime,
           pullRequestId: mergedPullRequestId(build),
+          sourceVersion: build.sourceVersion,
         },
       ];
     })

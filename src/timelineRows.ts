@@ -18,6 +18,7 @@ import {
   type PrFacts,
   type StationSpan,
 } from './prLifecycle';
+import { whatStopsTheMerge } from './pullRequestBlockers';
 import type { PullRequestStamps } from './pullRequestTimeline';
 import { isClosedState, isFinishedState, normalizeState, stateCategory } from './states';
 import type { TeamPullRequestInfo } from './teamData';
@@ -519,7 +520,7 @@ function linkedTasksText(prId: number, tasks: readonly TaskFacts[]): string {
   return `Task ${String(first.id)} · ${first.title} · ${first.state}${more}`;
 }
 
-// Rules TIMELINE-17, TIMELINE-27
+// Rules TIMELINE-17, TIMELINE-27, TIMELINE-52
 /** The row of a PR under its work item: its phases, the events along them and, when merged, its mark */
 function pullRequestChild(
   item: WorkItemModel,
@@ -636,6 +637,17 @@ function pullRequestChild(
   const end = merged?.at ?? segments.at(-1)?.end ?? 0;
   // The buttons of the PRs are on their own row only when there are several (a single PR has them on the work item row)
   const action = !draw.merged && openCount > 1 && !context.team ? pullRequestAction(draw) : undefined;
+  // Rule TIMELINE-52: an open PR in review says what stops it from being merged, unless a button or NEEDS YOU says more
+  const inReview = phases.at(-1)?.kind === 'review';
+  const blocker =
+    inReview && !draw.merged && !draw.draft && !action && facts.current?.kind !== 'needsYou'
+      ? whatStopsTheMerge({
+          ...(draw.mine ? { mine: draw.mine } : {}),
+          reviewers: draw.reviewers,
+          conflicts: facts.conflicts,
+          runs: draw.runs,
+        })
+      : undefined;
   return {
     ...base,
     segments: mergeSegments(drawn),
@@ -643,6 +655,7 @@ function pullRequestChild(
     ...(detailsLoading ? { detailsLoading } : {}),
     ...(merged ? { merged } : {}),
     ...(action ? { action } : {}),
+    ...(blocker ? { blocker } : {}),
     end,
   };
 }

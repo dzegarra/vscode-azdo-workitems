@@ -15,6 +15,7 @@ import { KeyedReads } from './keyedReads';
 import { stateChanges, type StateChange, type WorkItemUpdate } from './workItemStateHistory';
 import { sprintMembership, type SprintMembership } from './sprintMembership';
 import { commitTimes } from './codingStart';
+import { mergesOfCommits, type BaseMerge } from './baseBranchMerges';
 import { iterationDates } from './sprintTitle';
 import { mapLimit, MAX_IN_FLIGHT } from './concurrency';
 import {
@@ -103,6 +104,9 @@ export class SprintTimelinePanel implements vscode.Disposable {
   private scheduleAsked = false;
   private readonly past: KeyedReads<PastRead>;
   private readonly pastTeam: KeyedReads<PastRead>;
+  /** Rule TIMELINE-38: the merges into the base branch within the axis of the sprint shown (by offset) */
+  private readonly merges: KeyedReads<BaseMerge[]>;
+  private readonly mergesAsked = new Map<number, { from: string; to: string }>();
   private readonly pastChoicesAsked = new Map<number, SprintChoice>();
 
   constructor(
@@ -136,6 +140,10 @@ export class SprintTimelinePanel implements vscode.Disposable {
     );
     this.pastTeam = new KeyedReads(
       (offset) => this.readPastTeam(offset),
+      () => this.post()
+    );
+    this.merges = new KeyedReads(
+      (offset) => this.readMerges(offset),
       () => this.post()
     );
     this.reviewedThreads = new KeyedReads(
@@ -353,6 +361,21 @@ export class SprintTimelinePanel implements vscode.Disposable {
     });
   }
 
+  // Rule TIMELINE-38
+  /** The commits of the base branch within the axis, as the merges they are (a failed read is asked again later) */
+  private readMerges(offset: number): Promise<BaseMerge[]> {
+    return withFeature('sprintTimeline', async () => {
+      await this.store.whenRepositoryReady();
+      const asked = this.mergesAsked.get(offset);
+      const repositoryId = this.store.currentRepositoryId;
+      if (!asked || !repositoryId) {
+        throw new Error('No repository to read the commits of');
+      }
+      const { client } = resolveContext(this.store.repository());
+      return mergesOfCommits(await client.getBranchCommits(repositoryId, settings().baseBranch, asked.from, asked.to));
+    });
+  }
+
   // Rule TIMELINE-37
   /** The PRs the user reviewed, with the threads known (the poll's) and read (the others') */
   private reviewedInput(): TimelineInput['reviewed'] {
@@ -551,6 +574,7 @@ export class SprintTimelinePanel implements vscode.Disposable {
         enabled: settings().baseBranchAlert.enabled,
         runs: this.store.baseBranchHistory,
         health: base,
+        merges: this.merges.get(0),
       },
     });
   }
@@ -647,6 +671,7 @@ export class SprintTimelinePanel implements vscode.Disposable {
         enabled: settings().baseBranchAlert.enabled,
         runs: this.store.baseBranchHistory,
         health: undefined,
+        merges: this.merges.get(choice.offset),
       },
     });
     return model;
@@ -696,6 +721,12 @@ export class SprintTimelinePanel implements vscode.Disposable {
         })
       ),
     ];
+    // Rule TIMELINE-38: the commits of the base branch, while the develop bar is drawn; the key has the head of the branch
+    const { mergesWanted } = model;
+    if (mergesWanted) {
+      this.mergesAsked.set(this.offset, mergesWanted);
+      started.push(this.merges.request([{ id: this.offset, key: mergesWanted.key }]));
+    }
     if (started.some(Boolean)) {
       model = this.buildModel(sprint);
     }

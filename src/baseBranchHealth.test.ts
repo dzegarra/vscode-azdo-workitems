@@ -3,6 +3,7 @@ import {
   baseBranchBanner,
   baseBranchHealth,
   baseBranchModal,
+  baseBranchRuns,
   baseBranchStatusText,
   baseBranchTarget,
   breakingBuildText,
@@ -300,5 +301,22 @@ describe('incidents', () => {
     const remembered = rememberIncidents(keys, broken);
     expect(remembered).toHaveLength(50);
     expect(remembered.at(-1)).toBe('1:1');
+  });
+});
+
+describe('baseBranchRuns (TIMELINE-12, TIMELINE-38)', () => {
+  it('carries the commit each run built and the PR of an individual CI run', () => {
+    const runs = baseBranchRuns(
+      [
+        build(2, { reason: 'batchedCI', triggerInfo: {}, sourceVersion: 'bbd411be' }),
+        build(1, { reason: 'individualCI', triggerInfo: { 'ci.message': 'Merged PR 13943: x' }, sourceVersion: 'aaa' }),
+      ],
+      'develop',
+      []
+    );
+    expect(runs.map((run) => [run.buildId, run.pullRequestId, run.sourceVersion])).toEqual([
+      [1, 13943, 'aaa'],
+      [2, undefined, 'bbd411be'],
+    ]);
   });
 });
